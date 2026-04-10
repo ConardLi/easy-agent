@@ -84,38 +84,40 @@ easy-agent/
 
 The project follows a 30-phase roadmap designed to recreate the full Claude Code-style system progressively.
 
-| Phase | Area | Status |
-|---|---|---:|
-| 0 | Project scaffold | ✅ Done |
-| 1 | LLM communication layer | ✅ Done |
-| 2 | React/Ink terminal UI | ✅ Done |
-| 3 | Tool interface and first tool | ✅ Done |
-| 4 | Core agentic loop | ✅ Done |
-| 5 | Complete core toolset | ✅ Done |
-| 6 | System prompt and context engineering | 🚧 Partial |
-| 7 | Permission control system | 🚧 Partial |
-| 8 | QueryEngine multi-turn orchestration | 🚧 Partial |
-| 9 | Session persistence and restore | ⏳ Not started |
-| 10 | Project memory system | ⏳ Not started |
-| 11 | Context compaction | ⏳ Not started |
-| 12 | Fine-grained token budget management | ⏳ Not started |
-| 13 | Plan mode | 🚧 Partial |
-| 14 | Task management system | ⏳ Not started |
-| 15 | MCP protocol support | ⏳ Not started |
-| 16 | Skills system | ⏳ Not started |
-| 17 | Sandbox | ⏳ Not started |
-| 18 | Sub-agents | ⏳ Not started |
-| 19 | Custom agent system | ⏳ Not started |
-| 20 | Multi-agent collaboration | ⏳ Not started |
-| 21 | Hooks lifecycle system | ⏳ Not started |
-| 22 | Terminal UI upgrades | 🚧 Partial |
-| 23 | Configuration system improvements | 🚧 Partial |
-| 24 | File history and rollback | ⏳ Not started |
-| 25 | Error handling and resilience | 🚧 Partial |
-| 26 | Pipe mode / non-interactive execution | ⏳ Not started |
-| 27 | Auto mode | 🚧 Partial |
-| 28 | Multi-provider support | ⏳ Not started |
-| 29 | Packaging, publishing, and documentation | 🚧 Partial |
+| Phase | Area | Core Code | Status |
+|---|---|---|---:|
+| 0 | Project scaffold | `src/entrypoint/cli.ts` | ✅ Done |
+| 1 | LLM communication layer | `step/step1.js` | ✅ Done |
+| 2 | React/Ink terminal UI | `step/step2.js` | ✅ Done |
+| 3 | Tool interface and first tool | `step/step3.js` | ✅ Done |
+| 4 | Core agentic loop | `step/step4.js` | ✅ Done |
+| 5 | Complete core toolset | `step/step5.js` | ✅ Done |
+| 6 | System prompt and context engineering | `step/step6.js` | 🚧 Partial |
+| 7 | Permission control system | `step/step7.js` | 🚧 Partial |
+| 8 | QueryEngine multi-turn orchestration | `step/step8.js` | 🚧 Partial |
+| 9 | Session persistence and restore | `src/session/storage.ts` | ⏳ Not started |
+| 10 | Project memory system | `src/context/claudeMd.ts` | ⏳ Not started |
+| 11 | Context compaction | `src/context/compaction.ts` | ⏳ Not started |
+| 12 | Fine-grained token budget management | `src/utils/tokens.ts` | ⏳ Not started |
+| 13 | Plan mode | `src/permissions/permissions.ts` | 🚧 Partial |
+| 14 | Task management system | `planned` | ⏳ Not started |
+| 15 | MCP protocol support | `planned` | ⏳ Not started |
+| 16 | Skills system | `planned` | ⏳ Not started |
+| 17 | Sandbox | `planned` | ⏳ Not started |
+| 18 | Sub-agents | `planned` | ⏳ Not started |
+| 19 | Custom agent system | `planned` | ⏳ Not started |
+| 20 | Multi-agent collaboration | `planned` | ⏳ Not started |
+| 21 | Hooks lifecycle system | `planned` | ⏳ Not started |
+| 22 | Terminal UI upgrades | `src/ui/App.tsx` | 🚧 Partial |
+| 23 | Configuration system improvements | `src/utils/config.ts` | 🚧 Partial |
+| 24 | File history and rollback | `planned` | ⏳ Not started |
+| 25 | Error handling and resilience | `src/services/api/streaming.ts` | 🚧 Partial |
+| 26 | Pipe mode / non-interactive execution | `planned` | ⏳ Not started |
+| 27 | Auto mode | `src/permissions/permissions.ts` | 🚧 Partial |
+| 28 | Multi-provider support | `src/services/api/client.ts` | ⏳ Not started |
+| 29 | Packaging, publishing, and documentation | `README.md` | 🚧 Partial |
+
+The `easy-agent/step/` directory contains tutorial-friendly milestone code, so each completed chapter is directly learnable and reproducible from a focused single file.
 
 ## What Easy Agent Is — and Is Not
 
