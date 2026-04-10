@@ -1,0 +1,36 @@
+{
+  "name": "easy-agent",
+  "version": "0.1.0",
+  "description": "A terminal-native agentic coding system",
+  "type": "module",
+  "main": "dist/entrypoint/cli.js",
+  "bin": {
+    "agent": "dist/entrypoint/cli.js"
+  },
+  "scripts": {
+    "dev": "tsx src/entrypoint/cli.ts",
+    "build": "tsc",
+    "start": "node dist/entrypoint/cli.js",
+    "test:streaming": "tsx src/scripts/test-streaming.ts"
+  },
+  "keywords": [
+    "agent",
+    "cli",
+    "coding",
+    "ai"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^25.5.2",
+    "@types/react": "^19.2.14",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.2"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.85.0",
+    "chalk": "^5.6.2",
+    "dotenv": "^17.4.1",
+    "ink": "^7.0.0",
+    "react": "^19.2.4"
+  }
+}
