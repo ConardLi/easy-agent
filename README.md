@@ -86,20 +86,20 @@ The project follows a 30-phase roadmap designed to recreate the full Claude Code
 
 | Phase | Area | Core Code | Status |
 |---|---|---|---:|
-| 0 | Project scaffold | `src/entrypoint/cli.ts` | ✅ Done |
-| 1 | LLM communication layer | `step/step1.js` | ✅ Done |
-| 2 | React/Ink terminal UI | `step/step2.js` | ✅ Done |
-| 3 | Tool interface and first tool | `step/step3.js` | ✅ Done |
-| 4 | Core agentic loop | `step/step4.js` | ✅ Done |
-| 5 | Complete core toolset | `step/step5.js` | ✅ Done |
-| 6 | System prompt and context engineering | `step/step6.js` | 🚧 Partial |
-| 7 | Permission control system | `step/step7.js` | 🚧 Partial |
-| 8 | QueryEngine multi-turn orchestration | `step/step8.js` | 🚧 Partial |
-| 9 | Session persistence and restore | `src/session/storage.ts` | ⏳ Not started |
-| 10 | Project memory system | `src/context/claudeMd.ts` | ⏳ Not started |
-| 11 | Context compaction | `src/context/compaction.ts` | ⏳ Not started |
-| 12 | Fine-grained token budget management | `src/utils/tokens.ts` | ⏳ Not started |
-| 13 | Plan mode | `src/permissions/permissions.ts` | 🚧 Partial |
+| 0 | Project scaffold | [`src/entrypoint/cli.ts`](./src/entrypoint/cli.ts) | ✅ Done |
+| 1 | LLM communication layer | [`step/step1.js`](./step/step1.js) | ✅ Done |
+| 2 | React/Ink terminal UI | [`step/step2.js`](./step/step2.js) | ✅ Done |
+| 3 | Tool interface and first tool | [`step/step3.js`](./step/step3.js) | ✅ Done |
+| 4 | Core agentic loop | [`step/step4.js`](./step/step4.js) | ✅ Done |
+| 5 | Complete core toolset | [`step/step5.js`](./step/step5.js) | ✅ Done |
+| 6 | System prompt and context engineering | [`step/step6.js`](./step/step6.js) | 🚧 Partial |
+| 7 | Permission control system | [`step/step7.js`](./step/step7.js) | 🚧 Partial |
+| 8 | QueryEngine multi-turn orchestration | [`step/step8.js`](./step/step8.js) | 🚧 Partial |
+| 9 | Session persistence and restore | [`src/session/storage.ts`](./src/session/storage.ts) | ⏳ Not started |
+| 10 | Project memory system | [`src/context/claudeMd.ts`](./src/context/claudeMd.ts) | ⏳ Not started |
+| 11 | Context compaction | [`src/context/compaction.ts`](./src/context/compaction.ts) | ⏳ Not started |
+| 12 | Fine-grained token budget management | [`src/utils/tokens.ts`](./src/utils/tokens.ts) | ⏳ Not started |
+| 13 | Plan mode | [`src/permissions/permissions.ts`](./src/permissions/permissions.ts) | 🚧 Partial |
 | 14 | Task management system | `planned` | ⏳ Not started |
 | 15 | MCP protocol support | `planned` | ⏳ Not started |
 | 16 | Skills system | `planned` | ⏳ Not started |
@@ -108,16 +108,16 @@ The project follows a 30-phase roadmap designed to recreate the full Claude Code
 | 19 | Custom agent system | `planned` | ⏳ Not started |
 | 20 | Multi-agent collaboration | `planned` | ⏳ Not started |
 | 21 | Hooks lifecycle system | `planned` | ⏳ Not started |
-| 22 | Terminal UI upgrades | `src/ui/App.tsx` | 🚧 Partial |
-| 23 | Configuration system improvements | `src/utils/config.ts` | 🚧 Partial |
+| 22 | Terminal UI upgrades | [`src/ui/App.tsx`](./src/ui/App.tsx) | 🚧 Partial |
+| 23 | Configuration system improvements | [`src/utils/config.ts`](./src/utils/config.ts) | 🚧 Partial |
 | 24 | File history and rollback | `planned` | ⏳ Not started |
-| 25 | Error handling and resilience | `src/services/api/streaming.ts` | 🚧 Partial |
+| 25 | Error handling and resilience | [`src/services/api/streaming.ts`](./src/services/api/streaming.ts) | 🚧 Partial |
 | 26 | Pipe mode / non-interactive execution | `planned` | ⏳ Not started |
-| 27 | Auto mode | `src/permissions/permissions.ts` | 🚧 Partial |
-| 28 | Multi-provider support | `src/services/api/client.ts` | ⏳ Not started |
-| 29 | Packaging, publishing, and documentation | `README.md` | 🚧 Partial |
+| 27 | Auto mode | [`src/permissions/permissions.ts`](./src/permissions/permissions.ts) | 🚧 Partial |
+| 28 | Multi-provider support | [`src/services/api/client.ts`](./src/services/api/client.ts) | ⏳ Not started |
+| 29 | Packaging, publishing, and documentation | [`README.md`](./README.md) | 🚧 Partial |
 
-The `easy-agent/step/` directory contains tutorial-friendly milestone code, so each completed chapter is directly learnable and reproducible from a focused single file.
+The [`easy-agent/step/`](./step/) directory contains tutorial-friendly milestone code, so each completed chapter is directly learnable and reproducible from a focused single file.
 
 ## What Easy Agent Is — and Is Not
 

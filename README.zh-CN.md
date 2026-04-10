@@ -86,20 +86,20 @@ easy-agent/
 
 | 阶段 | 模块 | 核心代码 | 状态 |
 |---|---|---|---:|
-| 0 | 项目脚手架 | `src/entrypoint/cli.ts` | ✅ 已完成 |
-| 1 | LLM 通信层 | `step/step1.js` | ✅ 已完成 |
-| 2 | React/Ink 终端 UI | `step/step2.js` | ✅ 已完成 |
-| 3 | Tool 接口与第一个工具 | `step/step3.js` | ✅ 已完成 |
-| 4 | 核心 Agentic Loop | `step/step4.js` | ✅ 已完成 |
-| 5 | 完整核心工具集 | `step/step5.js` | ✅ 已完成 |
-| 6 | System Prompt 与上下文工程 | `step/step6.js` | 🚧 部分完成 |
-| 7 | 权限控制系统 | `step/step7.js` | 🚧 部分完成 |
-| 8 | QueryEngine 多轮编排 | `step/step8.js` | 🚧 部分完成 |
-| 9 | 会话持久化与恢复 | `src/session/storage.ts` | ⏳ 未开始 |
-| 10 | 项目记忆系统 | `src/context/claudeMd.ts` | ⏳ 未开始 |
-| 11 | 上下文压缩 | `src/context/compaction.ts` | ⏳ 未开始 |
-| 12 | Token 预算精细管理 | `src/utils/tokens.ts` | ⏳ 未开始 |
-| 13 | Plan Mode | `src/permissions/permissions.ts` | 🚧 部分完成 |
+| 0 | 项目脚手架 | [`src/entrypoint/cli.ts`](./src/entrypoint/cli.ts) | ✅ 已完成 |
+| 1 | LLM 通信层 | [`step/step1.js`](./step/step1.js) | ✅ 已完成 |
+| 2 | React/Ink 终端 UI | [`step/step2.js`](./step/step2.js) | ✅ 已完成 |
+| 3 | Tool 接口与第一个工具 | [`step/step3.js`](./step/step3.js) | ✅ 已完成 |
+| 4 | 核心 Agentic Loop | [`step/step4.js`](./step/step4.js) | ✅ 已完成 |
+| 5 | 完整核心工具集 | [`step/step5.js`](./step/step5.js) | ✅ 已完成 |
+| 6 | System Prompt 与上下文工程 | [`step/step6.js`](./step/step6.js) | 🚧 部分完成 |
+| 7 | 权限控制系统 | [`step/step7.js`](./step/step7.js) | 🚧 部分完成 |
+| 8 | QueryEngine 多轮编排 | [`step/step8.js`](./step/step8.js) | 🚧 部分完成 |
+| 9 | 会话持久化与恢复 | [`src/session/storage.ts`](./src/session/storage.ts) | ⏳ 未开始 |
+| 10 | 项目记忆系统 | [`src/context/claudeMd.ts`](./src/context/claudeMd.ts) | ⏳ 未开始 |
+| 11 | 上下文压缩 | [`src/context/compaction.ts`](./src/context/compaction.ts) | ⏳ 未开始 |
+| 12 | Token 预算精细管理 | [`src/utils/tokens.ts`](./src/utils/tokens.ts) | ⏳ 未开始 |
+| 13 | Plan Mode | [`src/permissions/permissions.ts`](./src/permissions/permissions.ts) | 🚧 部分完成 |
 | 14 | 任务管理系统 | `planned` | ⏳ 未开始 |
 | 15 | MCP 协议支持 | `planned` | ⏳ 未开始 |
 | 16 | Skills 系统 | `planned` | ⏳ 未开始 |
@@ -108,16 +108,16 @@ easy-agent/
 | 19 | 自定义 Agent 系统 | `planned` | ⏳ 未开始 |
 | 20 | 多 Agent 协作 | `planned` | ⏳ 未开始 |
 | 21 | Hooks 生命周期系统 | `planned` | ⏳ 未开始 |
-| 22 | 终端 UI 升级 | `src/ui/App.tsx` | 🚧 部分完成 |
-| 23 | 配置系统完善 | `src/utils/config.ts` | 🚧 部分完成 |
+| 22 | 终端 UI 升级 | [`src/ui/App.tsx`](./src/ui/App.tsx) | 🚧 部分完成 |
+| 23 | 配置系统完善 | [`src/utils/config.ts`](./src/utils/config.ts) | 🚧 部分完成 |
 | 24 | 文件历史与回滚 | `planned` | ⏳ 未开始 |
-| 25 | 错误处理与韧性 | `src/services/api/streaming.ts` | 🚧 部分完成 |
+| 25 | 错误处理与韧性 | [`src/services/api/streaming.ts`](./src/services/api/streaming.ts) | 🚧 部分完成 |
 | 26 | 管道模式 / 非交互执行 | `planned` | ⏳ 未开始 |
-| 27 | Auto Mode | `src/permissions/permissions.ts` | 🚧 部分完成 |
-| 28 | 多 Provider 支持 | `src/services/api/client.ts` | ⏳ 未开始 |
-| 29 | 打包发布与文档 | `README.md` | 🚧 部分完成 |
+| 27 | Auto Mode | [`src/permissions/permissions.ts`](./src/permissions/permissions.ts) | 🚧 部分完成 |
+| 28 | 多 Provider 支持 | [`src/services/api/client.ts`](./src/services/api/client.ts) | ⏳ 未开始 |
+| 29 | 打包发布与文档 | [`README.md`](./README.md) | 🚧 部分完成 |
 
-`easy-agent/step/` 目录中已经补充了教程化的里程碑核心代码，意味着每个已完成章节都可以直接对照学习、逐步复刻。
+[`easy-agent/step/`](./step/) 目录中已经补充了教程化的里程碑核心代码，意味着每个已完成章节都可以直接对照学习、逐步复刻。
 
 ## Easy Agent 是什么，以及它不是什么
 
