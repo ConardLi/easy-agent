@@ -33,22 +33,22 @@ Easy Agent should currently be understood as a serious open-source rebuild in pr
 Easy Agent is being built around a five-layer architecture:
 
 ```text
-┌─────────────────────────────────────────────┐
-│ 1. Interaction Layer                        │
-│    Terminal UI, input handling, rendering   │
-├─────────────────────────────────────────────┤
-│ 2. Orchestration Layer                      │
-│    Multi-turn session flow, usage, commands │
-├─────────────────────────────────────────────┤
-│ 3. Core Agentic Loop                        │
-│    Reason → tool call → observe → continue  │
-├─────────────────────────────────────────────┤
-│ 4. Tooling Layer                            │
-│    File, shell, search, and local actions   │
-├─────────────────────────────────────────────┤
-│ 5. Model Communication Layer                │
-│    Streaming API communication with LLMs    │
-└─────────────────────────────────────────────┘
++---------------------------------------------------+
+| 1. Interaction Layer                              |
+|    Terminal UI, input handling, rendering         |
++---------------------------------------------------+
+| 2. Orchestration Layer                            |
+|    Multi-turn session flow, usage, commands       |
++---------------------------------------------------+
+| 3. Core Agentic Loop                              |
+|    Reason -> tool call -> observe -> continue     |
++---------------------------------------------------+
+| 4. Tooling Layer                                  |
+|    File, shell, search, and local actions         |
++---------------------------------------------------+
+| 5. Model Communication Layer                      |
+|    Streaming API communication with LLMs          |
++---------------------------------------------------+
 ```
 
 This separation makes the system easier to evolve:
