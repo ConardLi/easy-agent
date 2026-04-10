@@ -13,11 +13,13 @@ import { useAgentSession } from "./hooks/useAgentSession.js";
 interface AppProps {
   model: string;
   permissionMode?: PermissionMode;
+  shouldResume?: boolean;
+  resumeSessionId?: string | null;
 }
 
-export function App({ model, permissionMode }: AppProps): React.ReactNode {
+export function App({ model, permissionMode, shouldResume, resumeSessionId }: AppProps): React.ReactNode {
   const { exit } = useApp();
-  const { state, actions } = useAgentSession({ model, onExit: exit, permissionMode });
+  const { state, actions } = useAgentSession({ model, onExit: exit, permissionMode, shouldResume, resumeSessionId });
   const { inputValue, commandSuggestions } = usePromptInput({
     isLoading: state.isLoading,
     hasPermissionPrompt: Boolean(state.permissionPrompt),

@@ -12,6 +12,7 @@ import {
   type PermissionSettings,
 } from "../permissions/permissions.js";
 import { buildSystemPrompt, renderSystemPrompt } from "../context/systemPrompt.js";
+import { formatProjectSessionHistory } from "../session/history.js";
 import { getToolsApiParams } from "../tools/index.js";
 import type { ToolContext } from "../tools/Tool.js";
 import type { Usage } from "../types/message.js";
@@ -27,6 +28,8 @@ export type QueryEngineEvent =
 export interface QueryEngineOptions {
   model: string;
   toolContext: ToolContext;
+  initialMessages?: MessageParam[];
+  initialUsage?: Usage;
   permissionMode?: PermissionMode;
   permissionSettings?: PermissionSettings;
   sessionPermissionRules?: PermissionRuleSet;
@@ -48,8 +51,8 @@ function createEmptyUsage(): Usage {
 }
 
 export class QueryEngine {
-  private messages: MessageParam[] = [];
-  private totalUsage: Usage = createEmptyUsage();
+  private messages: MessageParam[];
+  private totalUsage: Usage;
   private readonly defaultModel: string;
   private sessionModelOverride: string | null = null;
   private readonly toolContext: ToolContext;
@@ -60,6 +63,8 @@ export class QueryEngine {
   private abortController: AbortController | null = null;
 
   constructor(options: QueryEngineOptions) {
+    this.messages = [...(options.initialMessages ?? [])];
+    this.totalUsage = { ...(options.initialUsage ?? createEmptyUsage()) };
     this.defaultModel = options.model;
     this.toolContext = options.toolContext;
     this.permissionMode = options.permissionMode;
@@ -247,7 +252,7 @@ export class QueryEngine {
         yield {
           type: "command",
           kind: "info",
-          message: `${this.messages.length} messages in conversation.`,
+          message: await formatProjectSessionHistory(this.toolContext.cwd),
         };
         return { handled: true };
       default:

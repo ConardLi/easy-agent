@@ -2,6 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MessageParam } from "@anthropic-ai/sdk/resources/messages.js";
 import { QueryEngine } from "../../core/queryEngine.js";
 import {
+  appendTranscriptEntry,
+  createSessionId,
+  initSessionStorage,
+  restoreSession,
+} from "../../session/storage.js";
+import {
   loadPermissionSettings,
   type PermissionDecision,
   type PermissionMode,
@@ -21,6 +27,8 @@ interface UseAgentSessionOptions {
   model: string;
   onExit: () => void;
   permissionMode?: PermissionMode;
+  shouldResume?: boolean;
+  resumeSessionId?: string | null;
 }
 
 interface SubmitResult {
@@ -50,16 +58,16 @@ function buildCommandNotice(message: string, kind: "info" | "error"): SystemNoti
         "/clear  Clear conversation history",
         "/cost  Show session token usage",
         "/model [name|default]  Inspect or override the session model",
-        "/history  Show message count",
+        "/history  Show saved sessions for this project",
         "/exit | /quit | /bye  Exit session",
       ].join("\n"),
     };
   }
 
-  if (message.startsWith("Session usage")) {
+  if (message.startsWith("Session usage") || message.startsWith("Recent sessions:")) {
     return {
       tone: kind,
-      title: "Session usage",
+      title: message.startsWith("Recent sessions:") ? "Session history" : "Session usage",
       body: message,
     };
   }
@@ -95,7 +103,13 @@ function buildCommandNotice(message: string, kind: "info" | "error"): SystemNoti
   };
 }
 
-export function useAgentSession({ model, onExit, permissionMode }: UseAgentSessionOptions) {
+export function useAgentSession({
+  model,
+  onExit,
+  permissionMode,
+  shouldResume,
+  resumeSessionId,
+}: UseAgentSessionOptions) {
   const [messages, setMessages] = useState<MessageParam[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [spinnerLabel, setSpinnerLabel] = useState("Thinking");
@@ -111,7 +125,7 @@ export function useAgentSession({ model, onExit, permissionMode }: UseAgentSessi
   const permissionResolverRef = useRef<((decision: PermissionDecision) => void) | null>(null);
   const sessionRulesRef = useRef<PermissionRuleSet>({ allow: [], deny: [] });
   const engineRef = useRef<QueryEngine | null>(null);
-
+  const sessionIdRef = useRef<string>(createSessionId());
   const toolContext = useMemo<ToolContext>(() => ({ cwd: process.cwd() }), []);
 
   useEffect(() => {
@@ -128,27 +142,79 @@ export function useAgentSession({ model, onExit, permissionMode }: UseAgentSessi
 
   useEffect(() => {
     if (!permissionSettings) return;
-    engineRef.current = new QueryEngine({
-      model,
-      toolContext,
-      permissionMode: permissionMode ?? permissionSettings.mode,
-      permissionSettings,
-      sessionPermissionRules: sessionRulesRef.current,
-      onPermissionRequest: (request: PermissionRequest) => {
-        setSpinnerLabel("Waiting for permission");
-        setPermissionPrompt({
-          toolName: request.toolName,
-          summary: request.summary,
-          risk: request.risk,
-          ruleHint: request.ruleHint,
+
+    let cancelled = false;
+
+    const initialize = async () => {
+      try {
+        let initialMessages: MessageParam[] = [];
+        let initialUsage = { input_tokens: 0, output_tokens: 0 };
+
+        if (shouldResume) {
+          const restored = await restoreSession(toolContext.cwd, resumeSessionId ?? undefined);
+          if (cancelled) return;
+          sessionIdRef.current = restored.summary.sessionId;
+          initialMessages = restored.messages;
+          initialUsage = restored.summary.totalUsage;
+          setMessages(restored.messages);
+          setTotalUsage({
+            input: restored.summary.totalUsage.input_tokens,
+            output: restored.summary.totalUsage.output_tokens,
+          });
+          setSystemNotice({
+            tone: "info",
+            title: "Session restored",
+            body: `Resumed session ${restored.summary.sessionId} with ${restored.summary.messageCount} messages.`,
+          });
+        } else {
+          const startedAt = new Date().toISOString();
+          await initSessionStorage({
+            sessionId: sessionIdRef.current,
+            cwd: toolContext.cwd,
+            startedAt,
+            updatedAt: startedAt,
+            model,
+          });
+        }
+
+        engineRef.current = new QueryEngine({
+          model,
+          toolContext,
+          initialMessages,
+          initialUsage,
+          permissionMode: permissionMode ?? permissionSettings.mode,
+          permissionSettings,
+          sessionPermissionRules: sessionRulesRef.current,
+          onPermissionRequest: (request: PermissionRequest) => {
+            setSpinnerLabel("Waiting for permission");
+            setPermissionPrompt({
+              toolName: request.toolName,
+              summary: request.summary,
+              risk: request.risk,
+              ruleHint: request.ruleHint,
+            });
+            return new Promise<PermissionDecision>((resolve) => {
+              permissionResolverRef.current = resolve;
+            });
+          },
         });
-        return new Promise<PermissionDecision>((resolve) => {
-          permissionResolverRef.current = resolve;
+        setCurrentModel(model);
+      } catch (error: unknown) {
+        if (cancelled) return;
+        setSystemNotice({
+          tone: "error",
+          title: "Session restore error",
+          body: error instanceof Error ? error.message : String(error),
         });
-      },
-    });
-    setCurrentModel(model);
-  }, [model, permissionMode, permissionSettings, toolContext]);
+      }
+    };
+
+    void initialize();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [model, permissionMode, permissionSettings, resumeSessionId, shouldResume, toolContext]);
 
   const interrupt = useCallback(() => {
     if (permissionResolverRef.current) {
@@ -227,6 +293,12 @@ export function useAgentSession({ model, onExit, permissionMode }: UseAgentSessi
     setSystemNotice(null);
     if (!isSlashCommand) {
       setLastUsage(null);
+      await appendTranscriptEntry(toolContext.cwd, sessionIdRef.current, {
+        type: "message",
+        timestamp: new Date().toISOString(),
+        role: "user",
+        message: { role: "user", content: trimmed },
+      });
     }
     setPermissionPrompt(null);
     setIsLoading(!isSlashCommand);
@@ -254,6 +326,12 @@ export function useAgentSession({ model, onExit, permissionMode }: UseAgentSessi
             break;
           case "tool_use_start":
             setToolCalls((prev) => [...prev, { name: value.name }]);
+            await appendTranscriptEntry(toolContext.cwd, sessionIdRef.current, {
+              type: "tool_event",
+              timestamp: new Date().toISOString(),
+              name: value.name,
+              phase: "start",
+            });
             break;
           case "permission_request":
             setSpinnerLabel("Waiting for permission");
@@ -268,9 +346,23 @@ export function useAgentSession({ model, onExit, permissionMode }: UseAgentSessi
             setToolCalls((prev) =>
               markToolCallComplete(prev, value.name, value.result.content.length, value.result.isError),
             );
+            await appendTranscriptEntry(toolContext.cwd, sessionIdRef.current, {
+              type: "tool_event",
+              timestamp: new Date().toISOString(),
+              name: value.name,
+              phase: "done",
+              resultLength: value.result.content.length,
+              isError: value.result.isError,
+            });
             break;
           case "assistant_message":
             setStreamingText("");
+            await appendTranscriptEntry(toolContext.cwd, sessionIdRef.current, {
+              type: "message",
+              timestamp: new Date().toISOString(),
+              role: "assistant",
+              message: value.message,
+            });
             break;
           case "tool_result_message":
             setSpinnerLabel("Thinking");
@@ -288,9 +380,21 @@ export function useAgentSession({ model, onExit, permissionMode }: UseAgentSessi
               input: value.totalUsage.input_tokens,
               output: value.totalUsage.output_tokens,
             });
+            await appendTranscriptEntry(toolContext.cwd, sessionIdRef.current, {
+              type: "usage",
+              timestamp: new Date().toISOString(),
+              turn: value.turnUsage,
+              total: value.totalUsage,
+            });
             break;
           case "command":
             setSystemNotice(buildCommandNotice(value.message, value.kind));
+            await appendTranscriptEntry(toolContext.cwd, sessionIdRef.current, {
+              type: "system",
+              timestamp: new Date().toISOString(),
+              level: value.kind,
+              message: value.message,
+            });
             break;
           case "model_changed":
             setCurrentModel(value.model);
@@ -316,6 +420,12 @@ export function useAgentSession({ model, onExit, permissionMode }: UseAgentSessi
               title: "Agent error",
               body: value.error.message,
             });
+            await appendTranscriptEntry(toolContext.cwd, sessionIdRef.current, {
+              type: "system",
+              timestamp: new Date().toISOString(),
+              level: "error",
+              message: value.error.message,
+            });
             break;
         }
       }
@@ -340,7 +450,7 @@ export function useAgentSession({ model, onExit, permissionMode }: UseAgentSessi
     }
 
     return { handled: true };
-  }, [onExit]);
+  }, [onExit, toolContext.cwd]);
 
   return {
     state: {

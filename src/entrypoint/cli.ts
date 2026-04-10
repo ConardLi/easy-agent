@@ -36,6 +36,7 @@ Options:
   -v, --version               Print version and exit
   -h, --help                  Show this help message
   --model <model>             Override the LLM model
+  --resume [session-id]       Resume the latest or a specific session
   --plan                      Start in plan mode (read-only tools only)
   --auto                      Start in auto mode (allow all tools)
   --permission-mode <mode>    Permission mode: default | plan | auto
@@ -53,6 +54,10 @@ Commands (in REPL):
   const model = modelIndex !== -1 ? process.argv[modelIndex + 1] : undefined;
   const dumpSystemPrompt = process.argv.includes("--dump-system-prompt");
   const permissionMode = parsePermissionMode(process.argv);
+  const resumeIndex = process.argv.indexOf("--resume");
+  const resumeValue = resumeIndex !== -1 ? process.argv[resumeIndex + 1] : undefined;
+  const resumeSessionId = resumeIndex !== -1 && resumeValue && !resumeValue.startsWith("--") ? resumeValue : null;
+  const shouldResume = resumeIndex !== -1;
 
   if (dumpSystemPrompt) {
     const cwd = process.cwd();
@@ -69,7 +74,7 @@ Commands (in REPL):
 
   const resolvedModel = model ?? DEFAULT_MODEL;
   const { waitUntilExit } = render(
-    React.createElement(App, { model: resolvedModel, permissionMode }),
+    React.createElement(App, { model: resolvedModel, permissionMode, resumeSessionId, shouldResume }),
     { exitOnCtrlC: false },
   );
   await waitUntilExit();
