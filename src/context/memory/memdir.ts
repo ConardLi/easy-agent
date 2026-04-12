@@ -282,9 +282,9 @@ export function shouldIgnoreMemory(query: string): boolean {
   return ["ignore memory", "don't use memory", "do not use memory", "忽略记忆", "不要用记忆", "别用记忆"].some((term) => normalized.includes(term));
 }
 
-export function buildMemoryPromptInstructions(memoryDir: string): string[] {
+export function buildMemoryPromptInstructions(): string[] {
   return [
-    `You have a persistent, file-based project memory directory at ${memoryDir}.`,
+    "You have a persistent, file-based project memory system for this project.",
     "Use memory only for information that will be useful in future conversations and cannot be derived directly from the current repo state.",
     "Supported memory types: user, feedback, project, reference.",
     "When saving a memory, write one markdown file with frontmatter: name, description, type.",
