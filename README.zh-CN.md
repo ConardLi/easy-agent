@@ -95,8 +95,8 @@ easy-agent/
 | 6 | System Prompt 与上下文工程 | [`step/step6.js`](./step/step6.js) | 🚧 部分完成 |
 | 7 | 权限控制系统 | [`step/step7.js`](./step/step7.js) | 🚧 部分完成 |
 | 8 | QueryEngine 多轮编排 | [`step/step8.js`](./step/step8.js) | 🚧 部分完成 |
-| 9 | 会话持久化与恢复 | `planned in step series` | ⏳ 未开始 |
-| 10 | 项目记忆系统 | `planned in step series` | ⏳ 未开始 |
+| 9 | 会话持久化与恢复 | [`step/step9.js`](./step/step9.js) | ✅ 已完成 |
+| 10 | 项目记忆系统 | [`step/step10.js`](./step/step10.js) | ✅ 已完成 |
 | 11 | 上下文压缩 | `planned in step series` | ⏳ 未开始 |
 | 12 | Token 预算精细管理 | `planned in step series` | ⏳ 未开始 |
 | 13 | Plan Mode | `planned in step series` | 🚧 部分完成 |

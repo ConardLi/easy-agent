@@ -95,8 +95,8 @@ The project follows a 30-phase roadmap designed to recreate the full Claude Code
 | 6 | System prompt and context engineering | [`step/step6.js`](./step/step6.js) | 🚧 Partial |
 | 7 | Permission control system | [`step/step7.js`](./step/step7.js) | 🚧 Partial |
 | 8 | QueryEngine multi-turn orchestration | [`step/step8.js`](./step/step8.js) | 🚧 Partial |
-| 9 | Session persistence and restore | `planned in step series` | ⏳ Not started |
-| 10 | Project memory system | `planned in step series` | ⏳ Not started |
+| 9 | Session persistence and restore | [`step/step9.js`](./step/step9.js) | ✅ Done |
+| 10 | Project memory system | [`step/step10.js`](./step/step10.js) | ✅ Done |
 | 11 | Context compaction | `planned in step series` | ⏳ Not started |
 | 12 | Fine-grained token budget management | `planned in step series` | ⏳ Not started |
 | 13 | Plan mode | `planned in step series` | 🚧 Partial |
