@@ -5,6 +5,7 @@ import * as path from "node:path";
 import type { Dirent } from "node:fs";
 import type { MessageParam } from "@anthropic-ai/sdk/resources/messages.js";
 import type { Usage } from "../types/message.js";
+import { getProjectPathInfo } from "../context/memory/memdir.js";
 
 const EASY_AGENT_HOME = path.join(os.homedir(), ".easy-agent");
 const PROJECTS_DIR = path.join(EASY_AGENT_HOME, "projects");
@@ -168,17 +169,18 @@ export function createSessionId(): string {
   return crypto.randomUUID();
 }
 
-export function getProjectHash(cwd: string): string {
-  return crypto.createHash("sha256").update(path.resolve(cwd)).digest("hex").slice(0, 16);
+export async function getProjectHash(cwd: string): Promise<string> {
+  const info = await getProjectPathInfo(cwd);
+  return info.projectKey;
 }
 
-export function getSessionPaths(cwd: string, sessionId: string): SessionPaths {
-  const projectDir = path.join(PROJECTS_DIR, getProjectHash(cwd));
+export async function getSessionPaths(cwd: string, sessionId: string): Promise<SessionPaths> {
+  const info = await getProjectPathInfo(cwd);
   return {
     rootDir: EASY_AGENT_HOME,
-    projectDir,
-    transcriptPath: path.join(projectDir, `${sessionId}.jsonl`),
-    latestPath: path.join(projectDir, "latest"),
+    projectDir: info.projectDir,
+    transcriptPath: path.join(info.projectDir, `${sessionId}.jsonl`),
+    latestPath: path.join(info.projectDir, "latest"),
   };
 }
 
@@ -187,7 +189,7 @@ async function ensureSessionDir(paths: SessionPaths): Promise<void> {
 }
 
 export async function initSessionStorage(metadata: SessionMetadata): Promise<SessionPaths> {
-  const paths = getSessionPaths(metadata.cwd, metadata.sessionId);
+  const paths = await getSessionPaths(metadata.cwd, metadata.sessionId);
   await ensureSessionDir(paths);
 
   const metaEntry: TranscriptEntry = {
@@ -204,7 +206,7 @@ export async function initSessionStorage(metadata: SessionMetadata): Promise<Ses
 }
 
 export async function appendTranscriptEntry(cwd: string, sessionId: string, entry: TranscriptEntry): Promise<void> {
-  const paths = getSessionPaths(cwd, sessionId);
+  const paths = await getSessionPaths(cwd, sessionId);
   await ensureSessionDir(paths);
   await fs.appendFile(paths.transcriptPath, `${JSON.stringify(entry)}\n`, "utf-8");
   await fs.writeFile(paths.latestPath, `${sessionId}\n`, "utf-8");
@@ -221,7 +223,7 @@ async function readTranscriptEntries(filePath: string): Promise<TranscriptEntry[
 }
 
 export async function getLatestSessionId(cwd: string): Promise<string | null> {
-  const { latestPath } = getSessionPaths(cwd, "placeholder");
+  const { latestPath } = await getSessionPaths(cwd, "placeholder");
   try {
     const value = (await fs.readFile(latestPath, "utf-8")).trim();
     return value || null;
@@ -238,7 +240,7 @@ export async function restoreSession(cwd: string, sessionId?: string): Promise<R
     throw new Error("No saved session found for this project.");
   }
 
-  const { transcriptPath } = getSessionPaths(cwd, resolvedSessionId);
+  const { transcriptPath } = await getSessionPaths(cwd, resolvedSessionId);
   const entries = await readTranscriptEntries(transcriptPath);
   if (entries.length === 0) {
     throw new Error(`Session ${resolvedSessionId} is empty or unreadable.`);
@@ -272,7 +274,7 @@ export async function restoreSession(cwd: string, sessionId?: string): Promise<R
 }
 
 export async function listProjectSessions(cwd: string, limit = MAX_SESSIONS): Promise<SessionSummary[]> {
-  const projectDir = getSessionPaths(cwd, "placeholder").projectDir;
+  const projectDir = (await getSessionPaths(cwd, "placeholder")).projectDir;
   let entries: Dirent[];
 
   try {

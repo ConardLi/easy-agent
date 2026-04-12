@@ -11,6 +11,7 @@ import { fileReadTool } from "./fileReadTool.js";
 import { fileWriteTool } from "./fileWriteTool.js";
 import { globTool } from "./globTool.js";
 import { grepTool } from "./grepTool.js";
+import { memoryWriteTool } from "./memoryWriteTool.js";
 
 const ALL_TOOLS: Tool[] = [
   fileReadTool,
@@ -19,6 +20,7 @@ const ALL_TOOLS: Tool[] = [
   globTool,
   grepTool,
   bashTool,
+  memoryWriteTool,
 ];
 
 export function getAllTools(): Tool[] {

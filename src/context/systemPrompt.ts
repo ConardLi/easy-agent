@@ -2,6 +2,9 @@ import * as os from "node:os";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { loadAgentMdContext } from "./claudeMd.js";
+import { findRelevantMemories } from "./memory/findRelevantMemories.js";
+import { buildMemoryPromptInstructions, ensureMemoryDirExists, readMemoryEntrypoint, shouldIgnoreMemory } from "./memory/memdir.js";
+import { buildMemoryValidationGuidance } from "./memory/memoryTypes.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -22,6 +25,7 @@ export interface RuntimeEnvironmentContext {
 export interface BuildSystemPromptOptions {
   cwd: string;
   additionalInstructions?: string;
+  userQuery?: string;
 }
 
 function getStaticPromptSections(): string[] {
@@ -88,9 +92,13 @@ function formatEnvironmentContext(context: RuntimeEnvironmentContext): string {
 }
 
 export async function buildSystemPrompt(options: BuildSystemPromptOptions): Promise<string[]> {
-  const [environmentContext, agentMdContext] = await Promise.all([
+  const ignoreMemory = options.userQuery ? shouldIgnoreMemory(options.userQuery) : false;
+  const memoryDir = await ensureMemoryDirExists(options.cwd);
+  const [environmentContext, agentMdContext, memoryEntrypoint, relevantMemories] = await Promise.all([
     getRuntimeEnvironmentContext(options.cwd),
     loadAgentMdContext(options.cwd),
+    ignoreMemory ? Promise.resolve(null) : readMemoryEntrypoint(options.cwd),
+    options.userQuery ? findRelevantMemories(options.cwd, options.userQuery, { ignoreMemory }) : Promise.resolve([]),
   ]);
 
   const staticSections = [
@@ -99,10 +107,19 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions): Prom
     SYSTEM_PROMPT_STATIC_END,
   ];
 
+  const memorySections = [
+    ...buildMemoryPromptInstructions(memoryDir),
+    ...buildMemoryValidationGuidance(),
+    ignoreMemory ? "Memory is disabled for this turn because the user asked not to use it." : "",
+    memoryEntrypoint ? `Memory index (${memoryDir}/MEMORY.md):\n${memoryEntrypoint}` : "",
+    relevantMemories.length > 0 ? `Relevant memories:\n${relevantMemories.join("\n\n---\n\n")}` : "",
+  ].filter(Boolean);
+
   const dynamicSections = [
     SYSTEM_PROMPT_DYNAMIC_START,
     formatEnvironmentContext(environmentContext),
     agentMdContext ? "Project memory (AGENT.md):\n" + agentMdContext : "",
+    memorySections.length > 0 ? memorySections.join("\n\n") : "",
     options.additionalInstructions ? "Session instructions:\n" + options.additionalInstructions : "",
     SYSTEM_PROMPT_DYNAMIC_END,
   ].filter(Boolean);
