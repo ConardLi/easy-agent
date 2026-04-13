@@ -92,13 +92,13 @@ easy-agent/
 | 3 | Tool 接口与第一个工具 | [`step/step3.js`](./step/step3.js) | ✅ 已完成 |
 | 4 | 核心 Agentic Loop | [`step/step4.js`](./step/step4.js) | ✅ 已完成 |
 | 5 | 完整核心工具集 | [`step/step5.js`](./step/step5.js) | ✅ 已完成 |
-| 6 | System Prompt 与上下文工程 | [`step/step6.js`](./step/step6.js) | 🚧 部分完成 |
-| 7 | 权限控制系统 | [`step/step7.js`](./step/step7.js) | 🚧 部分完成 |
-| 8 | QueryEngine 多轮编排 | [`step/step8.js`](./step/step8.js) | 🚧 部分完成 |
+| 6 | System Prompt 与上下文工程 | [`step/step6.js`](./step/step6.js) | ✅ 已完成 |
+| 7 | 权限控制系统 | [`step/step7.js`](./step/step7.js) | ✅ 已完成 |
+| 8 | QueryEngine 多轮编排 | [`step/step8.js`](./step/step8.js) | ✅ 已完成 |
 | 9 | 会话持久化与恢复 | [`step/step9.js`](./step/step9.js) | ✅ 已完成 |
 | 10 | 项目记忆系统 | [`step/step10.js`](./step/step10.js) | ✅ 已完成 |
-| 11 | 上下文压缩 | `planned in step series` | ⏳ 未开始 |
-| 12 | Token 预算精细管理 | `planned in step series` | ⏳ 未开始 |
+| 11 | 上下文压缩 | [`step/step11.js`](./step/step11.js) | ✅ 已完成 |
+| 12 | Token 预算精细管理 | [`step/step12.js`](./step/step12.js) | ✅ 已完成 |
 | 13 | Plan Mode | `planned in step series` | 🚧 部分完成 |
 | 14 | 任务管理系统 | `planned` | ⏳ 未开始 |
 | 15 | MCP 协议支持 | `planned` | ⏳ 未开始 |
@@ -182,11 +182,11 @@ agent --dump-system-prompt
 
 接下来最重要的几个里程碑是：
 
-1. 会话持久化与恢复
-2. 项目记忆与上下文压缩
-3. 更完整的 Plan Mode 工作流
+1. 更完整的 Plan Mode 工作流
+2. 任务管理系统
+3. MCP、Skills 与扩展机制
 4. 更强的配置体系与安全边界
-5. MCP、Skills 与扩展机制
+5. Sub-Agent 与多 Agent 协作
 6. 多 Provider 架构
 
 ## 贡献策略

@@ -92,13 +92,13 @@ The project follows a 30-phase roadmap designed to recreate the full Claude Code
 | 3 | Tool interface and first tool | [`step/step3.js`](./step/step3.js) | ✅ Done |
 | 4 | Core agentic loop | [`step/step4.js`](./step/step4.js) | ✅ Done |
 | 5 | Complete core toolset | [`step/step5.js`](./step/step5.js) | ✅ Done |
-| 6 | System prompt and context engineering | [`step/step6.js`](./step/step6.js) | 🚧 Partial |
-| 7 | Permission control system | [`step/step7.js`](./step/step7.js) | 🚧 Partial |
-| 8 | QueryEngine multi-turn orchestration | [`step/step8.js`](./step/step8.js) | 🚧 Partial |
+| 6 | System prompt and context engineering | [`step/step6.js`](./step/step6.js) | ✅ Done |
+| 7 | Permission control system | [`step/step7.js`](./step/step7.js) | ✅ Done |
+| 8 | QueryEngine multi-turn orchestration | [`step/step8.js`](./step/step8.js) | ✅ Done |
 | 9 | Session persistence and restore | [`step/step9.js`](./step/step9.js) | ✅ Done |
 | 10 | Project memory system | [`step/step10.js`](./step/step10.js) | ✅ Done |
-| 11 | Context compaction | `planned in step series` | ⏳ Not started |
-| 12 | Fine-grained token budget management | `planned in step series` | ⏳ Not started |
+| 11 | Context compaction | [`step/step11.js`](./step/step11.js) | ✅ Done |
+| 12 | Fine-grained token budget management | [`step/step12.js`](./step/step12.js) | ✅ Done |
 | 13 | Plan mode | `planned in step series` | 🚧 Partial |
 | 14 | Task management system | `planned` | ⏳ Not started |
 | 15 | MCP protocol support | `planned` | ⏳ Not started |
@@ -182,11 +182,11 @@ agent --dump-system-prompt
 
 The next major milestones are:
 
-1. session persistence and restore
-2. project memory and context compaction
-3. a fuller plan-mode workflow
+1. a fuller plan-mode workflow
+2. task management system
+3. MCP, skills, and extensibility primitives
 4. stronger configuration and safety boundaries
-5. MCP, skills, and extensibility primitives
+5. sub-agent and multi-agent collaboration
 6. multi-provider architecture
 
 ## Contribution Policy
