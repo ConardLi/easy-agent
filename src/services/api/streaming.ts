@@ -92,10 +92,17 @@ export async function* streamMessage(
         // ── Message lifecycle ──────────────────────────────
         case "message_start": {
           messageId = event.message.id;
-          // Capture initial usage (input token count)
+          // Capture initial usage (input token count + cache tokens)
           if (event.message.usage) {
             usage.input_tokens = event.message.usage.input_tokens;
             usage.output_tokens = event.message.usage.output_tokens;
+            const u = event.message.usage as unknown as Record<string, unknown>;
+            if (typeof u.cache_creation_input_tokens === "number") {
+              usage.cache_creation_input_tokens = u.cache_creation_input_tokens;
+            }
+            if (typeof u.cache_read_input_tokens === "number") {
+              usage.cache_read_input_tokens = u.cache_read_input_tokens;
+            }
           }
           yield { type: "message_start", messageId };
           break;
@@ -105,6 +112,18 @@ export async function* streamMessage(
           // Final usage update + stop reason
           if (event.usage) {
             usage.output_tokens = event.usage.output_tokens;
+            // Some providers (e.g. MiniMax) report input_tokens in message_delta
+            // rather than message_start — pick it up as a fallback.
+            const du = event.usage as unknown as Record<string, unknown>;
+            if (typeof du.input_tokens === "number" && du.input_tokens > 0) {
+              usage.input_tokens = du.input_tokens;
+            }
+            if (typeof du.cache_creation_input_tokens === "number") {
+              usage.cache_creation_input_tokens = du.cache_creation_input_tokens;
+            }
+            if (typeof du.cache_read_input_tokens === "number") {
+              usage.cache_read_input_tokens = du.cache_read_input_tokens;
+            }
           }
           stopReason = event.delta.stop_reason ?? "";
           break;

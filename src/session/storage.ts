@@ -41,7 +41,8 @@ export type TranscriptEntry =
   | { type: "message"; timestamp: string; role: "user" | "assistant"; message: MessageParam }
   | { type: "tool_event"; timestamp: string; name: string; phase: "start" | "done"; resultLength?: number; isError?: boolean }
   | { type: "usage"; timestamp: string; turn: Usage; total: Usage }
-  | { type: "system"; timestamp: string; level: "info" | "error"; message: string };
+  | { type: "system"; timestamp: string; level: "info" | "error"; message: string }
+  | { type: "compaction"; timestamp: string; trigger: "auto" | "manual" };
 
 export interface RestoredSession {
   summary: SessionSummary;
@@ -151,6 +152,20 @@ function parseJsonLine(line: string): TranscriptEntry | null {
       return null;
     }
 
+    if (parsed.type === "compaction") {
+      if (
+        typeof parsed.timestamp === "string" &&
+        (parsed.trigger === "auto" || parsed.trigger === "manual")
+      ) {
+        return {
+          type: "compaction",
+          timestamp: parsed.timestamp,
+          trigger: parsed.trigger,
+        };
+      }
+      return null;
+    }
+
     return null;
   } catch {
     return null;
@@ -251,7 +266,16 @@ export async function restoreSession(cwd: string, sessionId?: string): Promise<R
     throw new Error(`Session ${resolvedSessionId} is missing session metadata.`);
   }
 
+  // Find the last compaction marker; only use messages after it
+  let startIndex = 0;
+  for (let i = entries.length - 1; i >= 0; i--) {
+    if (entries[i]!.type === "compaction") {
+      startIndex = i + 1;
+      break;
+    }
+  }
   const messages = entries
+    .slice(startIndex)
     .filter((entry): entry is Extract<TranscriptEntry, { type: "message" }> => entry.type === "message")
     .map((entry) => entry.message);
 
@@ -271,6 +295,27 @@ export async function restoreSession(cwd: string, sessionId?: string): Promise<R
     },
     messages,
   };
+}
+
+export async function appendCompactionSnapshot(
+  cwd: string,
+  sessionId: string,
+  trigger: "auto" | "manual",
+  messages: MessageParam[],
+): Promise<void> {
+  const paths = await getSessionPaths(cwd, sessionId);
+  await ensureSessionDir(paths);
+  const lines: string[] = [];
+  lines.push(JSON.stringify({ type: "compaction", timestamp: new Date().toISOString(), trigger }));
+  for (const msg of messages) {
+    lines.push(JSON.stringify({
+      type: "message",
+      timestamp: new Date().toISOString(),
+      role: msg.role,
+      message: msg,
+    }));
+  }
+  await fs.appendFile(paths.transcriptPath, lines.join("\n") + "\n", "utf-8");
 }
 
 export async function listProjectSessions(cwd: string, limit = MAX_SESSIONS): Promise<SessionSummary[]> {

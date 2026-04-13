@@ -9,6 +9,8 @@ export interface ToolCallInfo {
 export interface UsageSummary {
   input: number;
   output: number;
+  contextTokens?: number;
+  contextPercent?: number;
 }
 
 export interface PermissionPromptState {

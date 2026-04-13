@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MessageParam } from "@anthropic-ai/sdk/resources/messages.js";
 import { QueryEngine } from "../../core/queryEngine.js";
+import { buildTokenBudgetSnapshot } from "../../utils/tokens.js";
 import {
+  appendCompactionSnapshot,
   appendTranscriptEntry,
   createSessionId,
   initSessionStorage,
@@ -301,8 +303,9 @@ export function useAgentSession({
       });
     }
     setPermissionPrompt(null);
-    setIsLoading(!isSlashCommand);
-    setSpinnerLabel("Thinking");
+    const needsLoading = !isSlashCommand || trimmed.startsWith("/compact");
+    setIsLoading(needsLoading);
+    setSpinnerLabel(trimmed.startsWith("/compact") ? "Compacting" : "Thinking");
 
     try {
       const run = engineRef.current.submitMessage(trimmed);
@@ -367,19 +370,44 @@ export function useAgentSession({
           case "tool_result_message":
             setSpinnerLabel("Thinking");
             setPermissionPrompt(null);
+            await appendTranscriptEntry(toolContext.cwd, sessionIdRef.current, {
+              type: "message",
+              timestamp: new Date().toISOString(),
+              role: "user",
+              message: value.message,
+            });
             break;
           case "messages_updated":
             setMessages(value.messages);
             break;
           case "usage_updated":
-            setLastUsage({
-              input: value.turnUsage.input_tokens,
-              output: value.turnUsage.output_tokens,
-            });
-            setTotalUsage({
-              input: value.totalUsage.input_tokens,
-              output: value.totalUsage.output_tokens,
-            });
+            {
+              const engineMessages = engineRef.current?.getState().messages ?? [];
+              const usageAnchorIndex = engineMessages.length > 0 ? engineMessages.length - 1 : -1;
+              const snapshot = buildTokenBudgetSnapshot(engineMessages, {
+                usage: value.lastCallUsage,
+                usageAnchorIndex,
+              });
+              const contextPercent = Math.round((snapshot.estimatedConversationTokens / snapshot.contextWindow) * 100);
+              const turnInput = value.turnUsage.input_tokens
+                + (value.turnUsage.cache_creation_input_tokens ?? 0)
+                + (value.turnUsage.cache_read_input_tokens ?? 0);
+              const totalInput = value.totalUsage.input_tokens
+                + (value.totalUsage.cache_creation_input_tokens ?? 0)
+                + (value.totalUsage.cache_read_input_tokens ?? 0);
+              setLastUsage({
+                input: turnInput,
+                output: value.turnUsage.output_tokens,
+                contextTokens: snapshot.estimatedConversationTokens,
+                contextPercent,
+              });
+              setTotalUsage({
+                input: totalInput,
+                output: value.totalUsage.output_tokens,
+                contextTokens: snapshot.estimatedConversationTokens,
+                contextPercent,
+              });
+            }
             await appendTranscriptEntry(toolContext.cwd, sessionIdRef.current, {
               type: "usage",
               timestamp: new Date().toISOString(),
@@ -395,6 +423,29 @@ export function useAgentSession({
               level: value.kind,
               message: value.message,
             });
+            break;
+          case "compacted":
+            setSystemNotice({
+              tone: "info",
+              title: value.trigger === "micro" ? "Context micro-compacted" : "Conversation compacted",
+              body: value.summary ?? (value.trigger === "micro" ? "Old tool results were cleared to save context space." : "Conversation summary created."),
+            });
+            if (value.trigger !== "micro") {
+              const compactedMessages = engineRef.current?.getState().messages ?? [];
+              await appendCompactionSnapshot(
+                toolContext.cwd,
+                sessionIdRef.current,
+                value.trigger as "auto" | "manual",
+                compactedMessages,
+              );
+            } else {
+              await appendTranscriptEntry(toolContext.cwd, sessionIdRef.current, {
+                type: "system",
+                timestamp: new Date().toISOString(),
+                level: "info",
+                message: `compaction:${value.trigger}`,
+              });
+            }
             break;
           case "model_changed":
             setCurrentModel(value.model);

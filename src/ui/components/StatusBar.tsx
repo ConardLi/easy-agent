@@ -50,7 +50,7 @@ export function StatusBar({
       )}
 
       {lastUsage && !isLoading && (
-        <Box>
+        <Box flexDirection="column">
           <Text dimColor>
             {"  tokens: "}
             {lastUsage.input + lastUsage.output}
@@ -60,6 +60,15 @@ export function StatusBar({
             {lastUsage.output}
             {" out)"}
           </Text>
+          {typeof lastUsage.contextTokens === "number" && typeof lastUsage.contextPercent === "number" && (
+            <Text dimColor>
+              {"  context: ~"}
+              {lastUsage.contextTokens}
+              {" tokens ("}
+              {lastUsage.contextPercent}
+              {"% of max window)"}
+            </Text>
+          )}
         </Box>
       )}
     </>

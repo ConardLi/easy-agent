@@ -50,6 +50,7 @@ export type AgenticLoopEvent =
 export interface AgenticLoopResult {
   state: LoopState;
   usage: Usage;
+  lastCallUsage: Usage;
   reason: LoopTerminationReason;
 }
 
@@ -210,12 +211,16 @@ export async function* query(
     input_tokens: 0,
     output_tokens: 0,
   };
+  let lastCallUsage: Usage = {
+    input_tokens: 0,
+    output_tokens: 0,
+  };
 
   while (state.turnCount < maxTurns) {
     if (params.abortSignal?.aborted) {
       const abortedState = { ...state, aborted: true };
       yield { type: "turn_complete", reason: "aborted", turnCount: state.turnCount };
-      return { state: abortedState, usage: totalUsage, reason: "aborted" };
+      return { state: abortedState, usage: totalUsage, lastCallUsage, reason: "aborted" };
     }
 
     const nextTurnCount = state.turnCount + 1;
@@ -239,12 +244,18 @@ export async function* query(
           return {
             state: { ...state, turnCount: nextTurnCount },
             usage: totalUsage,
+            lastCallUsage,
             reason: "model_error",
           };
         }
 
+        lastCallUsage = { ...streamResult.usage };
         totalUsage.input_tokens += streamResult.usage.input_tokens;
         totalUsage.output_tokens += streamResult.usage.output_tokens;
+        totalUsage.cache_creation_input_tokens =
+          (totalUsage.cache_creation_input_tokens ?? 0) + (streamResult.usage.cache_creation_input_tokens ?? 0);
+        totalUsage.cache_read_input_tokens =
+          (totalUsage.cache_read_input_tokens ?? 0) + (streamResult.usage.cache_read_input_tokens ?? 0);
         assistantContent = streamResult.assistantMessage.content as ContentBlock[];
         stopReason = streamResult.stopReason;
         break;
@@ -263,6 +274,7 @@ export async function* query(
           return {
             state: { ...state, turnCount: nextTurnCount },
             usage: totalUsage,
+            lastCallUsage,
             reason: "model_error",
           };
       }
@@ -282,7 +294,7 @@ export async function* query(
 
     if (stopReason !== "tool_use") {
       yield { type: "turn_complete", reason: "completed", turnCount: state.turnCount };
-      return { state, usage: totalUsage, reason: "completed" };
+      return { state, usage: totalUsage, lastCallUsage, reason: "completed" };
     }
 
     const { toolResultsMessage, executions, permissionRequests } = await runTools(
@@ -324,6 +336,7 @@ export async function* query(
   return {
     state,
     usage: totalUsage,
+    lastCallUsage,
     reason: "max_turns",
   };
 }
