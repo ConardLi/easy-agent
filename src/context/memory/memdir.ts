@@ -8,13 +8,19 @@ import { isMemoryType } from "./memoryTypes.js";
 export const MEMORY_ENTRYPOINT = "MEMORY.md";
 export const MAX_ENTRYPOINT_LINES = 200;
 export const MAX_ENTRYPOINT_BYTES = 25_000;
-const MAX_RELEVANT_MEMORIES = 5;
 const EASY_AGENT_HOME = path.join(os.homedir(), ".easy-agent");
 const PROJECTS_DIR = path.join(EASY_AGENT_HOME, "projects");
 
 export interface MemoryDocument extends MemoryEntry {
   frontmatter: MemoryFrontmatter;
   body: string;
+  relativePath: string;
+}
+
+
+export interface MemoryHeader extends MemoryEntry {
+  frontmatter: MemoryFrontmatter;
+  relativePath: string;
 }
 
 export interface ProjectPathInfo {
@@ -143,6 +149,16 @@ function buildPointerLine(entry: MemoryEntry): string {
   return `- [${normalizeLine(entry.title)}](${entry.fileName}) — ${normalizeLine(entry.hook)}`;
 }
 
+export function formatMemorySystemLocation(memoryDir: string): string[] {
+  const entrypointPath = path.join(memoryDir, MEMORY_ENTRYPOINT);
+  return [
+    `You have a persistent, file-based project memory system at \`${memoryDir}\`.`,
+    `The memory index file is \`${entrypointPath}\`.`,
+    `The index points to topic memory files stored under \`${memoryDir}\` (including subdirectories).`,
+    "Before creating a new memory, inspect existing topic files and update the best match when possible.",
+  ];
+}
+
 export async function readMemoryEntrypoint(cwd: string): Promise<string | null> {
   const memoryDir = await ensureMemoryDirExists(cwd);
   const entrypoint = path.join(memoryDir, MEMORY_ENTRYPOINT);
@@ -151,61 +167,82 @@ export async function readMemoryEntrypoint(cwd: string): Promise<string | null> 
   return [truncated.content, truncated.warning].filter(Boolean).join("\n\n") || null;
 }
 
-export async function listMemoryFiles(cwd: string): Promise<MemoryDocument[]> {
-  const memoryDir = await ensureMemoryDirExists(cwd);
-  const dirents = await fs.readdir(memoryDir, { withFileTypes: true });
-  const docs = await Promise.all(
-    dirents
-      .filter((entry) => entry.isFile() && entry.name.endsWith(".md") && entry.name !== MEMORY_ENTRYPOINT)
-      .map(async (entry) => {
-        const filePath = path.join(memoryDir, entry.name);
-        const raw = await fs.readFile(filePath, "utf-8");
-        const frontmatter = parseFrontmatter(raw);
-        if (!frontmatter) return null;
-        return {
-          fileName: entry.name,
-          filePath,
-          title: frontmatter.name,
-          hook: frontmatter.description,
-          frontmatter,
-          body: stripFrontmatter(raw),
-        } satisfies MemoryDocument;
-      }),
+async function collectMemoryMarkdownFiles(memoryDir: string, currentDir = memoryDir): Promise<string[]> {
+  const dirents = await fs.readdir(currentDir, { withFileTypes: true });
+  const nested = await Promise.all(
+    dirents.map(async (entry) => {
+      const fullPath = path.join(currentDir, entry.name);
+      if (entry.isDirectory()) {
+        return collectMemoryMarkdownFiles(memoryDir, fullPath);
+      }
+      if (entry.isFile() && entry.name.endsWith(".md") && entry.name !== MEMORY_ENTRYPOINT) {
+        return [path.relative(memoryDir, fullPath)];
+      }
+      return [];
+    }),
   );
 
-  return docs
-    .filter((doc): doc is MemoryDocument => doc !== null)
-    .sort((a, b) => a.fileName.localeCompare(b.fileName));
+  return nested.flat();
 }
 
-export async function loadRelevantMemories(
-  cwd: string,
-  query: string,
-  options?: { alreadySurfaced?: ReadonlySet<string>; ignoreMemory?: boolean },
-): Promise<string[]> {
-  if (options?.ignoreMemory) return [];
+export async function loadMemoryHeaders(cwd: string): Promise<MemoryHeader[]> {
+  const memoryDir = await ensureMemoryDirExists(cwd);
+  const relativePaths = await collectMemoryMarkdownFiles(memoryDir);
+  const headers = await Promise.all(
+    relativePaths.map(async (relativePath) => {
+      const filePath = path.join(memoryDir, relativePath);
+      const raw = await fs.readFile(filePath, "utf-8");
+      const frontmatter = parseFrontmatter(raw);
+      if (!frontmatter) return null;
+      return {
+        fileName: relativePath,
+        relativePath,
+        filePath,
+        title: frontmatter.name,
+        hook: frontmatter.description,
+        frontmatter,
+      } satisfies MemoryHeader;
+    }),
+  );
 
-  const normalizedQuery = normalizeLine(query).toLowerCase();
-  if (normalizedQuery.length < 3) return [];
+  return headers
+    .filter((header): header is MemoryHeader => header !== null)
+    .sort((a, b) => a.relativePath.localeCompare(b.relativePath));
+}
 
-  const terms = normalizedQuery.split(/[^a-zA-Z0-9_\-\u4e00-\u9fff]+/).filter(Boolean);
-  if (terms.length === 0) return [];
+export function formatMemoryManifest(headers: readonly MemoryHeader[]): string {
+  return headers
+    .map((header) => `- [${header.frontmatter.type}] ${header.relativePath}: ${header.title} — ${header.hook}`)
+    .join("\n");
+}
 
-  const docs = await listMemoryFiles(cwd);
-  const scored = docs
-    .filter((doc) => !(options?.alreadySurfaced?.has(doc.fileName) ?? false))
-    .map((doc) => {
-      const haystack = `${doc.frontmatter.name}\n${doc.frontmatter.description}\n${doc.body}`.toLowerCase();
-      return { doc, score: scoreTextMatch(haystack, terms) };
-    })
-    .filter((item) => item.score > 0)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, MAX_RELEVANT_MEMORIES);
+export async function loadMemoryDocumentBodies(cwd: string, relativePaths: readonly string[]): Promise<MemoryDocument[]> {
+  const memoryDir = await ensureMemoryDirExists(cwd);
+  const uniquePaths = [...new Set(relativePaths)];
+  const docs = await Promise.all(
+    uniquePaths.map(async (relativePath) => {
+      const filePath = path.join(memoryDir, relativePath);
+      const raw = await fs.readFile(filePath, "utf-8");
+      const frontmatter = parseFrontmatter(raw);
+      if (!frontmatter) return null;
+      return {
+        fileName: relativePath,
+        relativePath,
+        filePath,
+        title: frontmatter.name,
+        hook: frontmatter.description,
+        frontmatter,
+        body: stripFrontmatter(raw),
+      } satisfies MemoryDocument;
+    }),
+  );
 
-  return scored.map((item) => {
-    const header = buildPointerLine(item.doc);
-    return `${header}\n\n${item.doc.body}`.trim();
-  });
+  return docs.filter((doc): doc is MemoryDocument => doc !== null);
+}
+
+export async function listMemoryFiles(cwd: string): Promise<MemoryDocument[]> {
+  const headers = await loadMemoryHeaders(cwd);
+  return loadMemoryDocumentBodies(cwd, headers.map((header) => header.relativePath));
 }
 
 function slugifyMemoryFileName(name: string): string {
@@ -284,13 +321,12 @@ export function shouldIgnoreMemory(query: string): boolean {
 
 export function buildMemoryPromptInstructions(): string[] {
   return [
-    "You have a persistent, file-based project memory system for this project.",
     "Use memory only for information that will be useful in future conversations and cannot be derived directly from the current repo state.",
     "Supported memory types: user, feedback, project, reference.",
     "When saving a memory, write one markdown file with frontmatter: name, description, type.",
     `After writing or updating a memory file, update ${MEMORY_ENTRYPOINT} with a one-line pointer in the form: - [Title](file.md) — one-line hook.`,
     `${MEMORY_ENTRYPOINT} is an index, not a place to store full memory content.`,
     `Keep ${MEMORY_ENTRYPOINT} under ${MAX_ENTRYPOINT_LINES} lines and ${MAX_ENTRYPOINT_BYTES} bytes.`,
-    "Before creating a new memory, check whether an existing memory should be updated instead.",
+    "Before creating a new memory, inspect existing topic memory files and update the best match when possible.",
   ];
 }
