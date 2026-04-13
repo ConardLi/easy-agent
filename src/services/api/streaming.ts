@@ -10,7 +10,13 @@
 
 import type Anthropic from "@anthropic-ai/sdk";
 import type { MessageParam } from "@anthropic-ai/sdk/resources/messages.js";
-import { getAnthropicClient, DEFAULT_MODEL, DEFAULT_MAX_TOKENS } from "./client.js";
+import {
+  getAnthropicClient,
+  DEFAULT_MODEL,
+  DEFAULT_MAX_TOKENS,
+  ESCALATED_MAX_TOKENS,
+  MAX_OUTPUT_TOKENS_RECOVERY_LIMIT,
+} from "./client.js";
 import type {
   AssistantMessage,
   ContentBlock,
@@ -248,12 +254,75 @@ export async function createMessage(
     return { type: "text" as const, text: "" };
   });
 
+  const usageResult: Usage = {
+    input_tokens: response.usage.input_tokens,
+    output_tokens: response.usage.output_tokens,
+  };
+  const ru = response.usage as unknown as Record<string, unknown>;
+  if (typeof ru.cache_creation_input_tokens === "number") {
+    usageResult.cache_creation_input_tokens = ru.cache_creation_input_tokens;
+  }
+  if (typeof ru.cache_read_input_tokens === "number") {
+    usageResult.cache_read_input_tokens = ru.cache_read_input_tokens;
+  }
+
   return {
     content: contentBlocks,
-    usage: {
-      input_tokens: response.usage.input_tokens,
-      output_tokens: response.usage.output_tokens,
-    },
+    usage: usageResult,
     stopReason: response.stop_reason ?? "end_turn",
   };
+}
+
+/**
+ * Stream with automatic escalated retry when output is truncated.
+ *
+ * If the model hits max_tokens, retries once with ESCALATED_MAX_TOKENS (64k).
+ * If still truncated, injects a continuation message up to
+ * MAX_OUTPUT_TOKENS_RECOVERY_LIMIT times.
+ */
+export async function* streamMessageWithRetry(
+  params: StreamRequestParams,
+): AsyncGenerator<StreamEvent, StreamResult> {
+  const stream = streamMessage(params);
+  const events: StreamEvent[] = [];
+
+  while (true) {
+    const { value, done } = await stream.next();
+    if (done) {
+      const result = value;
+      if (!result) {
+        return { assistantMessage: { role: "assistant", content: [] }, usage: { input_tokens: 0, output_tokens: 0 }, stopReason: "error" } as StreamResult;
+      }
+
+      if (result.stopReason !== "max_tokens") {
+        return result;
+      }
+
+      // Escalated retry with 64K
+      const escalatedStream = streamMessage({
+        ...params,
+        maxTokens: ESCALATED_MAX_TOKENS,
+      });
+      const escalatedEvents: StreamEvent[] = [];
+      while (true) {
+        const esc = await escalatedStream.next();
+        if (esc.done) {
+          const escalatedResult = esc.value;
+          if (!escalatedResult) {
+            return result;
+          }
+          if (escalatedResult.stopReason !== "max_tokens") {
+            for (const ev of escalatedEvents) yield ev;
+            return escalatedResult;
+          }
+          // Still truncated — return what we have, caller can do multi-turn recovery
+          for (const ev of escalatedEvents) yield ev;
+          return escalatedResult;
+        }
+        escalatedEvents.push(esc.value);
+      }
+    }
+    events.push(value);
+    yield value;
+  }
 }

@@ -41,6 +41,8 @@ export interface ToolResult {
  * Generic parameters are intentionally omitted — we use `Record<string, unknown>`
  * for input to keep the interface simple and avoid Zod dependency at this stage.
  */
+export const DEFAULT_MAX_RESULT_SIZE_CHARS = 100_000;
+
 export interface Tool {
   /** Unique tool name, sent to the API and used for lookup. */
   readonly name: string;
@@ -55,6 +57,13 @@ export interface Tool {
   readonly inputSchema: Anthropic.Tool["input_schema"];
 
   /**
+   * Maximum character count for the tool result content.
+   * Results exceeding this limit will be truncated.
+   * Defaults to DEFAULT_MAX_RESULT_SIZE_CHARS (100K).
+   */
+  readonly maxResultSizeChars?: number;
+
+  /**
    * Execute the tool with the given input.
    * The model provides `input` as a parsed JSON object.
    */
@@ -65,6 +74,14 @@ export interface Tool {
 
   /** Whether this tool is available in the current environment. */
   isEnabled(): boolean;
+}
+
+/** Truncate tool result content to the specified max size. */
+export function truncateToolResult(content: string, maxChars?: number): string {
+  const limit = maxChars ?? DEFAULT_MAX_RESULT_SIZE_CHARS;
+  if (content.length <= limit) return content;
+  const truncated = content.slice(0, limit);
+  return `${truncated}\n\n[Output truncated: ${content.length} chars total, showing first ${limit}]`;
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────

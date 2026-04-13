@@ -13,7 +13,8 @@ import {
 } from "../permissions/permissions.js";
 import { buildSystemPrompt, renderSystemPrompt } from "../context/systemPrompt.js";
 import { compactMessages } from "../context/compaction.js";
-import { buildTokenBudgetSnapshot } from "../utils/tokens.js";
+import { autoCompactIfNeeded, calculateTokenWarningState, type TokenWarningResult } from "../context/autoCompact.js";
+import { tokenCountWithEstimation, buildTokenBudgetSnapshot } from "../utils/tokens.js";
 import { formatProjectSessionHistory } from "../session/history.js";
 import { getToolsApiParams } from "../tools/index.js";
 import type { ToolContext } from "../tools/Tool.js";
@@ -24,6 +25,7 @@ export type QueryEngineEvent =
   | { type: "messages_updated"; messages: MessageParam[] }
   | { type: "compacted"; summary?: string; trigger: "auto" | "manual" | "micro" }
   | { type: "usage_updated"; totalUsage: Usage; turnUsage: Usage; lastCallUsage: Usage }
+  | { type: "token_warning"; warning: TokenWarningResult }
   | { type: "command"; message: string; kind: "info" | "error" }
   | { type: "model_changed"; model: string; source: "default" | "session" }
   | { type: "session_cleared" };
@@ -112,19 +114,52 @@ export class QueryEngine {
     const previewSystemParts = await buildSystemPrompt({ cwd: this.toolContext.cwd, userQuery: trimmed });
     const previewSystemPrompt = renderSystemPrompt(previewSystemParts);
 
-    const compacted = await compactMessages(this.messages, undefined, {
-      usage: this.lastCallUsage,
-      usageAnchorIndex: this.usageAnchorIndex,
-      systemPrompt: previewSystemPrompt,
-    });
-    if (compacted.didMicroCompact || compacted.didCompact) {
-      this.messages = [...compacted.messages];
-      yield { type: "messages_updated", messages: [...this.messages] };
-      yield {
-        type: "compacted",
-        summary: compacted.summary,
-        trigger: compacted.didCompact ? "auto" : "micro",
-      };
+    // Only run compaction when there's meaningful conversation history
+    if (this.messages.length > 0) {
+      // Micro-compact old tool results first
+      const microResult = await compactMessages(this.messages, undefined, {
+        usage: this.lastCallUsage,
+        usageAnchorIndex: this.usageAnchorIndex,
+        systemPrompt: previewSystemPrompt,
+      });
+      if (microResult.didMicroCompact || microResult.didCompact) {
+        this.messages = [...microResult.messages];
+        this.invalidateUsageAnchor();
+        yield { type: "messages_updated", messages: [...this.messages] };
+        yield {
+          type: "compacted",
+          summary: microResult.summary,
+          trigger: microResult.didCompact ? "auto" : "micro",
+        };
+      }
+
+      // Auto-compact with circuit breaker if still over threshold
+      const { result: autoResult, didAutoCompact } = await autoCompactIfNeeded(
+        this.messages,
+        this.getActiveModel(),
+        {
+          usage: this.lastCallUsage,
+          usageAnchorIndex: this.usageAnchorIndex,
+          systemPrompt: previewSystemPrompt,
+        },
+      );
+      if (didAutoCompact) {
+        this.messages = [...autoResult.messages];
+        this.invalidateUsageAnchor();
+        yield { type: "messages_updated", messages: [...this.messages] };
+        yield { type: "compacted", summary: autoResult.summary, trigger: "auto" };
+      }
+
+      // Emit token warning if approaching limits
+      const estimatedTokens = tokenCountWithEstimation(this.messages, {
+        usage: this.lastCallUsage,
+        usageAnchorIndex: this.usageAnchorIndex,
+        systemPrompt: previewSystemPrompt,
+      });
+      const warningState = calculateTokenWarningState(estimatedTokens, this.getActiveModel());
+      if (warningState.state !== "normal") {
+        yield { type: "token_warning", warning: warningState };
+      }
     }
 
     const userMessage: MessageParam = { role: "user", content: trimmed };
@@ -195,6 +230,11 @@ export class QueryEngine {
     } finally {
       this.abortController = null;
     }
+  }
+
+  private invalidateUsageAnchor(): void {
+    this.usageAnchorIndex = -1;
+    this.lastCallUsage = { input_tokens: 0, output_tokens: 0 };
   }
 
   private getActiveModel(): string {
@@ -293,17 +333,15 @@ export class QueryEngine {
         const manualSystemPrompt = renderSystemPrompt(manualSystemParts);
         const result = await compactMessages(this.messages, focus || undefined, { usage: this.lastCallUsage, usageAnchorIndex: this.usageAnchorIndex, systemPrompt: manualSystemPrompt, force: true });
         this.messages = [...result.messages];
+        if (result.didCompact || result.didMicroCompact) {
+          this.invalidateUsageAnchor();
+        }
         yield { type: "messages_updated", messages: [...this.messages] };
-        yield { type: "compacted", summary: result.summary, trigger: focus ? "manual" : result.didCompact ? "manual" : "micro" };
-        yield {
-          type: "command",
-          kind: "info",
-          message: result.didCompact
-            ? `Conversation compacted.${focus ? ` Focus: ${focus}` : ""}`
-            : result.didMicroCompact
-              ? "Old tool results were micro-compacted."
-              : "Conversation did not need compaction.",
-        };
+        if (result.didCompact || result.didMicroCompact) {
+          yield { type: "compacted", summary: result.summary, trigger: focus ? "manual" : result.didCompact ? "manual" : "micro" };
+        } else {
+          yield { type: "command", kind: "info", message: "Conversation did not need compaction." };
+        }
         return { handled: true };
       }
       default:

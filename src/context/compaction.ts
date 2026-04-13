@@ -7,7 +7,7 @@ import type { Usage } from "../types/message.js";
 export const OLD_TOOL_RESULT_PLACEHOLDER = "[Old tool result content cleared]";
 const MICROCOMPACT_MIN_MESSAGES = 10;
 const MICROCOMPACT_KEEP_RECENT_MESSAGES = 8;
-const COMPACTABLE_TOOLS = new Set(["Read", "Grep", "Glob", "Bash"]);
+const COMPACTABLE_TOOLS = new Set(["Read", "Grep", "Glob", "Bash", "Edit", "Write"]);
 
 const NO_TOOLS_PREAMBLE = `CRITICAL: Respond with TEXT ONLY. Do NOT call any tools.
 
@@ -95,6 +95,16 @@ function collectToolResultIdsFromMessage(message: MessageParam): string[] {
     .map((block) => block.tool_use_id);
 }
 
+function microCompactToolResultContent(content: unknown): string | null {
+  if (Array.isArray(content)) {
+    const hasOnlyBinary = content.every(
+      (b: any) => b.type === "image" || b.type === "document",
+    );
+    if (hasOnlyBinary) return "[image]";
+  }
+  return null;
+}
+
 function microCompactMessage(message: MessageParam): { message: MessageParam; compactedToolIds: string[] } {
   if (!isContentBlocks(message.content)) {
     return { message, compactedToolIds: [] };
@@ -104,6 +114,12 @@ function microCompactMessage(message: MessageParam): { message: MessageParam; co
   const nextContent = message.content.map((block) => {
     if (block.type !== "tool_result") {
       return block;
+    }
+
+    const binaryReplacement = microCompactToolResultContent(block.content);
+    if (binaryReplacement) {
+      compactedToolIds.push(block.tool_use_id);
+      return { ...block, content: binaryReplacement };
     }
 
     if (typeof block.content !== "string") {
@@ -190,7 +206,7 @@ async function summarizeMessages(messages: MessageParam[], focus?: string): Prom
 
   const response = await createMessage({
     model: process.env.ANTHROPIC_MODEL,
-    maxTokens: 1200,
+    maxTokens: 8000,
     system: NO_TOOLS_PREAMBLE + BASE_COMPACT_PROMPT + extraInstruction,
     messages: [
       {
