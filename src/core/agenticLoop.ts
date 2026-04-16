@@ -62,6 +62,8 @@ export interface QueryParams {
   messages: MessageParam[];
   systemPrompt?: string;
   tools?: Anthropic.Tool[];
+  /** Dynamic tool list getter — called on each API iteration to reflect mode changes. */
+  getTools?: () => Anthropic.Tool[];
   model: string;
   abortSignal?: AbortSignal;
   toolContext: ToolContext;
@@ -119,11 +121,13 @@ export async function runTools(
     }
 
     try {
+      // Read live permission mode from tool context (updated by Enter/ExitPlanMode)
+      const liveMode = context.getPermissionMode?.() as PermissionMode | undefined;
       const permission = await checkPermission({
         tool,
         input: block.input as Record<string, unknown>,
         cwd: context.cwd,
-        mode: options.permissionMode,
+        mode: liveMode ?? options.permissionMode,
         settings: options.permissionSettings,
         sessionRules: options.sessionPermissionRules,
       });
@@ -259,11 +263,12 @@ export async function* query(
       }
     }
 
+    const currentTools = params.getTools ? params.getTools() : params.tools;
     const stream = streamMessage({
       messages: [...state.messages],
       model: params.model,
       system: params.systemPrompt,
-      tools: params.tools && params.tools.length > 0 ? params.tools : undefined,
+      tools: currentTools && currentTools.length > 0 ? currentTools : undefined,
       signal: params.abortSignal,
     });
 

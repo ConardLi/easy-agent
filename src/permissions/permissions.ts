@@ -3,10 +3,11 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { Tool } from "../tools/Tool.js";
 import { isReadOnlyCommand } from "../tools/bashTool.js";
+import { getPlanFilePath } from "../context/plans.js";
 
 export type PermissionBehavior = "allow" | "ask" | "deny";
 export type PermissionMode = "default" | "plan" | "auto";
-export type PermissionDecision = "allow_once" | "allow_always" | "deny";
+export type PermissionDecision = "allow_once" | "allow_always" | "deny" | "allow_clear_context" | "allow_accept_edits";
 
 export interface PermissionRuleSet {
   allow: string[];
@@ -233,8 +234,35 @@ export async function checkPermission(params: PermissionCheckParams): Promise<Pe
     return { behavior: "allow", reason: "auto mode allows all operations", request };
   }
 
-  if (mode === "plan" && !PLAN_ALLOWED_TOOLS.has(params.tool.name)) {
+  // Plan mode: allow read-only tools, plan mode tools, plan file writes; deny everything else
+  if (mode === "plan") {
+    if (PLAN_ALLOWED_TOOLS.has(params.tool.name)) {
+      return { behavior: "allow", reason: "read-only tool allowed in plan mode", request };
+    }
+    if (params.tool.name === "EnterPlanMode" || params.tool.name === "ExitPlanMode") {
+      return { behavior: "ask", reason: "plan mode transition requires confirmation", request };
+    }
+    if (params.tool.name === "Bash") {
+      const command = extractBashCommand(params.input);
+      if (isReadOnlyCommand(command)) {
+        return { behavior: "allow", reason: "read-only shell command allowed in plan mode", request };
+      }
+      return { behavior: "deny", reason: "plan mode blocks non-read-only Bash commands", request };
+    }
+    // Allow writing to the plan file
+    if (params.tool.name === "Write") {
+      const filePath = typeof params.input.file_path === "string" ? params.input.file_path : "";
+      const planPath = getPlanFilePath();
+      if (filePath && path.resolve(filePath) === path.resolve(planPath)) {
+        return { behavior: "allow", reason: "writing to plan file is allowed in plan mode", request };
+      }
+    }
     return { behavior: "deny", reason: `plan mode blocks ${params.tool.name}`, request };
+  }
+
+  // EnterPlanMode always requires user approval
+  if (params.tool.name === "EnterPlanMode") {
+    return { behavior: "ask", reason: "entering plan mode requires confirmation", request };
   }
 
   if (params.tool.name === "Bash") {

@@ -21,6 +21,12 @@ export interface ToolContext {
   cwd: string;
   /** Abort signal for cancellation */
   abortSignal?: AbortSignal;
+  /** Callback to switch permission mode at runtime (set by QueryEngine). */
+  setPermissionMode?: (mode: string) => void;
+  /** Callback to get the current permission mode. */
+  getPermissionMode?: () => string;
+  /** Callback to add session-level allow rules (for allowedPrompts on plan exit). */
+  addSessionAllowRules?: (rules: string[]) => void;
 }
 
 // ─── Tool Result ───────────────────────────────────────────────────

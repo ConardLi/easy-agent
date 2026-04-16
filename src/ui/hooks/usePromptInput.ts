@@ -6,6 +6,7 @@ import type { CommandSuggestion } from "../types.js";
 interface UsePromptInputOptions {
   isLoading: boolean;
   hasPermissionPrompt: boolean;
+  isPlanExitPrompt: boolean;
   onSubmit: (text: string) => Promise<unknown> | unknown;
   onExit: () => void;
   onInterrupt: () => boolean;
@@ -25,6 +26,7 @@ const ALL_COMMANDS: CommandSuggestion[] = [
 export function usePromptInput({
   isLoading,
   hasPermissionPrompt,
+  isPlanExitPrompt,
   onSubmit,
   onExit,
   onInterrupt,
@@ -50,12 +52,22 @@ export function usePromptInput({
 
     if (hasPermissionPrompt) {
       const normalized = input.toLowerCase();
-      if (normalized === "y") {
-        onPermissionDecision("allow_once");
-      } else if (normalized === "n") {
-        onPermissionDecision("deny");
-      } else if (normalized === "a") {
-        onPermissionDecision("allow_always");
+      if (isPlanExitPrompt) {
+        if (normalized === "y") {
+          onPermissionDecision("allow_clear_context");
+        } else if (normalized === "k") {
+          onPermissionDecision("allow_once");
+        } else if (normalized === "n") {
+          onPermissionDecision("deny");
+        }
+      } else {
+        if (normalized === "y") {
+          onPermissionDecision("allow_once");
+        } else if (normalized === "n") {
+          onPermissionDecision("deny");
+        } else if (normalized === "a") {
+          onPermissionDecision("allow_always");
+        }
       }
       return;
     }

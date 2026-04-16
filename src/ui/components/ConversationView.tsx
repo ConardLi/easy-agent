@@ -6,10 +6,12 @@ interface ConversationViewProps {
   messages: MessageParam[];
 }
 
-function isCompactMessage(message: MessageParam): boolean {
+function isInternalMessage(message: MessageParam): boolean {
   const content = typeof message.content === "string" ? message.content : "";
   if (content.startsWith("[CompactBoundary]")) return true;
   if (content.startsWith("This session is being continued from a previous conversation")) return true;
+  if (content.startsWith("[plan_mode_attachment]")) return true;
+  if (content.startsWith("[plan_mode_exit]")) return true;
   return false;
 }
 
@@ -17,7 +19,7 @@ export function ConversationView({ messages }: ConversationViewProps): React.Rea
   return (
     <>
       {messages.map((message, index) => {
-        if (isCompactMessage(message)) {
+        if (isInternalMessage(message)) {
           return null;
         }
 

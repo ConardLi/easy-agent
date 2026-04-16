@@ -20,9 +20,11 @@ interface AppProps {
 export function App({ model, permissionMode, shouldResume, resumeSessionId }: AppProps): React.ReactNode {
   const { exit } = useApp();
   const { state, actions } = useAgentSession({ model, onExit: exit, permissionMode, shouldResume, resumeSessionId });
+  const isPlanExitActive = Boolean(state.permissionPrompt?.isPlanExit);
   const { inputValue, commandSuggestions } = usePromptInput({
     isLoading: state.isLoading,
-    hasPermissionPrompt: Boolean(state.permissionPrompt),
+    hasPermissionPrompt: Boolean(state.permissionPrompt) && !isPlanExitActive,
+    isPlanExitPrompt: false,
     onSubmit: actions.submit,
     onExit: exit,
     onInterrupt: actions.interrupt,
@@ -47,6 +49,7 @@ export function App({ model, permissionMode, shouldResume, resumeSessionId }: Ap
         lastUsage={state.lastUsage}
         permissionPrompt={state.permissionPrompt}
         permissionMode={state.permissionMode}
+        onPlanDecision={actions.resolvePermission}
       />
       <InputPrompt isLoading={state.isLoading || Boolean(state.permissionPrompt)} inputValue={inputValue} />
       <CommandSuggestions items={commandSuggestions} />

@@ -1,6 +1,8 @@
 import React from "react";
 import { Box, Text } from "ink";
 import { Spinner } from "./Spinner.js";
+import { PlanApprovalDialog } from "./PlanApprovalDialog.js";
+import type { PermissionDecision } from "../../permissions/permissions.js";
 import type { PermissionPromptState, UsageSummary } from "../types.js";
 
 interface StatusBarProps {
@@ -10,6 +12,7 @@ interface StatusBarProps {
   lastUsage: UsageSummary | null;
   permissionPrompt: PermissionPromptState | null;
   permissionMode: string;
+  onPlanDecision?: (decision: PermissionDecision, feedback?: string) => void;
 }
 
 export function StatusBar({
@@ -19,6 +22,7 @@ export function StatusBar({
   lastUsage,
   permissionPrompt,
   permissionMode,
+  onPlanDecision,
 }: StatusBarProps): React.ReactNode {
   return (
     <>
@@ -26,7 +30,16 @@ export function StatusBar({
         <Text dimColor>{"  mode: "}{permissionMode}</Text>
       </Box>
 
-      {permissionPrompt && (
+      {permissionPrompt && permissionPrompt.isPlanExit && onPlanDecision && (
+        <PlanApprovalDialog
+          planContent={permissionPrompt.planContent}
+          planFilePath={permissionPrompt.planFilePath}
+          summary={permissionPrompt.summary}
+          onDecision={onPlanDecision}
+        />
+      )}
+
+      {permissionPrompt && !permissionPrompt.isPlanExit && (
         <Box marginTop={1} flexDirection="column" borderStyle="round" borderColor="yellow" paddingX={1}>
           <Text color="yellow">{"⚠ Permission required: "}{permissionPrompt.toolName}</Text>
           <Text dimColor>{"  args: "}{permissionPrompt.summary}</Text>
