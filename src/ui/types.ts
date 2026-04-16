@@ -31,6 +31,7 @@ export interface PermissionPromptState {
 export interface CommandSuggestion {
   name: string;
   description: string;
+  isSelected?: boolean;
 }
 
 export interface SystemNotice {

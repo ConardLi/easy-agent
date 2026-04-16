@@ -4,6 +4,7 @@ import type { PermissionMode } from "../permissions/permissions.js";
 import { CommandSuggestions } from "./components/CommandSuggestions.js";
 import { ConversationView } from "./components/ConversationView.js";
 import { InputPrompt } from "./components/InputPrompt.js";
+import { ModeSelector } from "./components/ModeSelector.js";
 import { StatusBar } from "./components/StatusBar.js";
 import { SystemPanel } from "./components/SystemPanel.js";
 import { ToolCallList } from "./components/ToolCallList.js";
@@ -21,10 +22,11 @@ export function App({ model, permissionMode, shouldResume, resumeSessionId }: Ap
   const { exit } = useApp();
   const { state, actions } = useAgentSession({ model, onExit: exit, permissionMode, shouldResume, resumeSessionId });
   const isPlanExitActive = Boolean(state.permissionPrompt?.isPlanExit);
-  const { inputValue, commandSuggestions } = usePromptInput({
+  const { inputValue, commandSuggestions, modeSuggestions } = usePromptInput({
     isLoading: state.isLoading,
     hasPermissionPrompt: Boolean(state.permissionPrompt) && !isPlanExitActive,
     isPlanExitPrompt: false,
+    permissionMode: state.permissionMode,
     onSubmit: actions.submit,
     onExit: exit,
     onInterrupt: actions.interrupt,
@@ -53,6 +55,7 @@ export function App({ model, permissionMode, shouldResume, resumeSessionId }: Ap
       />
       <InputPrompt isLoading={state.isLoading || Boolean(state.permissionPrompt)} inputValue={inputValue} />
       <CommandSuggestions items={commandSuggestions} />
+      <ModeSelector items={modeSuggestions} />
     </Box>
   );
 }
