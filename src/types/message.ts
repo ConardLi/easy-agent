@@ -26,7 +26,23 @@ export interface ToolResultBlock {
   is_error?: boolean;
 }
 
-export type ContentBlock = TextBlock | ToolUseBlock | ToolResultBlock;
+/**
+ * Extended-thinking content block, as streamed by Anthropic (and
+ * Anthropic-compatible endpoints like MiniMax) when a model returns
+ * internal reasoning.  The `signature` field is required by the API
+ * when we echo the message back on the next turn.
+ */
+export interface ThinkingBlock {
+  type: "thinking";
+  thinking: string;
+  signature?: string;
+}
+
+export type ContentBlock =
+  | TextBlock
+  | ToolUseBlock
+  | ToolResultBlock
+  | ThinkingBlock;
 
 // ─── Message Types ─────────────────────────────────────────────────
 

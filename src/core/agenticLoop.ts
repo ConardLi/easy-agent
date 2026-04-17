@@ -37,6 +37,7 @@ export interface LoopState {
 export interface ToolExecutionResult {
   toolUseId: string;
   toolName: string;
+  toolInput: Record<string, unknown>;
   result: ToolResult;
 }
 
@@ -44,7 +45,13 @@ export type AgenticLoopEvent =
   | { type: "text"; text: string }
   | { type: "tool_use_start"; id: string; name: string }
   | { type: "permission_request"; request: PermissionRequest }
-  | { type: "tool_use_done"; id: string; name: string; result: ToolResult }
+  | {
+      type: "tool_use_done";
+      id: string;
+      name: string;
+      input: Record<string, unknown>;
+      result: ToolResult;
+    }
   | { type: "assistant_message"; message: MessageParam }
   | { type: "tool_result_message"; message: MessageParam }
   | { type: "turn_complete"; reason: LoopTerminationReason; turnCount: number }
@@ -104,6 +111,7 @@ export async function runTools(
   const permissionRequests: PermissionRequest[] = [];
 
   for (const block of toolUseBlocks) {
+    const toolInput = (block.input as Record<string, unknown>) ?? {};
     const tool = findToolByName(block.name);
     if (!tool) {
       const result: ToolResult = {
@@ -116,7 +124,7 @@ export async function runTools(
         content: result.content,
         is_error: true,
       });
-      executions.push({ toolUseId: block.id, toolName: block.name, result });
+      executions.push({ toolUseId: block.id, toolName: block.name, toolInput, result });
       continue;
     }
 
@@ -125,7 +133,7 @@ export async function runTools(
       const liveMode = context.getPermissionMode?.() as PermissionMode | undefined;
       const permission = await checkPermission({
         tool,
-        input: block.input as Record<string, unknown>,
+        input: toolInput,
         cwd: context.cwd,
         mode: liveMode ?? options.permissionMode,
         settings: options.permissionSettings,
@@ -143,7 +151,7 @@ export async function runTools(
           content: result.content,
           is_error: true,
         });
-        executions.push({ toolUseId: block.id, toolName: block.name, result });
+        executions.push({ toolUseId: block.id, toolName: block.name, toolInput, result });
         continue;
       }
 
@@ -164,7 +172,7 @@ export async function runTools(
             content: result.content,
             is_error: true,
           });
-          executions.push({ toolUseId: block.id, toolName: block.name, result });
+          executions.push({ toolUseId: block.id, toolName: block.name, toolInput, result });
           continue;
         }
 
@@ -176,7 +184,7 @@ export async function runTools(
         }
       }
 
-      const rawResult = await tool.call(block.input as Record<string, unknown>, context);
+      const rawResult = await tool.call(toolInput, context);
       const result: ToolResult = {
         ...rawResult,
         content: truncateToolResult(rawResult.content, tool.maxResultSizeChars),
@@ -187,10 +195,13 @@ export async function runTools(
         content: result.content,
         ...(result.isError && { is_error: true }),
       });
-      executions.push({ toolUseId: block.id, toolName: block.name, result });
+      executions.push({ toolUseId: block.id, toolName: block.name, toolInput, result });
     } catch (error: unknown) {
+      const errorMessage = error instanceof Error
+        ? (error.stack ?? error.message)
+        : String(error);
       const result: ToolResult = {
-        content: `Error: ${error instanceof Error ? error.message : String(error)}`,
+        content: `Error: ${errorMessage}`,
         isError: true,
       };
       toolResults.push({
@@ -199,7 +210,7 @@ export async function runTools(
         content: result.content,
         is_error: true,
       });
-      executions.push({ toolUseId: block.id, toolName: block.name, result });
+      executions.push({ toolUseId: block.id, toolName: block.name, toolInput, result });
     }
   }
 
@@ -360,6 +371,7 @@ export async function* query(
         type: "tool_use_done",
         id: execution.toolUseId,
         name: execution.toolName,
+        input: execution.toolInput,
         result: execution.result,
       };
     }

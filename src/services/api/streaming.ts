@@ -22,9 +22,11 @@ import type {
   ContentBlock,
   StreamEvent,
   TextBlock,
+  ThinkingBlock,
   ToolUseBlock,
   Usage,
 } from "../../types/message.js";
+import { writeStreamDebug } from "../../utils/streamDebug.js";
 
 // ─── Request Parameters ────────────────────────────────────────────
 
@@ -80,10 +82,15 @@ export async function* streamMessage(
     signal: params.signal,
   });
 
-  // State accumulators — mirrors the pattern in claude.ts
+  // State accumulators — mirrors the pattern in claude.ts.
+  //
+  // IMPORTANT: tool_use input JSON must be tracked *per content-block index*.
+  // A single shared string breaks as soon as two tool_use blocks overlap —
+  // e.g. provider emits `content_block_start` for block 1 before the
+  // `content_block_stop` of block 0. In that case the shared buffer gets
+  // reset / cross-populated and tools end up with empty or swapped inputs.
   const contentBlocks: ContentBlock[] = [];
-  let currentBlockIndex = -1;
-  let currentToolInputJson = "";
+  const toolInputJsonByIndex = new Map<number, string>();
   let messageId = "";
   let stopReason = "";
 
@@ -92,8 +99,15 @@ export async function* streamMessage(
     output_tokens: 0,
   };
 
+  writeStreamDebug("request", {
+    model,
+    messageCount: params.messages.length,
+    toolNames: params.tools?.map((t) => t.name),
+  });
+
   try {
     for await (const event of stream) {
+      writeStreamDebug("event", event);
       switch (event.type) {
         // ── Message lifecycle ──────────────────────────────
         case "message_start": {
@@ -143,22 +157,41 @@ export async function* streamMessage(
 
         // ── Content block lifecycle ────────────────────────
         case "content_block_start": {
-          currentBlockIndex = event.index;
+          const index = event.index;
 
           if (event.content_block.type === "text") {
-            contentBlocks[currentBlockIndex] = {
+            contentBlocks[index] = {
               type: "text",
               text: "",
             };
+          } else if (event.content_block.type === "thinking") {
+            // Preserve thinking blocks so we can echo them (with their
+            // signature) back to the model on the next turn. Some providers
+            // (e.g. MiniMax) and Anthropic's extended-thinking mode will
+            // behave erratically — duplicating tool calls or emitting empty
+            // inputs — if the prior turn's thinking is missing from history.
+            const tb = event.content_block as { thinking?: string };
+            contentBlocks[index] = {
+              type: "thinking",
+              thinking: tb.thinking ?? "",
+            };
           } else if (event.content_block.type === "tool_use") {
             const block = event.content_block;
-            contentBlocks[currentBlockIndex] = {
+            // Some providers pre-populate the full input object on start
+            // instead of streaming it via input_json_delta. Preserve whatever
+            // is already there so we don't overwrite a valid non-empty input
+            // with `{}` at content_block_stop.
+            const seedInput =
+              block.input && typeof block.input === "object"
+                ? (block.input as Record<string, unknown>)
+                : {};
+            contentBlocks[index] = {
               type: "tool_use",
               id: block.id,
               name: block.name,
-              input: {},
+              input: seedInput,
             };
-            currentToolInputJson = "";
+            toolInputJsonByIndex.set(index, "");
             yield { type: "tool_use_start", id: block.id, name: block.name };
           }
           break;
@@ -166,46 +199,85 @@ export async function* streamMessage(
 
         case "content_block_delta": {
           const delta = event.delta;
+          const index = event.index;
 
           if (delta.type === "text_delta") {
             // Accumulate text
-            const block = contentBlocks[event.index] as TextBlock;
+            const block = contentBlocks[index] as TextBlock;
             block.text += delta.text;
             yield { type: "text", text: delta.text };
+          } else if ((delta as { type: string }).type === "thinking_delta") {
+            const block = contentBlocks[index] as ThinkingBlock | undefined;
+            if (block && block.type === "thinking") {
+              block.thinking += (delta as unknown as { thinking: string }).thinking ?? "";
+            }
+          } else if ((delta as { type: string }).type === "signature_delta") {
+            const block = contentBlocks[index] as ThinkingBlock | undefined;
+            if (block && block.type === "thinking") {
+              const sig = (delta as unknown as { signature: string }).signature;
+              block.signature = (block.signature ?? "") + (sig ?? "");
+            }
           } else if (delta.type === "input_json_delta") {
-            // Accumulate tool input JSON
-            currentToolInputJson += delta.partial_json;
-            yield {
-              type: "tool_use_input",
-              id: (contentBlocks[event.index] as ToolUseBlock).id,
-              partial_json: delta.partial_json,
-            };
+            // Accumulate tool input JSON **per block index** — blocks may
+            // overlap on some providers, so we must never share one buffer.
+            const prev = toolInputJsonByIndex.get(index) ?? "";
+            toolInputJsonByIndex.set(index, prev + delta.partial_json);
+            const idBlock = contentBlocks[index];
+            if (idBlock && idBlock.type === "tool_use") {
+              yield {
+                   type: "tool_use_input",
+                id: (idBlock as ToolUseBlock).id,
+                partial_json: delta.partial_json,
+              };
+            }
           }
           break;
         }
 
         case "content_block_stop": {
-          // Parse the accumulated JSON for tool_use blocks
-          const block = contentBlocks[event.index];
-          if (block && block.type === "tool_use" && currentToolInputJson) {
+          const index = event.index;
+          const block = contentBlocks[index];
+          const accumulated = toolInputJsonByIndex.get(index);
+          if (block && block.type === "tool_use" && accumulated) {
             try {
-              block.input = JSON.parse(currentToolInputJson);
+              block.input = JSON.parse(accumulated);
             } catch {
-              block.input = { _raw: currentToolInputJson };
+              // Keep the raw string so callers can surface it for debugging
+              // rather than silently pretending the call had no input.
+              block.input = { _raw: accumulated };
             }
-            currentToolInputJson = "";
           }
+          toolInputJsonByIndex.delete(index);
           break;
         }
       }
     }
   } catch (error) {
+    writeStreamDebug("stream_error", { message: error instanceof Error ? error.message : String(error) });
     // Yield the error as a stream event so the caller can handle it
     yield {
       type: "error",
       error: error instanceof Error ? error : new Error(String(error)),
     };
   }
+
+  writeStreamDebug("assembled", {
+    stopReason,
+    blockCount: contentBlocks.filter(Boolean).length,
+    blocks: contentBlocks.filter(Boolean).map((b) => {
+      if (b.type === "tool_use") {
+        return { type: "tool_use", id: b.id, name: b.name, input: b.input };
+      }
+      if (b.type === "thinking") {
+        return {
+          type: "thinking",
+          length: (b as ThinkingBlock).thinking.length,
+          hasSignature: Boolean((b as ThinkingBlock).signature),
+        };
+      }
+      return { type: "text", length: (b as TextBlock).text.length };
+    }),
+  });
 
   // Return the fully assembled assistant message
   return {
