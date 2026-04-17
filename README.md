@@ -99,7 +99,7 @@ The project follows a 30-phase roadmap designed to recreate the full Claude Code
 | 10 | Project memory system | [`step/step10.js`](./step/step10.js) | ✅ Done |
 | 11 | Context compaction | [`step/step11.js`](./step/step11.js) | ✅ Done |
 | 12 | Fine-grained token budget management | [`step/step12.js`](./step/step12.js) | ✅ Done |
-| 13 | Plan mode | `planned in step series` | 🚧 Partial |
+| 13 | Plan mode | [`step/step13.js`](./step/step13.js) | ✅ Done |
 | 14 | Task management system | `planned` | ⏳ Not started |
 | 15 | MCP protocol support | `planned` | ⏳ Not started |
 | 16 | Skills system | `planned` | ⏳ Not started |

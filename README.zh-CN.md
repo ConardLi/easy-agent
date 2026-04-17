@@ -99,7 +99,7 @@ easy-agent/
 | 10 | 项目记忆系统 | [`step/step10.js`](./step/step10.js) | ✅ 已完成 |
 | 11 | 上下文压缩 | [`step/step11.js`](./step/step11.js) | ✅ 已完成 |
 | 12 | Token 预算精细管理 | [`step/step12.js`](./step/step12.js) | ✅ 已完成 |
-| 13 | Plan Mode | `planned in step series` | 🚧 部分完成 |
+| 13 | Plan Mode | [`step/step13.js`](./step/step13.js) | ✅ 已完成 |
 | 14 | 任务管理系统 | `planned` | ⏳ 未开始 |
 | 15 | MCP 协议支持 | `planned` | ⏳ 未开始 |
 | 16 | Skills 系统 | `planned` | ⏳ 未开始 |
