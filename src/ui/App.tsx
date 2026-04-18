@@ -7,6 +7,7 @@ import { InputPrompt } from "./components/InputPrompt.js";
 import { ModeSelector } from "./components/ModeSelector.js";
 import { StatusBar } from "./components/StatusBar.js";
 import { SystemPanel } from "./components/SystemPanel.js";
+import { TodoList } from "./components/TodoList.js";
 import { ToolCallList } from "./components/ToolCallList.js";
 import { usePromptInput } from "./hooks/usePromptInput.js";
 import { useAgentSession } from "./hooks/useAgentSession.js";
@@ -22,6 +23,15 @@ export function App({ model, permissionMode, shouldResume, resumeSessionId }: Ap
   const { exit } = useApp();
   const { state, actions } = useAgentSession({ model, onExit: exit, permissionMode, shouldResume, resumeSessionId });
   const isPlanExitActive = Boolean(state.permissionPrompt?.isPlanExit);
+
+  // Surface the current todo's activeForm via the global StatusBar spinner.
+  // This mirrors source code behavior (Spinner.tsx: `leaderVerb =
+  // currentTodo?.activeForm ?? randomVerb`) and keeps the entire app at
+  // exactly ONE animation source — adding per-row spinners caused severe
+  // flicker because every additional setInterval forces another full
+  // terminal repaint cycle on top of the streaming text updates.
+  const inProgressTodo = state.todos.find((t) => t.status === "in_progress");
+  const effectiveSpinnerLabel = inProgressTodo?.activeForm ?? state.spinnerLabel;
   const { inputValue, commandSuggestions, modeSuggestions } = usePromptInput({
     isLoading: state.isLoading,
     hasPermissionPrompt: Boolean(state.permissionPrompt) && !isPlanExitActive,
@@ -42,11 +52,12 @@ export function App({ model, permissionMode, shouldResume, resumeSessionId }: Ap
       <Text dimColor>Type a message to start. Ctrl+C to interrupt, Ctrl+D to exit.</Text>
 
       <ConversationView messages={state.messages} />
+      <TodoList todos={state.todos} />
       <ToolCallList toolCalls={state.toolCalls} />
       <SystemPanel notice={state.systemNotice} />
       <StatusBar
         isLoading={state.isLoading}
-        spinnerLabel={state.spinnerLabel}
+        spinnerLabel={effectiveSpinnerLabel}
         streamingText={state.streamingText}
         lastUsage={state.lastUsage}
         permissionPrompt={state.permissionPrompt}

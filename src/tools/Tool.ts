@@ -27,6 +27,12 @@ export interface ToolContext {
   getPermissionMode?: () => string;
   /** Callback to add session-level allow rules (for allowedPrompts on plan exit). */
   addSessionAllowRules?: (rules: string[]) => void;
+  /**
+   * Current session id. Used by session-scoped tools (e.g. TodoWrite) to
+   * key their in-memory state — mirrors source code's
+   * `agentId ?? getSessionId()` lookup pattern in `appState.todos[todoKey]`.
+   */
+  sessionId?: string;
 }
 
 // ─── Tool Result ───────────────────────────────────────────────────

@@ -234,6 +234,15 @@ export async function checkPermission(params: PermissionCheckParams): Promise<Pe
     return { behavior: "allow", reason: "auto mode allows all operations", request };
   }
 
+  // TodoWrite only mutates in-memory session state — no filesystem or
+  // shell side effects — so it never needs user approval, in any mode.
+  // This mirrors source code's `shouldDefer: true` + `checkPermissions:
+  // () => allow` combo on TodoWriteTool, and keeps the tool usable inside
+  // Plan Mode where the model is expected to draft its task list.
+  if (params.tool.name === "TodoWrite") {
+    return { behavior: "allow", reason: "TodoWrite writes session-only state", request };
+  }
+
   // Plan mode: allow read-only tools, plan mode tools, plan file writes; deny everything else
   if (mode === "plan") {
     if (PLAN_ALLOWED_TOOLS.has(params.tool.name)) {

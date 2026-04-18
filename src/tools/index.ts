@@ -14,6 +14,7 @@ import { grepTool } from "./grepTool.js";
 import { memoryWriteTool } from "./memoryWriteTool.js";
 import { enterPlanModeTool } from "./enterPlanModeTool.js";
 import { exitPlanModeTool } from "./exitPlanModeTool.js";
+import { todoWriteTool } from "./todoWriteTool.js";
 import type { PermissionMode } from "../permissions/permissions.js";
 
 const ALL_TOOLS: Tool[] = [
@@ -24,6 +25,7 @@ const ALL_TOOLS: Tool[] = [
   grepTool,
   bashTool,
   memoryWriteTool,
+  todoWriteTool,
   enterPlanModeTool,
   exitPlanModeTool,
 ];
