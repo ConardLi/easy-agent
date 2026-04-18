@@ -100,22 +100,23 @@ easy-agent/
 | 11 | 上下文压缩 | [`step/step11.js`](./step/step11.js) | ✅ 已完成 |
 | 12 | Token 预算精细管理 | [`step/step12.js`](./step/step12.js) | ✅ 已完成 |
 | 13 | Plan Mode | [`step/step13.js`](./step/step13.js) | ✅ 已完成 |
-| 14 | 任务管理系统 | `planned` | ⏳ 未开始 |
-| 15 | MCP 协议支持 | `planned` | ⏳ 未开始 |
-| 16 | Skills 系统 | `planned` | ⏳ 未开始 |
-| 17 | Sandbox | `planned` | ⏳ 未开始 |
-| 18 | Sub-Agent | `planned` | ⏳ 未开始 |
-| 19 | 自定义 Agent 系统 | `planned` | ⏳ 未开始 |
-| 20 | 多 Agent 协作 | `planned` | ⏳ 未开始 |
-| 21 | Hooks 生命周期系统 | `planned` | ⏳ 未开始 |
-| 22 | 终端 UI 升级 | `planned in step series` | 🚧 部分完成 |
-| 23 | 配置系统完善 | `planned in step series` | 🚧 部分完成 |
-| 24 | 文件历史与回滚 | `planned` | ⏳ 未开始 |
-| 25 | 错误处理与韧性 | `planned in step series` | 🚧 部分完成 |
-| 26 | 管道模式 / 非交互执行 | `planned` | ⏳ 未开始 |
-| 27 | Auto Mode | `planned in step series` | 🚧 部分完成 |
-| 28 | 多 Provider 支持 | `planned in step series` | ⏳ 未开始 |
-| 29 | 打包发布与文档 | `planned in step series` | 🚧 部分完成 |
+| 14 | TodoWrite | [`step/step14.js`](./step/step14.js) | ✅ 已完成 |
+| 15 | 任务管理系统 | `planned in step series` | ⏳ 未开始 |
+| 16 | MCP 协议支持 | `planned` | ⏳ 未开始 |
+| 17 | Skills 系统 | `planned` | ⏳ 未开始 |
+| 18 | Sandbox | `planned` | ⏳ 未开始 |
+| 19 | Sub-Agent | `planned` | ⏳ 未开始 |
+| 20 | 自定义 Agent 系统 | `planned` | ⏳ 未开始 |
+| 21 | 多 Agent 协作 | `planned` | ⏳ 未开始 |
+| 22 | Hooks 生命周期系统 | `planned` | ⏳ 未开始 |
+| 23 | 终端 UI 升级 | `planned in step series` | 🚧 部分完成 |
+| 24 | 配置系统完善 | `planned in step series` | 🚧 部分完成 |
+| 25 | 文件历史与回滚 | `planned` | ⏳ 未开始 |
+| 26 | 错误处理与韧性 | `planned in step series` | 🚧 部分完成 |
+| 27 | 管道模式 / 非交互执行 | `planned` | ⏳ 未开始 |
+| 28 | Auto Mode | `planned in step series` | 🚧 部分完成 |
+| 29 | 多 Provider 支持 | `planned in step series` | ⏳ 未开始 |
+| 30 | 打包发布与文档 | `planned in step series` | 🚧 部分完成 |
 
 [`easy-agent/step/`](./step/) 目录中已经补充了教程化的里程碑核心代码，意味着每个已完成章节都可以直接对照学习、逐步复刻。
 

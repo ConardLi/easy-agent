@@ -100,22 +100,23 @@ The project follows a 30-phase roadmap designed to recreate the full Claude Code
 | 11 | Context compaction | [`step/step11.js`](./step/step11.js) | ✅ Done |
 | 12 | Fine-grained token budget management | [`step/step12.js`](./step/step12.js) | ✅ Done |
 | 13 | Plan mode | [`step/step13.js`](./step/step13.js) | ✅ Done |
-| 14 | Task management system | `planned` | ⏳ Not started |
-| 15 | MCP protocol support | `planned` | ⏳ Not started |
-| 16 | Skills system | `planned` | ⏳ Not started |
-| 17 | Sandbox | `planned` | ⏳ Not started |
-| 18 | Sub-agents | `planned` | ⏳ Not started |
-| 19 | Custom agent system | `planned` | ⏳ Not started |
-| 20 | Multi-agent collaboration | `planned` | ⏳ Not started |
-| 21 | Hooks lifecycle system | `planned` | ⏳ Not started |
-| 22 | Terminal UI upgrades | `planned in step series` | 🚧 Partial |
-| 23 | Configuration system improvements | `planned in step series` | 🚧 Partial |
-| 24 | File history and rollback | `planned` | ⏳ Not started |
-| 25 | Error handling and resilience | `planned in step series` | 🚧 Partial |
-| 26 | Pipe mode / non-interactive execution | `planned` | ⏳ Not started |
-| 27 | Auto mode | `planned in step series` | 🚧 Partial |
-| 28 | Multi-provider support | `planned in step series` | ⏳ Not started |
-| 29 | Packaging, publishing, and documentation | `planned in step series` | 🚧 Partial |
+| 14 | TodoWrite | [`step/step14.js`](./step/step14.js) | ✅ Done |
+| 15 | Task management system | `planned in step series` | ⏳ Not started |
+| 16 | MCP protocol support | `planned` | ⏳ Not started |
+| 17 | Skills system | `planned` | ⏳ Not started |
+| 18 | Sandbox | `planned` | ⏳ Not started |
+| 19 | Sub-agents | `planned` | ⏳ Not started |
+| 20 | Custom agent system | `planned` | ⏳ Not started |
+| 21 | Multi-agent collaboration | `planned` | ⏳ Not started |
+| 22 | Hooks lifecycle system | `planned` | ⏳ Not started |
+| 23 | Terminal UI upgrades | `planned in step series` | 🚧 Partial |
+| 24 | Configuration system improvements | `planned in step series` | 🚧 Partial |
+| 25 | File history and rollback | `planned` | ⏳ Not started |
+| 26 | Error handling and resilience | `planned in step series` | 🚧 Partial |
+| 27 | Pipe mode / non-interactive execution | `planned` | ⏳ Not started |
+| 28 | Auto mode | `planned in step series` | 🚧 Partial |
+| 29 | Multi-provider support | `planned in step series` | ⏳ Not started |
+| 30 | Packaging, publishing, and documentation | `planned in step series` | 🚧 Partial |
 
 The [`easy-agent/step/`](./step/) directory contains tutorial-friendly milestone code, so each completed chapter is directly learnable and reproducible from a focused single file.
 
