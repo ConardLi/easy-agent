@@ -100,8 +100,8 @@ easy-agent/
 | 11 | 上下文压缩 | [`step/step11.js`](./step/step11.js) | ✅ 已完成 |
 | 12 | Token 预算精细管理 | [`step/step12.js`](./step/step12.js) | ✅ 已完成 |
 | 13 | Plan Mode | [`step/step13.js`](./step/step13.js) | ✅ 已完成 |
-| 14 | TodoWrite | [`step/step14.js`](./step/step14.js) | ✅ 已完成 |
-| 15 | 任务管理系统 | `planned in step series` | ⏳ 未开始 |
+| 14 | TodoWrite 会话任务跟踪 | [`step/step14.js`](./step/step14.js) | ✅ 已完成 |
+| 15 | 任务管理系统（V2） | [`step/step15.js`](./step/step15.js) | ✅ 已完成 |
 | 16 | MCP 协议支持 | `planned` | ⏳ 未开始 |
 | 17 | Skills 系统 | `planned` | ⏳ 未开始 |
 | 18 | Sandbox | `planned` | ⏳ 未开始 |

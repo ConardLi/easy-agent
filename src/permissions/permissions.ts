@@ -234,13 +234,21 @@ export async function checkPermission(params: PermissionCheckParams): Promise<Pe
     return { behavior: "allow", reason: "auto mode allows all operations", request };
   }
 
-  // TodoWrite only mutates in-memory session state — no filesystem or
-  // shell side effects — so it never needs user approval, in any mode.
-  // This mirrors source code's `shouldDefer: true` + `checkPermissions:
-  // () => allow` combo on TodoWriteTool, and keeps the tool usable inside
-  // Plan Mode where the model is expected to draft its task list.
-  if (params.tool.name === "TodoWrite") {
-    return { behavior: "allow", reason: "TodoWrite writes session-only state", request };
+  // TodoWrite and the Task V2 tools only mutate planning state — either
+  // the in-memory todo list or the ~/.easy-agent/tasks directory — with
+  // no filesystem or shell side effects on the user's workspace. They
+  // never need user approval in any mode. This mirrors source code's
+  // `shouldDefer: true` + `checkPermissions: () => allow` combo and
+  // keeps these tools usable inside Plan Mode so the model can draft
+  // and iterate on the plan itself.
+  if (
+    params.tool.name === "TodoWrite" ||
+    params.tool.name === "TaskCreate" ||
+    params.tool.name === "TaskUpdate" ||
+    params.tool.name === "TaskGet" ||
+    params.tool.name === "TaskList"
+  ) {
+    return { behavior: "allow", reason: `${params.tool.name} writes planning-only state`, request };
   }
 
   // Plan mode: allow read-only tools, plan mode tools, plan file writes; deny everything else

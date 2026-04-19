@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { useInput } from "ink";
 import type { PermissionDecision, PermissionMode } from "../../permissions/permissions.js";
+import type { TaskMode } from "../../state/taskModeStore.js";
 import type { CommandSuggestion } from "../types.js";
 
 export interface ModeSuggestion {
@@ -11,11 +12,20 @@ export interface ModeSuggestion {
   isSelected: boolean;
 }
 
+export interface TaskModeSuggestion {
+  key: string;
+  mode: TaskMode;
+  description: string;
+  isCurrent: boolean;
+  isSelected: boolean;
+}
+
 interface UsePromptInputOptions {
   isLoading: boolean;
   hasPermissionPrompt: boolean;
   isPlanExitPrompt: boolean;
   permissionMode: string;
+  taskMode: TaskMode;
   onSubmit: (text: string) => Promise<unknown> | unknown;
   onExit: () => void;
   onInterrupt: () => boolean;
@@ -28,6 +38,7 @@ const ALL_COMMANDS: CommandSuggestion[] = [
   { name: "/cost", description: "Show session token usage" },
   { name: "/model", description: "Inspect current model or override it for this session" },
   { name: "/mode", description: "Inspect or switch permission mode (default/plan/auto)" },
+  { name: "/tasks", description: "Switch task tracking system (task=persistent V2, todo=session V1)" },
   { name: "/history", description: "Show saved sessions for this project" },
   { name: "/compact", description: "Compact the conversation context" },
   { name: "/exit", description: "Exit the session" },
@@ -39,11 +50,17 @@ const MODE_OPTIONS: { mode: PermissionMode; description: string }[] = [
   { mode: "auto", description: "Auto-approve all operations" },
 ];
 
+const TASK_MODE_OPTIONS: { mode: TaskMode; description: string }[] = [
+  { mode: "task", description: "Persistent task graph (Task V2) — default" },
+  { mode: "todo", description: "Session-memory todo list (TodoWrite V1)" },
+];
+
 export function usePromptInput({
   isLoading,
   hasPermissionPrompt,
   isPlanExitPrompt,
   permissionMode,
+  taskMode,
   onSubmit,
   onExit,
   onInterrupt,
@@ -52,6 +69,7 @@ export function usePromptInput({
   const [inputValue, setInputValue] = useState("");
   const [selectedCommandIndex, setSelectedCommandIndex] = useState(-1);
   const [selectedModeIndex, setSelectedModeIndex] = useState(-1);
+  const [selectedTaskModeIndex, setSelectedTaskModeIndex] = useState(-1);
 
   const handleSubmit = useCallback(() => {
     const text = inputValue;
@@ -144,6 +162,39 @@ export function usePromptInput({
       }
     }
 
+    // Task-system selector: same UX as the permission-mode one, just two
+    // options. Typing `1` or `2` submits directly so the user can flip
+    // systems in two keystrokes (`/tasks` → `1`).
+    if (showTaskModeSelector) {
+      if (key.upArrow) {
+        setSelectedTaskModeIndex((prev) => (prev <= 0 ? TASK_MODE_OPTIONS.length - 1 : prev - 1));
+        return;
+      }
+      if (key.downArrow) {
+        setSelectedTaskModeIndex((prev) => (prev >= TASK_MODE_OPTIONS.length - 1 ? 0 : prev + 1));
+        return;
+      }
+      if (key.return && selectedTaskModeIndex >= 0) {
+        const selected = TASK_MODE_OPTIONS[selectedTaskModeIndex];
+        if (selected) {
+          setInputValue("");
+          setSelectedTaskModeIndex(-1);
+          void onSubmit(`/tasks ${selected.mode}`);
+          return;
+        }
+      }
+      if (input === "1" || input === "2") {
+        const idx = Number(input) - 1;
+        const selected = TASK_MODE_OPTIONS[idx];
+        if (selected) {
+          setInputValue("");
+          setSelectedTaskModeIndex(-1);
+          void onSubmit(`/tasks ${selected.mode}`);
+          return;
+        }
+      }
+    }
+
     if (key.return) {
       handleSubmit();
       return;
@@ -166,6 +217,15 @@ export function usePromptInput({
     return show;
   }, [inputValue]);
 
+  const showTaskModeSelector = useMemo(() => {
+    const trimmed = inputValue.trim().toLowerCase();
+    const show = trimmed === "/tasks" || trimmed === "/tasks ";
+    if (!show) {
+      setSelectedTaskModeIndex(-1);
+    }
+    return show;
+  }, [inputValue]);
+
   const filteredCommands = useMemo(() => {
     if (!inputValue.startsWith("/")) {
       return [];
@@ -174,7 +234,7 @@ export function usePromptInput({
     return ALL_COMMANDS.filter((item) => item.name.startsWith(keyword)).slice(0, 6);
   }, [inputValue]);
 
-  const showCommandSuggestions = filteredCommands.length > 0 && !showModeSelector;
+  const showCommandSuggestions = filteredCommands.length > 0 && !showModeSelector && !showTaskModeSelector;
 
   const commandSuggestions: CommandSuggestion[] = useMemo(() => {
     if (!showCommandSuggestions) {
@@ -198,10 +258,22 @@ export function usePromptInput({
     }));
   }, [showModeSelector, permissionMode, selectedModeIndex]);
 
+  const taskModeSuggestions: TaskModeSuggestion[] = useMemo(() => {
+    if (!showTaskModeSelector) return [];
+    return TASK_MODE_OPTIONS.map((opt, i) => ({
+      key: String(i + 1),
+      mode: opt.mode,
+      description: opt.description,
+      isCurrent: opt.mode === taskMode,
+      isSelected: i === selectedTaskModeIndex,
+    }));
+  }, [showTaskModeSelector, taskMode, selectedTaskModeIndex]);
+
   return {
     inputValue,
     setInputValue,
     commandSuggestions,
     modeSuggestions,
+    taskModeSuggestions,
   };
 }

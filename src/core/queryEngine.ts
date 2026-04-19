@@ -21,6 +21,12 @@ import type { ToolContext } from "../tools/Tool.js";
 import type { Usage } from "../types/message.js";
 import { getPlanFilePath, planExists as checkPlanExists } from "../context/plans.js";
 import { getPlanModeAttachment, getPlanModeExitAttachment } from "../context/planAttachments.js";
+import {
+  getTaskMode,
+  setTaskMode,
+  type TaskMode,
+} from "../state/taskModeStore.js";
+import { getTaskListId, resetTaskList } from "../state/taskStore.js";
 
 export type QueryEngineEvent =
   | AgenticLoopEvent
@@ -31,7 +37,8 @@ export type QueryEngineEvent =
   | { type: "command"; message: string; kind: "info" | "error" }
   | { type: "model_changed"; model: string; source: "default" | "session" }
   | { type: "session_cleared" }
-  | { type: "mode_changed"; mode: PermissionMode; previousMode: PermissionMode };
+  | { type: "mode_changed"; mode: PermissionMode; previousMode: PermissionMode }
+  | { type: "task_mode_changed"; mode: TaskMode; previousMode: TaskMode };
 
 export interface QueryEngineOptions {
   model: string;
@@ -325,7 +332,7 @@ export class QueryEngine {
         yield {
           type: "command",
           kind: "info",
-          message: "Commands: /help /clear /cost /model [name|default] /mode [default|plan|auto] /history /compact /exit /quit /bye",
+          message: "Commands: /help /clear /cost /model [name|default] /mode [default|plan|auto] /tasks [task|todo|reset] /history /compact /exit /quit /bye",
         };
         return { handled: true };
       case "mode": {
@@ -350,6 +357,59 @@ export class QueryEngine {
           type: "command",
           kind: "info",
           message: `Mode changed: ${previous} → ${this.currentPermissionMode}`,
+        };
+        return { handled: true };
+      }
+      case "tasks": {
+        const arg = args[0]?.trim();
+        const current = getTaskMode();
+        if (!arg) {
+          yield {
+            type: "command",
+            kind: "info",
+            message: [
+              "Task system status",
+              `- Active: ${current} (${current === "task" ? "persistent graph (Task V2)" : "session memory (TodoWrite V1)"})`,
+              "- Usage: /tasks task      Use persistent Task V2 tools (default)",
+              "- Usage: /tasks todo      Use in-memory TodoWrite V1",
+              "- Usage: /tasks reset     Delete every task in the current task list",
+            ].join("\n"),
+          };
+          return { handled: true };
+        }
+        if (arg === "reset") {
+          const taskListId = getTaskListId(this.toolContext.sessionId ?? "default");
+          try {
+            await resetTaskList(taskListId);
+            yield { type: "command", kind: "info", message: `Task list '${taskListId}' has been reset.` };
+          } catch (error) {
+            const msg = error instanceof Error ? error.message : String(error);
+            yield { type: "command", kind: "error", message: `Failed to reset task list: ${msg}` };
+          }
+          return { handled: true };
+        }
+        if (arg !== "task" && arg !== "todo") {
+          yield {
+            type: "command",
+            kind: "error",
+            message: `Invalid task mode: ${arg}. Must be task, todo, or reset.`,
+          };
+          return { handled: true };
+        }
+        if (arg === current) {
+          yield {
+            type: "command",
+            kind: "info",
+            message: `Task system is already '${current}'.`,
+          };
+          return { handled: true };
+        }
+        setTaskMode(arg);
+        yield { type: "task_mode_changed", mode: arg, previousMode: current };
+        yield {
+          type: "command",
+          kind: "info",
+          message: `Task system changed: ${current} → ${arg}.`,
         };
         return { handled: true };
       }

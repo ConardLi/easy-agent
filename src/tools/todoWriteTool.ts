@@ -18,6 +18,7 @@
  */
 
 import { setTodos } from "../state/todoStore.js";
+import { isTodoModeEnabled } from "../state/taskModeStore.js";
 import type { TodoItem, TodoStatus } from "../types/todo.js";
 import type { Tool, ToolContext, ToolResult } from "./Tool.js";
 
@@ -141,8 +142,9 @@ export const todoWriteTool: Tool = {
   },
 
   isEnabled() {
-    // V1 is always on. V2 will replace this via a feature flag check
-    // (mirrors source's `!isTodoV2Enabled()` guard).
-    return true;
+    // Mirrors source's `!isTodoV2Enabled()` guard: TodoWrite V1 and the
+    // Task V2 tools are mutually exclusive. The runtime toggle lives in
+    // taskModeStore and is flipped by `/tasks task|todo`.
+    return isTodoModeEnabled();
   },
 };

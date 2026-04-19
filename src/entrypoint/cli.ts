@@ -43,8 +43,12 @@ Options:
   --dump-system-prompt        Print the assembled system prompt and exit
 
 Commands (in REPL):
+  /help                       Show available commands
   /clear                      Clear conversation history
-  /history                    Show message count
+  /mode [default|plan|auto]   Inspect or switch permission mode
+  /tasks [task|todo|reset]    Switch task system or reset the task graph
+  /history                    Show session history
+  /compact                    Compact conversation context
   /exit, /quit, /bye          Exit the REPL
 `);
     process.exit(0);

@@ -28,6 +28,13 @@ import type {
 import { formatToolInputPreview } from "../utils/toolCardFormat.js";
 import { clearTodos, getTodos, subscribeTodos } from "../../state/todoStore.js";
 import type { TodoItem } from "../../types/todo.js";
+import { getTaskListId, listTasks, subscribeTasks } from "../../state/taskStore.js";
+import {
+  getTaskMode,
+  subscribeTaskMode,
+  type TaskMode,
+} from "../../state/taskModeStore.js";
+import type { Task } from "../../types/task.js";
 
 interface UseAgentSessionOptions {
   model: string;
@@ -78,6 +85,7 @@ function buildCommandNotice(message: string, kind: "info" | "error"): SystemNoti
         "/cost  Show session token usage",
         "/model [name|default]  Inspect or override the session model",
         "/mode [default|plan|auto]  Inspect or switch permission mode",
+        "/tasks [task|todo|reset]  Switch task system or reset the task graph",
         "/history  Show saved sessions for this project",
         "/compact  Compact conversation context",
         "/exit | /quit | /bye  Exit session",
@@ -97,6 +105,14 @@ function buildCommandNotice(message: string, kind: "info" | "error"): SystemNoti
     return {
       tone: kind,
       title: message.startsWith("Model status") ? "Model status" : "Model updated",
+      body: message,
+    };
+  }
+
+  if (message.startsWith("Task system")) {
+    return {
+      tone: kind,
+      title: message.startsWith("Task system status") ? "Task system" : "Task system updated",
       body: message,
     };
   }
@@ -144,6 +160,8 @@ export function useAgentSession({
   const [currentModel, setCurrentModel] = useState(model);
   const [activePermissionMode, setActivePermissionMode] = useState<string>(permissionMode ?? "default");
   const [todos, setTodosState] = useState<TodoItem[]>([]);
+  const [tasks, setTasksState] = useState<Task[]>([]);
+  const [taskMode, setTaskModeState] = useState<TaskMode>(getTaskMode());
 
   const permissionResolverRef = useRef<((decision: PermissionDecision) => void) | null>(null);
   const pendingClearContextRef = useRef(false);
@@ -205,6 +223,43 @@ export function useAgentSession({
       }
     });
     return unsubscribe;
+  }, []);
+
+  // Subscribe to Task V2 updates. Tasks live on disk, so on mount we do
+  // one full listTasks to populate the initial view, then refresh every
+  // time the store fires a change event for our task list id. Each
+  // mutation already runs through the lock budget on the writer side,
+  // so the reader doesn't need its own synchronization.
+  useEffect(() => {
+    let cancelled = false;
+    const refresh = async () => {
+      const taskListId = getTaskListId(sessionIdRef.current);
+      try {
+        const list = await listTasks(taskListId);
+        if (!cancelled) setTasksState(list);
+      } catch {
+        // Ignore transient read errors — a future mutation will trigger
+        // another refresh that can succeed.
+      }
+    };
+    void refresh();
+    const unsubscribe = subscribeTasks((taskListId) => {
+      if (taskListId === getTaskListId(sessionIdRef.current)) {
+        void refresh();
+      }
+    });
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, []);
+
+  // Mirror the global task-mode store into local state so React re-renders
+  // when the user flips `/tasks task|todo`. The global store is still the
+  // source of truth — tools and permissions.ts read from it directly.
+  useEffect(() => {
+    setTaskModeState(getTaskMode());
+    return subscribeTaskMode((mode) => setTaskModeState(mode));
   }, []);
 
   useEffect(() => {
@@ -612,6 +667,9 @@ export function useAgentSession({
           case "mode_changed":
             setActivePermissionMode(value.mode);
             break;
+          case "task_mode_changed":
+            setTaskModeState(value.mode);
+            break;
           case "session_cleared":
             cancelPendingText();
             setMessages([]);
@@ -733,6 +791,8 @@ export function useAgentSession({
       streamingText,
       toolCalls,
       todos,
+      tasks,
+      taskMode,
       lastUsage,
       totalUsage,
       systemNotice,

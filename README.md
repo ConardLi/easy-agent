@@ -100,8 +100,8 @@ The project follows a 30-phase roadmap designed to recreate the full Claude Code
 | 11 | Context compaction | [`step/step11.js`](./step/step11.js) | ✅ Done |
 | 12 | Fine-grained token budget management | [`step/step12.js`](./step/step12.js) | ✅ Done |
 | 13 | Plan mode | [`step/step13.js`](./step/step13.js) | ✅ Done |
-| 14 | TodoWrite | [`step/step14.js`](./step/step14.js) | ✅ Done |
-| 15 | Task management system | `planned in step series` | ⏳ Not started |
+| 14 | TodoWrite session task tracking | [`step/step14.js`](./step/step14.js) | ✅ Done |
+| 15 | Task management system (V2) | [`step/step15.js`](./step/step15.js) | ✅ Done |
 | 16 | MCP protocol support | `planned` | ⏳ Not started |
 | 17 | Skills system | `planned` | ⏳ Not started |
 | 18 | Sandbox | `planned` | ⏳ Not started |

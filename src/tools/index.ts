@@ -15,6 +15,10 @@ import { memoryWriteTool } from "./memoryWriteTool.js";
 import { enterPlanModeTool } from "./enterPlanModeTool.js";
 import { exitPlanModeTool } from "./exitPlanModeTool.js";
 import { todoWriteTool } from "./todoWriteTool.js";
+import { taskCreateTool } from "./taskCreateTool.js";
+import { taskUpdateTool } from "./taskUpdateTool.js";
+import { taskGetTool } from "./taskGetTool.js";
+import { taskListTool } from "./taskListTool.js";
 import type { PermissionMode } from "../permissions/permissions.js";
 
 const ALL_TOOLS: Tool[] = [
@@ -26,6 +30,10 @@ const ALL_TOOLS: Tool[] = [
   bashTool,
   memoryWriteTool,
   todoWriteTool,
+  taskCreateTool,
+  taskUpdateTool,
+  taskGetTool,
+  taskListTool,
   enterPlanModeTool,
   exitPlanModeTool,
 ];

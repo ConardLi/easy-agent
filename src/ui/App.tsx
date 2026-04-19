@@ -7,6 +7,7 @@ import { InputPrompt } from "./components/InputPrompt.js";
 import { ModeSelector } from "./components/ModeSelector.js";
 import { StatusBar } from "./components/StatusBar.js";
 import { SystemPanel } from "./components/SystemPanel.js";
+import { TaskList } from "./components/TaskList.js";
 import { TodoList } from "./components/TodoList.js";
 import { ToolCallList } from "./components/ToolCallList.js";
 import { usePromptInput } from "./hooks/usePromptInput.js";
@@ -24,19 +25,27 @@ export function App({ model, permissionMode, shouldResume, resumeSessionId }: Ap
   const { state, actions } = useAgentSession({ model, onExit: exit, permissionMode, shouldResume, resumeSessionId });
   const isPlanExitActive = Boolean(state.permissionPrompt?.isPlanExit);
 
-  // Surface the current todo's activeForm via the global StatusBar spinner.
-  // This mirrors source code behavior (Spinner.tsx: `leaderVerb =
-  // currentTodo?.activeForm ?? randomVerb`) and keeps the entire app at
-  // exactly ONE animation source — adding per-row spinners caused severe
-  // flicker because every additional setInterval forces another full
-  // terminal repaint cycle on top of the streaming text updates.
+  // Surface the current in-progress item's activeForm via the global
+  // StatusBar spinner. This mirrors source code behavior (Spinner.tsx:
+  // `leaderVerb = currentTodo?.activeForm ?? randomVerb`) and keeps the
+  // entire app at exactly ONE animation source — adding per-row spinners
+  // caused severe flicker because every additional setInterval forces
+  // another full terminal repaint cycle on top of streaming text.
+  //
+  // In task mode we read from the Task graph; in todo mode we keep the
+  // V1 source. Either way, the spinner label comes from exactly one
+  // place at a time.
   const inProgressTodo = state.todos.find((t) => t.status === "in_progress");
-  const effectiveSpinnerLabel = inProgressTodo?.activeForm ?? state.spinnerLabel;
-  const { inputValue, commandSuggestions, modeSuggestions } = usePromptInput({
+  const inProgressTask = state.tasks.find((t) => t.status === "in_progress");
+  const effectiveSpinnerLabel = state.taskMode === "task"
+    ? (inProgressTask?.activeForm ?? inProgressTask?.subject ?? state.spinnerLabel)
+    : (inProgressTodo?.activeForm ?? state.spinnerLabel);
+  const { inputValue, commandSuggestions, modeSuggestions, taskModeSuggestions } = usePromptInput({
     isLoading: state.isLoading,
     hasPermissionPrompt: Boolean(state.permissionPrompt) && !isPlanExitActive,
     isPlanExitPrompt: false,
     permissionMode: state.permissionMode,
+    taskMode: state.taskMode,
     onSubmit: actions.submit,
     onExit: exit,
     onInterrupt: actions.interrupt,
@@ -52,7 +61,9 @@ export function App({ model, permissionMode, shouldResume, resumeSessionId }: Ap
       <Text dimColor>Type a message to start. Ctrl+C to interrupt, Ctrl+D to exit.</Text>
 
       <ConversationView messages={state.messages} />
-      <TodoList todos={state.todos} />
+      {state.taskMode === "task"
+        ? <TaskList tasks={state.tasks} />
+        : <TodoList todos={state.todos} />}
       <ToolCallList toolCalls={state.toolCalls} />
       <SystemPanel notice={state.systemNotice} />
       <StatusBar
@@ -67,6 +78,10 @@ export function App({ model, permissionMode, shouldResume, resumeSessionId }: Ap
       <InputPrompt isLoading={state.isLoading || Boolean(state.permissionPrompt)} inputValue={inputValue} />
       <CommandSuggestions items={commandSuggestions} />
       <ModeSelector items={modeSuggestions} />
+      <ModeSelector
+        items={taskModeSuggestions}
+        title={`select task system (↑↓ navigate, Enter confirm, 1-${taskModeSuggestions.length || 2} shortcut)`}
+      />
     </Box>
   );
 }
