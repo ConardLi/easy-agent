@@ -1,7 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { getGlobalAgentMdPath } from "../utils/paths.js";
 
-const GLOBAL_AGENT_MD = path.join(process.env.HOME || "~", ".easy-agent", "AGENT.md");
 const AGENT_MD_NAME = "AGENT.md";
 
 function stripHtmlComments(content: string): string {
@@ -36,7 +36,7 @@ function getDirectoryChain(cwd: string): string[] {
 }
 
 export async function getAgentMdFiles(cwd: string): Promise<string[]> {
-  const files: string[] = [GLOBAL_AGENT_MD];
+  const files: string[] = [getGlobalAgentMdPath()];
   for (const dir of getDirectoryChain(cwd)) {
     files.push(path.join(dir, AGENT_MD_NAME));
   }

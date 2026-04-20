@@ -24,14 +24,11 @@
  */
 
 import { mkdir, readdir, readFile, unlink, writeFile } from "node:fs/promises";
-import * as os from "node:os";
 import * as path from "node:path";
 import lockfile from "proper-lockfile";
 import type { Task, TaskStatus } from "../types/task.js";
 import { TASK_STATUSES } from "../types/task.js";
-
-const EASY_AGENT_HOME = path.join(os.homedir(), ".easy-agent");
-const TASKS_ROOT = path.join(EASY_AGENT_HOME, "tasks");
+import { getTasksRoot } from "../utils/paths.js";
 
 const HIGH_WATER_MARK_FILE = ".highwatermark";
 const LOCK_FILE = ".lock";
@@ -71,7 +68,7 @@ export function getTaskListId(sessionId: string): string {
 }
 
 export function getTasksDir(taskListId: string): string {
-  return path.join(TASKS_ROOT, sanitizePathComponent(taskListId));
+  return path.join(getTasksRoot(), sanitizePathComponent(taskListId));
 }
 
 export function getTaskPath(taskListId: string, taskId: string): string {

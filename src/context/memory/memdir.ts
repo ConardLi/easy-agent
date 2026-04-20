@@ -1,15 +1,13 @@
 import * as crypto from "node:crypto";
 import * as fs from "node:fs/promises";
-import * as os from "node:os";
 import * as path from "node:path";
 import type { MemoryEntry, MemoryFrontmatter, MemoryType } from "./memoryTypes.js";
 import { isMemoryType } from "./memoryTypes.js";
+import { getProjectsRoot } from "../../utils/paths.js";
 
 export const MEMORY_ENTRYPOINT = "MEMORY.md";
 export const MAX_ENTRYPOINT_LINES = 200;
 export const MAX_ENTRYPOINT_BYTES = 25_000;
-const EASY_AGENT_HOME = path.join(os.homedir(), ".easy-agent");
-const PROJECTS_DIR = path.join(EASY_AGENT_HOME, "projects");
 
 export interface MemoryDocument extends MemoryEntry {
   frontmatter: MemoryFrontmatter;
@@ -72,7 +70,7 @@ export async function getProjectPathInfo(cwd: string): Promise<ProjectPathInfo> 
   return {
     gitRoot,
     projectKey,
-    projectDir: path.join(PROJECTS_DIR, projectKey),
+    projectDir: path.join(getProjectsRoot(), projectKey),
   };
 }
 

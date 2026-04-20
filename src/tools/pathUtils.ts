@@ -1,10 +1,8 @@
-import * as os from "node:os";
 import * as path from "node:path";
-
-const EASY_AGENT_GLOBAL_ROOT = path.join(os.homedir(), ".easy-agent");
+import { getEasyAgentHome } from "../utils/paths.js";
 
 export function getToolAllowedRoots(cwd: string): string[] {
-  return [path.resolve(cwd), path.resolve(EASY_AGENT_GLOBAL_ROOT)];
+  return [path.resolve(cwd), path.resolve(getEasyAgentHome())];
 }
 
 export function describeAllowedRoots(cwd: string): string {

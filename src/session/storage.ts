@@ -1,14 +1,12 @@
 import * as crypto from "node:crypto";
 import * as fs from "node:fs/promises";
-import * as os from "node:os";
 import * as path from "node:path";
 import type { Dirent } from "node:fs";
 import type { MessageParam } from "@anthropic-ai/sdk/resources/messages.js";
 import type { Usage } from "../types/message.js";
 import { getProjectPathInfo } from "../context/memory/memdir.js";
+import { getEasyAgentHome } from "../utils/paths.js";
 
-const EASY_AGENT_HOME = path.join(os.homedir(), ".easy-agent");
-const PROJECTS_DIR = path.join(EASY_AGENT_HOME, "projects");
 const MAX_SESSIONS = 20;
 
 export interface SessionPaths {
@@ -192,7 +190,7 @@ export async function getProjectHash(cwd: string): Promise<string> {
 export async function getSessionPaths(cwd: string, sessionId: string): Promise<SessionPaths> {
   const info = await getProjectPathInfo(cwd);
   return {
-    rootDir: EASY_AGENT_HOME,
+    rootDir: getEasyAgentHome(),
     projectDir: info.projectDir,
     transcriptPath: path.join(info.projectDir, `${sessionId}.jsonl`),
     latestPath: path.join(info.projectDir, "latest"),

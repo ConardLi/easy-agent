@@ -1,9 +1,9 @@
-import * as fs from "node:fs/promises";
-import * as os from "node:os";
 import * as path from "node:path";
 import type { Tool } from "../tools/Tool.js";
 import { isReadOnlyCommand } from "../tools/bashTool.js";
 import { getPlanFilePath } from "../context/plans.js";
+import { getSettingsPaths } from "../utils/paths.js";
+import { readJsonSettingsFile } from "../utils/settings.js";
 
 export type PermissionBehavior = "allow" | "ask" | "deny";
 export type PermissionMode = "default" | "plan" | "auto";
@@ -80,32 +80,30 @@ function normalizeMode(value: unknown): PermissionMode | undefined {
   return value === "default" || value === "plan" || value === "auto" ? value : undefined;
 }
 
-async function readSettingsFile(filePath: string): Promise<Partial<PermissionSettings>> {
-  try {
-    const raw = await fs.readFile(filePath, "utf-8");
-    const parsed = JSON.parse(raw) as RawSettings;
-    return {
-      allow: normalizeRuleList(parsed.allow),
-      deny: normalizeRuleList(parsed.deny),
-      ...(normalizeMode(parsed.mode) ? { mode: normalizeMode(parsed.mode) } : {}),
-    };
-  } catch (error: unknown) {
-    const err = error as NodeJS.ErrnoException;
-    if (err?.code === "ENOENT") return {};
-    if (error instanceof SyntaxError) {
-      throw new Error(`Invalid JSON in permissions settings: ${filePath}`);
-    }
-    throw error;
+async function readPermissionsFromSettings(filePath: string): Promise<Partial<PermissionSettings>> {
+  // We THROW on parse errors here (matching the old behavior) so that a
+  // syntactically broken settings.json doesn't silently grant fewer
+  // permissions than the user thinks they configured. The MCP loader
+  // chooses the opposite policy (warn + skip) because partial MCP
+  // server configs are still useful — partial permission rules aren't.
+  const result = await readJsonSettingsFile<RawSettings>(filePath);
+  if (result.parseError) {
+    throw new Error(`Invalid JSON in permissions settings: ${filePath}`);
   }
+  if (!result.raw) return {};
+  return {
+    allow: normalizeRuleList(result.raw.allow),
+    deny: normalizeRuleList(result.raw.deny),
+    ...(normalizeMode(result.raw.mode) ? { mode: normalizeMode(result.raw.mode) } : {}),
+  };
 }
 
 export async function loadPermissionSettings(cwd: string): Promise<PermissionSettings> {
-  const userSettingsPath = path.join(os.homedir(), ".easy-agent", "settings.json");
-  const projectSettingsPath = path.join(cwd, ".easy-agent", "settings.json");
+  const { user: userSettingsPath, project: projectSettingsPath } = getSettingsPaths(cwd);
 
   const [userSettings, projectSettings] = await Promise.all([
-    readSettingsFile(userSettingsPath),
-    readSettingsFile(projectSettingsPath),
+    readPermissionsFromSettings(userSettingsPath),
+    readPermissionsFromSettings(projectSettingsPath),
   ]);
 
   return {

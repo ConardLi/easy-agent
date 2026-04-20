@@ -13,9 +13,6 @@
  * don't have to learn a second config file.
  */
 
-import * as fs from "node:fs/promises";
-import * as os from "node:os";
-import * as path from "node:path";
 import type {
   McpHTTPServerConfig,
   McpSSEServerConfig,
@@ -24,6 +21,8 @@ import type {
   ScopedMcpServerConfig,
 } from "../../types/mcp.js";
 import { logWarn } from "../../utils/log.js";
+import { getSettingsPaths } from "../../utils/paths.js";
+import { readJsonSettingsFile } from "../../utils/settings.js";
 
 interface RawSettings {
   mcpServers?: unknown;
@@ -134,24 +133,6 @@ function validateRemoteConfig(
   };
 }
 
-async function readSettingsFile(filePath: string): Promise<{
-  raw: RawSettings | null;
-  parseError?: string;
-}> {
-  try {
-    const text = await fs.readFile(filePath, "utf-8");
-    const parsed = JSON.parse(text) as RawSettings;
-    return { raw: parsed };
-  } catch (error: unknown) {
-    const err = error as NodeJS.ErrnoException;
-    if (err?.code === "ENOENT") return { raw: null };
-    if (error instanceof SyntaxError) {
-      return { raw: null, parseError: `Invalid JSON in ${filePath}: ${error.message}` };
-    }
-    return { raw: null, parseError: `Failed to read ${filePath}: ${(error as Error).message}` };
-  }
-}
-
 function extractScopedServers(
   raw: RawSettings | null,
   scope: "user" | "project",
@@ -184,13 +165,12 @@ function extractScopedServers(
  * whole CLI down).
  */
 export async function loadMcpConfigs(cwd: string): Promise<McpConfigLoadResult> {
-  const userPath = path.join(os.homedir(), ".easy-agent", "settings.json");
-  const projectPath = path.join(cwd, ".easy-agent", "settings.json");
+  const { user: userPath, project: projectPath } = getSettingsPaths(cwd);
 
   const errors: string[] = [];
   const [userFile, projectFile] = await Promise.all([
-    readSettingsFile(userPath),
-    readSettingsFile(projectPath),
+    readJsonSettingsFile<RawSettings>(userPath),
+    readJsonSettingsFile<RawSettings>(projectPath),
   ]);
   if (userFile.parseError) errors.push(userFile.parseError);
   if (projectFile.parseError) errors.push(projectFile.parseError);

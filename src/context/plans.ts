@@ -7,12 +7,9 @@
  */
 
 import * as fs from "node:fs/promises";
-import * as os from "node:os";
 import * as path from "node:path";
 import * as crypto from "node:crypto";
-
-const EASY_AGENT_HOME = path.join(os.homedir(), ".easy-agent");
-const PLANS_DIR = path.join(EASY_AGENT_HOME, "plans");
+import { getPlansRoot } from "../utils/paths.js";
 
 let cachedSlug: string | null = null;
 
@@ -32,15 +29,15 @@ export function resetPlanSlug(): void {
 }
 
 export function getPlansDirectory(): string {
-  return PLANS_DIR;
+  return getPlansRoot();
 }
 
 export function getPlanFilePath(): string {
-  return path.join(PLANS_DIR, `${getPlanSlug()}.md`);
+  return path.join(getPlansRoot(), `${getPlanSlug()}.md`);
 }
 
 export async function ensurePlansDirectory(): Promise<void> {
-  await fs.mkdir(PLANS_DIR, { recursive: true });
+  await fs.mkdir(getPlansRoot(), { recursive: true });
 }
 
 export async function writePlan(content: string): Promise<string> {

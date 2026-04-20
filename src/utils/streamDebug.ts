@@ -15,8 +15,7 @@
  */
 
 import { appendFileSync, mkdirSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
+import { getEasyAgentHome, getStreamDebugLogPath } from "./paths.js";
 
 const DEBUG_STREAM = process.env.EASY_AGENT_DEBUG_STREAM === "1";
 
@@ -24,13 +23,12 @@ let cachedLogPath: string | null = null;
 
 function resolveLogPath(): string {
   if (cachedLogPath) return cachedLogPath;
-  const dir = join(homedir(), ".easy-agent");
   try {
-    mkdirSync(dir, { recursive: true });
+    mkdirSync(getEasyAgentHome(), { recursive: true });
   } catch {
     /* ignore — appendFileSync will surface any real failure */
   }
-  cachedLogPath = join(dir, "stream-debug.log");
+  cachedLogPath = getStreamDebugLogPath();
   return cachedLogPath;
 }
 
