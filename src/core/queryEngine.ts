@@ -27,6 +27,8 @@ import {
   type TaskMode,
 } from "../state/taskModeStore.js";
 import { getTaskListId, resetTaskList } from "../state/taskStore.js";
+import { getMcpRegistry, getMcpRegistryEntry } from "../services/mcp/registry.js";
+import { reconnectMcpServer } from "../services/mcp/bootstrap.js";
 
 export type QueryEngineEvent =
   | AgenticLoopEvent
@@ -332,9 +334,11 @@ export class QueryEngine {
         yield {
           type: "command",
           kind: "info",
-          message: "Commands: /help /clear /cost /model [name|default] /mode [default|plan|auto] /tasks [task|todo|reset] /history /compact /exit /quit /bye",
+          message: "Commands: /help /clear /cost /model [name|default] /mode [default|plan|auto] /tasks [task|todo|reset] /mcp [tools <name>|reconnect <name>] /history /compact /exit /quit /bye",
         };
         return { handled: true };
+      case "mcp":
+        return yield* this.handleMcpCommand(args);
       case "mode": {
         const nextMode = args[0]?.trim();
         if (!nextMode) {
@@ -509,5 +513,152 @@ export class QueryEngine {
         };
         return { handled: true };
     }
+  }
+
+  /**
+   * Handle the `/mcp` slash command family.
+   *
+   *   /mcp                       — list every configured server + status + tool count
+   *   /mcp tools <name>          — show all tools exposed by one server
+   *   /mcp reconnect <name>      — drop cache + retry connection
+   *
+   * The output is rendered as a system notice (info/error tone), never sent
+   * to the model. Mirrors the source's `mcp.tsx` panel content but stripped
+   * to a text-only listing — Easy Agent doesn't need a full TUI panel for it.
+   */
+  private async *handleMcpCommand(args: string[]): AsyncGenerator<QueryEngineEvent, { handled: boolean }> {
+    const describeTransport = (config: import("../types/mcp.js").ScopedMcpServerConfig): string => {
+      if (config.type === "http") return `http: ${config.url}`;
+      if (config.type === "sse") return `sse: ${config.url}`;
+      return `stdio: ${config.command} ${(config.args ?? []).join(" ")}`.trim();
+    };
+
+    const [sub, ...rest] = args;
+
+    if (!sub) {
+      const entries = getMcpRegistry();
+      if (entries.length === 0) {
+        yield {
+          type: "command",
+          kind: "info",
+          message:
+            "MCP Servers (0 configured)\n\n" +
+            "No MCP servers configured. Add them under \"mcpServers\" in:\n" +
+            "  ~/.easy-agent/settings.json   (user-wide)\n" +
+            "  .easy-agent/settings.json      (project-only)",
+        };
+        return { handled: true };
+      }
+      const lines = [`MCP Servers (${entries.length} configured)`, ""];
+      for (const { connection, tools } of entries) {
+        const transport = describeTransport(connection.config);
+        if (connection.type === "connected") {
+          lines.push(`  ✓ ${connection.name}    connected   ${tools.length} tool(s)   (${transport})`);
+        } else if (connection.type === "failed") {
+          lines.push(`  ✗ ${connection.name}    failed      ${connection.error}`);
+        } else if (connection.type === "pending") {
+          const elapsedSec = Math.floor((Date.now() - connection.startedAt) / 1000);
+          lines.push(`  … ${connection.name}    connecting  (${elapsedSec}s elapsed; ${transport})`);
+        } else {
+          lines.push(`  - ${connection.name}    disabled`);
+        }
+      }
+      lines.push("", "Subcommands: /mcp tools <name> | /mcp reconnect <name>");
+      yield { type: "command", kind: "info", message: lines.join("\n") };
+      return { handled: true };
+    }
+
+    if (sub === "tools") {
+      const target = rest[0];
+      if (!target) {
+        yield { type: "command", kind: "error", message: "Usage: /mcp tools <serverName>" };
+        return { handled: true };
+      }
+      const entry = getMcpRegistryEntry(target);
+      if (!entry) {
+        yield { type: "command", kind: "error", message: `MCP server '${target}' is not configured.` };
+        return { handled: true };
+      }
+      if (entry.connection.type !== "connected") {
+        yield {
+          type: "command",
+          kind: "error",
+          message: `MCP server '${target}' is ${entry.connection.type}; cannot list tools.`,
+        };
+        return { handled: true };
+      }
+      if (entry.tools.length === 0) {
+        yield {
+          type: "command",
+          kind: "info",
+          message: `MCP server '${target}' exposes no tools (server may not declare the 'tools' capability).`,
+        };
+        return { handled: true };
+      }
+      const lines = [`MCP tools from '${target}' (${entry.tools.length})`, ""];
+      for (const tool of entry.tools) {
+        const ro = tool.isReadOnly() ? "[ro]" : "    ";
+        const desc = tool.description.replace(/\s+/g, " ").trim();
+        const truncated = desc.length > 100 ? `${desc.slice(0, 100)}…` : desc;
+        lines.push(`  ${ro} ${tool.name}`);
+        if (truncated) lines.push(`        ${truncated}`);
+      }
+      yield { type: "command", kind: "info", message: lines.join("\n") };
+      return { handled: true };
+    }
+
+    if (sub === "reconnect") {
+      const target = rest[0];
+      if (!target) {
+        yield { type: "command", kind: "error", message: "Usage: /mcp reconnect <serverName>" };
+        return { handled: true };
+      }
+      const entry = getMcpRegistryEntry(target);
+      if (!entry) {
+        yield { type: "command", kind: "error", message: `MCP server '${target}' is not configured.` };
+        return { handled: true };
+      }
+      try {
+        const next = await reconnectMcpServer(target);
+        if (!next) {
+          yield { type: "command", kind: "error", message: `MCP server '${target}' was removed before reconnect completed.` };
+          return { handled: true };
+        }
+        if (next.type === "connected") {
+          const newEntry = getMcpRegistryEntry(target);
+          yield {
+            type: "command",
+            kind: "info",
+            message: `MCP server '${target}' reconnected (${newEntry?.tools.length ?? 0} tool(s)).`,
+          };
+        } else if (next.type === "failed") {
+          yield {
+            type: "command",
+            kind: "error",
+            message: `MCP server '${target}' reconnect failed: ${next.error}`,
+          };
+        } else {
+          yield {
+            type: "command",
+            kind: "info",
+            message: `MCP server '${target}' is currently disabled.`,
+          };
+        }
+      } catch (error) {
+        yield {
+          type: "command",
+          kind: "error",
+          message: `MCP server '${target}' reconnect threw: ${(error as Error).message}`,
+        };
+      }
+      return { handled: true };
+    }
+
+    yield {
+      type: "command",
+      kind: "error",
+      message: `Unknown /mcp subcommand: ${sub}. Try /mcp, /mcp tools <name>, or /mcp reconnect <name>.`,
+    };
+    return { handled: true };
   }
 }

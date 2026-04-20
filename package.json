@@ -12,7 +12,8 @@
     "build": "tsc",
     "start": "node dist/entrypoint/cli.js",
     "test:streaming": "tsx src/scripts/test-streaming.ts",
-    "test:tasks": "tsx src/scripts/test-tasks.ts"
+    "test:tasks": "tsx src/scripts/test-tasks.ts",
+    "test:mcp": "tsx src/scripts/test-mcp.ts"
   },
   "keywords": [
     "agent",
@@ -30,6 +31,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.85.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "chalk": "^5.6.2",
     "dotenv": "^17.4.1",
     "ink": "^7.0.0",

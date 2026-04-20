@@ -1,5 +1,10 @@
 /**
  * Tool Registry — Central registry for all available tools.
+ *
+ * Stage 16: MCP tools are registered at startup via `registerMcpTools()`.
+ * Built-in tools live in BUILTIN_TOOLS (compile-time list); MCP tools are
+ * collected separately so they can be reset/refreshed independently when
+ * the user runs `/mcp reconnect`.
  */
 
 import type Anthropic from "@anthropic-ai/sdk";
@@ -21,7 +26,7 @@ import { taskGetTool } from "./taskGetTool.js";
 import { taskListTool } from "./taskListTool.js";
 import type { PermissionMode } from "../permissions/permissions.js";
 
-const ALL_TOOLS: Tool[] = [
+const BUILTIN_TOOLS: Tool[] = [
   fileReadTool,
   fileWriteTool,
   fileEditTool,
@@ -38,12 +43,27 @@ const ALL_TOOLS: Tool[] = [
   exitPlanModeTool,
 ];
 
+let mcpTools: Tool[] = [];
+
+/**
+ * Replace the registry of MCP-provided tools. Called once at startup after
+ * connecting to all MCP servers, and again after `/mcp reconnect`.
+ */
+export function registerMcpTools(tools: Tool[]): void {
+  mcpTools = [...tools];
+}
+
+/** Drop the MCP-provided tools — used before re-registering after reconnect. */
+export function clearMcpTools(): void {
+  mcpTools = [];
+}
+
 export function getAllTools(): Tool[] {
-  return ALL_TOOLS.filter((tool) => tool.isEnabled());
+  return [...BUILTIN_TOOLS, ...mcpTools].filter((tool) => tool.isEnabled());
 }
 
 export function findToolByName(name: string): Tool | undefined {
-  return ALL_TOOLS.find((tool) => tool.name === name);
+  return [...BUILTIN_TOOLS, ...mcpTools].find((tool) => tool.name === name);
 }
 
 /**
@@ -54,6 +74,10 @@ export function findToolByName(name: string): Tool | undefined {
  * Only the plan mode transition tools are toggled:
  * - In plan mode: hide EnterPlanMode, show ExitPlanMode
  * - Outside plan mode: show EnterPlanMode, hide ExitPlanMode
+ *
+ * MCP tools are always included; their visibility-in-plan is handled by
+ * `checkPermission()` reading `tool.isReadOnly()` (which maps to MCP's
+ * `annotations.readOnlyHint`).
  */
 export function getToolsApiParams(mode?: PermissionMode): Anthropic.Tool[] {
   const tools = getAllTools();

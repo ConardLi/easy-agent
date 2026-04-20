@@ -117,6 +117,18 @@ function buildCommandNotice(message: string, kind: "info" | "error"): SystemNoti
     };
   }
 
+  if (
+    message.startsWith("MCP Servers") ||
+    message.startsWith("MCP tools from") ||
+    message.startsWith("MCP server '")
+  ) {
+    return {
+      tone: kind,
+      title: "MCP",
+      body: message,
+    };
+  }
+
   if (message.startsWith("Unknown command:")) {
     return {
       tone: "error",

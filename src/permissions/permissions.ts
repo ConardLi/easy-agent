@@ -100,8 +100,8 @@ async function readSettingsFile(filePath: string): Promise<Partial<PermissionSet
 }
 
 export async function loadPermissionSettings(cwd: string): Promise<PermissionSettings> {
-  const userSettingsPath = path.join(os.homedir(), ".agent", "settings.json");
-  const projectSettingsPath = path.join(cwd, ".agent", "settings.json");
+  const userSettingsPath = path.join(os.homedir(), ".easy-agent", "settings.json");
+  const projectSettingsPath = path.join(cwd, ".easy-agent", "settings.json");
 
   const [userSettings, projectSettings] = await Promise.all([
     readSettingsFile(userSettingsPath),
@@ -140,6 +140,15 @@ export function matchesPermissionRule(rule: string, toolName: string, input: Rec
   const normalizedRule = rule.trim();
   if (!normalizedRule) return false;
   if (normalizedRule === toolName) return true;
+
+  // Wildcard match for MCP tool names: `mcp__github__*` matches every tool
+  // exposed by the github MCP server. Source code uses fully qualified
+  // `mcp__server__tool` names for permission rule matching to avoid
+  // collisions with builtin tool names — we follow the same convention
+  // and additionally support a trailing `*` for whole-server allow/deny.
+  if (normalizedRule.startsWith("mcp__") && normalizedRule.includes("*")) {
+    return wildcardToRegExp(normalizedRule).test(toolName);
+  }
 
   const match = normalizedRule.match(/^([A-Za-z]+)\((.*)\)$/);
   if (!match) return false;

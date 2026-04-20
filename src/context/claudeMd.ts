@@ -1,7 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
-const GLOBAL_AGENT_MD = path.join(process.env.HOME || "~", ".agent", "AGENT.md");
+const GLOBAL_AGENT_MD = path.join(process.env.HOME || "~", ".easy-agent", "AGENT.md");
 const AGENT_MD_NAME = "AGENT.md";
 
 function stripHtmlComments(content: string): string {
