@@ -102,7 +102,7 @@ The project follows a 30-phase roadmap designed to recreate the full Claude Code
 | 13 | Plan mode | [`step/step13.js`](./step/step13.js) | ✅ Done |
 | 14 | TodoWrite session task tracking | [`step/step14.js`](./step/step14.js) | ✅ Done |
 | 15 | Task management system (V2) | [`step/step15.js`](./step/step15.js) | ✅ Done |
-| 16 | MCP protocol support | `planned` | ⏳ Not started |
+| 16 | MCP protocol support | [`step/step16.js`](./step/step16.js) | ✅ Done |
 | 17 | Skills system | `planned` | ⏳ Not started |
 | 18 | Sandbox | `planned` | ⏳ Not started |
 | 19 | Sub-agents | `planned` | ⏳ Not started |
