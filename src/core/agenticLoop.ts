@@ -15,6 +15,10 @@ import {
 import { streamMessage } from "../services/api/streaming.js";
 import { findToolByName } from "../tools/index.js";
 import { truncateToolResult, type ToolContext, type ToolResult } from "../tools/Tool.js";
+import {
+  activateConditionalSkillsForPaths,
+  extractToolFilePaths,
+} from "../skills/conditional.js";
 import { tokenCountWithEstimation } from "../utils/tokens.js";
 import { isAtBlockingLimit, calculateTokenWarningState, type TokenWarningResult } from "../context/autoCompact.js";
 import type { ContentBlock, ToolUseBlock, Usage } from "../types/message.js";
@@ -196,6 +200,17 @@ export async function runTools(
         ...(result.isError && { is_error: true }),
       });
       executions.push({ toolUseId: block.id, toolName: block.name, toolInput, result });
+
+      // Promote any conditional skills whose `paths` patterns match the
+      // file the model just touched. The activation is sticky for the
+      // remainder of the session — the new skill will appear in the next
+      // system prompt rebuild (next user submit).
+      if (!result.isError) {
+        const filePaths = extractToolFilePaths(block.name, toolInput);
+        if (filePaths.length > 0) {
+          activateConditionalSkillsForPaths(filePaths, context.cwd);
+        }
+      }
     } catch (error: unknown) {
       const errorMessage = error instanceof Error
         ? (error.stack ?? error.message)

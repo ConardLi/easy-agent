@@ -4,6 +4,8 @@ import { promisify } from "node:util";
 import { loadAgentMdContext } from "./claudeMd.js";
 import { buildMemoryPromptInstructions, ensureMemoryDirExists, formatMemorySystemLocation, readMemoryEntrypoint, shouldIgnoreMemory } from "./memory/memdir.js";
 import { buildMemoryAccessGuidance, buildMemoryExclusionGuidance, buildMemoryPersistenceBoundaryGuidance, buildMemoryTypeGuidance, buildMemoryValidationGuidance } from "./memory/memoryTypes.js";
+import { formatSkillsSystemReminder } from "../skills/budget.js";
+import { getModelVisibleSkills } from "../skills/registry.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -117,12 +119,21 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions): Prom
     memoryEntrypoint ? `Memory index:\n${memoryEntrypoint}` : "",
   ].filter(Boolean);
 
+  // Skill discovery listing — see skills/budget.ts for the budget logic.
+  // Wrapped as a <system-reminder> block (not a top-level instruction) so the
+  // model treats it as ambient context that may or may not apply this turn.
+  // Conditional skills (frontmatter `paths`) only appear here AFTER they've
+  // been promoted in by activateConditionalSkillsForPaths(); see
+  // skills/conditional.ts.
+  const skillsReminder = formatSkillsSystemReminder(getModelVisibleSkills());
+
   const dynamicSections = [
     SYSTEM_PROMPT_DYNAMIC_START,
     formatEnvironmentContext(environmentContext),
     agentMdContext ? "Project memory (AGENT.md):\n" + agentMdContext : "",
     memorySections.length > 0 ? memorySections.join("\n\n") : "",
     options.additionalInstructions ? "Session instructions:\n" + options.additionalInstructions : "",
+    skillsReminder,
     SYSTEM_PROMPT_DYNAMIC_END,
   ].filter(Boolean);
 

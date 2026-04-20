@@ -18,7 +18,36 @@ function isInternalMessage(message: MessageParam): boolean {
   if (content.startsWith("This session is being continued from a previous conversation")) return true;
   if (content.startsWith("[plan_mode_attachment]")) return true;
   if (content.startsWith("[plan_mode_exit]")) return true;
+  // `/<skill-name>` invocations expand into TWO user messages (mirroring
+  // source's processSlashCommand pattern): a visible "command bubble"
+  // marker (handled by extractCommandMarker below) and a hidden body
+  // tagged with this prefix. The model receives the body as the real
+  // prompt, but the user already sees the bubble + the assistant's
+  // streaming reply, so the raw SKILL.md dump would just be noise here.
+  if (content.startsWith("[skill_invocation:")) return true;
   return false;
+}
+
+/**
+ * Detect a slash-command marker user message and pull the
+ * `<command-name>` + `<command-args>` tags out for rendering. Returns null
+ * for plain user text. The format mirrors source's `formatCommandInputTags`
+ * in claude-code-source-code/src/utils/messages.ts so we stay
+ * source-compatible (matters once we add /resume).
+ */
+function extractCommandMarker(
+  message: MessageParam,
+): { name: string; args: string } | null {
+  if (typeof message.content !== "string") return null;
+  const text = message.content;
+  if (!text.includes("<command-name>")) return null;
+  const nameMatch = text.match(/<command-name>([^<]*)<\/command-name>/);
+  if (!nameMatch) return null;
+  const argsMatch = text.match(/<command-args>([^<]*)<\/command-args>/);
+  return {
+    name: nameMatch[1] ?? "",
+    args: (argsMatch?.[1] ?? "").trim(),
+  };
 }
 
 /**
@@ -111,6 +140,21 @@ export function ConversationView({ messages }: ConversationViewProps): React.Rea
 
         if (message.role === "user") {
           if (typeof message.content === "string") {
+            // Slash-command marker (`<command-name>/skill</command-name>` …):
+            // render as a styled "❯ /name args" command bubble. Mirrors
+            // source's UserCommandMessage component so users see the same
+            // breadcrumb whether the command was a built-in or a skill.
+            const marker = extractCommandMarker(message);
+            if (marker) {
+              const display = `/${marker.name.replace(/^\//, "")}` +
+                (marker.args ? ` ${marker.args}` : "");
+              return (
+                <Box key={`u${index}`} marginTop={1}>
+                  <Text color="cyan" dimColor>{"❯ "}</Text>
+                  <Text color="cyan">{display}</Text>
+                </Box>
+              );
+            }
             return (
               <Box key={`u${index}`} marginTop={1}>
                 <Text color="green" bold>{"❯ "}</Text>

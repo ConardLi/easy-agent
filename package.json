@@ -13,7 +13,8 @@
     "start": "node dist/entrypoint/cli.js",
     "test:streaming": "tsx src/scripts/test-streaming.ts",
     "test:tasks": "tsx src/scripts/test-tasks.ts",
-    "test:mcp": "tsx src/scripts/test-mcp.ts"
+    "test:mcp": "tsx src/scripts/test-mcp.ts",
+    "test:skills": "tsx src/scripts/test-skills.ts"
   },
   "keywords": [
     "agent",
@@ -34,8 +35,10 @@
     "@modelcontextprotocol/sdk": "^1.29.0",
     "chalk": "^5.6.2",
     "dotenv": "^17.4.1",
+    "ignore": "^7.0.5",
     "ink": "^7.0.0",
     "proper-lockfile": "^4.1.2",
-    "react": "^19.2.4"
+    "react": "^19.2.4",
+    "yaml": "^2.8.3"
   }
 }

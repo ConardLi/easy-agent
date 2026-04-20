@@ -29,6 +29,11 @@ import {
 import { getTaskListId, resetTaskList } from "../state/taskStore.js";
 import { getMcpRegistry, getMcpRegistryEntry } from "../services/mcp/registry.js";
 import { reconnectMcpServer } from "../services/mcp/bootstrap.js";
+import {
+  findSkill,
+  getAllUserInvocableSkills,
+} from "../skills/registry.js";
+import type { Skill } from "../skills/types.js";
 
 export type QueryEngineEvent =
   | AgenticLoopEvent
@@ -171,8 +176,114 @@ export class QueryEngine {
     }
 
     if (trimmed.startsWith("/")) {
+      // User-invoked skill: `/skill-name [args]`. Resolve the skill against
+      // the registry; if it matches, expand into the source's two-message
+      // pattern and submit normally. Falls through to handleCommand() for
+      // /help, /mcp, /clear, etc. when no skill matches.
+      //
+      // Source reference (claude-code-source-code/src/utils/processUserInput
+      // /processSlashCommand.tsx ~ line 1237 `getMessagesForPromptSlashCommand`):
+      //
+      //   const messages = [
+      //     createUserMessage({ content: metadata }),                  // visible bubble
+      //     createUserMessage({ content: skillBody, isMeta: true }),   // hidden, model-only
+      //     ...
+      //   ]
+      //
+      // The metadata message wraps `<command-name>/foo</command-name>` +
+      // `<command-message>foo</command-message>` + `<command-args>...</...>`
+      // tags. The UI's `UserCommandMessage` extracts those tags and renders
+      // a styled "❯ /foo args" command bubble that stays in the transcript
+      // forever (unlike a transient SystemNotice). The body message is
+      // marked `isMeta: true` so the UI hides it from the human view while
+      // the model still receives it as a regular user prompt.
+      //
+      // We don't have an `isMeta` field on `MessageParam`, so we use a
+      // string-prefix sentinel ("[skill_invocation:<name>]\n") for the body
+      // and the source's exact XML format for the marker — both matched in
+      // ConversationView.
+      const skillExpansion = this.tryExpandSkillCommand(trimmed);
+      if (skillExpansion) {
+        const markerMessage: MessageParam = {
+          role: "user",
+          content: skillExpansion.markerContent,
+        };
+        this.messages = [...this.messages, markerMessage];
+        yield { type: "messages_updated", messages: [...this.messages] };
+        return yield* this.submitInternal(skillExpansion.bodyText);
+      }
       return yield* this.handleCommand(trimmed);
     }
+
+    return yield* this.submitInternal(trimmed);
+  }
+
+  /**
+   * Expand `/skill-name [args]` into the two-message pattern source uses:
+   *   - `markerContent` — short XML block consumed by the UI to render a
+   *     styled "❯ /skill-name args" command bubble in the transcript.
+   *   - `bodyText` — the substituted SKILL.md body that becomes the actual
+   *     prompt for the model. Prefixed with `[skill_invocation:<name>]\n`
+   *     so the conversation view filters it out (the marker bubble already
+   *     tells the user what they ran; rendering the SKILL.md body as a
+   *     giant user dump is exactly the UX bug we're fixing).
+   *
+   * Returns null when the input doesn't match any loaded skill — the caller
+   * falls back to the generic /command dispatcher in that case.
+   */
+  private tryExpandSkillCommand(
+    input: string,
+  ): { skill: Skill; markerContent: string; bodyText: string } | null {
+    const match = input.match(/^\/([a-zA-Z0-9_-]+)(?:\s+(.*))?$/);
+    if (!match) return null;
+    const [, name, rawArgs] = match;
+    const skill = findSkill(name);
+    if (!skill) return null;
+
+    const args = rawArgs?.trim() ?? "";
+    const dir = skill.baseDir.split(/[\\/]/).join("/");
+    const sessionId = this.toolContext.sessionId ?? "unknown-session";
+
+    // Inject allowed-tools into session-allow rules now (the user just
+    // explicitly asked for this skill to run — no need to re-prompt for
+    // each tool call inside it). Same effect as the SkillTool's
+    // contextModifier when the model invokes a skill.
+    if (skill.frontmatter.allowedTools.length > 0) {
+      this.addSessionAllowRules(skill.frontmatter.allowedTools);
+    }
+
+    const body = skill.body
+      .replaceAll("${CLAUDE_SKILL_DIR}", dir)
+      .replaceAll("${CLAUDE_SESSION_ID}", sessionId)
+      .replaceAll("$ARGUMENTS", args);
+
+    // Match `formatCommandInputTags` from source/utils/messages.ts:577.
+    // ConversationView's command-bubble renderer parses these exact tags;
+    // changing the format here also requires updating extractCommandTag().
+    const markerLines = [
+      `<command-message>${skill.name}</command-message>`,
+      `<command-name>/${skill.name}</command-name>`,
+    ];
+    if (args) {
+      markerLines.push(`<command-args>${args}</command-args>`);
+    }
+    const markerContent = markerLines.join("\n");
+
+    const header =
+      `[skill_invocation:${skill.name}]\n` +
+      `Run skill "${skill.name}" with the following instructions. ` +
+      `Base directory for this skill: ${dir}.\n\n`;
+    return { skill, markerContent, bodyText: header + body };
+  }
+
+  /**
+   * The original `submitMessage` body, factored out so user-invoked skills
+   * can re-enter it with their expanded prompt text. Everything below this
+   * point is identical to the pre-skills implementation.
+   */
+  private async *submitInternal(
+    trimmed: string,
+  ): AsyncGenerator<QueryEngineEvent, { handled: boolean; reason?: LoopTerminationReason }> {
 
     const previewSystemParts = await buildSystemPrompt({
       cwd: this.toolContext.cwd,
@@ -334,11 +445,13 @@ export class QueryEngine {
         yield {
           type: "command",
           kind: "info",
-          message: "Commands: /help /clear /cost /model [name|default] /mode [default|plan|auto] /tasks [task|todo|reset] /mcp [tools <name>|reconnect <name>] /history /compact /exit /quit /bye",
+          message: "Commands: /help /clear /cost /model [name|default] /mode [default|plan|auto] /tasks [task|todo|reset] /mcp [tools <name>|reconnect <name>] /skills /history /compact /<skill-name> [args] /exit /quit /bye",
         };
         return { handled: true };
       case "mcp":
         return yield* this.handleMcpCommand(args);
+      case "skills":
+        return yield* this.handleSkillsCommand();
       case "mode": {
         const nextMode = args[0]?.trim();
         if (!nextMode) {
@@ -513,6 +626,43 @@ export class QueryEngine {
         };
         return { handled: true };
     }
+  }
+
+  /**
+   * Handle `/skills` — read-only listing of every skill the loader picked
+   * up at startup, split by visibility (model-visible vs hidden vs
+   * conditionally-latent). No subcommands yet — `/skills reload` is
+   * deferred to a later stage; users can restart the CLI to pick up
+   * SKILL.md edits.
+   */
+  private async *handleSkillsCommand(): AsyncGenerator<QueryEngineEvent, { handled: boolean }> {
+    const all = getAllUserInvocableSkills();
+    if (all.length === 0) {
+      yield {
+        type: "command",
+        kind: "info",
+        message:
+          "Skills (0 loaded)\n\n" +
+          "No skills found. Add a directory containing SKILL.md to:\n" +
+          "  ~/.easy-agent/skills/<name>/SKILL.md   (user-wide)\n" +
+          "  .easy-agent/skills/<name>/SKILL.md     (project-only)",
+      };
+      return { handled: true };
+    }
+    const lines = [`Skills (${all.length} loaded)`, ""];
+    for (const skill of all) {
+      const flags: string[] = [skill.source];
+      if (skill.frontmatter.disableModelInvocation) flags.push("hidden-from-model");
+      if (skill.frontmatter.paths) flags.push(`conditional: ${skill.frontmatter.paths.join(",")}`);
+      if (skill.frontmatter.allowedTools.length > 0) {
+        flags.push(`allowed-tools: ${skill.frontmatter.allowedTools.join(",")}`);
+      }
+      lines.push(`  /${skill.name}    ${skill.description}`);
+      lines.push(`        [${flags.join("] [")}]`);
+    }
+    lines.push("", "Invoke a skill with /<name> [args], or let the model call it via the Skill tool.");
+    yield { type: "command", kind: "info", message: lines.join("\n") };
+    return { handled: true };
   }
 
   /**

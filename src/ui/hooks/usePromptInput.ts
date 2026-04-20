@@ -26,19 +26,29 @@ interface UsePromptInputOptions {
   isPlanExitPrompt: boolean;
   permissionMode: string;
   taskMode: TaskMode;
+  /**
+   * Extra `/` commands to merge into the suggestion list. Used for the
+   * skill-registered commands (`/<skill-name>`) so the user sees them
+   * alongside built-ins like /help, /skills, /mcp. The caller computes
+   * this from the live skill registry on every render so newly-loaded
+   * skills appear without restarting the suggestion machinery.
+   */
+  extraCommands?: CommandSuggestion[];
   onSubmit: (text: string) => Promise<unknown> | unknown;
   onExit: () => void;
   onInterrupt: () => boolean;
   onPermissionDecision: (decision: PermissionDecision) => boolean;
 }
 
-const ALL_COMMANDS: CommandSuggestion[] = [
+const BUILTIN_COMMANDS: CommandSuggestion[] = [
   { name: "/help", description: "Show available commands" },
   { name: "/clear", description: "Clear conversation history" },
   { name: "/cost", description: "Show session token usage" },
   { name: "/model", description: "Inspect current model or override it for this session" },
   { name: "/mode", description: "Inspect or switch permission mode (default/plan/auto)" },
   { name: "/tasks", description: "Switch task tracking system (task=persistent V2, todo=session V1)" },
+  { name: "/mcp", description: "Inspect / reconnect MCP servers" },
+  { name: "/skills", description: "List loaded skills (user + project scope)" },
   { name: "/history", description: "Show saved sessions for this project" },
   { name: "/compact", description: "Compact the conversation context" },
   { name: "/exit", description: "Exit the session" },
@@ -61,6 +71,7 @@ export function usePromptInput({
   isPlanExitPrompt,
   permissionMode,
   taskMode,
+  extraCommands,
   onSubmit,
   onExit,
   onInterrupt,
@@ -231,8 +242,18 @@ export function usePromptInput({
       return [];
     }
     const keyword = inputValue.trim().toLowerCase();
-    return ALL_COMMANDS.filter((item) => item.name.startsWith(keyword)).slice(0, 6);
-  }, [inputValue]);
+    // Built-ins first, then dynamic skill commands. We de-dupe by name so
+    // a project-level skill that shadows a built-in (unlikely but possible
+    // once users start naming their own skills) doesn't appear twice.
+    const seen = new Set<string>();
+    const merged: CommandSuggestion[] = [];
+    for (const cmd of [...BUILTIN_COMMANDS, ...(extraCommands ?? [])]) {
+      if (seen.has(cmd.name)) continue;
+      seen.add(cmd.name);
+      merged.push(cmd);
+    }
+    return merged.filter((item) => item.name.startsWith(keyword)).slice(0, 8);
+  }, [inputValue, extraCommands]);
 
   const showCommandSuggestions = filteredCommands.length > 0 && !showModeSelector && !showTaskModeSelector;
 

@@ -12,6 +12,8 @@ import { TodoList } from "./components/TodoList.js";
 import { ToolCallList } from "./components/ToolCallList.js";
 import { usePromptInput } from "./hooks/usePromptInput.js";
 import { useAgentSession } from "./hooks/useAgentSession.js";
+import { getAllUserInvocableSkills } from "../skills/registry.js";
+import type { CommandSuggestion } from "./types.js";
 
 interface AppProps {
   model: string;
@@ -40,12 +42,33 @@ export function App({ model, permissionMode, shouldResume, resumeSessionId }: Ap
   const effectiveSpinnerLabel = state.taskMode === "task"
     ? (inProgressTask?.activeForm ?? inProgressTask?.subject ?? state.spinnerLabel)
     : (inProgressTodo?.activeForm ?? state.spinnerLabel);
+  // Pull skill `/<name>` commands from the live registry on every render
+  // so newly activated conditional skills (e.g. test-reviewer after the
+  // model reads a *.test.ts file) appear in the suggestion list without
+  // the user having to restart. Computing inline is fine — the registry
+  // is an in-memory Map and we only render on existing state changes.
+  const skillCommands: CommandSuggestion[] = React.useMemo(
+    () =>
+      getAllUserInvocableSkills().map((skill) => ({
+        name: `/${skill.name}`,
+        description:
+          skill.description.length > 80
+            ? `${skill.description.slice(0, 77)}…`
+            : skill.description,
+      })),
+    // Re-derive whenever the message log grows — that's our cheap proxy
+    // for "something happened that may have activated a skill". The list
+    // is tiny so the cost is negligible.
+    [state.messages.length, state.toolCalls.length],
+  );
+
   const { inputValue, commandSuggestions, modeSuggestions, taskModeSuggestions } = usePromptInput({
     isLoading: state.isLoading,
     hasPermissionPrompt: Boolean(state.permissionPrompt) && !isPlanExitActive,
     isPlanExitPrompt: false,
     permissionMode: state.permissionMode,
     taskMode: state.taskMode,
+    extraCommands: skillCommands,
     onSubmit: actions.submit,
     onExit: exit,
     onInterrupt: actions.interrupt,

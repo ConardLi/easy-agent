@@ -29,6 +29,7 @@ import { formatToolInputPreview } from "../utils/toolCardFormat.js";
 import { clearTodos, getTodos, subscribeTodos } from "../../state/todoStore.js";
 import type { TodoItem } from "../../types/todo.js";
 import { getTaskListId, listTasks, subscribeTasks } from "../../state/taskStore.js";
+import { findSkill } from "../../skills/registry.js";
 import {
   getTaskMode,
   subscribeTaskMode,
@@ -86,6 +87,9 @@ function buildCommandNotice(message: string, kind: "info" | "error"): SystemNoti
         "/model [name|default]  Inspect or override the session model",
         "/mode [default|plan|auto]  Inspect or switch permission mode",
         "/tasks [task|todo|reset]  Switch task system or reset the task graph",
+        "/mcp  Inspect MCP servers and their tools",
+        "/skills  List loaded skills (user + project scope)",
+        "/<skill-name> [args]  Run a registered skill as a chat turn",
         "/history  Show saved sessions for this project",
         "/compact  Compact conversation context",
         "/exit | /quit | /bye  Exit session",
@@ -125,6 +129,14 @@ function buildCommandNotice(message: string, kind: "info" | "error"): SystemNoti
     return {
       tone: kind,
       title: "MCP",
+      body: message,
+    };
+  }
+
+  if (message.startsWith("Skills (") || message === "No skills loaded.") {
+    return {
+      tone: kind,
+      title: "Skills",
       body: message,
     };
   }
@@ -479,13 +491,34 @@ export function useAgentSession({
     }
 
     const isSlashCommand = trimmed.startsWith("/");
+    // Slash commands fall into two categories that need different UX:
+    //   1. *System* commands (/help, /cost, /model, /skills, /mcp, …) —
+    //      synchronous, never call the LLM, just print a notice.
+    //   2. *Skill* commands (/<skill-name> [args]) — expand into a real
+    //      user prompt and engage the full agentic loop, exactly like a
+    //      typed chat message.
+    // Without this distinction every `/` input was treated as case (1):
+    // no spinner, no streaming, no transcript entry — which made skill
+    // invocations feel broken even though events were flowing through
+    // the engine. Detect skill commands by peeking at the registry here
+    // and treat them as LLM-triggering input below.
+    const skillCommandName = isSlashCommand
+      ? trimmed.slice(1).split(/\s+/, 1)[0]?.toLowerCase() ?? ""
+      : "";
+    const isSkillCommand =
+      isSlashCommand && !!skillCommandName && !!findSkill(skillCommandName);
+    const isLlmTriggering = !isSlashCommand || isSkillCommand;
 
     cancelPendingText();
     setStreamingText("");
     setToolCalls([]);
     setSystemNotice(null);
-    if (!isSlashCommand) {
+    if (isLlmTriggering) {
       setLastUsage(null);
+      // Persist what the user actually typed (`/hello-world Easy Agent`)
+      // rather than the expanded SKILL.md body. The expanded prompt is
+      // an internal/wire-only artifact — keeping the transcript clean
+      // means /resume replays the same UX the user originally saw.
       await appendTranscriptEntry(toolContext.cwd, sessionIdRef.current, {
         type: "message",
         timestamp: new Date().toISOString(),
@@ -494,7 +527,7 @@ export function useAgentSession({
       });
     }
     setPermissionPrompt(null);
-    const needsLoading = !isSlashCommand || trimmed.startsWith("/compact");
+    const needsLoading = isLlmTriggering || trimmed.startsWith("/compact");
     setIsLoading(needsLoading);
     setSpinnerLabel(trimmed.startsWith("/compact") ? "Compacting" : "Thinking");
 

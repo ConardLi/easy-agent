@@ -3,3 +3,5 @@ dist/
 *.tsbuildinfo
 .env
 .DS_Store
+.claude
+.easy-agent
