@@ -103,7 +103,7 @@ The project follows a 30-phase roadmap designed to recreate the full Claude Code
 | 14 | TodoWrite session task tracking | [`step/step14.js`](./step/step14.js) | ✅ Done |
 | 15 | Task management system (V2) | [`step/step15.js`](./step/step15.js) | ✅ Done |
 | 16 | MCP protocol support | [`step/step16.js`](./step/step16.js) | ✅ Done |
-| 17 | Skills system | `planned` | ⏳ Not started |
+| 17 | Skills system | [`step/step17.js`](./step/step17.js) | ✅ Done |
 | 18 | Sandbox | `planned` | ⏳ Not started |
 | 19 | Sub-agents | `planned` | ⏳ Not started |
 | 20 | Custom agent system | `planned` | ⏳ Not started |
@@ -185,7 +185,7 @@ The next major milestones are:
 
 1. a fuller plan-mode workflow
 2. task management system
-3. MCP, skills, and extensibility primitives
+3. extensibility primitives beyond MCP and skills
 4. stronger configuration and safety boundaries
 5. sub-agent and multi-agent collaboration
 6. multi-provider architecture

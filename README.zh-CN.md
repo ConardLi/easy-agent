@@ -103,7 +103,7 @@ easy-agent/
 | 14 | TodoWrite 会话任务跟踪 | [`step/step14.js`](./step/step14.js) | ✅ 已完成 |
 | 15 | 任务管理系统（V2） | [`step/step15.js`](./step/step15.js) | ✅ 已完成 |
 | 16 | MCP 协议支持 | [`step/step16.js`](./step/step16.js) | ✅ 已完成 |
-| 17 | Skills 系统 | `planned` | ⏳ 未开始 |
+| 17 | Skills 系统 | [`step/step17.js`](./step/step17.js) | ✅ 已完成 |
 | 18 | Sandbox | `planned` | ⏳ 未开始 |
 | 19 | Sub-Agent | `planned` | ⏳ 未开始 |
 | 20 | 自定义 Agent 系统 | `planned` | ⏳ 未开始 |
@@ -185,7 +185,7 @@ agent --dump-system-prompt
 
 1. 更完整的 Plan Mode 工作流
 2. 任务管理系统
-3. MCP、Skills 与扩展机制
+3. MCP 与 Skills 之外的扩展机制
 4. 更强的配置体系与安全边界
 5. Sub-Agent 与多 Agent 协作
 6. 多 Provider 架构
