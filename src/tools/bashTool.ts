@@ -1,9 +1,48 @@
 import { spawn } from "node:child_process";
 import type { Tool, ToolContext, ToolResult } from "./Tool.js";
+import {
+  annotateStderrWithSandboxFailures,
+  buildSandboxProfile,
+  loadSandboxSettings,
+  shouldUseSandbox,
+  wrapWithSandbox,
+  type ResolvedSandboxSettings,
+} from "../sandbox/index.js";
 
 interface BashInput {
   command: string;
   timeout?: number;
+  /**
+   * Per-call escape: if true AND the user's policy allows model escapes
+   * (`sandbox.allowUnsandboxedCommands`), this command runs OUTSIDE the
+   * sandbox even when sandboxing is enabled. The model is encouraged to
+   * leave this off — see the description below.
+   */
+  dangerouslyDisableSandbox?: boolean;
+}
+
+/**
+ * Build the SandboxProfile to feed to wrapWithSandbox(). We re-load
+ * sandbox settings + permission rules on every call so that the user
+ * approving a permission rule mid-session takes effect on the next
+ * Bash command — no restart required (matches source code's
+ * settingsChangeDetector + refreshConfig pattern).
+ */
+async function buildProfileForCwd(
+  cwd: string,
+  settings: ResolvedSandboxSettings,
+) {
+  // Dynamic import: bashTool ⇄ permissions form a static-import cycle
+  // (permissions wants `isReadOnlyCommand` from us). We break it here
+  // — this path only runs when sandboxing is on, so the extra import
+  // cost is negligible.
+  const { loadPermissionSettings } = await import("../permissions/permissions.js");
+  const permissionSettings = await loadPermissionSettings(cwd);
+  return buildSandboxProfile({
+    cwd,
+    settings,
+    permissions: { allow: permissionSettings.allow, deny: permissionSettings.deny },
+  });
 }
 
 const DEFAULT_TIMEOUT_MS = 120_000;
@@ -60,6 +99,11 @@ export const bashTool: Tool = {
     properties: {
       command: { type: "string", description: "Shell command to execute" },
       timeout: { type: "number", description: "Timeout in milliseconds (default 120000)" },
+      dangerouslyDisableSandbox: {
+        type: "boolean",
+        description:
+          "If true, run this command OUTSIDE the sandbox even when sandboxing is enabled. Only use this when the command genuinely needs unrestricted access (e.g. installing system packages, running docker, accessing devices). Most commands should run inside the sandbox.",
+      },
     },
     required: ["command"],
   },
@@ -71,8 +115,36 @@ export const bashTool: Tool = {
 
     const timeoutMs = typeof input.timeout === "number" ? input.timeout : DEFAULT_TIMEOUT_MS;
 
+    // Decide sandbox wrapping. We swallow load errors and proceed with
+    // sandboxing OFF — settings.json being unparseable shouldn't block
+    // command execution; the permission system already surfaces those
+    // errors loudly elsewhere.
+    let sandboxSettings: ResolvedSandboxSettings | null = null;
+    try {
+      sandboxSettings = await loadSandboxSettings(context.cwd);
+    } catch {
+      sandboxSettings = null;
+    }
+
+    const willSandbox = sandboxSettings
+      ? shouldUseSandbox(
+          {
+            command: input.command,
+            dangerouslyDisableSandbox: input.dangerouslyDisableSandbox,
+          },
+          sandboxSettings,
+        )
+      : false;
+
+    let executedCommand = input.command;
+    if (willSandbox && sandboxSettings) {
+      const profile = await buildProfileForCwd(context.cwd, sandboxSettings);
+      const wrap = wrapWithSandbox(input.command, profile);
+      executedCommand = wrap.wrappedCommand;
+    }
+
     return await new Promise<ToolResult>((resolve) => {
-      const child = spawn(process.env.SHELL || "bash", ["-lc", input.command], {
+      const child = spawn(process.env.SHELL || "bash", ["-lc", executedCommand], {
         cwd: context.cwd,
         env: process.env,
       });
@@ -114,12 +186,21 @@ export const bashTool: Tool = {
         clearTimeout(timeoutId);
         context.abortSignal?.removeEventListener("abort", onAbort);
 
+        // Tag stderr with <sandbox_violations>...</sandbox_violations>
+        // when the failure smells like a sandbox denial. The model uses
+        // this signal to decide whether to retry, ask for permission,
+        // or back off. The UI strips the tag before rendering.
+        const annotatedStderr = willSandbox
+          ? annotateStderrWithSandboxFailures(stderr, code)
+          : stderr;
+
         const output = [
           `Command: ${input.command}`,
           `Read-only: ${isReadOnlyCommand(input.command)}`,
+          `Sandbox: ${willSandbox ? "enabled" : "disabled"}`,
           `Exit code: ${code ?? -1}`,
           stdout ? `\nSTDOUT:\n${truncateOutput(stdout)}` : "",
-          stderr ? `\nSTDERR:\n${truncateOutput(stderr)}` : "",
+          annotatedStderr ? `\nSTDERR:\n${truncateOutput(annotatedStderr)}` : "",
         ].filter(Boolean).join("\n");
 
         finish({ content: output, isError: (code ?? 1) !== 0 });

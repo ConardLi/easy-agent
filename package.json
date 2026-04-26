@@ -14,7 +14,10 @@
     "test:streaming": "tsx src/scripts/test-streaming.ts",
     "test:tasks": "tsx src/scripts/test-tasks.ts",
     "test:mcp": "tsx src/scripts/test-mcp.ts",
-    "test:skills": "tsx src/scripts/test-skills.ts"
+    "test:skills": "tsx src/scripts/test-skills.ts",
+    "test:sandbox": "tsx src/scripts/test-sandbox.ts",
+    "smoke:sandbox": "tsx src/scripts/smoke-sandbox.ts",
+    "smoke:bash-sandbox": "tsx src/scripts/smoke-bash-sandbox.ts"
   },
   "keywords": [
     "agent",

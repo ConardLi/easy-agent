@@ -104,7 +104,7 @@ The project follows a 30-phase roadmap designed to recreate the full Claude Code
 | 15 | Task management system (V2) | [`step/step15.js`](./step/step15.js) | ✅ Done |
 | 16 | MCP protocol support | [`step/step16.js`](./step/step16.js) | ✅ Done |
 | 17 | Skills system | [`step/step17.js`](./step/step17.js) | ✅ Done |
-| 18 | Sandbox | `planned` | ⏳ Not started |
+| 18 | Sandbox | [`step/step18.js`](./step/step18.js) | ✅ Done |
 | 19 | Sub-agents | `planned` | ⏳ Not started |
 | 20 | Custom agent system | `planned` | ⏳ Not started |
 | 21 | Multi-agent collaboration | `planned` | ⏳ Not started |
@@ -186,7 +186,7 @@ The next major milestones are:
 1. a fuller plan-mode workflow
 2. task management system
 3. extensibility primitives beyond MCP and skills
-4. stronger configuration and safety boundaries
+4. configuration improvements beyond the current sandbox and permission model
 5. sub-agent and multi-agent collaboration
 6. multi-provider architecture
 

@@ -30,6 +30,7 @@ import { clearTodos, getTodos, subscribeTodos } from "../../state/todoStore.js";
 import type { TodoItem } from "../../types/todo.js";
 import { getTaskListId, listTasks, subscribeTasks } from "../../state/taskStore.js";
 import { findSkill } from "../../services/skills/registry.js";
+import { removeSandboxViolationTags } from "../../sandbox/index.js";
 import {
   getTaskMode,
   subscribeTaskMode,
@@ -581,7 +582,14 @@ export function useAgentSession({
               (value.name === "Write" || value.name === "Edit") &&
               value.result.content.includes(getPlansDirectory());
             const inputPreview = formatToolInputPreview(value.input);
-            const errorMessage = value.result.isError ? value.result.content : undefined;
+            // Strip the model-only <sandbox_violations> tag from the
+            // user-visible error message. The tag stays in the tool
+            // result that goes back to the model (so it can interpret
+            // sandbox denials), but humans see clean stderr only.
+            const rawErrorMessage = value.result.isError ? value.result.content : undefined;
+            const errorMessage = rawErrorMessage
+              ? removeSandboxViolationTags(rawErrorMessage)
+              : undefined;
             setToolCalls((prev) =>
               markToolCallComplete(prev, value.id, {
                 resultLength: value.result.content.length,

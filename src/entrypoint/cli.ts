@@ -76,6 +76,24 @@ Commands (in REPL):
     console.error(`[easy-agent] skills bootstrap failed: ${(error as Error).message}`);
   });
 
+  // Sandbox availability: if the user opted in via settings.json but
+  // the host can't run sandbox-exec, surface the reason loudly. Silent
+  // fall-back is a security footgun — users assume protection that
+  // isn't there. Mirrors source code's `getSandboxUnavailableReason`.
+  try {
+    const { loadSandboxSettings, getSandboxUnavailableReason } = await import(
+      "../sandbox/index.js"
+    );
+    const sandboxSettings = await loadSandboxSettings(process.cwd());
+    const reason = getSandboxUnavailableReason(sandboxSettings.enabled);
+    if (reason) {
+      console.warn(`[easy-agent] ⚠ ${reason} Bash commands will run unsandboxed.`);
+    }
+  } catch {
+    // Settings parse errors are surfaced by the permission loader; we
+    // don't double-report here.
+  }
+
   if (dumpSystemPrompt) {
     const cwd = process.cwd();
     const systemParts = await buildSystemPrompt({ cwd });

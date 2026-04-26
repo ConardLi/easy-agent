@@ -4,6 +4,11 @@ import { isReadOnlyCommand } from "../tools/bashTool.js";
 import { getPlanFilePath } from "../context/plans.js";
 import { getSettingsPaths } from "../utils/paths.js";
 import { readJsonSettingsFile } from "../utils/settings.js";
+import {
+  loadSandboxSettings,
+  shouldUseSandbox,
+  splitCommand,
+} from "../sandbox/index.js";
 
 export type PermissionBehavior = "allow" | "ask" | "deny";
 export type PermissionMode = "default" | "plan" | "auto";
@@ -183,6 +188,77 @@ function matchesAnyRule(rules: string[], toolName: string, input: Record<string,
   return rules.some((rule) => matchesPermissionRule(rule, toolName, input));
 }
 
+function findFirstMatchingRule(
+  rules: string[],
+  toolName: string,
+  input: Record<string, unknown>,
+): string | undefined {
+  return rules.find((rule) => matchesPermissionRule(rule, toolName, input));
+}
+
+/**
+ * Sandbox auto-allow path. Mirrors source code's `checkSandboxAutoAllow`
+ * in `bashPermissions.ts:1270`.
+ *
+ * Pre-condition: caller has confirmed the command WILL be sandboxed
+ * (sandbox.enabled + autoAllowBashIfSandboxed + shouldUseSandbox).
+ *
+ * Decision tree:
+ *   1. Any subcommand hits a Bash deny rule → deny (security boundary)
+ *   2. Full command or any subcommand hits a Bash ask rule → ask
+ *   3. Otherwise → allow (sandbox is the safety net)
+ *
+ * The per-subcommand deny check is the SECURITY-critical part: a
+ * compound command like `echo hi && rm -rf /` would not match
+ * `Bash(rm:*)` against the full command string. We must split first.
+ */
+function checkSandboxAutoAllow(
+  command: string,
+  rules: { allow: string[]; deny: string[] },
+  sessionRules: { allow: string[]; deny: string[] },
+): { behavior: PermissionBehavior; reason: string } {
+  const allDenyRules = [...sessionRules.deny, ...rules.deny];
+  const allAllowRules = [...sessionRules.allow, ...rules.allow];
+
+  let subcommands: string[];
+  try {
+    subcommands = splitCommand(command);
+  } catch {
+    subcommands = [command];
+  }
+  if (subcommands.length === 0) subcommands = [command];
+
+  // Pass 1: deny on any subcommand wins.
+  for (const sub of subcommands) {
+    const denyRule = findFirstMatchingRule(allDenyRules, "Bash", { command: sub });
+    if (denyRule) {
+      return { behavior: "deny", reason: `subcommand "${sub}" matched deny rule "${denyRule}"` };
+    }
+  }
+  // Also check full-command deny (covers wildcard rules like `Bash(*evil*)`
+  // that match the full string but no individual subcommand).
+  const fullDeny = findFirstMatchingRule(allDenyRules, "Bash", { command });
+  if (fullDeny) {
+    return { behavior: "deny", reason: `command matched deny rule "${fullDeny}"` };
+  }
+
+  // Pass 2: ask on any subcommand or full command.
+  for (const sub of subcommands) {
+    const askRule = findFirstMatchingRule(allAllowRules, "Bash", { command: sub });
+    if (askRule === undefined) continue;
+    // A matching allow rule short-circuits to allow if sandboxed; we
+    // continue scanning for ask-style rules separately. Easy-agent
+    // doesn't have a separate ask-list (only allow/deny), so we treat
+    // an allow match as "explicit allow" — return early.
+    return { behavior: "allow", reason: `subcommand "${sub}" matched allow rule "${askRule}"` };
+  }
+
+  return {
+    behavior: "allow",
+    reason: "auto-allowed inside sandbox (autoAllowBashIfSandboxed)",
+  };
+}
+
 function isDangerousBashCommand(command: string): boolean {
   const normalized = command.replace(/\s+/g, " ").trim().toLowerCase();
   if (!normalized) return false;
@@ -325,6 +401,39 @@ export async function checkPermission(params: PermissionCheckParams): Promise<Pe
 
   if (matchesAnyRule(sessionRules.allow, params.tool.name, params.input) || matchesAnyRule(settings.allow, params.tool.name, params.input)) {
     return { behavior: "allow", reason: "matched allow rule", request };
+  }
+
+  // Sandbox auto-allow gate. If the user has the sandbox on AND policy
+  // says "auto-allow when sandboxed", we skip the confirmation dialog
+  // for Bash — but only after running per-subcommand deny checks. The
+  // sandbox is the ultimate safety net; explicit deny rules still apply.
+  if (params.tool.name === "Bash") {
+    const command = extractBashCommand(params.input);
+    let sandboxSettings;
+    try {
+      sandboxSettings = await loadSandboxSettings(params.cwd);
+    } catch {
+      sandboxSettings = null;
+    }
+    if (
+      sandboxSettings?.enabled &&
+      sandboxSettings.autoAllowBashIfSandboxed &&
+      shouldUseSandbox(
+        {
+          command,
+          dangerouslyDisableSandbox:
+            params.input.dangerouslyDisableSandbox === true,
+        },
+        sandboxSettings,
+      )
+    ) {
+      const decision = checkSandboxAutoAllow(
+        command,
+        { allow: settings.allow, deny: settings.deny },
+        sessionRules,
+      );
+      return { behavior: decision.behavior, reason: decision.reason, request };
+    }
   }
 
   if (params.tool.name === "Bash" && isDangerousBashCommand(extractBashCommand(params.input))) {
