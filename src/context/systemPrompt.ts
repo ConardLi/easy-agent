@@ -4,8 +4,8 @@ import { promisify } from "node:util";
 import { loadAgentMdContext } from "./claudeMd.js";
 import { buildMemoryPromptInstructions, ensureMemoryDirExists, formatMemorySystemLocation, readMemoryEntrypoint, shouldIgnoreMemory } from "./memory/memdir.js";
 import { buildMemoryAccessGuidance, buildMemoryExclusionGuidance, buildMemoryPersistenceBoundaryGuidance, buildMemoryTypeGuidance, buildMemoryValidationGuidance } from "./memory/memoryTypes.js";
-import { formatSkillsSystemReminder } from "../skills/budget.js";
-import { getModelVisibleSkills } from "../skills/registry.js";
+import { formatSkillsSystemReminder } from "../services/skills/budget.js";
+import { getModelVisibleSkills } from "../services/skills/registry.js";
 
 const execFileAsync = promisify(execFile);
 

@@ -17,7 +17,7 @@
  * (`getSkillDirCommands` + `activateConditionalSkillsForPaths`).
  */
 
-import type { Skill } from "./types.js";
+import type { Skill } from "../../types/types.js";
 
 const dynamic = new Map<string, Skill>();
 const conditional = new Map<string, Skill>();

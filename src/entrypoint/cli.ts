@@ -71,7 +71,7 @@ Commands (in REPL):
   // skill registry to inject the <system-reminder> discovery block.
   // If we bootstrap after the dump branch, the dump shows an empty
   // skills section and users assume the feature is broken.
-  const { bootstrapSkills } = await import("../skills/bootstrap.js");
+  const { bootstrapSkills } = await import("../services/skills/bootstrap.js");
   await bootstrapSkills(process.cwd()).catch((error) => {
     console.error(`[easy-agent] skills bootstrap failed: ${(error as Error).message}`);
   });

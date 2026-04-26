@@ -19,8 +19,8 @@
  * Reference: claude-code-source-code/src/tools/SkillTool/SkillTool.ts
  */
 
-import { findSkill } from "../skills/registry.js";
-import type { Skill } from "../skills/types.js";
+import { findSkill } from "../services/skills/registry.js";
+import type { Skill } from "../types/types.js";
 import type { Tool, ToolContext, ToolResult } from "./Tool.js";
 
 interface SkillInput {

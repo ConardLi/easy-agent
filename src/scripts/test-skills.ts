@@ -13,15 +13,15 @@
  * Exits non-zero if any assertion fails — convenient for CI / manual checks.
  */
 
-import { bootstrapSkills } from "../skills/bootstrap.js";
+import { bootstrapSkills } from "../services/skills/bootstrap.js";
 import {
   findSkill,
   getAllUserInvocableSkills,
   getModelVisibleSkills,
   listConditionalSkills,
-} from "../skills/registry.js";
-import { formatSkillsSystemReminder } from "../skills/budget.js";
-import { activateConditionalSkillsForPaths } from "../skills/conditional.js";
+} from "../services/skills/registry.js";
+import { formatSkillsSystemReminder } from "../services/skills/budget.js";
+import { activateConditionalSkillsForPaths } from "../services/skills/conditional.js";
 import { skillTool } from "../tools/skillTool.js";
 import { matchesPermissionRule } from "../permissions/permissions.js";
 

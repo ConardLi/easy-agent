@@ -32,8 +32,8 @@ import { reconnectMcpServer } from "../services/mcp/bootstrap.js";
 import {
   findSkill,
   getAllUserInvocableSkills,
-} from "../skills/registry.js";
-import type { Skill } from "../skills/types.js";
+} from "../services/skills/registry.js";
+import type { Skill } from "../types/types.js";
 
 export type QueryEngineEvent =
   | AgenticLoopEvent

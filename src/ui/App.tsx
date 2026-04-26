@@ -12,7 +12,7 @@ import { TodoList } from "./components/TodoList.js";
 import { ToolCallList } from "./components/ToolCallList.js";
 import { usePromptInput } from "./hooks/usePromptInput.js";
 import { useAgentSession } from "./hooks/useAgentSession.js";
-import { getAllUserInvocableSkills } from "../skills/registry.js";
+import { getAllUserInvocableSkills } from "../services/skills/registry.js";
 import type { CommandSuggestion } from "./types.js";
 
 interface AppProps {

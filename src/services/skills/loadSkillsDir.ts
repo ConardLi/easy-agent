@@ -18,13 +18,13 @@ import * as path from "node:path";
 import {
   getEasyAgentPath,
   getProjectEasyAgentDir,
-} from "../utils/paths.js";
+} from "../../utils/paths.js";
 import {
   extractFallbackDescription,
   normalizeFrontmatter,
   splitFrontmatter,
 } from "./parseFrontmatter.js";
-import type { Skill, SkillSource } from "./types.js";
+import type { Skill, SkillSource } from "../../types/types.js";
 
 const SKILL_FILE = "SKILL.md";
 

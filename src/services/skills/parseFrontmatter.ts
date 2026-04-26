@@ -12,7 +12,7 @@
  */
 
 import { parse as parseYaml } from "yaml";
-import type { SkillFrontmatter } from "./types.js";
+import type { SkillFrontmatter } from "../../types/types.js";
 
 export interface FrontmatterSplit {
   /** Raw frontmatter object (any YAML scalar / map / list). Empty object when absent. */

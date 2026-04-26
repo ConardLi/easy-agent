@@ -16,7 +16,7 @@
  *     our default 8000 chars ≈ 2000 tokens for a 200K-token model.
  */
 
-import type { Skill } from "./types.js";
+import type { Skill } from "../../types/types.js";
 
 export const MAX_LISTING_DESC_CHARS = 250;
 const MIN_DESC_CHARS_PER_SKILL = 20;

@@ -29,7 +29,7 @@ import { formatToolInputPreview } from "../utils/toolCardFormat.js";
 import { clearTodos, getTodos, subscribeTodos } from "../../state/todoStore.js";
 import type { TodoItem } from "../../types/todo.js";
 import { getTaskListId, listTasks, subscribeTasks } from "../../state/taskStore.js";
-import { findSkill } from "../../skills/registry.js";
+import { findSkill } from "../../services/skills/registry.js";
 import {
   getTaskMode,
   subscribeTaskMode,

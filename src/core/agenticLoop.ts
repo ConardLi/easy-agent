@@ -18,7 +18,7 @@ import { truncateToolResult, type ToolContext, type ToolResult } from "../tools/
 import {
   activateConditionalSkillsForPaths,
   extractToolFilePaths,
-} from "../skills/conditional.js";
+} from "../services/skills/conditional.js";
 import { tokenCountWithEstimation } from "../utils/tokens.js";
 import { isAtBlockingLimit, calculateTokenWarningState, type TokenWarningResult } from "../context/autoCompact.js";
 import type { ContentBlock, ToolUseBlock, Usage } from "../types/message.js";
