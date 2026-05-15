@@ -17,6 +17,7 @@
     "test:skills": "tsx src/scripts/test-skills.ts",
     "test:sandbox": "tsx src/scripts/test-sandbox.ts",
     "test:agents": "tsx src/scripts/test-agents.ts",
+    "test:stage20": "tsx src/scripts/test-stage20.ts",
     "smoke:sandbox": "tsx src/scripts/smoke-sandbox.ts",
     "smoke:bash-sandbox": "tsx src/scripts/smoke-bash-sandbox.ts"
   },
@@ -32,7 +33,7 @@
     "@types/proper-lockfile": "^4.1.4",
     "@types/react": "^19.2.14",
     "tsx": "^4.21.0",
-    "typescript": "^6.0.2"
+    "typescript": "^6.0.3"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.85.0",

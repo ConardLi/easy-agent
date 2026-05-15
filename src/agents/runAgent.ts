@@ -75,9 +75,32 @@ export interface RunChildAgentParams {
   permissionSettings?: PermissionSettings;
   sessionPermissionRules?: PermissionRuleSet;
   onPermissionRequest?: (request: PermissionRequest) => Promise<PermissionDecision>;
+  /**
+   * Headless flag — see RunQueryParams.shouldAvoidPermissionPrompts in
+   * core/agenticLoop.ts. Set by `runAsyncAgentLifecycle` for backgrounded
+   * sub-agents so any "ask" decision is auto-denied with a workaround
+   * message instead of bubbling up to the parent UI. Mirrors source's
+   * `isAsync → shouldAvoidPermissionPrompts: true` wiring in
+   * claude-code-source-code/src/tools/AgentTool/runAgent.ts:436-451.
+   */
+  shouldAvoidPermissionPrompts?: boolean;
   abortSignal?: AbortSignal;
   /** Optional progress callback for surface in the UI. */
   onProgress?: (event: AgentProgressEvent) => void;
+  /**
+   * Override the working directory used by every sub-agent tool call
+   * (Read/Write/Edit/Bash all resolve paths from `context.cwd`).
+   * Stage 20 sets this to the worktree path when `isolation: "worktree"`
+   * is requested. Falls back to the parent's cwd when omitted.
+   */
+  cwdOverride?: string;
+  /**
+   * Optional sub-session-id override. Stage 20's async path threads its
+   * `agentId` through here so transcript files / TodoWrite scopes line
+   * up with the public id the parent agent sees in the
+   * `<task-notification>`.
+   */
+  sessionIdOverride?: string;
 }
 
 /**
@@ -127,15 +150,22 @@ export async function runChildAgent(params: RunChildAgentParams): Promise<AgentR
   // Sub-agent gets its own session id so its TodoWrite / Task state
   // doesn't pollute the parent's. Format keeps the parent's id as a
   // prefix for grep-ability when debugging from a session transcript.
-  const subSessionId = params.parentToolContext.sessionId
-    ? `${params.parentToolContext.sessionId}/agent-${def.agentType}-${Date.now().toString(36)}`
-    : `agent-${def.agentType}-${Date.now().toString(36)}`;
+  // Stage 20 lets the caller override this so the public agentId in
+  // the <task-notification> matches the on-disk session scope.
+  const subSessionId =
+    params.sessionIdOverride ??
+    (params.parentToolContext.sessionId
+      ? `${params.parentToolContext.sessionId}/agent-${def.agentType}-${Date.now().toString(36)}`
+      : `agent-${def.agentType}-${Date.now().toString(36)}`);
 
   const subPermissionMode: PermissionMode =
     def.permissionMode ?? params.permissionMode ?? "default";
 
   const subToolContext: ToolContext = {
-    cwd: params.parentToolContext.cwd,
+    // Stage 20: when isolation: "worktree" is requested, the AgentTool
+    // passes the worktree path here so EVERY sub-agent tool call
+    // (Read/Write/Edit/Bash) resolves against the isolated tree.
+    cwd: params.cwdOverride ?? params.parentToolContext.cwd,
     abortSignal: params.abortSignal,
     sessionId: subSessionId,
     // Sub-agent reads its own mode — isolating plan-mode transitions
@@ -159,6 +189,7 @@ export async function runChildAgent(params: RunChildAgentParams): Promise<AgentR
     permissionSettings: params.permissionSettings,
     sessionPermissionRules: params.sessionPermissionRules,
     onPermissionRequest: params.onPermissionRequest,
+    shouldAvoidPermissionPrompts: params.shouldAvoidPermissionPrompts,
   });
 
   let finalMessages: MessageParam[] = [];

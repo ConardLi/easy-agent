@@ -21,6 +21,15 @@ export type AgentSource = "built-in" | "user" | "project";
 
 export type AgentPermissionMode = "default" | "plan" | "auto";
 
+/**
+ * How the sub-agent's filesystem is sandboxed.
+ *  - "none"     : default — runs in the parent's cwd.
+ *  - "worktree" : stage 20 — runs inside a fresh `git worktree` so its
+ *                 file edits don't touch the main working copy until
+ *                 the user reviews them.
+ */
+export type AgentIsolation = "none" | "worktree";
+
 export interface AgentDefinition {
   /** Unique identifier — also the value passed as `subagent_type`. */
   agentType: string;
@@ -49,6 +58,13 @@ export interface AgentDefinition {
 
   /** Sub-agent's permission mode. Defaults to inheriting the parent's. */
   permissionMode?: AgentPermissionMode;
+
+  /**
+   * Default filesystem isolation level. The model can override per-call
+   * via the `Agent` tool's `isolation` parameter; this field is the
+   * fallback used when the call doesn't specify.
+   */
+  isolation?: AgentIsolation;
 
   /** Where this definition came from. */
   source: AgentSource;

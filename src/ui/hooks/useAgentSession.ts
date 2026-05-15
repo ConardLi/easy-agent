@@ -34,6 +34,15 @@ import {
   getSubAgentProgress,
   subscribeSubAgentProgress,
 } from "../../state/subAgentProgressStore.js";
+import {
+  getAllAsyncAgents,
+  subscribeAsyncAgents,
+  type AsyncAgentEntry,
+} from "../../state/asyncAgentStore.js";
+import {
+  pendingNotificationCount,
+  subscribePendingNotifications,
+} from "../../state/notificationStore.js";
 import { findSkill } from "../../services/skills/registry.js";
 import { removeSandboxViolationTags } from "../../sandbox/index.js";
 import {
@@ -201,10 +210,26 @@ export function useAgentSession({
   const [todos, setTodosState] = useState<TodoItem[]>([]);
   const [tasks, setTasksState] = useState<Task[]>([]);
   const [taskMode, setTaskModeState] = useState<TaskMode>(getTaskMode());
+  // Stage 20: live snapshot of the asyncAgentStore. The footer
+  // BackgroundAgentBar component reads this to show running background
+  // sub-agents (count + per-agent token / tool stats). We take a fresh
+  // snapshot via getAllAsyncAgents() on every store notification rather
+  // than mutating in place — gives us straightforward referential
+  // semantics for React to diff against.
+  const [asyncAgents, setAsyncAgents] = useState<AsyncAgentEntry[]>(() =>
+    getAllAsyncAgents(),
+  );
 
   const permissionResolverRef = useRef<((decision: PermissionDecision) => void) | null>(null);
   const pendingClearContextRef = useRef(false);
   const pendingFeedbackRef = useRef<string | null>(null);
+  // Stage 20: refs that the notification auto-trigger subscriber reads
+  // synchronously. State variables would be stale inside the subscriber
+  // closure (it's set up once on mount), so we mirror them into refs
+  // and update on every render via the useEffect below.
+  const isLoadingRef = useRef(false);
+  const permissionPromptRef = useRef<PermissionPromptState | null>(null);
+  const submitRef = useRef<((text: string) => Promise<SubmitResult>) | null>(null);
   const sessionRulesRef = useRef<PermissionRuleSet>({ allow: [], deny: [] });
   const engineRef = useRef<QueryEngine | null>(null);
   const sessionIdRef = useRef<string>(createSessionId());
@@ -323,6 +348,80 @@ export function useAgentSession({
     });
     return unsubscribe;
   }, []);
+
+  // Stage 20: subscribe to the async-agent store. Every register /
+  // progress / complete / fail / kill event fires the listener, and we
+  // re-snapshot the full registry to drive the BackgroundAgentBar.
+  // Re-snapshotting on every event is cheap — the registry holds at
+  // most a handful of agents per session.
+  useEffect(() => {
+    const unsubscribe = subscribeAsyncAgents(() => {
+      setAsyncAgents(getAllAsyncAgents());
+    });
+    // Pull the current snapshot once on mount so a session resume sees
+    // any agents that were already in flight.
+    setAsyncAgents(getAllAsyncAgents());
+    return unsubscribe;
+  }, []);
+
+  // Stage 20: keep the auto-trigger refs in sync with current state.
+  // The subscribePendingNotifications listener (set up once on mount)
+  // reads these synchronously to decide whether the engine is idle.
+  useEffect(() => {
+    isLoadingRef.current = isLoading;
+  }, [isLoading]);
+  useEffect(() => {
+    permissionPromptRef.current = permissionPrompt;
+  }, [permissionPrompt]);
+
+  // Stage 20: idle auto-resume after a background sub-agent finishes.
+  //
+  // Source-aligned with `useQueueProcessor` + `processQueueIfReady`
+  // (claude-code-source-code/src/hooks/useQueueProcessor.ts:33-61):
+  // when the parent loop is idle and the notification queue is
+  // non-empty, the source synthesises a submit so the model can
+  // react to the finished sub-agent without the user having to type.
+  // Without this hook, our notifications would only be drained the
+  // next time the user actually typed something — which is exactly
+  // what the user noticed: a backgrounded reviewer finishes, the
+  // pill disappears, but the conversation stays silent.
+  //
+  // A subtle detail: when a notification arrives WHILE a turn is
+  // active, the listener's `isLoadingRef` check skips. The retry
+  // happens via the second useEffect below (depends on isLoading) —
+  // when the turn ends, isLoading flips false; if the queue still
+  // has entries (drained by the in-flight turn would have been a no-op
+  // because submitInternal drains at the *start* of the turn, before
+  // the notification arrived), we kick off another auto-trigger.
+  useEffect(() => {
+    const unsubscribe = subscribePendingNotifications(() => {
+      // Defer to a microtask so multiple back-to-back enqueues
+      // (e.g. two background agents finishing in the same tick) only
+      // trigger one auto-resume — the deferred handler sees the full
+      // queue and submitInternal drains it all at once.
+      queueMicrotask(() => {
+        if (isLoadingRef.current) return;
+        if (permissionPromptRef.current) return;
+        if (pendingNotificationCount() === 0) return;
+        const fn = submitRef.current;
+        if (!fn) return;
+        void fn("");
+      });
+    });
+    return unsubscribe;
+  }, []);
+
+  // Retry-on-idle: if a notification was enqueued while we were busy,
+  // the listener above bailed out. As soon as we transition back to
+  // idle, sweep the queue. (No-op when queue is empty.)
+  useEffect(() => {
+    if (isLoading) return;
+    if (permissionPrompt) return;
+    if (pendingNotificationCount() === 0) return;
+    const fn = submitRef.current;
+    if (!fn) return;
+    void fn("");
+  }, [isLoading, permissionPrompt]);
 
   useEffect(() => {
     void loadPermissionSettings(process.cwd())
@@ -509,11 +608,17 @@ export function useAgentSession({
   }, []);
 
   const submit = useCallback(async (text: string): Promise<SubmitResult> => {
-    if (!text.trim()) {
+    const trimmed = text.trim();
+    // Stage 20: empty text is valid when the auto-trigger
+    // (subscribePendingNotifications below) wakes us up to drain the
+    // notification queue. submitMessage("") routes to submitInternal
+    // which prepends the queued <task-notification> blocks as the
+    // turn's user content. Reject empty input only when there's also
+    // nothing in the queue.
+    if (!trimmed && pendingNotificationCount() === 0) {
       return { handled: false };
     }
 
-    const trimmed = text.trim();
     if (trimmed === "/exit" || trimmed === "/quit" || trimmed === "/bye") {
       onExit();
       return { handled: true };
@@ -557,17 +662,32 @@ export function useAgentSession({
       // rather than the expanded SKILL.md body. The expanded prompt is
       // an internal/wire-only artifact — keeping the transcript clean
       // means /resume replays the same UX the user originally saw.
-      await appendTranscriptEntry(toolContext.cwd, sessionIdRef.current, {
-        type: "message",
-        timestamp: new Date().toISOString(),
-        role: "user",
-        message: { role: "user", content: trimmed },
-      });
+      //
+      // Stage 20: skip this when `trimmed` is empty — that means we're
+      // here via the auto-trigger from subscribePendingNotifications,
+      // and the queued <task-notification> is itself the user-side
+      // transcript entry (added inside submitInternal). Persisting an
+      // empty user message would pollute the transcript and confuse
+      // /resume.
+      if (trimmed.length > 0) {
+        await appendTranscriptEntry(toolContext.cwd, sessionIdRef.current, {
+          type: "message",
+          timestamp: new Date().toISOString(),
+          role: "user",
+          message: { role: "user", content: trimmed },
+        });
+      }
     }
     setPermissionPrompt(null);
     const needsLoading = isLlmTriggering || trimmed.startsWith("/compact");
     setIsLoading(needsLoading);
-    setSpinnerLabel(trimmed.startsWith("/compact") ? "Compacting" : "Thinking");
+    setSpinnerLabel(
+      trimmed.startsWith("/compact")
+        ? "Compacting"
+        : trimmed.length === 0
+          ? "Background sub-agent finished — replying"
+          : "Thinking",
+    );
 
     try {
       const run = engineRef.current.submitMessage(trimmed);
@@ -896,6 +1016,14 @@ export function useAgentSession({
     return { handled: true };
   }, [onExit, toolContext.cwd, cancelPendingText, flushPendingText]);
 
+  // Stage 20: expose `submit` to the notification subscriber via a ref.
+  // The subscriber is set up once on mount and would otherwise close
+  // over a stale `submit` reference. The ref is updated on every render
+  // so the subscriber always gets the freshest `submit`.
+  useEffect(() => {
+    submitRef.current = submit;
+  }, [submit]);
+
   return {
     state: {
       messages,
@@ -912,6 +1040,7 @@ export function useAgentSession({
       permissionPrompt,
       permissionMode: activePermissionMode,
       currentModel,
+      asyncAgents,
     },
     actions: {
       submit,

@@ -101,6 +101,22 @@ export interface QueryParams {
   permissionSettings?: PermissionSettings;
   sessionPermissionRules?: PermissionRuleSet;
   onPermissionRequest?: (request: PermissionRequest) => Promise<PermissionDecision>;
+  /**
+   * Headless flag — mirrors source's
+   * `toolPermissionContext.shouldAvoidPermissionPrompts` from
+   * claude-code-source-code/src/tools/AgentTool/runAgent.ts:436-451.
+   *
+   * When true, any tool call that resolves to `behavior: "ask"` is
+   * auto-denied WITHOUT invoking `onPermissionRequest`. We keep
+   * `onPermissionRequest` plumbed through (parity with source's
+   * `canUseTool` forwarding) but the agentic loop short-circuits
+   * before it can fire, with a richer denial message that gives the
+   * model workaround guidance instead of "user rejected".
+   *
+   * Set to true for backgrounded sub-agents (no UI to ask), or any
+   * future "non-interactive" execution context.
+   */
+  shouldAvoidPermissionPrompts?: boolean;
 }
 
 export interface RunToolsOptions {
@@ -108,6 +124,8 @@ export interface RunToolsOptions {
   permissionSettings?: PermissionSettings;
   sessionPermissionRules?: PermissionRuleSet;
   onPermissionRequest?: (request: PermissionRequest) => Promise<PermissionDecision>;
+  /** See RunQueryParams.shouldAvoidPermissionPrompts. */
+  shouldAvoidPermissionPrompts?: boolean;
 }
 
 /**
@@ -117,6 +135,34 @@ export interface RunToolsOptions {
  * low enough that the OS doesn't choke on subprocess explosions.
  */
 const MAX_TOOL_USE_CONCURRENCY = 10;
+
+/**
+ * Build the denial message used when a backgrounded sub-agent (or any
+ * other headless context) hits an "ask" rule. The body mirrors source's
+ * `DONT_ASK_REJECT_MESSAGE` + `DENIAL_WORKAROUND_GUIDANCE` from
+ * claude-code-source-code/src/utils/messages.ts:227-240:
+ *
+ *   - Tell the model WHY it was denied (no UI), so it doesn't keep
+ *     retrying with the same tool.
+ *   - Tell it what it CAN do (try alternative tools) — but not in
+ *     malicious / bypass-the-intent ways.
+ *   - Tell it to STOP and report back when the capability is essential.
+ *
+ * Compressed to a couple of sentences to keep the tool_result lean —
+ * source's message is verbose because it has to cover hooks, classifier
+ * fallback, and policy escalation paths we don't have here.
+ */
+function buildHeadlessDenialMessage(toolName: string): string {
+  return (
+    `Permission to use ${toolName} has been denied: this sub-agent is ` +
+    `running in the background and cannot prompt the user for approval. ` +
+    `You may attempt to accomplish this action with other tools that don't ` +
+    `require approval, but do NOT try to bypass the denial in ways that ` +
+    `defeat its intent. If this capability is essential to complete the ` +
+    `task, STOP and report the blocked action in your final summary so the ` +
+    `user can either pre-approve the tool or run the task in the foreground.`
+  );
+}
 
 interface ToolBatch {
   isConcurrencySafe: boolean;
@@ -212,13 +258,36 @@ async function runOneToolBlock(
     let surfacedRequest: PermissionRequest | undefined;
     if (permission.behavior === "ask") {
       surfacedRequest = permission.request;
-      const decision = options.onPermissionRequest
-        ? await options.onPermissionRequest(permission.request)
-        : "deny";
+
+      // Headless short-circuit (source-aligned):
+      //   claude-code-source-code/src/utils/permissions/permissions.ts:929-940
+      //   When toolPermissionContext.shouldAvoidPermissionPrompts is on,
+      //   the source skips the user prompt and auto-denies (after running
+      //   permission hooks if any are configured). Easy Agent has no
+      //   hooks system, so we go straight to deny — but with a richer
+      //   message modelled on source's DONT_ASK_REJECT_MESSAGE so the
+      //   model knows WHY and what to do next.
+      //
+      // We deliberately do NOT call options.onPermissionRequest here.
+      // It may still be plumbed through (parity with source's canUseTool
+      // forwarding) but invoking it from a backgrounded sub-agent would
+      // pop a prompt in the parent's UI — see agentTool.ts for the long
+      // list of failure modes that causes.
+      let decision: PermissionDecision;
+      if (options.shouldAvoidPermissionPrompts === true) {
+        decision = "deny";
+      } else {
+        decision = options.onPermissionRequest
+          ? await options.onPermissionRequest(permission.request)
+          : "deny";
+      }
 
       if (decision === "deny") {
+        const denialMessage = options.shouldAvoidPermissionPrompts === true
+          ? buildHeadlessDenialMessage(block.name)
+          : `Permission denied for ${block.name}.`;
         const result: ToolResult = {
-          content: `Permission denied for ${block.name}: user rejected the request`,
+          content: denialMessage,
           isError: true,
         };
         return {
@@ -507,6 +576,7 @@ export async function* query(
         permissionSettings: params.permissionSettings,
         sessionPermissionRules: params.sessionPermissionRules,
         onPermissionRequest: params.onPermissionRequest,
+        shouldAvoidPermissionPrompts: params.shouldAvoidPermissionPrompts,
       },
     );
 

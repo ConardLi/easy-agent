@@ -34,7 +34,12 @@ import {
   getProjectEasyAgentDir,
 } from "../utils/paths.js";
 import { splitFrontmatter } from "../services/skills/parseFrontmatter.js";
-import type { AgentDefinition, AgentPermissionMode, AgentSource } from "./types.js";
+import type {
+  AgentDefinition,
+  AgentIsolation,
+  AgentPermissionMode,
+  AgentSource,
+} from "./types.js";
 
 /** ~/.easy-agent/agents */
 export function getUserAgentsDir(): string {
@@ -86,6 +91,13 @@ function asPositiveInt(value: unknown): number | undefined {
 
 function asPermissionMode(value: unknown): AgentPermissionMode | undefined {
   return value === "default" || value === "plan" || value === "auto" ? value : undefined;
+}
+
+function asIsolation(value: unknown): AgentIsolation | undefined {
+  // Accept both "worktree" and "none". Anything else (typo, foreign
+  // mode like "remote") is treated as "no preference" so the loader
+  // doesn't silently mis-route the agent.
+  return value === "worktree" || value === "none" ? value : undefined;
 }
 
 async function loadFromOneDir(dir: string, source: AgentSource): Promise<LoadedFromDir> {
@@ -151,6 +163,7 @@ async function loadFromOneDir(dir: string, source: AgentSource): Promise<LoadedF
     const permissionMode = asPermissionMode(
       split.raw["permissionMode"] ?? split.raw["permission_mode"],
     );
+    const isolation = asIsolation(split.raw["isolation"]);
 
     out.push({
       agentType: name,
@@ -160,6 +173,7 @@ async function loadFromOneDir(dir: string, source: AgentSource): Promise<LoadedF
       ...(model ? { model } : {}),
       ...(maxTurns !== undefined ? { maxTurns } : {}),
       ...(permissionMode ? { permissionMode } : {}),
+      ...(isolation ? { isolation } : {}),
       source,
       filePath,
       getSystemPrompt: () => systemPrompt,

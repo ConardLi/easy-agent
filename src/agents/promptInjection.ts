@@ -100,6 +100,20 @@ export function formatAgentsSystemReminder(agents: AgentDefinition[]): string {
     "Use sub-agents to keep the main conversation context clean — search-heavy or read-heavy work is a good fit. Do not delegate trivial single-step tasks.",
     "Sub-agents do NOT see the main conversation history, so the `prompt` must be self-contained.",
     "",
+    // Foreground vs background discipline — copied almost verbatim from
+    // source's `claude-code-source-code/src/tools/AgentTool/prompt.ts:262-264`
+    // because the rule is too easy for the model to forget mid-conversation:
+    //   - polling burns tokens and locks the user out behind a spinner;
+    //   - "end your response" is one of TWO equally-valid options, not the
+    //     only one — the main agent can still spawn more parallel
+    //     background agents or do unrelated work.
+    "Foreground vs background:",
+    "- Use foreground (default) when you need the agent's results before you can proceed — e.g., a research agent whose findings inform your next steps.",
+    "- Use `run_in_background: true` when the user has independent work for you to do in parallel, or when the user explicitly asks for a background task.",
+    "- After launching a background sub-agent you will be notified automatically when it completes via a `<task-notification>` user message — do NOT sleep, poll, or proactively check on its progress (no Bash sleeps, no Read on the output file, no `tail -f`).",
+    "- You CAN continue with other unrelated work while a background sub-agent is running, including launching MORE background sub-agents for genuinely independent subtasks. The main loop will not block on them.",
+    "- Or you can simply tell the user what you launched and end your response — the system will resume the conversation automatically when the sub-agent finishes.",
+    "",
     ...lines,
     CREATION_GUIDANCE,
     "</system-reminder>",

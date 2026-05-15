@@ -1,6 +1,7 @@
 import React from "react";
 import { Box, Text, useApp } from "ink";
 import type { PermissionMode } from "../permissions/permissions.js";
+import { BackgroundAgentBar } from "./components/BackgroundAgentBar.js";
 import { CommandSuggestions } from "./components/CommandSuggestions.js";
 import { ConversationView } from "./components/ConversationView.js";
 import { InputPrompt } from "./components/InputPrompt.js";
@@ -98,6 +99,7 @@ export function App({ model, permissionMode, shouldResume, resumeSessionId }: Ap
         permissionMode={state.permissionMode}
         onPlanDecision={actions.resolvePermission}
       />
+      <BackgroundAgentBar agents={state.asyncAgents} />
       <InputPrompt isLoading={state.isLoading || Boolean(state.permissionPrompt)} inputValue={inputValue} />
       <CommandSuggestions items={commandSuggestions} />
       <ModeSelector items={modeSuggestions} />

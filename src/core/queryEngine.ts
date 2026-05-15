@@ -34,6 +34,10 @@ import {
   getAllUserInvocableSkills,
 } from "../services/skills/registry.js";
 import { getAllAgents } from "../agents/registry.js";
+import {
+  drainPendingNotifications,
+  pendingNotificationCount,
+} from "../state/notificationStore.js";
 import type { Skill } from "../types/types.js";
 
 export type QueryEngineEvent =
@@ -172,7 +176,12 @@ export class QueryEngine {
     input: string,
   ): AsyncGenerator<QueryEngineEvent, { handled: boolean; reason?: LoopTerminationReason }> {
     const trimmed = input.trim();
-    if (!trimmed) {
+    // Stage 20: empty input is a valid call when there are background-
+    // agent notifications waiting — the auto-trigger path in
+    // useAgentSession passes "" to mean "drain whatever's in the queue
+    // and run a turn". `submitInternal` is already empty-text safe (it
+    // skips the user-message append).
+    if (!trimmed && pendingNotificationCount() === 0) {
       return { handled: false };
     }
 
@@ -353,9 +362,37 @@ export class QueryEngine {
       this.messages = [...this.messages, exitAttachment];
     }
 
-    const userMessage: MessageParam = { role: "user", content: trimmed };
-    this.messages = [...this.messages, userMessage];
-    yield { type: "messages_updated", messages: [...this.messages] };
+    // Stage 20: drain any pending background-agent notifications BEFORE
+    // the user message. The model will see them as system-side user
+    // messages tagged `[task-notification]` so it can react ("oh the
+    // background reviewer finished — let me look at its output") before
+    // tackling the actual user prompt.
+    //
+    // Source reference: claude-code-source-code/src/utils/queueProcessor.ts
+    //   `processQueueIfReady` drains task-notification entries between
+    //   turns and calls `enqueueUserOrSystemMessage` to inject them.
+    const pendingNotifs = drainPendingNotifications();
+    for (const notif of pendingNotifs) {
+      const notifMessage: MessageParam = {
+        role: "user",
+        content: `[task-notification]\n${notif.text}`,
+      };
+      this.messages = [...this.messages, notifMessage];
+    }
+    if (pendingNotifs.length > 0) {
+      yield { type: "messages_updated", messages: [...this.messages] };
+    }
+
+    // Stage 20: when this turn was triggered by a background-agent
+    // notification (no real user input), skip appending an empty user
+    // message — the notification(s) we just drained ARE the user-side
+    // input for the model. The Anthropic API also rejects empty
+    // user-content blocks, so this guard is correctness, not just hygiene.
+    if (trimmed.length > 0) {
+      const userMessage: MessageParam = { role: "user", content: trimmed };
+      this.messages = [...this.messages, userMessage];
+      yield { type: "messages_updated", messages: [...this.messages] };
+    }
 
     const abortController = new AbortController();
     this.abortController = abortController;

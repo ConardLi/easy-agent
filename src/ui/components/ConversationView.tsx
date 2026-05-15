@@ -29,6 +29,87 @@ function isInternalMessage(message: MessageParam): boolean {
 }
 
 /**
+ * Stage 20 — pull the human-relevant fields out of a `[task-notification]`
+ * user message so the conversation can render a one-line status pill
+ * instead of the raw XML the model gets. Returns null if the message is
+ * not a task notification.
+ *
+ * Format reference: state/notificationStore.ts `formatTaskNotification`
+ * (which mirrors source code's `<task-notification>` body).
+ */
+export interface TaskNotificationView {
+  status: "completed" | "failed" | "killed" | "unknown";
+  agentType: string;
+  description?: string;
+  /** Pre-formatted usage line (e.g. "5 tools · 1.2k tokens · 4.3s"). */
+  usage?: string;
+}
+
+export function extractTaskNotification(text: string): TaskNotificationView | null {
+  if (!text.startsWith("[task-notification]")) return null;
+  const pickTag = (tag: string): string | undefined => {
+    const m = text.match(new RegExp(`<${tag}>([\\s\\S]*?)<\\/${tag}>`));
+    return m ? m[1]?.trim() : undefined;
+  };
+  const statusRaw = pickTag("status") ?? "";
+  const status =
+    statusRaw === "completed" || statusRaw === "failed" || statusRaw === "killed"
+      ? statusRaw
+      : "unknown";
+  const agentType = pickTag("agent_type") ?? "agent";
+  const description = pickTag("description");
+  const usageRaw = pickTag("usage");
+  let usage: string | undefined;
+  if (usageRaw) {
+    // <usage> is `tokens=N tools=M duration_ms=K` — convert to a humane
+    // one-liner. Drop missing pieces silently.
+    const kv = new Map<string, string>();
+    for (const part of usageRaw.split(/\s+/)) {
+      const [k, v] = part.split("=");
+      if (k && v) kv.set(k, v);
+    }
+    const bits: string[] = [];
+    if (kv.get("tools")) bits.push(`${kv.get("tools")} tools`);
+    if (kv.get("tokens")) {
+      const n = Number(kv.get("tokens"));
+      bits.push(
+        Number.isFinite(n) && n >= 1000
+          ? `${(n / 1000).toFixed(1)}k tokens`
+          : `${n} tokens`,
+      );
+    }
+    if (kv.get("duration_ms")) {
+      const ms = Number(kv.get("duration_ms"));
+      if (Number.isFinite(ms)) {
+        bits.push(ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`);
+      }
+    }
+    if (bits.length > 0) usage = bits.join(" · ");
+  }
+  return {
+    status,
+    agentType,
+    ...(description ? { description } : {}),
+    ...(usage ? { usage } : {}),
+  };
+}
+
+function taskNotificationStyle(
+  status: TaskNotificationView["status"],
+): { color: string; glyph: string } {
+  switch (status) {
+    case "completed":
+      return { color: "green", glyph: "●" };
+    case "failed":
+      return { color: "red", glyph: "●" };
+    case "killed":
+      return { color: "yellow", glyph: "●" };
+    default:
+      return { color: "gray", glyph: "●" };
+  }
+}
+
+/**
  * Detect a slash-command marker user message and pull the
  * `<command-name>` + `<command-args>` tags out for rendering. Returns null
  * for plain user text. The format mirrors source's `formatCommandInputTags`
@@ -192,6 +273,30 @@ export function ConversationView({ messages }: ConversationViewProps): React.Rea
 
         if (message.role === "user") {
           if (typeof message.content === "string") {
+            // Stage 20: background sub-agent finished. The QueryEngine
+            // injects the raw `<task-notification>...</task-notification>`
+            // XML into the conversation as a `[task-notification]\n…`
+            // user message — perfect for the model, ugly for humans.
+            // Render a compact one-line status mirroring source's
+            // `UserAgentNotificationMessage`.
+            const taskNotif = extractTaskNotification(message.content);
+            if (taskNotif) {
+              const { color, glyph } = taskNotificationStyle(taskNotif.status);
+              return (
+                <Box key={`u${index}`} marginTop={1}>
+                  <Text color={color}>{glyph}</Text>
+                  <Text>{` Sub-agent `}</Text>
+                  <Text bold color={color}>{taskNotif.agentType}</Text>
+                  <Text>{` ${taskNotif.status}`}</Text>
+                  {taskNotif.description ? (
+                    <Text dimColor>{`  ${taskNotif.description}`}</Text>
+                  ) : null}
+                  {taskNotif.usage ? (
+                    <Text dimColor>{`  · ${taskNotif.usage}`}</Text>
+                  ) : null}
+                </Box>
+              );
+            }
             // Slash-command marker (`<command-name>/skill</command-name>` …):
             // render as a styled "❯ /name args" command bubble. Mirrors
             // source's UserCommandMessage component so users see the same
