@@ -22,9 +22,9 @@ Easy Agent 的目标，是成为一个严肃的、可持续演进的、本地 Co
 
 ## 当前状态
 
-**当前阶段：** 阶段 20 —— 后台 Agent 与 Worktree 隔离，开发中
+**当前阶段：** 阶段 21 —— Agent Teams / 多 Agent 协作，下一阶段
 
-当前项目已经完成到阶段 19 的教程化实现主线，包括 CLI、流式通信、工具执行、终端 UI、会话编排、上下文管理、MCP、Skills、Sandbox 和 Sub-Agent。阶段 20 正在开发中，重点是后台子 Agent 执行、完成通知、输出文件，以及 Git Worktree 隔离。
+当前项目已经完成到阶段 20 的教程化实现主线，包括 CLI、流式通信、工具执行、终端 UI、会话编排、上下文管理、MCP、Skills、Sandbox、Sub-Agent、后台 Agent 执行、完成通知、输出文件，以及 Git Worktree 隔离。阶段 21 是下一块重点：Agent Teams / 多 Agent 协作。
 
 因此，当前的 Easy Agent 更适合被理解为一个正在稳步推进的开源复刻工程，而不是已经面向终端用户完全交付的成品。
 
@@ -109,7 +109,7 @@ easy-agent/
 | 17 | Skills 系统 | [`step/step17.js`](./step/step17.js) | ✅ 已完成 |
 | 18 | Sandbox | [`step/step18.js`](./step/step18.js) | ✅ 已完成 |
 | 19 | Sub-Agent 与 Agent 定义系统 | [`step/step19.js`](./step/step19.js) | ✅ 已完成 |
-| 20 | 后台执行与 Worktree 隔离 | `src/agents/runAsyncAgent.ts`, `src/utils/worktree.ts` | 🚧 开发中 |
+| 20 | 后台执行与 Worktree 隔离 | [`step/step20.js`](./step/step20.js) | ✅ 已完成 |
 | 21 | Agent Teams / 多 Agent 协作 | `planned` | ⏳ 未开始 |
 | 22 | Hooks 生命周期系统 | `planned` | ⏳ 未开始 |
 | 23 | 终端 UI 升级 | `planned in step series` | 🚧 部分完成 |
@@ -125,8 +125,7 @@ easy-agent/
 
 当前实现进度补充：
 
-- 阶段 19 已在源码、文章和 step 快照中完成。
-- 阶段 20 已有后台 Agent、通知、输出文件、Worktree 隔离相关源码开发，但教程文章和 `step/step20.js` 尚未完成。
+- 阶段 20 已在源码和 step 快照中完成。
 - 阶段 21 Agent Teams 仍处于计划阶段，并且会和阶段 20 保持边界清晰。
 
 ## Easy Agent 是什么，以及它不是什么
@@ -192,11 +191,10 @@ agent --dump-system-prompt
 
 接下来最重要的几个里程碑是：
 
-1. 完成阶段 20 的后台 Agent 执行与 Worktree 隔离
-2. 补齐阶段 20 教程文章和 `step/step20.js`
-3. 实现阶段 21 Agent Teams 多 Agent 协作层
-4. 继续推进 Hooks、终端 UI 与配置系统完善
-5. 继续向管道模式、Auto Mode 和多 Provider 架构演进
+1. 实现阶段 21 Agent Teams 多 Agent 协作层
+2. 补齐阶段 21 教程文章和 `step/step21.js`
+3. 继续推进 Hooks、终端 UI 与配置系统完善
+4. 继续向管道模式、Auto Mode 和多 Provider 架构演进
 
 ## 贡献策略
 
