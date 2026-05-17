@@ -18,6 +18,7 @@
     "test:sandbox": "tsx src/scripts/test-sandbox.ts",
     "test:agents": "tsx src/scripts/test-agents.ts",
     "test:stage20": "tsx src/scripts/test-stage20.ts",
+    "test:stage21": "tsx src/scripts/test-stage21.ts",
     "smoke:sandbox": "tsx src/scripts/smoke-sandbox.ts",
     "smoke:bash-sandbox": "tsx src/scripts/smoke-bash-sandbox.ts"
   },

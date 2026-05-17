@@ -80,6 +80,11 @@ export function getPlansRoot(): string {
   return getEasyAgentPath("plans");
 }
 
+/** Returns `~/.easy-agent/teams` — stage 21 Agent Teams root directory. */
+export function getTeamsRoot(): string {
+  return getEasyAgentPath("teams");
+}
+
 /** Returns `~/.easy-agent/projects` — both memory + session storage live here. */
 export function getProjectsRoot(): string {
   return getEasyAgentPath("projects");

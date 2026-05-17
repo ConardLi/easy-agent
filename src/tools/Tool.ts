@@ -59,6 +59,23 @@ export interface ToolContext {
    * so the parent's tool-call card can be matched to the right sub-agent.
    */
   toolUseId?: string;
+
+  /**
+   * Stage 21 — Agent Teams identity. Populated by AgentTool when this
+   * sub-agent was launched as a named teammate. Tools that need to know
+   * "am I running as a teammate, and if so what's my handle?" read this
+   * (currently just SendMessage to fill the `from` field). The lead's
+   * own tool calls leave this undefined.
+   *
+   * Typed at the call site (in SendMessage) rather than imported from
+   * the team helpers module here, to avoid pulling teammate types into
+   * Tool.ts's type-only surface area.
+   */
+  teammateIdentity?: {
+    agentId: string;
+    agentName: string;
+    teamName: string;
+  };
 }
 
 // ─── Tool Result ───────────────────────────────────────────────────

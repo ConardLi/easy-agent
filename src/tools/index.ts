@@ -26,6 +26,9 @@ import { taskGetTool } from "./taskGetTool.js";
 import { taskListTool } from "./taskListTool.js";
 import { skillTool } from "./skillTool.js";
 import { agentTool } from "./agentTool.js";
+import { teamCreateTool } from "./teamCreateTool.js";
+import { teamDeleteTool } from "./teamDeleteTool.js";
+import { sendMessageTool } from "./sendMessageTool.js";
 import type { PermissionMode } from "../permissions/permissions.js";
 
 const BUILTIN_TOOLS: Tool[] = [
@@ -45,6 +48,13 @@ const BUILTIN_TOOLS: Tool[] = [
   exitPlanModeTool,
   skillTool,
   agentTool,
+  // Stage 21 — Agent Teams. The three tools below all gate themselves
+  // on isAgentTeamsEnabled() in their `isEnabled()` methods, so when
+  // the feature flag is off they're filtered out by `getAllTools()`
+  // before the model sees the schema. No prompt-side branching needed.
+  teamCreateTool,
+  teamDeleteTool,
+  sendMessageTool,
 ];
 
 let mcpTools: Tool[] = [];

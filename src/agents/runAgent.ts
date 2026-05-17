@@ -37,6 +37,10 @@ import type {
 import { resolveAgentTools } from "./resolveAgentTools.js";
 import type { AgentDefinition, AgentRunResult } from "./types.js";
 import type { ContentBlock, Usage } from "../types/message.js";
+import {
+  drainUnreadMessages,
+  formatMailboxAttachment,
+} from "../utils/teammateMailbox.js";
 
 export const DEFAULT_AGENT_MAX_TURNS = 30;
 
@@ -101,6 +105,23 @@ export interface RunChildAgentParams {
    * `<task-notification>`.
    */
   sessionIdOverride?: string;
+  /**
+   * Stage 21 — Agent Teams identity. When set, this sub-agent runs as a
+   * named teammate:
+   *   1. Its tool context exposes the identity so SendMessage's `from`
+   *      field reflects the teammate's name (not "team-lead").
+   *   2. Any unread mailbox messages for this teammate are drained and
+   *      injected ahead of the opening user prompt — the teammate sees
+   *      pending coordination notes the moment it starts thinking.
+   *
+   * Undefined when the sub-agent is a regular (un-named) Agent call —
+   * stage 19/20 paths stay byte-identical.
+   */
+  teammateIdentity?: {
+    agentId: string;
+    agentName: string;
+    teamName: string;
+  };
 }
 
 /**
@@ -171,11 +192,43 @@ export async function runChildAgent(params: RunChildAgentParams): Promise<AgentR
     // Sub-agent reads its own mode — isolating plan-mode transitions
     // (Enter/ExitPlanMode) from the parent's mode state.
     getPermissionMode: () => subPermissionMode,
+    // Stage 21: thread teammate identity into the sub-agent's tool
+    // context so SendMessage's `from` resolves correctly.
+    ...(params.teammateIdentity
+      ? { teammateIdentity: params.teammateIdentity }
+      : {}),
   };
 
-  const initialMessages: MessageParam[] = [
-    { role: "user", content: params.prompt },
-  ];
+  // Stage 21: pre-loop mailbox drain.
+  //
+  // If this sub-agent is a named teammate, we read its inbox right
+  // before kicking off the loop and prepend any unread messages as a
+  // <teammate-messages> attachment in the opening user turn. This
+  // mirrors source's `getTeammateMailboxAttachments` call inside
+  // inProcessRunner.ts — the in-process teammate path always picks up
+  // pending mailbox traffic before its first model call.
+  //
+  // Why prepend (vs separate first message): two distinct user-role
+  // messages with no assistant in between would surface as a single
+  // doubled-up prompt to the API anyway. Combining them keeps the
+  // conversation shape simple and saves us a round trip.
+  const initialMessages: MessageParam[] = [];
+  if (params.teammateIdentity) {
+    const unread = await drainUnreadMessages(
+      params.teammateIdentity.agentName,
+      params.teammateIdentity.teamName,
+    );
+    if (unread.length > 0) {
+      initialMessages.push({
+        role: "user",
+        content: `${formatMailboxAttachment(unread)}\n\n${params.prompt}`,
+      });
+    } else {
+      initialMessages.push({ role: "user", content: params.prompt });
+    }
+  } else {
+    initialMessages.push({ role: "user", content: params.prompt });
+  }
 
   const loop = query({
     messages: initialMessages,

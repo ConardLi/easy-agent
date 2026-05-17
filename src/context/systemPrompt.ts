@@ -7,6 +7,7 @@ import { buildMemoryAccessGuidance, buildMemoryExclusionGuidance, buildMemoryPer
 import { formatSkillsSystemReminder } from "../services/skills/budget.js";
 import { getModelVisibleSkills } from "../services/skills/registry.js";
 import { formatAgentsSystemReminder } from "../agents/promptInjection.js";
+import { formatTeamSystemReminder } from "../agents/teamPromptInjection.js";
 import { getAllAgents } from "../agents/registry.js";
 
 const execFileAsync = promisify(execFile);
@@ -134,6 +135,15 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions): Prom
   // registry is populated at startup by bootstrapAgents() in cli.ts.
   const agentsReminder = formatAgentsSystemReminder(getAllAgents());
 
+  // Stage 21: Agent Teams reminder — appears only when the feature flag
+  // is on AND a team is currently active. The model already sees the
+  // TeamCreate/TeamDelete/SendMessage tool schemas when the flag is on;
+  // this block adds the workflow guidance source bakes into
+  // `teammatePromptAddendum.ts`. We intentionally show it ONLY while a
+  // team is active so the model doesn't drown in team-coordination
+  // instructions during a single-agent conversation.
+  const teamReminder = formatTeamSystemReminder();
+
   const dynamicSections = [
     SYSTEM_PROMPT_DYNAMIC_START,
     formatEnvironmentContext(environmentContext),
@@ -142,6 +152,7 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions): Prom
     options.additionalInstructions ? "Session instructions:\n" + options.additionalInstructions : "",
     skillsReminder,
     agentsReminder,
+    teamReminder,
     SYSTEM_PROMPT_DYNAMIC_END,
   ].filter(Boolean);
 

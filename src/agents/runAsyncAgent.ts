@@ -51,6 +51,7 @@ import type {
   PermissionRuleSet,
   PermissionSettings,
 } from "../permissions/permissions.js";
+import { setMemberActive } from "../utils/teamHelpers.js";
 
 export interface RunAsyncAgentLifecycleParams {
   /** The freshly-registered store entry — its abortController is used for the run. */
@@ -67,6 +68,18 @@ export interface RunAsyncAgentLifecycleParams {
   onPermissionRequest?: (request: PermissionRequest) => Promise<PermissionDecision>;
   /** Set when this run is using `isolation: "worktree"`. */
   worktreeInfo?: WorktreeInfo;
+  /**
+   * Stage 21 — when set, this background sub-agent is registered as a
+   * named teammate. We propagate the identity into `runChildAgent` so
+   * SendMessage sees the right `from`, and on termination we flip the
+   * member's `isActive` flag to false in the team file (signal for
+   * TeamDelete and for the lead to know the teammate is finished).
+   */
+  teammateIdentity?: {
+    agentId: string;
+    agentName: string;
+    teamName: string;
+  };
 }
 
 /**
@@ -151,6 +164,12 @@ export async function runAsyncAgentLifecycle(
       // transcripts and TodoWrite scopes are addressable by the same
       // string the model gets back in `async_launched`.
       sessionIdOverride: entry.agentId,
+      // Stage 21: forward teammate identity so SendMessage's `from`
+      // resolves correctly inside this sub-agent, and so the pre-loop
+      // mailbox drain in runChildAgent picks up any pending messages.
+      ...(params.teammateIdentity
+        ? { teammateIdentity: params.teammateIdentity }
+        : {}),
 
       onProgress: (event) => {
         // Mirror progress to BOTH the JSONL output file (for the parent's
@@ -280,5 +299,23 @@ export async function runAsyncAgentLifecycle(
         ...worktreeFinal,
       }),
     });
+  } finally {
+    // Stage 21: regardless of how this lifecycle ended (success,
+    // failure, abort), flip the team-file member's isActive flag.
+    // TeamDelete consults this flag to refuse deletion while any
+    // teammate is still working, and SendMessage uses it to warn the
+    // model about "offline" recipients. Best-effort — a stale flag
+    // doesn't break correctness, just nags TeamDelete to refuse once.
+    if (params.teammateIdentity) {
+      try {
+        await setMemberActive(
+          params.teammateIdentity.teamName,
+          params.teammateIdentity.agentName,
+          false,
+        );
+      } catch {
+        // Best-effort.
+      }
+    }
   }
 }

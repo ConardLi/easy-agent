@@ -47,6 +47,16 @@ import {
   isInsideGitRepo,
   type WorktreeInfo,
 } from "../utils/worktree.js";
+import { isAgentTeamsEnabled } from "../utils/agentTeamsEnabled.js";
+import { getActiveTeam } from "../state/teamContext.js";
+import {
+  addTeamMember,
+  formatAgentId,
+  readTeamFileAsync,
+  setMemberActive,
+  TEAM_LEAD_NAME,
+  type TeamMember,
+} from "../utils/teamHelpers.js";
 
 // Stage 20: short id helper. Crypto-grade uniqueness isn't needed —
 // agentIds are scoped to one CLI session and we use them as map keys.
@@ -95,6 +105,19 @@ interface AgentInput {
    * the agent definition's `isolation` field.
    */
   isolation?: AgentIsolation;
+  /**
+   * Stage 21 — Agent Teams. Short human-readable handle that other
+   * teammates use as the `to` value in SendMessage. Requires `team_name`
+   * to also be set and forces `run_in_background: true` (an unnamed
+   * synchronous Agent call would never be reachable by SendMessage
+   * anyway — the lead's loop is busy waiting for the return value).
+   */
+  name?: string;
+  /**
+   * Stage 21 — Agent Teams. The team the new teammate joins. Must match
+   * the team currently active in this session (set by TeamCreate).
+   */
+  team_name?: string;
 }
 
 function readInput(raw: Record<string, unknown>): AgentInput {
@@ -108,6 +131,9 @@ function readInput(raw: Record<string, unknown>): AgentInput {
   const rawIsolation = raw["isolation"];
   const isolation: AgentIsolation | undefined =
     rawIsolation === "worktree" || rawIsolation === "none" ? rawIsolation : undefined;
+  const name = typeof raw["name"] === "string" ? raw["name"].trim() : undefined;
+  const team_name =
+    typeof raw["team_name"] === "string" ? raw["team_name"].trim() : undefined;
   return {
     prompt,
     description,
@@ -115,6 +141,8 @@ function readInput(raw: Record<string, unknown>): AgentInput {
     model,
     ...(run_in_background !== undefined ? { run_in_background } : {}),
     ...(isolation !== undefined ? { isolation } : {}),
+    ...(name ? { name } : {}),
+    ...(team_name ? { team_name } : {}),
   };
 }
 
@@ -189,6 +217,19 @@ export const agentTool: Tool = {
           "Setting this explicitly OVERRIDES the agent definition — pass 'none' only when you have a strong reason to bypass an agent that was defined with worktree isolation. " +
           "Worktree isolation requires the working directory to be inside a git repository; otherwise the sub-agent runs without isolation and a warning is returned alongside the result.",
       },
+      name: {
+        type: "string",
+        description:
+          "Agent Teams only — register this sub-agent as a named teammate under the active team. The name becomes the address other members use in `SendMessage({ to: \"<name>\", ... })`. " +
+          "Must be a short alphanumeric handle (e.g. \"backend\", \"reviewer\"). Requires `team_name` to also be set and forces `run_in_background: true` (a named teammate that runs in the foreground would never be reachable by a message). " +
+          "Available only when the Agent Teams feature flag is on; omit otherwise.",
+      },
+      team_name: {
+        type: "string",
+        description:
+          "Agent Teams only — the team to which this named teammate belongs. Must match the currently active team (the one returned by your previous `TeamCreate` call). " +
+          "Required when `name` is set; ignored otherwise.",
+      },
     },
     required: ["prompt", "description"],
     additionalProperties: false,
@@ -202,6 +243,8 @@ export const agentTool: Tool = {
       model,
       run_in_background,
       isolation,
+      name,
+      team_name,
     } = readInput(input);
 
     if (!prompt || !prompt.trim()) {
@@ -220,6 +263,85 @@ export const agentTool: Tool = {
       return {
         content: `Error: sub-agent type '${agentType}' is not registered. Available types: ${available || "(none)"}.`,
         isError: true,
+      };
+    }
+
+    // ─── Stage 21: validate team-mode invariants ────────────────────
+    //
+    // Three failure modes we surface as errors rather than silently
+    // ignoring the name/team_name fields (silent ignore is the worst
+    // outcome — the model thinks it spawned a teammate but the actual
+    // SendMessage later finds no entry):
+    //
+    //   1. `name` set, feature flag off → teams feature isn't enabled.
+    //   2. `name` set without `team_name` (or vice-versa) → ambiguous.
+    //   3. `team_name` doesn't match the active team → wrong session.
+    //   4. Teammate trying to spawn another teammate (sub-team) → source
+    //      forbids this; we do too. Detect via context.teammateIdentity.
+    let teammateIdentity:
+      | { agentId: string; agentName: string; teamName: string }
+      | undefined;
+    if (name || team_name) {
+      if (!isAgentTeamsEnabled()) {
+        return {
+          content:
+            "Error: Agent Teams feature is not enabled. Drop `name` / `team_name`, or restart with --agent-teams (or set EASY_AGENT_TEAMS=1).",
+          isError: true,
+        };
+      }
+      if (!name || !team_name) {
+        return {
+          content:
+            "Error: `name` and `team_name` must both be set (or both omitted). A named teammate without a team has no inbox; a team_name without a name has no member to register.",
+          isError: true,
+        };
+      }
+      if (name === TEAM_LEAD_NAME) {
+        return {
+          content: `Error: "${TEAM_LEAD_NAME}" is reserved for the team lead — pick a different teammate name.`,
+          isError: true,
+        };
+      }
+      const active = getActiveTeam();
+      if (!active) {
+        return {
+          content:
+            "Error: no team is currently active. Call TeamCreate before spawning a named teammate.",
+          isError: true,
+        };
+      }
+      if (active.teamName !== team_name) {
+        return {
+          content: `Error: team_name "${team_name}" does not match the active team "${active.teamName}".`,
+          isError: true,
+        };
+      }
+      // Anti-recursion: a teammate cannot spawn a sub-teammate. Source
+      // strips the Agent tool from teammates entirely; we leave Agent
+      // visible (it's still useful for in-context delegation) but
+      // refuse the named-teammate variant.
+      if (
+        (context as ToolContext & {
+          teammateIdentity?: { teamName: string };
+        }).teammateIdentity
+      ) {
+        return {
+          content:
+            "Error: teammates cannot spawn nested teammates. Use plain `Agent({ subagent_type, prompt })` for one-shot delegation, or ask the team lead to spawn a new teammate.",
+          isError: true,
+        };
+      }
+      if (run_in_background === false) {
+        return {
+          content:
+            "Error: named teammates must run in the background (`run_in_background: true`). A foreground teammate would block the lead's loop and be unreachable by SendMessage anyway.",
+          isError: true,
+        };
+      }
+      teammateIdentity = {
+        agentId: formatAgentId(name, team_name),
+        agentName: name,
+        teamName: team_name,
       };
     }
 
@@ -303,10 +425,40 @@ export const agentTool: Tool = {
     // disappears as soon as we return. The async store + the
     // <task-notification> at the next user submit are the proper
     // surfaces for backgrounded progress.
-    if (run_in_background === true) {
-      const agentId = generateAgentId();
+    // A named teammate ALWAYS goes through the background path. The
+    // schema's required `run_in_background: true` invariant is enforced
+    // above, but we OR the bool here as a belt-and-suspenders.
+    const isNamedTeammate = teammateIdentity !== undefined;
+    if (run_in_background === true || isNamedTeammate) {
+      // Use the teammate's deterministic agentId when present so the
+      // .output file matches the team-file member entry. Plain async
+      // sub-agents get a short random id (the stage-20 behavior).
+      const agentId = teammateIdentity ? teammateIdentity.agentId : generateAgentId();
       const sessionIdForOutput = context.sessionId ?? "default";
       const outputFile = await ensureTaskOutputFile(sessionIdForOutput, agentId);
+
+      // Stage 21: register the teammate in the team file BEFORE
+      // launching, so SendMessage from anywhere (including this same
+      // model turn) can target them immediately.
+      if (teammateIdentity) {
+        const member: TeamMember = {
+          agentId: teammateIdentity.agentId,
+          name: teammateIdentity.agentName,
+          agentType,
+          ...(model ? { model } : {}),
+          joinedAt: Date.now(),
+          isActive: true,
+          outputFile,
+          ...(worktreeInfo
+            ? {
+                worktreePath: worktreeInfo.worktreePath,
+                worktreeBranch: worktreeInfo.worktreeBranch,
+                gitRoot: worktreeInfo.gitRoot,
+              }
+            : {}),
+        };
+        await addTeamMember(teammateIdentity.teamName, member);
+      }
 
       const entry = registerAsyncAgent({
         agentId,
@@ -361,6 +513,7 @@ export const agentTool: Tool = {
         ...(sessionPermissionRules ? { sessionPermissionRules } : {}),
         ...(onPermissionRequest ? { onPermissionRequest } : {}),
         ...(worktreeInfo ? { worktreeInfo } : {}),
+        ...(teammateIdentity ? { teammateIdentity } : {}),
       });
 
       // Tool-result text the model sees after launching a background
@@ -384,9 +537,14 @@ export const agentTool: Tool = {
       //      requests an update, but should NOT do so preemptively
       //      (which leads to the sleep+read loop the user reported).
       const summary = [
-        `Async sub-agent '${agentType}' launched successfully.`,
+        teammateIdentity
+          ? `Teammate '${teammateIdentity.agentName}' joined team '${teammateIdentity.teamName}' (agent_type: ${agentType}).`
+          : `Async sub-agent '${agentType}' launched successfully.`,
         `agent_id: ${agentId} (internal — do not mention to the user)`,
         `output_file: ${outputFile}`,
+        teammateIdentity
+          ? `You can SendMessage to this teammate any time using { to: "${teammateIdentity.agentName}" }.`
+          : "",
         worktreeInfo
           ? `worktree: ${worktreeInfo.worktreePath} (branch: ${worktreeInfo.worktreeBranch})`
           : "",
