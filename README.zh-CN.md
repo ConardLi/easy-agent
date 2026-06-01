@@ -2,6 +2,8 @@
 
 一个从零开始、以开源方式完整复刻 Claude Code 体验的终端 Agent 工程项目。
 
+![](./public/img/banner.jpeg)
+
 Easy Agent 是一个长期演进的工程项目，目标是用 TypeScript 和 Node.js 逐步重建一个完整的本地 Agentic Coding System。它不是几个零散 Demo 的集合，而是一个面向真实工程能力的开源复刻项目：具备清晰架构、安全边界、多轮编排、本地工具执行能力，以及进一步走向完整 Claude Code 级开发体验所需的扩展能力。
 
 这个仓库是该目标的开源实现主线。后续会逐步补充更完整的文档，当前 README 重点说明项目本身：它想做成什么、采用什么架构、目前推进到哪里。
