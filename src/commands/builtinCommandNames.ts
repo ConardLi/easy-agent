@@ -24,6 +24,8 @@ export const BUILTIN_COMMAND_NAMES = new Set<string>([
   "hook",
   "history",
   "compact",
+  "rewind",
+  "checkpoint",
   "exit",
   "quit",
   "bye",

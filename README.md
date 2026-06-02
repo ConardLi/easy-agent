@@ -24,9 +24,9 @@ Core goals:
 
 ## Project Status
 
-**Current stage:** Stage 24 — rendering experience upgrades, next
+**Current stage:** Stage 27 — error handling and resilience, next
 
-The project has completed the tutorial-friendly implementation track through Stage 23, including the CLI, streaming communication, tool execution, terminal UI, session orchestration, context management, MCP, skills, sandboxing, sub-agents, background agent execution, git worktree isolation, Agent Teams, lifecycle hooks, output styles, and user-defined slash commands. Stage 24 is the next major planned area: rendering experience upgrades.
+The project has completed the tutorial-friendly implementation track through Stage 26, including the CLI, streaming communication, tool execution, terminal UI, session orchestration, context management, MCP, skills, sandboxing, sub-agents, background agent execution, git worktree isolation, Agent Teams, lifecycle hooks, output styles, user-defined slash commands, rendering experience upgrades, the unified configuration system, project trust, file history, and rewind support. Stage 27 is the next major planned area: error handling and resilience.
 
 Easy Agent should currently be understood as a serious open-source rebuild in progress rather than a finished end-user product.
 
@@ -115,10 +115,10 @@ The project follows a 32-phase roadmap designed to recreate the full Claude Code
 | 21 | Agent Teams / multi-agent collaboration | [`step/step21.js`](./step/step21.js) | ✅ Done |
 | 22 | Hooks lifecycle system | [`step/step22.js`](./step/step22.js) | ✅ Done |
 | 23 | Output styles and user commands | [`step/step23.js`](./step/step23.js) | ✅ Done |
-| 24 | Rendering experience upgrades | `planned` | ⏳ Not started |
-| 25 | Configuration system improvements | `planned in step series` | 🚧 Partial |
-| 26 | File history and rollback | `planned` | ⏳ Not started |
-| 27 | Error handling and resilience | `planned in step series` | 🚧 Partial |
+| 24 | Rendering experience upgrades | [`step/step24.js`](./step/step24.js) | ✅ Done |
+| 25 | Configuration system improvements | [`step/step25.js`](./step/step25.js) | ✅ Done |
+| 26 | File history and rollback | [`step/step26.js`](./step/step26.js) | ✅ Done |
+| 27 | Error handling and resilience | `planned` | ⏳ Not started |
 | 28 | Pipe mode / non-interactive execution | `planned` | ⏳ Not started |
 | 29 | Auto mode | `planned in step series` | 🚧 Partial |
 | 30 | Multi-provider support | `planned in step series` | ⏳ Not started |
@@ -128,8 +128,8 @@ The [`easy-agent/step/`](./step/) directory contains tutorial-friendly milestone
 
 Current implementation notes:
 
-- Stage 23 is complete in source and the step snapshot.
-- Stage 24 rendering experience upgrades is next; it is intentionally separate from the user-extension mechanisms added in Stages 22 and 23.
+- Stage 26 is complete in source and the step snapshot.
+- Stage 27 error handling and resilience is next; it builds on the request, tool, and session recovery paths added earlier.
 
 ## What Easy Agent Is — and Is Not
 
@@ -194,10 +194,10 @@ agent --dump-system-prompt
 
 The next major milestones are:
 
-1. implement Stage 24 rendering experience upgrades
-2. write the Stage 24 tutorial article and `step/step24.js`
-3. continue configuration and file-history improvements
-4. move toward pipe mode, Auto Mode, and multi-provider architecture
+1. implement Stage 27 error handling and resilience
+2. write the Stage 27 tutorial article and `step/step27.js`
+3. continue toward pipe mode and Auto Mode
+4. prepare the multi-provider architecture and final packaging work
 
 ## Contribution Policy
 

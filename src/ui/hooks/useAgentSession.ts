@@ -9,7 +9,9 @@ import {
   createSessionId,
   initSessionStorage,
   restoreSession,
+  type FileHistorySnapshotRecord,
 } from "../../session/storage.js";
+import { configureFileHistory, restoreFileHistorySnapshots } from "../../session/fileHistory.js";
 import {
   loadPermissionSettings,
   type PermissionDecision,
@@ -489,6 +491,7 @@ export function useAgentSession({
       try {
         let initialMessages: MessageParam[] = [];
         let initialUsage = { input_tokens: 0, output_tokens: 0 };
+        let restoredFileHistory: FileHistorySnapshotRecord[] = [];
 
         if (shouldResume) {
           const restored = await restoreSession(toolContext.cwd, resumeSessionId ?? undefined);
@@ -496,6 +499,7 @@ export function useAgentSession({
           sessionIdRef.current = restored.summary.sessionId;
           initialMessages = restored.messages;
           initialUsage = restored.summary.totalUsage;
+          restoredFileHistory = restored.fileHistorySnapshots;
           setMessages(restored.messages);
           setTotalUsage({
             input: restored.summary.totalUsage.input_tokens,
@@ -515,6 +519,14 @@ export function useAgentSession({
             updatedAt: startedAt,
             model,
           });
+        }
+
+        // Stage 26: bind file-history to this session (reads the
+        // checkpointingEnabled setting + sets the backup dir / cwd), then
+        // fold any persisted snapshots back in so /rewind survives --resume.
+        await configureFileHistory(toolContext.cwd, sessionIdRef.current);
+        if (restoredFileHistory.length > 0) {
+          restoreFileHistorySnapshots(restoredFileHistory);
         }
 
         const engine = new QueryEngine({
@@ -791,11 +803,15 @@ export function useAgentSession({
       // empty user message would pollute the transcript and confuse
       // /resume.
       if (trimmed.length > 0) {
+        // Stage 26: open the file-history turn before persisting, so the
+        // user-message entry and any snapshot taken this turn share an id.
+        const messageId = engineRef.current.beginUserTurn();
         await appendTranscriptEntry(toolContext.cwd, sessionIdRef.current, {
           type: "message",
           timestamp: new Date().toISOString(),
           role: "user",
           message: { role: "user", content: trimmed },
+          messageId,
         });
       }
     }
@@ -918,6 +934,9 @@ export function useAgentSession({
               timestamp: new Date().toISOString(),
               role: "assistant",
               message: value.message,
+              ...(engineRef.current.getCurrentMessageId()
+                ? { messageId: engineRef.current.getCurrentMessageId()! }
+                : {}),
             });
             break;
           case "tool_result_message":
@@ -940,6 +959,9 @@ export function useAgentSession({
               timestamp: new Date().toISOString(),
               role: "user",
               message: value.message,
+              ...(engineRef.current.getCurrentMessageId()
+                ? { messageId: engineRef.current.getCurrentMessageId()! }
+                : {}),
             });
             break;
           case "messages_updated":

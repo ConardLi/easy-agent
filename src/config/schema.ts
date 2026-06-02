@@ -46,6 +46,8 @@ export const SettingsSchema = z.looseObject({
   cleanupPeriodDays: z.number().int().nonnegative().optional(),
   // Tier 2
   disableAllHooks: z.boolean().optional(),
+  // Stage 26: master switch for file-history checkpointing (default on).
+  checkpointingEnabled: z.boolean().optional(),
   respectGitignore: z.boolean().optional(),
   syntaxHighlightingDisabled: z.boolean().optional(),
   prefersReducedMotion: z.boolean().optional(),

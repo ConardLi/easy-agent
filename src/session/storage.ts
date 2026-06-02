@@ -55,17 +55,37 @@ export interface SessionSummary {
   totalUsage: Usage;
 }
 
+/**
+ * Stage 26: serialized file-history snapshot persisted to the transcript so
+ * `/rewind` survives `--resume`. Structurally matches fileHistory.ts's
+ * FileHistoryBackup / FileHistorySnapshot (kept local here to avoid a
+ * session↔session import cycle).
+ */
+export interface FileHistoryBackupRecord {
+  backupFileName: string | null;
+  version: number;
+  backupTime: string;
+}
+export interface FileHistorySnapshotRecord {
+  messageId: string;
+  trackedFileBackups: Record<string, FileHistoryBackupRecord>;
+  timestamp: string;
+}
+
 export type TranscriptEntry =
   | { type: "session_meta"; sessionId: string; cwd: string; startedAt: string; model: string }
-  | { type: "message"; timestamp: string; role: "user" | "assistant"; message: MessageParam }
+  | { type: "message"; timestamp: string; role: "user" | "assistant"; message: MessageParam; messageId?: string }
   | { type: "tool_event"; timestamp: string; name: string; phase: "start" | "done"; resultLength?: number; isError?: boolean }
   | { type: "usage"; timestamp: string; turn: Usage; total: Usage }
   | { type: "system"; timestamp: string; level: "info" | "error"; message: string }
-  | { type: "compaction"; timestamp: string; trigger: "auto" | "manual" };
+  | { type: "compaction"; timestamp: string; trigger: "auto" | "manual" }
+  | { type: "file_history_snapshot"; timestamp: string; snapshot: FileHistorySnapshotRecord };
 
 export interface RestoredSession {
   summary: SessionSummary;
   messages: MessageParam[];
+  /** Reconstructed file-history snapshots (chronological), if any. */
+  fileHistorySnapshots: FileHistorySnapshotRecord[];
 }
 
 function createEmptyUsage(): Usage {
@@ -120,6 +140,10 @@ function parseJsonLine(line: string): TranscriptEntry | null {
           timestamp: parsed.timestamp,
           role: parsed.role,
           message: parsed.message,
+          // Optional for back-compat: transcripts written before stage 26
+          // (file history) have no per-message id. Snapshots bind to this
+          // id, so resume relies on it being preserved when present.
+          ...(typeof parsed.messageId === "string" ? { messageId: parsed.messageId } : {}),
         };
       }
       return null;
@@ -185,6 +209,26 @@ function parseJsonLine(line: string): TranscriptEntry | null {
       return null;
     }
 
+    if (parsed.type === "file_history_snapshot") {
+      const snap = parsed.snapshot as Record<string, unknown> | undefined;
+      if (
+        typeof parsed.timestamp === "string" &&
+        snap &&
+        typeof snap === "object" &&
+        typeof snap.messageId === "string" &&
+        typeof snap.trackedFileBackups === "object" &&
+        snap.trackedFileBackups !== null &&
+        typeof snap.timestamp === "string"
+      ) {
+        return {
+          type: "file_history_snapshot",
+          timestamp: parsed.timestamp,
+          snapshot: snap as unknown as FileHistorySnapshotRecord,
+        };
+      }
+      return null;
+    }
+
     return null;
   } catch {
     return null;
@@ -240,6 +284,25 @@ export async function initSessionStorage(metadata: SessionMetadata): Promise<Ses
   await fs.writeFile(paths.transcriptPath, `${JSON.stringify(metaEntry)}\n`, { flag: "a" });
   await fs.writeFile(paths.latestPath, `${metadata.sessionId}\n`, "utf-8");
   return paths;
+}
+
+/**
+ * Stage 26: persist a file-history snapshot to the transcript. Called by
+ * fileHistory.ts whenever a snapshot is created (makeSnapshot) or updated
+ * (trackEdit). On `--resume`, restoreSession folds these back into the
+ * in-memory FileHistoryState so `/rewind` keeps working. No-op when
+ * persistence is disabled (handled by appendTranscriptEntry).
+ */
+export async function recordFileHistorySnapshot(
+  cwd: string,
+  sessionId: string,
+  snapshot: FileHistorySnapshotRecord,
+): Promise<void> {
+  await appendTranscriptEntry(cwd, sessionId, {
+    type: "file_history_snapshot",
+    timestamp: new Date().toISOString(),
+    snapshot,
+  });
 }
 
 export async function appendTranscriptEntry(cwd: string, sessionId: string, entry: TranscriptEntry): Promise<void> {
@@ -306,6 +369,18 @@ export async function restoreSession(cwd: string, sessionId?: string): Promise<R
     .reverse()
     .find((entry): entry is Extract<TranscriptEntry, { type: "usage" }> => entry.type === "usage");
 
+  // Rebuild the file-history snapshot chain: keep the LAST record per
+  // messageId (trackEdit appends updated copies of the most-recent snapshot
+  // after makeSnapshot creates it), preserving first-appearance order so the
+  // snapshots array stays chronological. Mirrors source's
+  // buildFileHistorySnapshotChain.
+  const fhMap = new Map<string, FileHistorySnapshotRecord>();
+  for (const entry of entries) {
+    if (entry.type === "file_history_snapshot") {
+      fhMap.set(entry.snapshot.messageId, entry.snapshot);
+    }
+  }
+
   return {
     summary: {
       sessionId: meta.sessionId,
@@ -317,6 +392,7 @@ export async function restoreSession(cwd: string, sessionId?: string): Promise<R
       totalUsage: latestUsage?.total ?? createEmptyUsage(),
     },
     messages,
+    fileHistorySnapshots: [...fhMap.values()],
   };
 }
 

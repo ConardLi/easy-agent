@@ -253,6 +253,11 @@ Settings keys (stage 25 — in ~/.easy-agent/settings.json or <cwd>/.easy-agent/
   {
     const { applySessionRetentionPolicy } = await import("../session/storage.js");
     await applySessionRetentionPolicy(process.cwd()).catch(() => {});
+
+    // Stage 26: prune stale file-history backups under the same retention
+    // policy (cleanupPeriodDays). Best-effort; never blocks startup.
+    const { cleanupOldFileHistoryBackups } = await import("../session/fileHistory.js");
+    await cleanupOldFileHistoryBackups(process.cwd()).catch(() => {});
   }
 
   // Stage 25 Tier 2 config — snapshot the toggles that sync hot paths consult:

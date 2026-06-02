@@ -20,6 +20,8 @@ import {
   extractToolFilePaths,
 } from "../services/skills/conditional.js";
 import { tokenCountWithEstimation } from "../utils/tokens.js";
+import { fileHistoryTrackEdit } from "../session/fileHistory.js";
+import * as path from "node:path";
 import { isAtBlockingLimit, calculateTokenWarningState, type TokenWarningResult } from "../context/autoCompact.js";
 import type { ContentBlock, TextBlock, ToolUseBlock, Usage } from "../types/message.js";
 import {
@@ -387,6 +389,20 @@ async function runOneToolBlock(
     // sub-agent progress store) can correlate their events back to
     // the right tool-call card in the UI.
     const callContext: ToolContext = { ...context, toolUseId: block.id };
+
+    // ─── Stage 26: file-history track-edit (before the mutation) ──────
+    // Back up the pre-edit content of any file Write/Edit is about to
+    // change, so /rewind can restore it. Runs before tool.call so the
+    // backup reflects the original content. Best-effort & non-blocking on
+    // failure (handled inside fileHistoryTrackEdit).
+    if (context.messageId && (block.name === "Write" || block.name === "Edit")) {
+      const fp = toolInput["file_path"];
+      if (typeof fp === "string" && fp) {
+        const absPath = path.isAbsolute(fp) ? fp : path.resolve(context.cwd, fp);
+        await fileHistoryTrackEdit(absPath, context.messageId);
+      }
+    }
+
     const rawResult = await tool.call(toolInput, callContext);
     let result: ToolResult = {
       ...rawResult,

@@ -73,6 +73,7 @@ const BUILTIN_COMMANDS: CommandSuggestion[] = [
   { name: "/output-style", description: "Inspect or switch the answer style (default/Explanatory/Learning)" },
   { name: "/history", description: "Show saved sessions for this project" },
   { name: "/compact", description: "Compact the conversation context" },
+  { name: "/rewind", description: "Restore files to a previous turn (alias: /checkpoint)" },
   { name: "/exit", description: "Exit the session" },
 ];
 

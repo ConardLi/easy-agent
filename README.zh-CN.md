@@ -24,9 +24,9 @@ Easy Agent 的目标，是成为一个严肃的、可持续演进的、本地 Co
 
 ## 当前状态
 
-**当前阶段：** 阶段 24 —— 渲染体验升级，下一阶段
+**当前阶段：** 阶段 27 —— 错误处理与韧性，下一阶段
 
-当前项目已经完成到阶段 23 的教程化实现主线，包括 CLI、流式通信、工具执行、终端 UI、会话编排、上下文管理、MCP、Skills、Sandbox、Sub-Agent、后台 Agent 执行、Git Worktree 隔离、Agent Teams、Hooks 生命周期系统、Output Styles，以及用户自定义 Slash Commands。阶段 24 是下一块重点：渲染体验升级。
+当前项目已经完成到阶段 26 的教程化实现主线，包括 CLI、流式通信、工具执行、终端 UI、会话编排、上下文管理、MCP、Skills、Sandbox、Sub-Agent、后台 Agent 执行、Git Worktree 隔离、Agent Teams、Hooks 生命周期系统、Output Styles、用户自定义 Slash Commands、渲染体验升级、统一配置系统、项目信任、文件历史与回滚能力。阶段 27 是下一块重点：错误处理与韧性。
 
 因此，当前的 Easy Agent 更适合被理解为一个正在稳步推进的开源复刻工程，而不是已经面向终端用户完全交付的成品。
 
@@ -115,10 +115,10 @@ easy-agent/
 | 21 | Agent Teams / 多 Agent 协作 | [`step/step21.js`](./step/step21.js) | ✅ 已完成 |
 | 22 | Hooks 生命周期系统 | [`step/step22.js`](./step/step22.js) | ✅ 已完成 |
 | 23 | Output Styles 与用户命令 | [`step/step23.js`](./step/step23.js) | ✅ 已完成 |
-| 24 | 渲染体验升级 | `planned` | ⏳ 未开始 |
-| 25 | 配置系统完善 | `planned in step series` | 🚧 部分完成 |
-| 26 | 文件历史与回滚 | `planned` | ⏳ 未开始 |
-| 27 | 错误处理与韧性 | `planned in step series` | 🚧 部分完成 |
+| 24 | 渲染体验升级 | [`step/step24.js`](./step/step24.js) | ✅ 已完成 |
+| 25 | 配置系统完善 | [`step/step25.js`](./step/step25.js) | ✅ 已完成 |
+| 26 | 文件历史与回滚 | [`step/step26.js`](./step/step26.js) | ✅ 已完成 |
+| 27 | 错误处理与韧性 | `planned` | ⏳ 未开始 |
 | 28 | 管道模式 / 非交互执行 | `planned` | ⏳ 未开始 |
 | 29 | Auto Mode | `planned in step series` | 🚧 部分完成 |
 | 30 | 多 Provider 支持 | `planned in step series` | ⏳ 未开始 |
@@ -128,8 +128,8 @@ easy-agent/
 
 当前实现进度补充：
 
-- 阶段 23 已在源码和 step 快照中完成。
-- 阶段 24 渲染体验升级是下一阶段，并且会和阶段 22/23 的用户扩展机制保持边界清晰。
+- 阶段 26 已在源码和 step 快照中完成。
+- 阶段 27 错误处理与韧性是下一阶段，它会继续补强请求、工具执行和会话恢复链路。
 
 ## Easy Agent 是什么，以及它不是什么
 
@@ -194,10 +194,10 @@ agent --dump-system-prompt
 
 接下来最重要的几个里程碑是：
 
-1. 实现阶段 24 渲染体验升级
-2. 补齐阶段 24 教程文章和 `step/step24.js`
-3. 继续推进配置系统与文件历史能力
-4. 继续向管道模式、Auto Mode 和多 Provider 架构演进
+1. 实现阶段 27 错误处理与韧性
+2. 补齐阶段 27 教程文章和 `step/step27.js`
+3. 继续推进管道模式与 Auto Mode
+4. 准备多 Provider 架构与最终打包发布工作
 
 ## 贡献策略
 

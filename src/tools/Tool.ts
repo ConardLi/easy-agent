@@ -67,6 +67,13 @@ export interface ToolContext {
   sessionId?: string;
 
   /**
+   * Stage 26 — id of the active user turn. File-history snapshots bind to
+   * this id; the agentic loop uses it to back up files before Edit/Write.
+   * Set per-turn by the QueryEngine; tools themselves ignore it.
+   */
+  messageId?: string;
+
+  /**
    * Stage 24 — interactive multiple-choice prompt. AskUserQuestion calls
    * this to surface questions to the user and await their selection. The
    * QueryEngine/UI wires it the same way as the permission prompt

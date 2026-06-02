@@ -34,6 +34,7 @@
     "test:stage24-statusline": "tsx src/scripts/smoke-statusline.tsx",
     "test:stage24-command": "tsx src/scripts/smoke-command.tsx",
     "test:stage25": "tsx src/scripts/smoke-config.ts",
+    "test:filehistory": "tsx src/scripts/smoke-filehistory.ts",
     "smoke:sandbox": "tsx src/scripts/smoke-sandbox.ts",
     "smoke:bash-sandbox": "tsx src/scripts/smoke-bash-sandbox.ts"
   },
@@ -45,6 +46,7 @@
   ],
   "license": "MIT",
   "devDependencies": {
+    "@types/diff": "^7.0.2",
     "@types/node": "^25.5.2",
     "@types/proper-lockfile": "^4.1.4",
     "@types/react": "^19.2.14",
@@ -56,6 +58,7 @@
     "@modelcontextprotocol/sdk": "^1.29.0",
     "chalk": "^5.6.2",
     "cli-highlight": "^2.1.11",
+    "diff": "^9.0.0",
     "dotenv": "^17.4.1",
     "figlet": "^1.11.0",
     "ignore": "^7.0.5",

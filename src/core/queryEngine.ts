@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { MessageParam } from "@anthropic-ai/sdk/resources/messages.js";
 import {
   query,
@@ -17,6 +18,15 @@ import { compactMessages } from "../context/compaction.js";
 import { autoCompactIfNeeded, calculateTokenWarningState, type TokenWarningResult } from "../context/autoCompact.js";
 import { tokenCountWithEstimation, buildTokenBudgetSnapshot } from "../utils/tokens.js";
 import { formatProjectSessionHistory } from "../session/history.js";
+import {
+  fileHistoryEnabled,
+  fileHistoryGetDiffStats,
+  fileHistoryMakeSnapshot,
+  fileHistoryRewind,
+  getSnapshotByOffset,
+  snapshotCount,
+} from "../session/fileHistory.js";
+import { relative as relativePath } from "node:path";
 import { getToolsApiParams } from "../tools/index.js";
 import type { ToolContext } from "../tools/Tool.js";
 import type { Usage } from "../types/message.js";
@@ -135,6 +145,16 @@ export class QueryEngine {
    */
   private sessionStartHooksFired = false;
 
+  /**
+   * Stage 26: the id of the current user turn. File-history snapshots bind to
+   * this id (mirrors source's `messageId` on `fileHistoryMakeSnapshot`), and
+   * `/rewind` resolves a target snapshot by walking these per-turn ids. The UI
+   * layer calls `beginUserTurn()` right before persisting the user prompt so
+   * the transcript entry and the snapshot share the same id; the auto-trigger
+   * (background-agent) path lazily generates one inside `submitMessage`.
+   */
+  private currentMessageId: string | null = null;
+
   constructor(options: QueryEngineOptions) {
     this.messages = [...(options.initialMessages ?? [])];
     this.totalUsage = { ...(options.initialUsage ?? createEmptyUsage()) };
@@ -223,6 +243,22 @@ export class QueryEngine {
     };
   }
 
+  /**
+   * Stage 26: open a fresh user turn, generating the id that file-history
+   * snapshots for this turn will bind to. Returns the id so the caller can
+   * stamp it onto the persisted user-message transcript entry, keeping the
+   * transcript and the snapshot in lockstep.
+   */
+  beginUserTurn(): string {
+    this.currentMessageId = randomUUID();
+    return this.currentMessageId;
+  }
+
+  /** Stage 26: id of the active user turn (null before the first turn). */
+  getCurrentMessageId(): string | null {
+    return this.currentMessageId;
+  }
+
   interrupt(): boolean {
     if (!this.abortController) {
       return false;
@@ -243,6 +279,14 @@ export class QueryEngine {
     // skips the user-message append).
     if (!trimmed && pendingNotificationCount() === 0) {
       return { handled: false };
+    }
+
+    // Stage 26: the auto-trigger (background-agent reply) path has no
+    // user-typed prompt for the UI to stamp via beginUserTurn(), so open
+    // the turn here. Normal turns already had beginUserTurn() called by the
+    // UI before the prompt was persisted.
+    if (!trimmed) {
+      this.beginUserTurn();
     }
 
     if (trimmed.startsWith("/")) {
@@ -420,6 +464,15 @@ export class QueryEngine {
   private async *submitInternal(
     trimmed: string,
   ): AsyncGenerator<QueryEngineEvent, { handled: boolean; reason?: LoopTerminationReason }> {
+
+    // ─── Stage 26: open the file-history snapshot for this turn ─────
+    // Fire at turn start (before any edit) so the snapshot bound to this
+    // turn's id captures the filesystem state *before* the model's edits;
+    // fileHistoryTrackEdit (in the loop) then attaches pre-edit backups to
+    // it, and `/rewind` to this id undoes the whole turn. Best-effort: a
+    // null id (shouldn't happen — beginUserTurn runs first) is backfilled.
+    if (!this.currentMessageId) this.beginUserTurn();
+    await fileHistoryMakeSnapshot(this.currentMessageId!);
 
     // ─── Stage 22: SessionStart hook (one-shot per process) ─────────
     // Source fires SessionStart from the bootstrap path; we delay
@@ -604,6 +657,9 @@ export class QueryEngine {
         sessionPermissionRules: this.sessionPermissionRules,
         onPermissionRequest: this.onPermissionRequest,
         defaultModel: this.getActiveModel(),
+        // Stage 26: the active turn id, so the loop can back up files
+        // (fileHistoryTrackEdit) before Edit/Write run.
+        messageId: this.currentMessageId ?? undefined,
       };
 
       const loop = query({
@@ -684,7 +740,7 @@ export class QueryEngine {
         yield {
           type: "command",
           kind: "info",
-          message: "Commands: /help /clear /config [list|get|set] /cost /model [name|default] /mode [default|plan|auto] /tasks [task|todo|reset] /mcp [tools <name>|reconnect <name>] /skills /agents /hooks /output-style [name] /history /compact /<skill-or-command> [args] /exit /quit /bye",
+          message: "Commands: /help /clear /config [list|get|set] /cost /model [name|default] /mode [default|plan|auto] /tasks [task|todo|reset] /mcp [tools <name>|reconnect <name>] /skills /agents /hooks /output-style [name] /history /compact /rewind [n] /<skill-or-command> [args] /exit /quit /bye",
         };
         return { handled: true };
       case "config":
@@ -867,6 +923,9 @@ export class QueryEngine {
         }
         return { handled: true };
       }
+      case "rewind":
+      case "checkpoint":
+        return yield* this.handleRewindCommand(args);
       default:
         yield {
           type: "command",
@@ -891,6 +950,96 @@ export class QueryEngine {
    * otherwise treated as a literal string. `mode` is treated as a sensitive key:
    * it is never honored from project/local files, and `list`/`get` reflect that.
    */
+  /**
+   * Stage 26: `/rewind [n]` (alias `/checkpoint`). Restores tracked files to
+   * the state at the start of the n-th-from-last user turn (default 1 = undo
+   * the most recent turn's edits). Shows the affected file list + diff stats,
+   * then applies the rewind. Only files are rewound; the conversation is left
+   * intact.
+   */
+  private async *handleRewindCommand(
+    args: string[],
+  ): AsyncGenerator<QueryEngineEvent, { handled: boolean }> {
+    if (!fileHistoryEnabled()) {
+      yield {
+        type: "command",
+        kind: "info",
+        message: "File history is disabled (checkpointingEnabled: false). Nothing to rewind.",
+      };
+      return { handled: true };
+    }
+
+    const total = snapshotCount();
+    if (total === 0) {
+      yield {
+        type: "command",
+        kind: "info",
+        message: "No file-history snapshots yet — make an edit first.",
+      };
+      return { handled: true };
+    }
+
+    // Parse the step count (how many turns to go back). Default 1.
+    let steps = 1;
+    const rawArg = args[0]?.trim();
+    if (rawArg) {
+      const parsed = Number(rawArg);
+      if (!Number.isInteger(parsed) || parsed < 1) {
+        yield {
+          type: "command",
+          kind: "error",
+          message: `Invalid step count: ${rawArg}. Usage: /rewind [n] where n ≥ 1.`,
+        };
+        return { handled: true };
+      }
+      steps = parsed;
+    }
+
+    const target = getSnapshotByOffset(steps);
+    if (!target) {
+      yield {
+        type: "command",
+        kind: "error",
+        message: `Cannot rewind ${steps} step(s): only ${total} snapshot(s) available.`,
+      };
+      return { handled: true };
+    }
+
+    const cwd = this.toolContext.cwd;
+    const rel = (p: string): string => {
+      const r = relativePath(cwd, p);
+      return r && !r.startsWith("..") ? r : p;
+    };
+
+    // Preview the changes the rewind would make.
+    const stats = await fileHistoryGetDiffStats(target.messageId);
+
+    let changed: string[];
+    try {
+      changed = await fileHistoryRewind(target.messageId);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      yield { type: "command", kind: "error", message: `Rewind failed: ${msg}` };
+      return { handled: true };
+    }
+
+    if (changed.length === 0) {
+      yield {
+        type: "command",
+        kind: "info",
+        message: `Already at that state — no files changed (rewound ${steps} turn(s)).`,
+      };
+      return { handled: true };
+    }
+
+    const lines = [
+      `Rewound ${steps} turn(s). Restored ${changed.length} file(s) (+${stats.insertions} -${stats.deletions}):`,
+      ...changed.map((p) => `  ${rel(p)}`),
+    ];
+    yield { type: "command", kind: "info", message: lines.join("\n") };
+    return { handled: true };
+  }
+
   private async *handleConfigCommand(
     args: string[],
   ): AsyncGenerator<QueryEngineEvent, { handled: boolean }> {
