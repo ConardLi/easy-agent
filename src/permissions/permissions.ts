@@ -2,8 +2,7 @@ import * as path from "node:path";
 import type { Tool } from "../tools/Tool.js";
 import { isReadOnlyCommand } from "../tools/bashTool.js";
 import { getPlanFilePath } from "../context/plans.js";
-import { getSettingsPaths } from "../utils/paths.js";
-import { readJsonSettingsFile } from "../utils/settings.js";
+import { loadSettingSources, isTrustedScopeForSensitiveKeys } from "../config/sources.js";
 import {
   loadSandboxSettings,
   shouldUseSandbox,
@@ -85,45 +84,57 @@ function normalizeMode(value: unknown): PermissionMode | undefined {
   return value === "default" || value === "plan" || value === "auto" ? value : undefined;
 }
 
-async function readPermissionsFromSettings(filePath: string): Promise<Partial<PermissionSettings>> {
-  // We THROW on parse errors here (matching the old behavior) so that a
-  // syntactically broken settings.json doesn't silently grant fewer
-  // permissions than the user thinks they configured. The MCP loader
-  // chooses the opposite policy (warn + skip) because partial MCP
-  // server configs are still useful — partial permission rules aren't.
-  const result = await readJsonSettingsFile<RawSettings>(filePath);
-  if (result.parseError) {
-    throw new Error(`Invalid JSON in permissions settings: ${filePath}`);
+/**
+ * Resolve permission settings by merging every settings source.
+ *
+ *   - `allow` / `deny`  → concatenated across all sources then de-duplicated
+ *     (defaults first, so they always apply). De-duplication keeps the list
+ *     small without changing matching behavior.
+ *   - `mode`            → SECURITY-SENSITIVE. `auto` mode disables every
+ *     confirmation prompt, so it must NOT be settable from a committed/checked
+ *     in project (or local) settings file — otherwise a hostile repo could
+ *     ship `{"mode":"auto"}` and silently bypass all permission checks. We
+ *     therefore read `mode` only from non-project/local sources (user / flag /
+ *     policy), later source winning.
+ *
+ * A malformed settings file degrades to "ignored" rather than throwing:
+ * dropping a source can only REMOVE allow rules (fail-closed → more prompts,
+ * never fewer), so it is safe. The malformed file is reported separately via
+ * `loadSettingsDiagnostics` so the user still sees a notice.
+ */
+export async function loadPermissionSettings(cwd: string): Promise<PermissionSettings> {
+  const sources = await loadSettingSources(cwd);
+
+  const allow: string[] = [...DEFAULT_PERMISSION_SETTINGS.allow];
+  const deny: string[] = [...DEFAULT_PERMISSION_SETTINGS.deny];
+  let mode: PermissionMode | undefined;
+
+  for (const src of sources) {
+    if (!src.raw) continue;
+    const raw = src.raw as RawSettings;
+    allow.push(...normalizeRuleList(raw.allow));
+    deny.push(...normalizeRuleList(raw.deny));
+    if (!isTrustedScopeForSensitiveKeys(src.source)) continue;
+    const m = normalizeMode(raw.mode);
+    if (m) mode = m;
   }
-  if (!result.raw) return {};
+
   return {
-    allow: normalizeRuleList(result.raw.allow),
-    deny: normalizeRuleList(result.raw.deny),
-    ...(normalizeMode(result.raw.mode) ? { mode: normalizeMode(result.raw.mode) } : {}),
+    allow: dedupe(allow),
+    deny: dedupe(deny),
+    mode: mode ?? DEFAULT_PERMISSION_SETTINGS.mode,
   };
 }
 
-export async function loadPermissionSettings(cwd: string): Promise<PermissionSettings> {
-  const { user: userSettingsPath, project: projectSettingsPath } = getSettingsPaths(cwd);
-
-  const [userSettings, projectSettings] = await Promise.all([
-    readPermissionsFromSettings(userSettingsPath),
-    readPermissionsFromSettings(projectSettingsPath),
-  ]);
-
-  return {
-    allow: [
-      ...DEFAULT_PERMISSION_SETTINGS.allow,
-      ...(userSettings.allow ?? []),
-      ...(projectSettings.allow ?? []),
-    ],
-    deny: [
-      ...DEFAULT_PERMISSION_SETTINGS.deny,
-      ...(userSettings.deny ?? []),
-      ...(projectSettings.deny ?? []),
-    ],
-    mode: projectSettings.mode ?? userSettings.mode ?? DEFAULT_PERMISSION_SETTINGS.mode,
-  };
+function dedupe(list: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const item of list) {
+    if (seen.has(item)) continue;
+    seen.add(item);
+    out.push(item);
+  }
+  return out;
 }
 
 function escapeRegExp(value: string): string {

@@ -21,8 +21,7 @@ import type {
   ScopedMcpServerConfig,
 } from "../../types/mcp.js";
 import { logWarn } from "../../utils/log.js";
-import { getSettingsPaths } from "../../utils/paths.js";
-import { readJsonSettingsFile } from "../../utils/settings.js";
+import { loadSettingSources, type SettingSource } from "../../config/sources.js";
 
 interface RawSettings {
   mcpServers?: unknown;
@@ -135,7 +134,7 @@ function validateRemoteConfig(
 
 function extractScopedServers(
   raw: RawSettings | null,
-  scope: "user" | "project",
+  scope: SettingSource,
   filePath: string,
   errors: string[],
 ): Record<string, ScopedMcpServerConfig> {
@@ -157,29 +156,31 @@ function extractScopedServers(
 }
 
 /**
- * Load MCP server configurations from user + project settings.
+ * Load MCP server configurations from every settings source.
  *
- * Project overrides user on name conflicts. Servers that fail schema
- * validation are dropped with a warning — never throws (mirrors the source's
- * "best-effort" loading approach so a single malformed entry can't take the
- * whole CLI down).
+ * Later sources override earlier ones on name conflicts (user → project →
+ * local → flag → policy). Servers that fail schema validation are dropped with
+ * a warning — never throws (mirrors the source's "best-effort" loading
+ * approach so a single malformed entry can't take the whole CLI down).
  */
 export async function loadMcpConfigs(cwd: string): Promise<McpConfigLoadResult> {
-  const { user: userPath, project: projectPath } = getSettingsPaths(cwd);
+  const sources = await loadSettingSources(cwd);
 
   const errors: string[] = [];
-  const [userFile, projectFile] = await Promise.all([
-    readJsonSettingsFile<RawSettings>(userPath),
-    readJsonSettingsFile<RawSettings>(projectPath),
-  ]);
-  if (userFile.parseError) errors.push(userFile.parseError);
-  if (projectFile.parseError) errors.push(projectFile.parseError);
+  const servers: Record<string, ScopedMcpServerConfig> = {};
 
-  const userServers = extractScopedServers(userFile.raw, "user", userPath, errors);
-  const projectServers = extractScopedServers(projectFile.raw, "project", projectPath, errors);
-
-  // Project overrides user — Object.assign right-wins
-  const servers: Record<string, ScopedMcpServerConfig> = { ...userServers, ...projectServers };
+  for (const src of sources) {
+    if (src.parseError) errors.push(src.parseError);
+    if (!src.raw) continue;
+    const scoped = extractScopedServers(
+      src.raw as RawSettings,
+      src.source,
+      src.path ?? `<${src.source}>`,
+      errors,
+    );
+    // Later source wins on name conflicts.
+    Object.assign(servers, scoped);
+  }
 
   for (const error of errors) {
     logWarn(`[mcp] config: ${error}`);

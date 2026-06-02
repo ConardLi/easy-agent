@@ -61,6 +61,7 @@ interface UsePromptInputOptions {
 const BUILTIN_COMMANDS: CommandSuggestion[] = [
   { name: "/help", description: "Show available commands" },
   { name: "/clear", description: "Clear conversation history" },
+  { name: "/config", description: "Inspect or change settings (list/get/set, --user/--project/--local)" },
   { name: "/cost", description: "Show session token usage" },
   { name: "/model", description: "Inspect current model or override it for this session" },
   { name: "/mode", description: "Inspect or switch permission mode (default/plan/auto)" },

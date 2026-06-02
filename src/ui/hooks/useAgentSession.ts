@@ -54,6 +54,7 @@ import {
   pendingNotificationCount,
   subscribePendingNotifications,
 } from "../../state/notificationStore.js";
+import { loadSettingsDiagnostics } from "../../utils/settings.js";
 import { findSkill } from "../../services/skills/registry.js";
 import { findUserCommand } from "../../commands/userCommands/registry.js";
 import { isBuiltinCommandName } from "../../commands/builtinCommandNames.js";
@@ -125,6 +126,7 @@ function buildCommandNotice(message: string, kind: "info" | "error"): SystemNoti
       body: [
         "/help — Show available commands",
         "/clear — Clear conversation history",
+        "/config [list|get|set] — Inspect or change settings (--user/--project/--local)",
         "/cost — Show session token usage",
         "/model [name|default] — Inspect or override the session model",
         "/mode [default|plan|auto] — Inspect or switch permission mode",
@@ -453,7 +455,8 @@ export function useAgentSession({
   }, [isLoading, permissionPrompt]);
 
   useEffect(() => {
-    void loadPermissionSettings(process.cwd())
+    const cwd = process.cwd();
+    void loadPermissionSettings(cwd)
       .then(setPermissionSettings)
       .catch((error: unknown) => {
         setSystemNotice({
@@ -462,6 +465,19 @@ export function useAgentSession({
           body: error instanceof Error ? error.message : String(error),
         });
       });
+    // A malformed settings.json degrades to "ignored" rather than crashing the
+    // CLI — surface a single non-fatal notice so the user knows their config
+    // isn't being applied and where to fix it.
+    void loadSettingsDiagnostics(cwd)
+      .then((errors) => {
+        if (errors.length === 0) return;
+        setSystemNotice({
+          tone: "error",
+          title: "Some settings were ignored",
+          body: [...errors, "", "Fix the file(s) above; the rest of your config still applies."].join("\n"),
+        });
+      })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {

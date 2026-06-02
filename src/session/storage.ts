@@ -9,6 +9,27 @@ import { getEasyAgentHome } from "../utils/paths.js";
 
 const MAX_SESSIONS = 20;
 
+/** Default transcript retention when `cleanupPeriodDays` is unset. */
+export const DEFAULT_CLEANUP_PERIOD_DAYS = 30;
+
+// ─── persistence policy (set once at startup) ────────────────────────────
+//
+// `cleanupPeriodDays: 0` disables session persistence entirely: no transcripts
+// are written and existing ones are deleted at startup. We gate the write
+// primitives on this module-level flag so every call site (queryEngine, hooks,
+// compaction) honors it without threading a parameter through each one.
+
+let persistenceEnabled = true;
+
+/** Enable/disable transcript writes for this session (driven by cleanupPeriodDays). */
+export function configureSessionPersistence(enabled: boolean): void {
+  persistenceEnabled = enabled;
+}
+
+export function isSessionPersistenceEnabled(): boolean {
+  return persistenceEnabled;
+}
+
 export interface SessionPaths {
   rootDir: string;
   projectDir: string;
@@ -203,6 +224,9 @@ async function ensureSessionDir(paths: SessionPaths): Promise<void> {
 
 export async function initSessionStorage(metadata: SessionMetadata): Promise<SessionPaths> {
   const paths = await getSessionPaths(metadata.cwd, metadata.sessionId);
+  // Persistence disabled (cleanupPeriodDays:0): return valid paths so the UI
+  // keeps working, but never touch disk — no dir, no transcript, no pointer.
+  if (!persistenceEnabled) return paths;
   await ensureSessionDir(paths);
 
   const metaEntry: TranscriptEntry = {
@@ -219,6 +243,7 @@ export async function initSessionStorage(metadata: SessionMetadata): Promise<Ses
 }
 
 export async function appendTranscriptEntry(cwd: string, sessionId: string, entry: TranscriptEntry): Promise<void> {
+  if (!persistenceEnabled) return;
   const paths = await getSessionPaths(cwd, sessionId);
   await ensureSessionDir(paths);
   await fs.appendFile(paths.transcriptPath, `${JSON.stringify(entry)}\n`, "utf-8");
@@ -301,6 +326,7 @@ export async function appendCompactionSnapshot(
   trigger: "auto" | "manual",
   messages: MessageParam[],
 ): Promise<void> {
+  if (!persistenceEnabled) return;
   const paths = await getSessionPaths(cwd, sessionId);
   await ensureSessionDir(paths);
   const lines: string[] = [];
@@ -314,6 +340,74 @@ export async function appendCompactionSnapshot(
     }));
   }
   await fs.appendFile(paths.transcriptPath, lines.join("\n") + "\n", "utf-8");
+}
+
+/**
+ * Apply the `cleanupPeriodDays` retention policy at startup. Reads the merged
+ * setting (default 30), sets the persistence flag, and prunes this project's
+ * transcript directory:
+ *
+ *   - `0`             → persistence OFF. Delete ALL transcripts + the `latest`
+ *                       pointer for this project; future writes no-op.
+ *   - `N > 0`         → delete `*.jsonl` whose mtime is older than N days.
+ *   - unset / invalid → default 30 days.
+ *
+ * Best-effort: a read/delete failure never blocks startup.
+ */
+export async function applySessionRetentionPolicy(cwd: string): Promise<{ periodDays: number; enabled: boolean }> {
+  let periodDays = DEFAULT_CLEANUP_PERIOD_DAYS;
+  try {
+    const { readMergedNumberSetting } = await import("../utils/settings.js");
+    const configured = await readMergedNumberSetting(cwd, "cleanupPeriodDays");
+    if (typeof configured === "number" && Number.isFinite(configured) && configured >= 0) {
+      periodDays = Math.floor(configured);
+    }
+  } catch {
+    // keep default
+  }
+
+  const enabled = periodDays !== 0;
+  configureSessionPersistence(enabled);
+
+  try {
+    const { projectDir, latestPath } = await getSessionPaths(cwd, "placeholder");
+    let entries: Dirent[];
+    try {
+      entries = await fs.readdir(projectDir, { withFileTypes: true });
+    } catch (error: unknown) {
+      const err = error as NodeJS.ErrnoException;
+      if (err?.code === "ENOENT") return { periodDays, enabled };
+      throw error;
+    }
+
+    const cutoffMs = Date.now() - periodDays * 24 * 60 * 60 * 1000;
+    for (const entry of entries) {
+      if (!entry.isFile() || !entry.name.endsWith(".jsonl")) continue;
+      const filePath = path.join(projectDir, entry.name);
+      if (periodDays === 0) {
+        await fs.rm(filePath, { force: true }).catch(() => {});
+        continue;
+      }
+      try {
+        const stat = await fs.stat(filePath);
+        if (stat.mtimeMs < cutoffMs) {
+          await fs.rm(filePath, { force: true }).catch(() => {});
+        }
+      } catch {
+        // skip files we can't stat
+      }
+    }
+
+    // With persistence off, drop the dangling `latest` pointer too so a stray
+    // --resume doesn't try to restore a transcript we just deleted.
+    if (periodDays === 0) {
+      await fs.rm(latestPath, { force: true }).catch(() => {});
+    }
+  } catch {
+    // best-effort cleanup
+  }
+
+  return { periodDays, enabled };
 }
 
 export async function listProjectSessions(cwd: string, limit = MAX_SESSIONS): Promise<SessionSummary[]> {

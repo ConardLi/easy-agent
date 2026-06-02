@@ -14,8 +14,7 @@
  * so callers don't need to repeat default-checking.
  */
 
-import { getSettingsPaths } from "../utils/paths.js";
-import { readJsonSettingsFile } from "../utils/settings.js";
+import { loadSettingSources } from "../config/sources.js";
 import type {
   SandboxFilesystemSettings,
   SandboxNetworkSettings,
@@ -73,12 +72,6 @@ function pickSandbox(value: unknown): SandboxSettings {
   };
 }
 
-async function readSandboxFromFile(filePath: string): Promise<SandboxSettings> {
-  const result = await readJsonSettingsFile<RawRootSettings>(filePath);
-  if (!result.raw || result.parseError) return {};
-  return pickSandbox(result.raw.sandbox);
-}
-
 function mergeStringArrays(...lists: (string[] | undefined)[]): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
@@ -111,58 +104,51 @@ export const DEFAULT_RESOLVED_SANDBOX_SETTINGS: ResolvedSandboxSettings = {
   network: { allowedDomains: [], deniedDomains: [] },
 };
 
+/**
+ * Fold an ordered list of per-source sandbox settings (low → high priority)
+ * into a fully-populated resolved object. Scalar fields take the last defined
+ * value (later source wins); array fields merge + de-duplicate across sources.
+ */
+export function resolveSandboxList(list: SandboxSettings[]): ResolvedSandboxSettings {
+  const lastDefined = <T>(pick: (s: SandboxSettings) => T | undefined, fallback: T): T => {
+    let result: T | undefined;
+    for (const s of list) {
+      const v = pick(s);
+      if (v !== undefined) result = v;
+    }
+    return result ?? fallback;
+  };
+  return {
+    enabled: lastDefined((s) => s.enabled, false),
+    autoAllowBashIfSandboxed: lastDefined((s) => s.autoAllowBashIfSandboxed, true),
+    allowUnsandboxedCommands: lastDefined((s) => s.allowUnsandboxedCommands, true),
+    excludedCommands: mergeStringArrays(...list.map((s) => s.excludedCommands)),
+    filesystem: {
+      allowWrite: mergeStringArrays(...list.map((s) => s.filesystem?.allowWrite)),
+      denyWrite: mergeStringArrays(...list.map((s) => s.filesystem?.denyWrite)),
+      allowRead: mergeStringArrays(...list.map((s) => s.filesystem?.allowRead)),
+      denyRead: mergeStringArrays(...list.map((s) => s.filesystem?.denyRead)),
+    },
+    network: {
+      allowedDomains: mergeStringArrays(...list.map((s) => s.network?.allowedDomains)),
+      deniedDomains: mergeStringArrays(...list.map((s) => s.network?.deniedDomains)),
+    },
+  };
+}
+
 export function resolveSandboxSettings(
   user: SandboxSettings,
   project: SandboxSettings,
 ): ResolvedSandboxSettings {
-  return {
-    enabled: project.enabled ?? user.enabled ?? false,
-    autoAllowBashIfSandboxed:
-      project.autoAllowBashIfSandboxed ?? user.autoAllowBashIfSandboxed ?? true,
-    allowUnsandboxedCommands:
-      project.allowUnsandboxedCommands ?? user.allowUnsandboxedCommands ?? true,
-    excludedCommands: mergeStringArrays(
-      user.excludedCommands,
-      project.excludedCommands,
-    ),
-    filesystem: {
-      allowWrite: mergeStringArrays(
-        user.filesystem?.allowWrite,
-        project.filesystem?.allowWrite,
-      ),
-      denyWrite: mergeStringArrays(
-        user.filesystem?.denyWrite,
-        project.filesystem?.denyWrite,
-      ),
-      allowRead: mergeStringArrays(
-        user.filesystem?.allowRead,
-        project.filesystem?.allowRead,
-      ),
-      denyRead: mergeStringArrays(
-        user.filesystem?.denyRead,
-        project.filesystem?.denyRead,
-      ),
-    },
-    network: {
-      allowedDomains: mergeStringArrays(
-        user.network?.allowedDomains,
-        project.network?.allowedDomains,
-      ),
-      deniedDomains: mergeStringArrays(
-        user.network?.deniedDomains,
-        project.network?.deniedDomains,
-      ),
-    },
-  };
+  return resolveSandboxList([user, project]);
 }
 
 export async function loadSandboxSettings(
   cwd: string,
 ): Promise<ResolvedSandboxSettings> {
-  const { user, project } = getSettingsPaths(cwd);
-  const [userSandbox, projectSandbox] = await Promise.all([
-    readSandboxFromFile(user),
-    readSandboxFromFile(project),
-  ]);
-  return resolveSandboxSettings(userSandbox, projectSandbox);
+  const sources = await loadSettingSources(cwd);
+  const list = sources.map((src) =>
+    src.raw ? pickSandbox((src.raw as RawRootSettings).sandbox) : {},
+  );
+  return resolveSandboxList(list);
 }

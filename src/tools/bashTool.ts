@@ -13,6 +13,7 @@ import {
   completeBashProgress,
   startBashProgress,
 } from "../state/bashProgressStore.js";
+import { readMergedEnv } from "../utils/settings.js";
 
 interface BashInput {
   command: string;
@@ -154,10 +155,22 @@ export const bashTool: Tool = {
     const progressId = context.toolUseId;
     if (progressId) startBashProgress(progressId);
 
+    // Inject the merged `env` setting (trusted sources only) on top of the
+    // process environment. Lets users/projects export vars (PATH additions,
+    // tokens, etc.) into every command without a wrapper script. Untrusted
+    // project/local env is dropped by readMergedEnv's trust gate. A bad read
+    // must not block execution, so we degrade to the bare process env.
+    let settingsEnv: Record<string, string> = {};
+    try {
+      settingsEnv = await readMergedEnv(context.cwd);
+    } catch {
+      settingsEnv = {};
+    }
+
     return await new Promise<ToolResult>((resolve) => {
       const child = spawn(process.env.SHELL || "bash", ["-lc", executedCommand], {
         cwd: context.cwd,
-        env: process.env,
+        env: { ...process.env, ...settingsEnv },
       });
 
       let stdout = "";

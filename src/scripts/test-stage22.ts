@@ -179,6 +179,14 @@ async function main(): Promise<void> {
       ],
     });
     _resetHooksSettingsCache();
+    // Stage 25: project hooks are trust-gated (they run shell commands), so
+    // they only merge once the folder is trusted. Trust it to verify the
+    // merge contract; the untrusted path is covered in smoke-config.ts.
+    const { trustProject, resetGlobalStateCache } = await import(
+      "../config/globalState.js"
+    );
+    resetGlobalStateCache();
+    await trustProject(cwd);
     const settings = await loadHooksSettings(cwd);
     const groups = settings.UserPromptSubmit ?? [];
     assert(groups.length === 2, "both user + project groups concatenate");

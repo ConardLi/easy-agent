@@ -5,6 +5,7 @@ import {
   type LoopTerminationReason,
 } from "./agenticLoop.js";
 import {
+  loadPermissionSettings,
   type PermissionDecision,
   type PermissionMode,
   type PermissionRequest,
@@ -48,7 +49,12 @@ import {
   resolveOutputStyle,
   setActiveOutputStyle,
 } from "../styles/registry.js";
-import { updateUserSettings } from "../utils/settings.js";
+import {
+  updateUserSettings,
+  updateProjectSettings,
+  updateLocalSettings,
+} from "../utils/settings.js";
+import { loadSettingSources, type SettingSource } from "../config/sources.js";
 import type { UserCommand } from "../commands/userCommands/types.js";
 import {
   runSessionStartHooks,
@@ -110,7 +116,9 @@ export class QueryEngine {
   private readonly toolContext: ToolContext;
   private currentPermissionMode: PermissionMode;
   private prePlanMode: PermissionMode | null = null;
-  private readonly permissionSettings?: PermissionSettings;
+  // Not readonly: `/config set` can rewrite permission rules / mode and call
+  // reloadPermissionSettings() to apply them live (no restart needed).
+  private permissionSettings?: PermissionSettings;
   private readonly sessionPermissionRules: PermissionRuleSet;
   private readonly onPermissionRequest?: (request: PermissionRequest) => Promise<PermissionDecision>;
   private abortController: AbortController | null = null;
@@ -141,6 +149,21 @@ export class QueryEngine {
 
   getPermissionMode(): PermissionMode {
     return this.currentPermissionMode;
+  }
+
+  /**
+   * Re-read permission settings from disk and apply them to this live session.
+   * Called by `/config set` so a permission-rule / mode change takes effect on
+   * the next tool call without a restart. We do NOT clobber an explicit
+   * in-session `/mode` choice: mode is only adopted from settings when the
+   * session is still on the default and not currently in plan mode.
+   */
+  async reloadPermissionSettings(): Promise<void> {
+    const next = await loadPermissionSettings(this.toolContext.cwd);
+    this.permissionSettings = next;
+    if (this.currentPermissionMode === "default" && this.prePlanMode === null) {
+      this.currentPermissionMode = next.mode;
+    }
   }
 
   /** Register a callback for when mode changes (used by UI layer). */
@@ -657,9 +680,11 @@ export class QueryEngine {
         yield {
           type: "command",
           kind: "info",
-          message: "Commands: /help /clear /cost /model [name|default] /mode [default|plan|auto] /tasks [task|todo|reset] /mcp [tools <name>|reconnect <name>] /skills /agents /hooks /output-style [name] /history /compact /<skill-or-command> [args] /exit /quit /bye",
+          message: "Commands: /help /clear /config [list|get|set] /cost /model [name|default] /mode [default|plan|auto] /tasks [task|todo|reset] /mcp [tools <name>|reconnect <name>] /skills /agents /hooks /output-style [name] /history /compact /<skill-or-command> [args] /exit /quit /bye",
         };
         return { handled: true };
+      case "config":
+        return yield* this.handleConfigCommand(args);
       case "mcp":
         return yield* this.handleMcpCommand(args);
       case "output-style":
@@ -846,6 +871,163 @@ export class QueryEngine {
         };
         return { handled: true };
     }
+  }
+
+  /**
+   * Stage 25: `/config [list|get|set]`.
+   *   - list                              → every effective top-level setting
+   *                                          with the source that supplied it
+   *   - get <key>                         → one setting's effective value + source
+   *   - set <key> <value> [--user|--project|--local]
+   *                                       → write to the chosen scope (default
+   *                                          --user), then hot-reload permission
+   *                                          settings so changes apply live.
+   *
+   * Values are parsed as JSON when possible (so `["Read"]`, `true`, `42` work),
+   * otherwise treated as a literal string. `mode` is treated as a sensitive key:
+   * it is never honored from project/local files, and `list`/`get` reflect that.
+   */
+  private async *handleConfigCommand(
+    args: string[],
+  ): AsyncGenerator<QueryEngineEvent, { handled: boolean }> {
+    const SENSITIVE_KEYS = new Set(["mode"]);
+    const cwd = this.toolContext.cwd;
+    const sub = (args[0] ?? "list").toLowerCase();
+
+    // Compute the effective value + provenance for a key across sources.
+    const resolveKey = (
+      sources: { source: SettingSource; raw: Record<string, unknown> | null }[],
+      key: string,
+    ): { value: unknown; from: string } | null => {
+      const sensitive = SENSITIVE_KEYS.has(key);
+      const defs = sources.filter(
+        (s) =>
+          s.raw &&
+          s.raw[key] !== undefined &&
+          (!sensitive || (s.source !== "project" && s.source !== "local")),
+      );
+      if (defs.length === 0) return null;
+      const allArrays = defs.every((s) => Array.isArray(s.raw![key]));
+      if (allArrays) {
+        const seen = new Set<string>();
+        const merged: unknown[] = [];
+        for (const s of defs) {
+          for (const item of s.raw![key] as unknown[]) {
+            const k = JSON.stringify(item);
+            if (seen.has(k)) continue;
+            seen.add(k);
+            merged.push(item);
+          }
+        }
+        return { value: merged, from: `merged(${defs.map((s) => s.source).join("+")})` };
+      }
+      const last = defs[defs.length - 1]!;
+      return { value: last.raw![key], from: last.source };
+    };
+
+    const fmt = (v: unknown): string =>
+      typeof v === "string" ? v : JSON.stringify(v);
+
+    if (sub === "list") {
+      const sources = await loadSettingSources(cwd);
+      const keys = new Set<string>();
+      for (const s of sources) if (s.raw) for (const k of Object.keys(s.raw)) keys.add(k);
+      const lines = ["Configuration (effective values + source)"];
+      if (keys.size === 0) {
+        lines.push("", "No settings configured. Use /config set <key> <value> to add one.");
+      } else {
+        for (const key of [...keys].sort()) {
+          const r = resolveKey(sources, key);
+          if (!r) continue;
+          lines.push(`  ${key} = ${fmt(r.value)}   [${r.from}]`);
+        }
+      }
+      lines.push(
+        "",
+        "Usage: /config get <key>",
+        "Usage: /config set <key> <value> [--user|--project|--local]",
+      );
+      yield { type: "command", kind: "info", message: lines.join("\n") };
+      return { handled: true };
+    }
+
+    if (sub === "get") {
+      const key = args[1]?.trim();
+      if (!key) {
+        yield { type: "command", kind: "error", message: "Usage: /config get <key>" };
+        return { handled: true };
+      }
+      const sources = await loadSettingSources(cwd);
+      const r = resolveKey(sources, key);
+      if (!r) {
+        yield { type: "command", kind: "info", message: `${key} is not set.` };
+        return { handled: true };
+      }
+      yield { type: "command", kind: "info", message: `${key} = ${fmt(r.value)}   [${r.from}]` };
+      return { handled: true };
+    }
+
+    if (sub === "set") {
+      // Parse: /config set <key> <value...> [--user|--project|--local]
+      const rest = args.slice(1);
+      let scope: SettingSource = "user";
+      const positional: string[] = [];
+      for (const tok of rest) {
+        if (tok === "--user") scope = "user";
+        else if (tok === "--project") scope = "project";
+        else if (tok === "--local") scope = "local";
+        else positional.push(tok);
+      }
+      const key = positional.shift();
+      const rawValue = positional.join(" ").trim();
+      if (!key || !rawValue) {
+        yield {
+          type: "command",
+          kind: "error",
+          message: "Usage: /config set <key> <value> [--user|--project|--local]",
+        };
+        return { handled: true };
+      }
+
+      let value: unknown;
+      try {
+        value = JSON.parse(rawValue);
+      } catch {
+        value = rawValue;
+      }
+
+      try {
+        if (scope === "project") await updateProjectSettings(cwd, { [key]: value });
+        else if (scope === "local") await updateLocalSettings(cwd, { [key]: value });
+        else await updateUserSettings({ [key]: value });
+        // Apply live: permission rules / mode are read fresh into the engine;
+        // model / outputStyle / statusLine are re-read on their next use.
+        await this.reloadPermissionSettings();
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        yield { type: "command", kind: "error", message: `Failed to write setting: ${msg}` };
+        return { handled: true };
+      }
+
+      yield {
+        type: "command",
+        kind: "info",
+        message: [
+          "Setting updated",
+          `- ${key} = ${fmt(value)}`,
+          `- Scope: ${scope}`,
+          "- Applied to this session; permission changes take effect on the next tool call.",
+        ].join("\n"),
+      };
+      return { handled: true };
+    }
+
+    yield {
+      type: "command",
+      kind: "error",
+      message: `Unknown /config subcommand: ${sub}. Use list, get, or set.`,
+    };
+    return { handled: true };
   }
 
   /**

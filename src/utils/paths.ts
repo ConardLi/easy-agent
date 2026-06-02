@@ -47,6 +47,8 @@ import * as path from "node:path";
 
 const DIR_NAME = ".easy-agent";
 const SETTINGS_FILE = "settings.json";
+const LOCAL_SETTINGS_FILE = "settings.local.json";
+const STATE_FILE = "state.json";
 
 // ─── Global (~/.easy-agent/...) ──────────────────────────────────────
 
@@ -63,6 +65,16 @@ export function getEasyAgentPath(...segments: string[]): string {
 /** Returns `~/.easy-agent/settings.json`. */
 export function getUserSettingsPath(): string {
   return getEasyAgentPath(SETTINGS_FILE);
+}
+
+/**
+ * Returns `~/.easy-agent/state.json` — the machine-level State store
+ * (project trust + per-machine preferences). Distinct from settings.json:
+ * this file is never version-controlled and holds runtime/security state,
+ * not shareable configuration.
+ */
+export function getStatePath(): string {
+  return getEasyAgentPath(STATE_FILE);
 }
 
 /** Returns `~/.easy-agent/AGENT.md`. */
@@ -105,6 +117,15 @@ export function getProjectEasyAgentDir(cwd: string): string {
 /** Returns `<cwd>/.easy-agent/settings.json`. */
 export function getProjectSettingsPath(cwd: string): string {
   return path.join(getProjectEasyAgentDir(cwd), SETTINGS_FILE);
+}
+
+/**
+ * Returns `<cwd>/.easy-agent/settings.local.json` — project-local personal
+ * overrides. This file is gitignored (the writer adds it to `.gitignore`
+ * automatically) so individual preferences never get committed.
+ */
+export function getLocalSettingsPath(cwd: string): string {
+  return path.join(getProjectEasyAgentDir(cwd), LOCAL_SETTINGS_FILE);
 }
 
 // ─── Tuple helpers ───────────────────────────────────────────────────

@@ -33,6 +33,7 @@
     "test:stage24-group": "tsx src/scripts/smoke-group.tsx",
     "test:stage24-statusline": "tsx src/scripts/smoke-statusline.tsx",
     "test:stage24-command": "tsx src/scripts/smoke-command.tsx",
+    "test:stage25": "tsx src/scripts/smoke-config.ts",
     "smoke:sandbox": "tsx src/scripts/smoke-sandbox.ts",
     "smoke:bash-sandbox": "tsx src/scripts/smoke-bash-sandbox.ts"
   },
@@ -62,6 +63,7 @@
     "marked": "^18.0.4",
     "proper-lockfile": "^4.1.2",
     "react": "^19.2.4",
-    "yaml": "^2.8.3"
+    "yaml": "^2.8.3",
+    "zod": "^4.4.3"
   }
 }

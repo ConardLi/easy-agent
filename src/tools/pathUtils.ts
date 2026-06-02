@@ -1,8 +1,29 @@
 import * as path from "node:path";
 import { getEasyAgentHome } from "../utils/paths.js";
 
+// Extra roots beyond cwd + ~/.easy-agent, from the `additionalDirectories`
+// setting. Resolved to absolute paths and installed once at startup (see
+// cli.ts). Kept module-level so the sync path guards below stay sync — the
+// file tools call them on a hot path and shouldn't await a settings read each
+// time. Trust-gating happens at load time (untrusted project/local dirs are
+// dropped before they reach here).
+let additionalAllowedRoots: string[] = [];
+
+/** Install the resolved `additionalDirectories` (absolute paths). */
+export function setAdditionalAllowedRoots(roots: string[]): void {
+  additionalAllowedRoots = roots.map((root) => path.resolve(root));
+}
+
+export function getAdditionalAllowedRoots(): string[] {
+  return additionalAllowedRoots;
+}
+
 export function getToolAllowedRoots(cwd: string): string[] {
-  return [path.resolve(cwd), path.resolve(getEasyAgentHome())];
+  return [
+    path.resolve(cwd),
+    path.resolve(getEasyAgentHome()),
+    ...additionalAllowedRoots,
+  ];
 }
 
 export function describeAllowedRoots(cwd: string): string {

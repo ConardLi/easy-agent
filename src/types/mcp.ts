@@ -64,9 +64,9 @@ export interface McpJsonConfig {
   mcpServers: Record<string, McpServerConfig>;
 }
 
-/** A server config tagged with the scope it came from (project overrides global). */
+/** A server config tagged with the scope it came from (later sources override earlier). */
 export type ScopedMcpServerConfig = McpServerConfig & {
-  scope: "user" | "project";
+  scope: import("../config/sources.js").SettingSource;
 };
 
 // ─── Connection State ────────────────────────────────────────────────

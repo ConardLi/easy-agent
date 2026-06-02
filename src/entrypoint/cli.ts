@@ -40,6 +40,8 @@ Options:
   --plan                      Start in plan mode (read-only tools only)
   --auto                      Start in auto mode (allow all tools)
   --permission-mode <mode>    Permission mode: default | plan | auto
+  --settings <path>           Load an external settings.json as the flag layer
+                              (inline --model / --permission-mode still win)
   --agent-teams               Enable Agent Teams (stage 21 — TeamCreate /
                               TeamDelete / SendMessage tools). Equivalent
                               to setting EASY_AGENT_TEAMS=1.
@@ -48,6 +50,7 @@ Options:
 Commands (in REPL):
   /help                       Show available commands
   /clear                      Clear conversation history
+  /config [list|get|set]      Inspect or change settings (--user/--project/--local)
   /mode [default|plan|auto]   Inspect or switch permission mode
   /tasks [task|todo|reset]    Switch task system or reset the task graph
   /mcp [tools|reconnect <n>]  Inspect or reconnect MCP servers
@@ -91,6 +94,14 @@ Hooks (stage 22 — user-defined shell scripts on lifecycle events):
   Hook receives the event JSON on stdin; exit 2 + stderr blocks the action.
   Set EASY_AGENT_DISABLE_HOOKS=1 to disable all hooks globally.
 
+Settings keys (stage 25 — in ~/.easy-agent/settings.json or <cwd>/.easy-agent/settings.json):
+  env: { "KEY": "value" }        Inject env vars into Bash commands (trusted sources only)
+  language: "japanese"           Preferred response language (injected into the system prompt)
+  apiKeyHelper: "vault token"    Script whose stdout is used as the API token when none is in env
+                                 (executed → trusted sources only)
+  cleanupPeriodDays: 30          Transcript retention in days; 0 disables session persistence
+  additionalDirectories: ["..."] Extra dirs the file tools may access beyond cwd (trusted sources only)
+
   /compact                    Compact conversation context
   /exit, /quit, /bye          Exit the REPL
 `);
@@ -101,6 +112,33 @@ Hooks (stage 22 — user-defined shell scripts on lifecycle events):
   const model = modelIndex !== -1 ? process.argv[modelIndex + 1] : undefined;
   const dumpSystemPrompt = process.argv.includes("--dump-system-prompt");
   const permissionMode = parsePermissionMode(process.argv);
+
+  // Build the in-memory `flag` settings source from argv and install it as the
+  // highest-priority file-equivalent source BEFORE any loader runs. This makes
+  // `--model` (and `--permission-mode`) part of the unified settings chain
+  // rather than one-off props, so "CLI overrides files" holds everywhere.
+  //
+  // `--settings <path>` loads an external settings file as the *base* of the
+  // flag layer; inline flags (`--model` / `--permission-mode`) are merged on
+  // top so an explicit flag still wins over the file it was paired with.
+  const { setFlagSettings } = await import("../config/sources.js");
+  const flagSettings: Record<string, unknown> = {};
+  const settingsIndex = process.argv.indexOf("--settings");
+  const settingsPath = settingsIndex !== -1 ? process.argv[settingsIndex + 1] : undefined;
+  if (settingsPath && !settingsPath.startsWith("--")) {
+    const path = await import("node:path");
+    const { readJsonSettingsFile } = await import("../utils/settings.js");
+    const abs = path.isAbsolute(settingsPath) ? settingsPath : path.resolve(process.cwd(), settingsPath);
+    const { raw, parseError } = await readJsonSettingsFile<Record<string, unknown>>(abs);
+    if (parseError) {
+      console.warn(`[easy-agent] ⚠ --settings ignored: ${parseError}`);
+    } else if (raw && typeof raw === "object") {
+      Object.assign(flagSettings, raw);
+    }
+  }
+  if (model) flagSettings.model = model;
+  if (permissionMode) flagSettings.mode = permissionMode;
+  setFlagSettings(flagSettings);
   const resumeIndex = process.argv.indexOf("--resume");
   const resumeValue = resumeIndex !== -1 ? process.argv[resumeIndex + 1] : undefined;
   const resumeSessionId = resumeIndex !== -1 && resumeValue && !resumeValue.startsWith("--") ? resumeValue : null;
@@ -167,13 +205,59 @@ Hooks (stage 22 — user-defined shell scripts on lifecycle events):
     process.exit(0);
   }
 
+  // Trust gate (stage 25): before bringing up the REPL, make sure the user
+  // trusts this folder. Declining exits; non-interactive sessions run
+  // untrusted (project/local hooks + statusLine are then suppressed).
+  if (process.stdin.isTTY) {
+    const { ensureTrusted } = await import("../ui/trustGate.js");
+    const trusted = await ensureTrusted(process.cwd());
+    if (!trusted) {
+      console.log("Not trusted — exiting. Re-run and choose to trust this folder to continue.");
+      process.exit(0);
+    }
+  }
+
+  // Stage 25 Tier 1 config — resolve trust-sensitive, execution-affecting
+  // settings now that the trust decision is settled:
+  //   - apiKeyHelper:         mint an auth token via a script (only if the env
+  //                           doesn't already provide one).
+  //   - additionalDirectories: widen the file-tool access boundary.
+  //   - cleanupPeriodDays:     prune old transcripts / disable persistence.
+  if (!process.env.ANTHROPIC_AUTH_TOKEN) {
+    const { resolveApiKeyFromHelper } = await import("../services/api/apiKeyHelper.js");
+    const token = await resolveApiKeyFromHelper(process.cwd());
+    if (token) process.env.ANTHROPIC_AUTH_TOKEN = token;
+  }
+
+  {
+    const nodePath = await import("node:path");
+    const nodeOs = await import("node:os");
+    const { readTrustedStringArraySetting } = await import("../utils/settings.js");
+    const { setAdditionalAllowedRoots } = await import("../tools/pathUtils.js");
+    const raw = await readTrustedStringArraySetting(process.cwd(), "additionalDirectories").catch(() => []);
+    const resolved = raw.map((dir) => {
+      const expanded = dir.startsWith("~") ? dir.replace("~", nodeOs.homedir()) : dir;
+      return nodePath.resolve(process.cwd(), expanded);
+    });
+    setAdditionalAllowedRoots(resolved);
+  }
+
+  {
+    const { applySessionRetentionPolicy } = await import("../session/storage.js");
+    await applySessionRetentionPolicy(process.cwd()).catch(() => {});
+  }
+
   const React = await import("react");
   const { render } = await import("ink");
   const { App } = await import("../ui/App.js");
   const { DEFAULT_MODEL } = await import("../services/api/client.js");
   const { bootstrapMcp } = await import("../services/mcp/bootstrap.js");
+  const { readMergedStringSetting } = await import("../utils/settings.js");
 
-  const resolvedModel = model ?? DEFAULT_MODEL;
+  // Resolve the model through the unified settings chain: flag (--model) →
+  // local → project → user → built-in default. `--model` lives in the flag
+  // source installed above, so it naturally wins.
+  const resolvedModel = (await readMergedStringSetting(process.cwd(), "model")) ?? DEFAULT_MODEL;
 
   // Kick off MCP server connections IN THE BACKGROUND. The bootstrap
   // function seeds `pending` registry entries synchronously, then connects

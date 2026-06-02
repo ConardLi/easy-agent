@@ -10,6 +10,7 @@ import { formatAgentsSystemReminder } from "../agents/promptInjection.js";
 import { formatTeamSystemReminder } from "../agents/teamPromptInjection.js";
 import { getAllAgents } from "../agents/registry.js";
 import { getActiveOutputStyleConfig } from "../styles/registry.js";
+import { readMergedStringSetting } from "../utils/settings.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -110,10 +111,11 @@ function formatEnvironmentContext(context: RuntimeEnvironmentContext): string {
 export async function buildSystemPrompt(options: BuildSystemPromptOptions): Promise<string[]> {
   const ignoreMemory = options.userQuery ? shouldIgnoreMemory(options.userQuery) : false;
   const memoryDir = await ensureMemoryDirExists(options.cwd);
-  const [environmentContext, agentMdContext, memoryEntrypoint] = await Promise.all([
+  const [environmentContext, agentMdContext, memoryEntrypoint, language] = await Promise.all([
     getRuntimeEnvironmentContext(options.cwd),
     loadAgentMdContext(options.cwd),
     ignoreMemory ? Promise.resolve(null) : readMemoryEntrypoint(options.cwd),
+    readMergedStringSetting(options.cwd, "language").catch(() => undefined),
   ]);
 
   // Stage 23: output style reshapes HOW the agent answers. A non-null
@@ -170,9 +172,17 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions): Prom
     ? `# Output Style: ${activeStyle.name}\n${activeStyle.prompt}`
     : "";
 
+  // Preferred response language (settings `language`). Dynamic so a runtime
+  // change takes effect next turn. Phrased as an instruction, not a hard
+  // constraint on tool I/O — code/identifiers stay as-is.
+  const languageSection = language
+    ? `Respond to the user in ${language}, unless they explicitly ask for another language. Keep code, file paths, and identifiers unchanged.`
+    : "";
+
   const dynamicSections = [
     SYSTEM_PROMPT_DYNAMIC_START,
     outputStyleSection,
+    languageSection,
     formatEnvironmentContext(environmentContext),
     agentMdContext ? "Project memory (AGENT.md):\n" + agentMdContext : "",
     memorySections.length > 0 ? memorySections.join("\n\n") : "",

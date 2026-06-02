@@ -18,6 +18,10 @@
 import { getSettingsPaths } from "../utils/paths.js";
 import { readJsonSettingsFile } from "../utils/settings.js";
 import {
+  loadTrustedSettingSources,
+  type LoadedSource,
+} from "../config/sources.js";
+import {
   HOOK_EVENTS,
   isHookEvent,
   type HookCommand,
@@ -94,28 +98,33 @@ async function readHooksFromSettings(filePath: string): Promise<HooksSettings> {
   return normalizeHooksBlock(raw.hooks);
 }
 
+function hooksFromSource(src: LoadedSource): HooksSettings {
+  if (!src.raw) return {};
+  return normalizeHooksBlock((src.raw as RawSettingsBlock).hooks);
+}
+
 /**
- * Load + merge user + project hook configs for the given cwd.
- * User hooks are listed first, project hooks second — meaning both
- * fire (per-event arrays concatenate), with user entries running
- * before project entries in execution order. This matches source's
- * "later sources append, never replace" semantics for hook arrays.
+ * Load + merge hook configs across every settings source for the given cwd.
+ * Per-event arrays concatenate in source order (user → project → local →
+ * flag → policy), so all configured hooks fire and earlier sources run first.
+ *
+ * SECURITY: hooks execute arbitrary shell commands. We read from the TRUSTED
+ * source set — until the user has trusted this folder, project + local hooks
+ * are dropped so an untrusted repository can't run code on session start /
+ * tool use. The user's own (~/.easy-agent) hooks always apply.
  */
 export async function loadHooksSettings(cwd: string): Promise<HooksSettings> {
-  const { user: userSettingsPath, project: projectSettingsPath } =
-    getSettingsPaths(cwd);
-
-  const [userHooks, projectHooks] = await Promise.all([
-    readHooksFromSettings(userSettingsPath),
-    readHooksFromSettings(projectSettingsPath),
-  ]);
+  const sources = await loadTrustedSettingSources(cwd);
+  const perSource = sources.map(hooksFromSource);
 
   const merged: HooksSettings = {};
   for (const event of HOOK_EVENTS) {
-    const u = userHooks[event] ?? [];
-    const p = projectHooks[event] ?? [];
-    if (u.length === 0 && p.length === 0) continue;
-    merged[event] = [...u, ...p];
+    const groups: HookMatcherGroup[] = [];
+    for (const hooks of perSource) {
+      const g = hooks[event];
+      if (g && g.length > 0) groups.push(...g);
+    }
+    if (groups.length > 0) merged[event] = groups;
   }
   return merged;
 }

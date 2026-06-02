@@ -12,6 +12,7 @@
 export const BUILTIN_COMMAND_NAMES = new Set<string>([
   "help",
   "clear",
+  "config",
   "cost",
   "model",
   "mode",
