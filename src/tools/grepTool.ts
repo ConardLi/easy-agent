@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { Tool, ToolContext, ToolResult } from "./Tool.js";
 import { resolveWorkspacePath } from "./pathUtils.js";
+import { readMergedBooleanSetting } from "../utils/settings.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -48,9 +49,14 @@ export const grepTool: Tool = {
       };
     }
 
+    // respectGitignore (default true): when explicitly false, search files
+    // .gitignore would otherwise exclude by passing rg's --no-ignore.
+    const respectGitignore = (await readMergedBooleanSetting(context.cwd, "respectGitignore").catch(() => undefined)) !== false;
+
     try {
       if (await hasCommand("rg")) {
         const args = ["-n", "--hidden"];
+        if (!respectGitignore) args.push("--no-ignore");
         if (input.include) {
           args.push("-g", input.include);
         }

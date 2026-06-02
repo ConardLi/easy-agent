@@ -20,8 +20,11 @@ import type {
   McpStdioServerConfig,
   ScopedMcpServerConfig,
 } from "../../types/mcp.js";
+import * as path from "node:path";
 import { logWarn } from "../../utils/log.js";
 import { loadSettingSources, type SettingSource } from "../../config/sources.js";
+import { isProjectTrusted } from "../../config/globalState.js";
+import { readJsonSettingsFile } from "../../utils/settings.js";
 
 interface RawSettings {
   mcpServers?: unknown;
@@ -30,6 +33,8 @@ interface RawSettings {
 export interface McpConfigLoadResult {
   servers: Record<string, ScopedMcpServerConfig>;
   errors: string[];
+  /** `.mcp.json` servers awaiting approval (not yet enabled). */
+  pending?: string[];
 }
 
 /**
@@ -155,19 +160,94 @@ function extractScopedServers(
   return out;
 }
 
+function asStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((v): v is string => typeof v === "string").map((v) => v.trim()).filter(Boolean);
+}
+
 /**
- * Load MCP server configurations from every settings source.
+ * Read + gate the project-level `<cwd>/.mcp.json` servers.
+ *
+ * `.mcp.json` is the standard Claude Code project MCP file (`{ "mcpServers":
+ * {...} }`). Because each stdio server runs a local command, loading one is an
+ * execution surface — so it is gated twice:
+ *
+ *   1. Folder trust: an untrusted folder's `.mcp.json` is ignored entirely.
+ *   2. Per-server approval (mirrors source's `enabledMcpjsonServers` flow):
+ *        - in `disabledMcpjsonServers`            → rejected
+ *        - `enableAllProjectMcpServers: true`     → approved
+ *        - listed in `enabledMcpjsonServers`      → approved
+ *        - otherwise                              → PENDING (not loaded; the
+ *          user approves by adding it to `enabledMcpjsonServers` or setting
+ *          `enableAllProjectMcpServers`). We don't have an interactive prompt,
+ *          so pending servers are surfaced as a notice instead of auto-loaded.
+ */
+async function loadProjectMcpJson(
+  cwd: string,
+  approval: { enableAll: boolean; enabled: string[]; disabled: string[] },
+  errors: string[],
+): Promise<{ approved: Record<string, ScopedMcpServerConfig>; pending: string[] }> {
+  const approved: Record<string, ScopedMcpServerConfig> = {};
+  const pending: string[] = [];
+
+  if (!(await isProjectTrusted(cwd))) return { approved, pending };
+
+  const filePath = path.join(cwd, ".mcp.json");
+  const { raw, parseError } = await readJsonSettingsFile<RawSettings>(filePath);
+  if (parseError) {
+    errors.push(parseError);
+    return { approved, pending };
+  }
+  if (!raw) return { approved, pending };
+
+  const enabledSet = new Set(approval.enabled);
+  const disabledSet = new Set(approval.disabled);
+  const scoped = extractScopedServers(raw, "project", filePath, errors);
+  for (const [name, config] of Object.entries(scoped)) {
+    if (disabledSet.has(name)) continue;
+    if (approval.enableAll || enabledSet.has(name)) {
+      approved[name] = config;
+    } else {
+      pending.push(name);
+    }
+  }
+  return { approved, pending };
+}
+
+/**
+ * Load MCP server configurations from every settings source, plus the gated
+ * project `.mcp.json`.
  *
  * Later sources override earlier ones on name conflicts (user → project →
- * local → flag → policy). Servers that fail schema validation are dropped with
- * a warning — never throws (mirrors the source's "best-effort" loading
- * approach so a single malformed entry can't take the whole CLI down).
+ * local → flag → policy; `.mcp.json` is applied before settings so an explicit
+ * settings entry wins). Servers that fail schema validation are dropped with a
+ * warning — never throws (mirrors the source's "best-effort" loading approach
+ * so a single malformed entry can't take the whole CLI down).
  */
 export async function loadMcpConfigs(cwd: string): Promise<McpConfigLoadResult> {
   const sources = await loadSettingSources(cwd);
 
   const errors: string[] = [];
   const servers: Record<string, ScopedMcpServerConfig> = {};
+
+  // Approval config for .mcp.json, merged across sources.
+  let enableAll = false;
+  const enabled: string[] = [];
+  const disabled: string[] = [];
+  for (const src of sources) {
+    if (!src.raw) continue;
+    if (src.raw["enableAllProjectMcpServers"] === true) enableAll = true;
+    enabled.push(...asStringArray(src.raw["enabledMcpjsonServers"]));
+    disabled.push(...asStringArray(src.raw["disabledMcpjsonServers"]));
+  }
+
+  // .mcp.json first, so a same-named entry in settings.json overrides it.
+  const projectMcp = await loadProjectMcpJson(
+    cwd,
+    { enableAll, enabled, disabled },
+    errors,
+  );
+  Object.assign(servers, projectMcp.approved);
 
   for (const src of sources) {
     if (src.parseError) errors.push(src.parseError);
@@ -185,5 +265,11 @@ export async function loadMcpConfigs(cwd: string): Promise<McpConfigLoadResult> 
   for (const error of errors) {
     logWarn(`[mcp] config: ${error}`);
   }
-  return { servers, errors };
+  if (projectMcp.pending.length > 0) {
+    logWarn(
+      `[mcp] .mcp.json: ${projectMcp.pending.length} server(s) awaiting approval: ${projectMcp.pending.join(", ")}. ` +
+        `Add them to "enabledMcpjsonServers" or set "enableAllProjectMcpServers": true to enable.`,
+    );
+  }
+  return { servers, errors, pending: projectMcp.pending };
 }

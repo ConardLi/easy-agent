@@ -201,6 +201,10 @@ export interface StatusLineCommandConfig {
 export async function readStatusLineConfig(
   cwd: string,
 ): Promise<StatusLineCommandConfig | null> {
+  // `disableAllHooks` also kills the statusLine (it runs a shell command every
+  // turn, same execution surface as hooks) — mirrors source's behavior.
+  if (await isAllHooksDisabled(cwd)) return null;
+
   // Trust-gated: the statusLine command is executed as a shell command on
   // every turn. An untrusted repo's project/local settings must not be able
   // to run code, so we read from the trusted source set (project + local are
@@ -259,6 +263,36 @@ export async function readMergedNumberSetting(
     if (typeof value === "number" && Number.isFinite(value)) result = value;
   }
   return result;
+}
+
+/**
+ * Read a single top-level boolean setting, merging all sources with the later
+ * source winning. Returns undefined when absent / non-boolean everywhere, so
+ * callers can apply their own default. Used by `respectGitignore`,
+ * `syntaxHighlightingDisabled`, `prefersReducedMotion`.
+ */
+export async function readMergedBooleanSetting(
+  cwd: string,
+  key: string,
+): Promise<boolean | undefined> {
+  const sources = await loadSettingSources(cwd);
+  let result: boolean | undefined;
+  for (const src of sources) {
+    const value = src.raw?.[key];
+    if (typeof value === "boolean") result = value;
+  }
+  return result;
+}
+
+/**
+ * True if ANY settings source sets `disableAllHooks: true`. Uses OR semantics
+ * (not last-wins) because this is a fail-safe kill switch — disabling hooks
+ * only REMOVES execution, so a project/local file should be able to turn it on
+ * for itself, and no source should be able to silently turn it back off.
+ */
+export async function isAllHooksDisabled(cwd: string): Promise<boolean> {
+  const sources = await loadSettingSources(cwd);
+  return sources.some((src) => src.raw?.["disableAllHooks"] === true);
 }
 
 /**

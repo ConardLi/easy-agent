@@ -1,8 +1,72 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { getGlobalAgentMdPath } from "../utils/paths.js";
+import { loadSettingSources } from "../config/sources.js";
 
 const AGENT_MD_NAME = "AGENT.md";
+
+/**
+ * Compile a glob pattern (matched against absolute file paths) to a RegExp.
+ * Supports `**` (any chars incl. separators), `*` (any non-separator run), and
+ * `?` (single non-separator). Mirrors the picomatch-style matching source uses
+ * for `claudeMdExcludes`.
+ */
+function globToRegExp(pattern: string): RegExp {
+  let out = "";
+  for (let i = 0; i < pattern.length; i++) {
+    const ch = pattern[i]!;
+    if (ch === "*") {
+      if (pattern[i + 1] === "*") {
+        out += ".*";
+        i++;
+        if (pattern[i + 1] === "/") i++; // collapse `**/` into `.*`
+      } else {
+        out += "[^/]*";
+      }
+    } else if (ch === "?") {
+      out += "[^/]";
+    } else {
+      out += ch.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+    }
+  }
+  return new RegExp(`^${out}$`);
+}
+
+/**
+ * Merge the `claudeMdExcludes` glob list across all settings sources. Excludes
+ * only ever REMOVE files (fail-safe), so they're read from every source.
+ */
+async function loadAgentMdExcludes(cwd: string): Promise<string[]> {
+  const sources = await loadSettingSources(cwd);
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const src of sources) {
+    const arr = src.raw?.["claudeMdExcludes"];
+    if (!Array.isArray(arr)) continue;
+    for (const item of arr) {
+      if (typeof item !== "string") continue;
+      const trimmed = item.trim();
+      if (trimmed && !seen.has(trimmed)) {
+        seen.add(trimmed);
+        out.push(trimmed);
+      }
+    }
+  }
+  return out;
+}
+
+function isAgentMdExcluded(filePath: string, patterns: string[]): boolean {
+  if (patterns.length === 0) return false;
+  const abs = path.resolve(filePath);
+  return patterns.some((pattern) => {
+    if (pattern === abs) return true;
+    try {
+      return globToRegExp(pattern).test(abs);
+    } catch {
+      return false;
+    }
+  });
+}
 
 function stripHtmlComments(content: string): string {
   return content.replace(/<!--[\s\S]*?-->/g, "").trim();
@@ -44,7 +108,11 @@ export async function getAgentMdFiles(cwd: string): Promise<string[]> {
 }
 
 export async function loadAgentMdContext(cwd: string): Promise<string> {
-  const files = await getAgentMdFiles(cwd);
+  const [allFiles, excludes] = await Promise.all([
+    getAgentMdFiles(cwd),
+    loadAgentMdExcludes(cwd),
+  ]);
+  const files = allFiles.filter((filePath) => !isAgentMdExcluded(filePath, excludes));
   const loaded = await Promise.all(
     files.map(async (filePath) => {
       const content = await readIfExists(filePath);

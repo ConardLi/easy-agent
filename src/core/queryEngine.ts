@@ -164,6 +164,10 @@ export class QueryEngine {
     if (this.currentPermissionMode === "default" && this.prePlanMode === null) {
       this.currentPermissionMode = next.mode;
     }
+    // Re-snapshot the `disableAllHooks` kill switch so toggling it via
+    // `/config set` takes effect this session without a restart.
+    const { refreshHookDisableFromSettings } = await import("../hooks/settings.js");
+    await refreshHookDisableFromSettings(this.toolContext.cwd).catch(() => {});
   }
 
   /** Register a callback for when mode changes (used by UI layer). */

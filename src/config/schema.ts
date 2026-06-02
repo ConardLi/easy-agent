@@ -44,6 +44,15 @@ export const SettingsSchema = z.looseObject({
   language: z.string().trim().min(1).optional(),
   apiKeyHelper: z.string().trim().min(1).optional(),
   cleanupPeriodDays: z.number().int().nonnegative().optional(),
+  // Tier 2
+  disableAllHooks: z.boolean().optional(),
+  respectGitignore: z.boolean().optional(),
+  syntaxHighlightingDisabled: z.boolean().optional(),
+  prefersReducedMotion: z.boolean().optional(),
+  claudeMdExcludes: z.array(PermissionRule).optional(),
+  enableAllProjectMcpServers: z.boolean().optional(),
+  enabledMcpjsonServers: z.array(PermissionRule).optional(),
+  disabledMcpjsonServers: z.array(PermissionRule).optional(),
 });
 
 const RULE_ARRAY_KEYS = ["allow", "deny", "ask"] as const;

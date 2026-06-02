@@ -101,6 +101,14 @@ Settings keys (stage 25 — in ~/.easy-agent/settings.json or <cwd>/.easy-agent/
                                  (executed → trusted sources only)
   cleanupPeriodDays: 30          Transcript retention in days; 0 disables session persistence
   additionalDirectories: ["..."] Extra dirs the file tools may access beyond cwd (trusted sources only)
+  disableAllHooks: true          Master switch — turns off every hook AND the statusLine
+  respectGitignore: false        Let Glob/Grep search files .gitignore would hide (default: true)
+  syntaxHighlightingDisabled: true   Render code blocks as plain text (no ANSI colors)
+  prefersReducedMotion: true     Calm, static spinner (no animation) for reduced-motion users
+  claudeMdExcludes: ["**/AGENT.md"]  Glob/abs-path list of AGENT.md files to skip loading
+  enableAllProjectMcpServers: true   Auto-approve every server in <cwd>/.mcp.json (trusted folder)
+  enabledMcpjsonServers: ["name"]    Approve specific .mcp.json servers
+  disabledMcpjsonServers: ["name"]   Reject specific .mcp.json servers
 
   /compact                    Compact conversation context
   /exit, /quit, /bye          Exit the REPL
@@ -245,6 +253,24 @@ Settings keys (stage 25 — in ~/.easy-agent/settings.json or <cwd>/.easy-agent/
   {
     const { applySessionRetentionPolicy } = await import("../session/storage.js");
     await applySessionRetentionPolicy(process.cwd()).catch(() => {});
+  }
+
+  // Stage 25 Tier 2 config — snapshot the toggles that sync hot paths consult:
+  //   - disableAllHooks:          master kill switch for hooks + statusLine.
+  //   - syntaxHighlightingDisabled / prefersReducedMotion: UI render prefs.
+  {
+    const { refreshHookDisableFromSettings } = await import("../hooks/settings.js");
+    await refreshHookDisableFromSettings(process.cwd()).catch(() => {});
+
+    const { readMergedBooleanSetting } = await import("../utils/settings.js");
+    const { setSyntaxHighlightingDisabled } = await import("../ui/markdown/highlight.js");
+    const { setReducedMotion } = await import("../ui/motionPrefs.js");
+    setSyntaxHighlightingDisabled(
+      (await readMergedBooleanSetting(process.cwd(), "syntaxHighlightingDisabled").catch(() => undefined)) === true,
+    );
+    setReducedMotion(
+      (await readMergedBooleanSetting(process.cwd(), "prefersReducedMotion").catch(() => undefined)) === true,
+    );
   }
 
   const React = await import("react");

@@ -19,6 +19,9 @@
  *   [8] Read cache — invalidates on file change / write / flag change
  *   [9] Tier 1 config — env injection, language→prompt, apiKeyHelper (executed),
  *       cleanupPeriodDays retention/disable, additionalDirectories boundary
+ *   [10] Tier 2 config — disableAllHooks (hooks+statusLine), .mcp.json approval
+ *        gate, claudeMdExcludes, respectGitignore, syntaxHighlightingDisabled,
+ *        prefersReducedMotion
  *
  * HOME is stubbed to a temp dir so nothing escapes into the real
  * ~/.easy-agent. Exits non-zero on any failed assertion.
@@ -342,8 +345,105 @@ async function main(): Promise<void> {
   assert(boundaryThrew, "an unrelated outside path is still blocked");
   setAdditionalAllowedRoots([]); // reset module state
 
+  // ─── [10] Tier 2 config items ────────────────────────────────────────────
+  // [10a] disableAllHooks — kills hooks AND statusLine
+  section("[10a] Tier 2: disableAllHooks (hooks + statusLine)");
+  const t6 = await fs.mkdtemp(path.join(os.tmpdir(), "ea-cfg-t6-"));
+  await writeJson(userFile, {});
+  await writeJson(paths.getProjectSettingsPath(t6), { statusLine: "echo hi", disableAllHooks: true });
+  state.resetGlobalStateCache();
+  await state.trustProject(t6);
+  assert((await settings.isAllHooksDisabled(t6)) === true, "isAllHooksDisabled true when any source sets it");
+  await hooks.refreshHookDisableFromSettings(t6);
+  assert(hooks.hooksGloballyDisabled() === true, "disableAllHooks flips the master hook kill-switch");
+  assert((await settings.readStatusLineConfig(t6)) === null, "disableAllHooks also suppresses the statusLine");
+  await writeJson(paths.getProjectSettingsPath(t6), { statusLine: "echo hi", disableAllHooks: false });
+  await hooks.refreshHookDisableFromSettings(t6);
+  assert(hooks.hooksGloballyDisabled() === false, "clearing disableAllHooks re-enables hooks");
+  assert((await settings.readStatusLineConfig(t6))?.command === "echo hi", "statusLine returns once disableAllHooks is off");
+
+  // [10b] .mcp.json + approval gate
+  section("[10b] Tier 2: .mcp.json approval gate");
+  const mcpConfig = await import("../services/mcp/config.js");
+  const t7 = await fs.mkdtemp(path.join(os.tmpdir(), "ea-cfg-t7-"));
+  await writeJson(path.join(t7, ".mcp.json"), {
+    mcpServers: { alpha: { command: "echo" }, beta: { command: "echo" } },
+  });
+  await writeJson(userFile, {});
+  state.resetGlobalStateCache();
+  let mcp = await mcpConfig.loadMcpConfigs(t7);
+  assert(!mcp.servers.alpha && !mcp.servers.beta, "untrusted .mcp.json servers are NOT loaded");
+  await state.trustProject(t7);
+  mcp = await mcpConfig.loadMcpConfigs(t7);
+  assert(!mcp.servers.alpha && (mcp.pending ?? []).includes("alpha") && (mcp.pending ?? []).includes("beta"), "trusted-but-unapproved .mcp.json servers are pending, not loaded");
+  await writeJson(userFile, { enabledMcpjsonServers: ["alpha"] });
+  mcp = await mcpConfig.loadMcpConfigs(t7);
+  assert(!!mcp.servers.alpha && !mcp.servers.beta, "enabledMcpjsonServers approves only the listed server");
+  await writeJson(userFile, { enableAllProjectMcpServers: true });
+  mcp = await mcpConfig.loadMcpConfigs(t7);
+  assert(!!mcp.servers.alpha && !!mcp.servers.beta, "enableAllProjectMcpServers approves all .mcp.json servers");
+  await writeJson(userFile, { enableAllProjectMcpServers: true, disabledMcpjsonServers: ["beta"] });
+  mcp = await mcpConfig.loadMcpConfigs(t7);
+  assert(!!mcp.servers.alpha && !mcp.servers.beta && !(mcp.pending ?? []).includes("beta"), "disabledMcpjsonServers wins over enableAll (rejected, not pending)");
+
+  // [10c] claudeMdExcludes
+  section("[10c] Tier 2: claudeMdExcludes");
+  const claudeMd = await import("../context/claudeMd.js");
+  const t8 = await fs.mkdtemp(path.join(os.tmpdir(), "ea-cfg-t8-"));
+  await fs.writeFile(path.join(t8, "AGENT.md"), "PROJECT-MEMORY-MARKER\n", "utf-8");
+  await writeJson(userFile, {});
+  let ctx = await claudeMd.loadAgentMdContext(t8);
+  assert(/PROJECT-MEMORY-MARKER/.test(ctx), "AGENT.md is loaded by default");
+  await writeJson(userFile, { claudeMdExcludes: ["**/AGENT.md"] });
+  ctx = await claudeMd.loadAgentMdContext(t8);
+  assert(!/PROJECT-MEMORY-MARKER/.test(ctx), "glob exclude (**/AGENT.md) drops the file");
+  await writeJson(userFile, { claudeMdExcludes: [path.join(t8, "AGENT.md")] });
+  ctx = await claudeMd.loadAgentMdContext(t8);
+  assert(!/PROJECT-MEMORY-MARKER/.test(ctx), "absolute-path exclude drops the file");
+
+  // [10d] respectGitignore — accessor + (rg-gated) functional check
+  section("[10d] Tier 2: respectGitignore");
+  const t9 = await fs.mkdtemp(path.join(os.tmpdir(), "ea-cfg-t9-"));
+  await writeJson(userFile, { respectGitignore: false });
+  assert((await settings.readMergedBooleanSetting(t9, "respectGitignore")) === false, "respectGitignore resolves false");
+  await writeJson(userFile, {});
+  assert((await settings.readMergedBooleanSetting(t9, "respectGitignore")) === undefined, "respectGitignore defaults to unset (treated as true)");
+  const { execFile } = await import("node:child_process");
+  const rgAvailable = await new Promise<boolean>((resolve) => execFile("sh", ["-lc", "command -v rg"], (e) => resolve(!e)));
+  if (rgAvailable) {
+    await fs.writeFile(path.join(t9, "secret.txt"), "NEEDLE-IN-IGNORED\n", "utf-8");
+    await fs.writeFile(path.join(t9, ".ignore"), "secret.txt\n", "utf-8");
+    const { grepTool } = await import("../tools/grepTool.js");
+    const toolCtx = { cwd: t9 } as unknown as Parameters<typeof grepTool.call>[1];
+    await writeJson(userFile, {}); // respect ignore (default)
+    const r1 = await grepTool.call({ pattern: "NEEDLE-IN-IGNORED" }, toolCtx);
+    assert(/No matches/.test(r1.content), "default respects .ignore — ignored file is skipped");
+    await writeJson(userFile, { respectGitignore: false });
+    const r2 = await grepTool.call({ pattern: "NEEDLE-IN-IGNORED" }, toolCtx);
+    assert(/secret\.txt/.test(r2.content), "respectGitignore:false searches ignored files (--no-ignore)");
+    await writeJson(userFile, {});
+  } else {
+    console.log("  · rg not available — skipping functional respectGitignore check");
+  }
+
+  // [10e] syntaxHighlightingDisabled
+  section("[10e] Tier 2: syntaxHighlightingDisabled");
+  const highlight = await import("../ui/markdown/highlight.js");
+  highlight.setSyntaxHighlightingDisabled(true);
+  assert(highlight.highlightCode("const x = 1;", "ts") === "const x = 1;", "disabled → raw code returned unchanged");
+  highlight.setSyntaxHighlightingDisabled(false);
+  assert(highlight.highlightCode("const x = 1;", "ts").includes("x"), "enabled → highlighter still returns the code");
+
+  // [10f] prefersReducedMotion
+  section("[10f] Tier 2: prefersReducedMotion");
+  const motion = await import("../ui/motionPrefs.js");
+  motion.setReducedMotion(true);
+  assert(motion.prefersReducedMotion() === true, "reduced-motion flag set");
+  motion.setReducedMotion(false);
+  assert(motion.prefersReducedMotion() === false, "reduced-motion flag cleared");
+
   // ─── cleanup ─────────────────────────────────────────────────────────────
-  for (const dir of [tmpHome, proj, other, untrusted, wproj, vproj, cproj, t1, t2, t3, t4, t5, extra]) {
+  for (const dir of [tmpHome, proj, other, untrusted, wproj, vproj, cproj, t1, t2, t3, t4, t5, extra, t6, t7, t8, t9]) {
     await fs.rm(dir, { recursive: true, force: true }).catch(() => {});
   }
 

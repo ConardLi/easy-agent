@@ -10,6 +10,7 @@
 import React, { useEffect, useState } from "react";
 import { Text } from "ink";
 import { sampleSpinnerVerb } from "../../constants/spinnerVerbs.js";
+import { prefersReducedMotion } from "../motionPrefs.js";
 
 const STAR_CHARS = ["·", "✢", "✳", "✶", "✻", "✽"];
 const SPINNER_FRAMES = [...STAR_CHARS, ...[...STAR_CHARS].reverse()];
@@ -42,17 +43,24 @@ export function Spinner({ label, showHint = true }: SpinnerProps): React.ReactNo
   const verb = !label || label === DEFAULT_LABEL_SENTINEL ? randomVerb : label;
   const message = `${verb}\u2026`;
 
+  // Accessibility: when reduced motion is requested we stop the star/shimmer
+  // animation entirely and only keep a 1s tick to advance the elapsed-time
+  // readout (informative, not motion). See ui/motionPrefs.ts.
+  const reduced = prefersReducedMotion();
+
   const [time, setTime] = useState(0);
   useEffect(() => {
     const start = Date.now();
-    const timer = setInterval(() => setTime(Date.now() - start), TICK_MS);
+    const timer = setInterval(() => setTime(Date.now() - start), reduced ? 1000 : TICK_MS);
     return () => clearInterval(timer);
-  }, []);
+  }, [reduced]);
 
   const starIndex = Math.floor(time / STAR_FRAME_MS) % SPINNER_FRAMES.length;
-  const star = SPINNER_FRAMES[starIndex];
+  const star = reduced ? "\u2736" : SPINNER_FRAMES[starIndex];
 
-  const { before, shimmer, after } = sliceShimmer(message, time);
+  const { before, shimmer, after } = reduced
+    ? { before: message, shimmer: "", after: "" }
+    : sliceShimmer(message, time);
 
   // Elapsed seconds + interrupt affordance — mirrors Claude's
   // `(12s · esc to interrupt)`. Shows the timer only past 1s so a quick turn

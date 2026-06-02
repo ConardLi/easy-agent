@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { Tool, ToolContext, ToolResult } from "./Tool.js";
 import { resolveWorkspacePath } from "./pathUtils.js";
+import { readMergedBooleanSetting } from "../utils/settings.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -46,9 +47,15 @@ export const globTool: Tool = {
       };
     }
 
+    // respectGitignore (default true): when explicitly false, surface files
+    // that .gitignore would otherwise hide by passing rg's --no-ignore.
+    const respectGitignore = (await readMergedBooleanSetting(context.cwd, "respectGitignore").catch(() => undefined)) !== false;
+
     try {
       if (await hasCommand("rg")) {
-        const { stdout } = await execFileAsync("rg", ["--files", "--hidden", "-g", input.pattern], {
+        const rgArgs = ["--files", "--hidden", "-g", input.pattern];
+        if (!respectGitignore) rgArgs.push("--no-ignore");
+        const { stdout } = await execFileAsync("rg", rgArgs, {
           cwd: basePath,
           maxBuffer: 1024 * 1024,
         });

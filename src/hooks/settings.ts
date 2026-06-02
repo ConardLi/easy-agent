@@ -16,7 +16,7 @@
  */
 
 import { getSettingsPaths } from "../utils/paths.js";
-import { readJsonSettingsFile } from "../utils/settings.js";
+import { readJsonSettingsFile, isAllHooksDisabled } from "../utils/settings.js";
 import {
   loadTrustedSettingSources,
   type LoadedSource,
@@ -234,12 +234,32 @@ export function hasHookForEvent(
 
 // ─── Toggle / introspection helpers ───────────────────────────────────
 
+// Cached `disableAllHooks` settings value. Sync `hooksGloballyDisabled()` is on
+// the hot path, but settings reads are async — so we snapshot the merged value
+// at startup (and after `/config set`) into this flag. Mirrors source's
+// `disableAllHooks`, which also gates hooks AND the statusLine.
+let settingsHooksDisabled = false;
+
 /**
- * Master kill-switch. Mirrors source's `CLAUDE_CODE_DISABLE_HOOKS` env
- * var — when set to a truthy value the executor returns empty for
- * every event, regardless of settings.json.
+ * Refresh the cached `disableAllHooks` flag from settings. Call at startup and
+ * whenever settings change live (e.g. after `/config set disableAllHooks ...`).
+ */
+export async function refreshHookDisableFromSettings(cwd: string): Promise<void> {
+  try {
+    settingsHooksDisabled = await isAllHooksDisabled(cwd);
+  } catch {
+    // keep previous value on read failure
+  }
+}
+
+/**
+ * Master kill-switch. True when EITHER the `EASY_AGENT_DISABLE_HOOKS` env var is
+ * truthy (mirrors source's `CLAUDE_CODE_DISABLE_HOOKS`) OR any settings source
+ * sets `disableAllHooks: true`. When on, the executor returns empty for every
+ * event regardless of settings.json.
  */
 export function hooksGloballyDisabled(): boolean {
+  if (settingsHooksDisabled) return true;
   const v = process.env.EASY_AGENT_DISABLE_HOOKS;
   if (!v) return false;
   const lower = v.toLowerCase();
