@@ -51,6 +51,33 @@ export function getAnthropicClient(options?: {
   return client;
 }
 
+// ─── Per-profile clients ───────────────────────────────────────────
+//
+// Stage 30: an Anthropic-protocol model profile may carry its own baseURL /
+// apiKey (e.g. a self-hosted Anthropic-compatible gateway). Build (and cache)
+// a dedicated client per distinct baseURL|apiKey so we don't re-instantiate on
+// every request. Profiles with neither override fall back to the env singleton.
+
+const profileClientCache = new Map<string, Anthropic>();
+
+export function getAnthropicClientForProfile(profile: {
+  baseURL?: string;
+  apiKey?: string;
+}): Anthropic {
+  if (!profile.baseURL && !profile.apiKey) {
+    return getAnthropicClient();
+  }
+  const key = `${profile.baseURL ?? ""}|${profile.apiKey ?? ""}`;
+  const cached = profileClientCache.get(key);
+  if (cached) return cached;
+  const client = getAnthropicClient({
+    ...(profile.apiKey ? { apiKey: profile.apiKey } : {}),
+    ...(profile.baseURL ? { baseURL: profile.baseURL } : {}),
+  });
+  profileClientCache.set(key, client);
+  return client;
+}
+
 /**
  * Verify the API key is valid by making a lightweight request.
  */
@@ -74,4 +101,5 @@ export async function verifyApiKey(apiKey?: string): Promise<boolean> {
  */
 export function resetClient(): void {
   clientInstance = null;
+  profileClientCache.clear();
 }

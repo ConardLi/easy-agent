@@ -30,6 +30,7 @@ import { relative as relativePath } from "node:path";
 import { getToolsApiParams } from "../tools/index.js";
 import type { ToolContext } from "../tools/Tool.js";
 import type { Usage } from "../types/message.js";
+import type { ModelProfile } from "../services/api/providers/profile.js";
 import { getPlanFilePath, planExists as checkPlanExists } from "../context/plans.js";
 import { getPlanModeAttachment, getPlanModeExitAttachment } from "../context/planAttachments.js";
 import {
@@ -551,6 +552,7 @@ export class QueryEngine {
         usage: this.lastCallUsage,
         usageAnchorIndex: this.usageAnchorIndex,
         systemPrompt: previewSystemPrompt,
+        model: this.getActiveModel(),
       });
       if (microResult.didMicroCompact || microResult.didCompact) {
         this.messages = [...microResult.messages];
@@ -740,7 +742,7 @@ export class QueryEngine {
         yield {
           type: "command",
           kind: "info",
-          message: "Commands: /help /clear /config [list|get|set] /cost /model [name|default] /mode [default|plan|auto] /tasks [task|todo|reset] /mcp [tools <name>|reconnect <name>] /skills /agents /hooks /output-style [name] /history /compact /rewind [n] /<skill-or-command> [args] /exit /quit /bye",
+          message: "Commands: /help /clear /config [list|get|set] /cost /model [name|list|default] /mode [default|plan|auto] /tasks [task|todo|reset] /mcp [tools <name>|reconnect <name>] /skills /agents /hooks /output-style [name] /history /compact /rewind [n] /<skill-or-command> [args] /exit /quit /bye",
         };
         return { handled: true };
       case "config":
@@ -850,8 +852,13 @@ export class QueryEngine {
         return { handled: true };
       case "model": {
         const nextModel = args.join(" ").trim();
+        const { loadProfiles } = await import("../services/api/providers/profile.js");
+
+        const emptyProfiles: Record<string, ModelProfile> = {};
 
         if (!nextModel) {
+          const { profiles } = await loadProfiles(this.toolContext.cwd).catch(() => ({ profiles: emptyProfiles }));
+          const ids = Object.keys(profiles);
           yield {
             type: "command",
             kind: "info",
@@ -861,10 +868,32 @@ export class QueryEngine {
               `- Source: ${this.getModelSource()}`,
               `- Default model: ${this.defaultModel}`,
               this.sessionModelOverride ? `- Session override: ${this.sessionModelOverride}` : "- Session override: none",
-              "- Usage: /model <name> to override for this session",
-              "- Usage: /model default to clear the override",
+              ids.length ? `- Declared profiles: ${ids.join(", ")}` : "- Declared profiles: none (set them in settings.json `models`)",
+              "- Usage: /model <name|profile> to override for this session",
+              "- Usage: /model list to see profiles, /model default to clear the override",
             ].join("\n"),
           };
+          return { handled: true };
+        }
+
+        if (nextModel === "list") {
+          const { profiles, defaultModel, warnings } = await loadProfiles(this.toolContext.cwd).catch(
+            () => ({ profiles: emptyProfiles, defaultModel: undefined as string | undefined, warnings: [] as string[] }),
+          );
+          const ids = Object.keys(profiles);
+          const lines: string[] = ["Model profiles"];
+          if (ids.length === 0) {
+            lines.push("  (none declared — add a `models` block to settings.json)");
+          } else {
+            for (const id of ids) {
+              const p = profiles[id]!;
+              const marker = id === this.getActiveModel() ? " (active)" : defaultModel === id ? " (default)" : "";
+              lines.push(`  ${id}${marker} · ${p.protocol} · ${p.model}${p.baseURL ? ` · ${p.baseURL}` : ""}`);
+            }
+          }
+          for (const w of warnings) lines.push(`  ⚠ ${w}`);
+          lines.push("", "Switch with /model <id>; clear with /model default.");
+          yield { type: "command", kind: "info", message: lines.join("\n") };
           return { handled: true };
         }
 
@@ -885,6 +914,10 @@ export class QueryEngine {
           return { handled: true };
         }
 
+        // Annotate the switch with the resolved protocol when it matches a
+        // declared profile (helps the user confirm they hit the right one).
+        const { profiles } = await loadProfiles(this.toolContext.cwd).catch(() => ({ profiles: emptyProfiles }));
+        const matched = profiles[nextModel];
         this.sessionModelOverride = nextModel;
         yield { type: "model_changed", model: nextModel, source: "session" };
         yield {
@@ -893,6 +926,7 @@ export class QueryEngine {
           message: [
             "Model updated",
             `- Active model: ${nextModel}`,
+            matched ? `- Protocol: ${matched.protocol} · upstream model: ${matched.model}` : "- Protocol: anthropic (raw model name)",
             "- Source: session",
             `- Default model remains: ${this.defaultModel}`,
           ].join("\n"),
@@ -910,7 +944,7 @@ export class QueryEngine {
         const focus = args.join(" ").trim();
         const manualSystemParts = await buildSystemPrompt({ cwd: this.toolContext.cwd });
         const manualSystemPrompt = renderSystemPrompt(manualSystemParts);
-        const result = await compactMessages(this.messages, focus || undefined, { usage: this.lastCallUsage, usageAnchorIndex: this.usageAnchorIndex, systemPrompt: manualSystemPrompt, force: true });
+        const result = await compactMessages(this.messages, focus || undefined, { usage: this.lastCallUsage, usageAnchorIndex: this.usageAnchorIndex, systemPrompt: manualSystemPrompt, model: this.getActiveModel(), force: true });
         this.messages = [...result.messages];
         if (result.didCompact || result.didMicroCompact) {
           this.invalidateUsageAnchor();

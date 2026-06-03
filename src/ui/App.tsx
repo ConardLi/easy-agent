@@ -201,9 +201,14 @@ export function App({ model, permissionMode, shouldResume, resumeSessionId }: Ap
   const staticItems = React.useMemo<ConversationItem[]>(() => {
     const banner: ConversationItem = {
       key: "welcome",
-      element: <WelcomeBanner model={model} version={VERSION} />,
+      element: (
+        <WelcomeBanner model={model} version={VERSION} permissionMode={state.permissionMode} />
+      ),
     };
     return [banner, ...conversationItems];
+    // permissionMode is read for the startup chip only; <Static> never repaints
+    // the banner, so a later mode change shows up in the footer, not here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationItems, model]);
 
   return (
@@ -265,7 +270,10 @@ export function App({ model, permissionMode, shouldResume, resumeSessionId }: Ap
               {state.taskMode === "task"
                 ? <TaskList tasks={state.tasks} />
                 : <TodoList todos={state.todos} />}
-              <ToolCallList toolCalls={state.toolCalls} />
+              <ToolCallList
+                toolCalls={state.toolCalls}
+                leadingMarginTop={state.toolCalls.length > 0 && !state.streamingText ? 1 : 0}
+              />
             </>
           )}
           <SystemPanel notice={state.systemNotice} />

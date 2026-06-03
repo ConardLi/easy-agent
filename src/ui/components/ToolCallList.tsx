@@ -9,6 +9,8 @@ import type { BashProgress } from "../../state/bashProgressStore.js";
 
 interface ToolCallListProps {
   toolCalls: ToolCallInfo[];
+  /** Extra breathing room when the first visible thing after a prompt is a tool. */
+  leadingMarginTop?: number;
 }
 
 const BASH_TAIL_LINES = 6;
@@ -45,13 +47,13 @@ function BashProgressBody({ progress }: { progress: BashProgress }): React.React
  * only appears in history (and only in verbose mode) — keeping the live frame
  * light avoids a double-render flash on the same frame.
  */
-export function ToolCallList({ toolCalls }: ToolCallListProps): React.ReactNode {
+export function ToolCallList({ toolCalls, leadingMarginTop = 0 }: ToolCallListProps): React.ReactNode {
   if (toolCalls.length === 0) {
     return null;
   }
 
   return (
-    <Box flexDirection="column" marginTop={0}>
+    <Box flexDirection="column" marginTop={leadingMarginTop}>
       {toolCalls.map((toolCall, index) => {
         const pending = toolCall.resultLength === undefined;
         const key = toolCall.id || `tc${index}`;

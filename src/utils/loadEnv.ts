@@ -1,51 +1,64 @@
 /**
  * loadEnv — Multi-source environment variable loader.
  *
- * Loads env vars from multiple sources with increasing priority
- * (later sources override earlier ones):
+ * Loads env vars from the Easy Agent settings chain plus a project-local
+ * dotenv file, with increasing priority (later sources override earlier ones):
  *
- *   1. ~/.claude.json        → global config `env` field
- *   2. ~/.claude/settings.json → user settings `env` field
- *   3. .env (cwd)            → project-local dotenv file
+ *   1. ~/.easy-agent/settings.json            → user-scope `env` block
+ *   2. <cwd>/.easy-agent/settings.json        → project-scope `env` block
+ *   3. <cwd>/.easy-agent/settings.local.json  → project-local `env` block
+ *   4. .env (cwd)                             → dotenv file (highest priority)
  *
- * This mirrors how claude-code-source-code handles env loading
- * via Object.assign (higher priority overwrites lower), while
- * keeping the simplicity of dotenv for project-local overrides.
+ * The settings `env` blocks let users keep model API keys (and any other
+ * variable referenced via `${VAR}` in a model profile) alongside the rest of
+ * their configuration. A repo-local `.env` still wins so a developer can
+ * override committed defaults without editing settings.json.
+ *
+ * Note: the project/local `env` blocks come from repo files. This is the same
+ * trust posture as the cwd `.env` file (which dotenv already auto-loads), so it
+ * introduces no attack surface beyond what `.env` provides.
  */
 
 import * as fs from "node:fs";
-import * as path from "node:path";
 import dotenv from "dotenv";
-
-interface ClaudeConfig {
-  env?: Record<string, string>;
-}
+import {
+  getUserSettingsPath,
+  getProjectSettingsPath,
+  getLocalSettingsPath,
+} from "./paths.js";
 
 function readJsonEnv(filePath: string): Record<string, string> {
   try {
     const raw = fs.readFileSync(filePath, "utf-8");
-    const parsed: ClaudeConfig = JSON.parse(raw);
-    if (parsed.env && typeof parsed.env === "object") {
-      return parsed.env;
+    const parsed: unknown = JSON.parse(raw);
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      "env" in parsed &&
+      (parsed as { env?: unknown }).env &&
+      typeof (parsed as { env?: unknown }).env === "object"
+    ) {
+      const out: Record<string, string> = {};
+      for (const [k, v] of Object.entries((parsed as { env: Record<string, unknown> }).env)) {
+        if (typeof v === "string") out[k] = v;
+      }
+      return out;
     }
   } catch {
-    // File doesn't exist or is invalid JSON — silently skip
+    // File doesn't exist or is invalid JSON — silently skip.
   }
   return {};
 }
 
 export function loadEnv(): void {
-  const home = process.env.HOME || "~";
+  const cwd = process.cwd();
 
-  // 1. ~/.claude.json (lowest priority)
-  const globalConfigEnv = readJsonEnv(path.join(home, ".claude.json"));
-  Object.assign(process.env, globalConfigEnv);
+  // Settings `env` blocks, low → high priority (later wins).
+  Object.assign(process.env, readJsonEnv(getUserSettingsPath()));
+  Object.assign(process.env, readJsonEnv(getProjectSettingsPath(cwd)));
+  Object.assign(process.env, readJsonEnv(getLocalSettingsPath(cwd)));
 
-  // 2. ~/.claude/settings.json
-  const settingsEnv = readJsonEnv(path.join(home, ".claude", "settings.json"));
-  Object.assign(process.env, settingsEnv);
-
-  // 3. .env file (highest priority — project-local overrides everything).
+  // .env file (highest priority — project-local overrides everything).
   // `quiet` suppresses dotenv's "injected env (N) from .env" tip banner so
   // the REPL opens on a clean welcome card instead of a stray log line.
   dotenv.config({ override: true, quiet: true });

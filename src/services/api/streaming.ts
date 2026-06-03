@@ -11,12 +11,12 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import type { MessageParam } from "@anthropic-ai/sdk/resources/messages.js";
 import {
-  getAnthropicClient,
+  getAnthropicClientForProfile,
   DEFAULT_MODEL,
   DEFAULT_MAX_TOKENS,
-  ESCALATED_MAX_TOKENS,
-  MAX_OUTPUT_TOKENS_RECOVERY_LIMIT,
 } from "./client.js";
+import { resolveProfile } from "./providers/profile.js";
+import { streamViaProvider, collectViaProvider } from "./providers/providerStream.js";
 import type {
   AssistantMessage,
   ContentBlock,
@@ -27,6 +27,18 @@ import type {
   Usage,
 } from "../../types/message.js";
 import { writeStreamDebug } from "../../utils/streamDebug.js";
+import {
+  classifyAPIError,
+  getUserFacingErrorMessage,
+  toFriendlyError,
+} from "./errors.js";
+import {
+  callWithRetry,
+  decideRetry,
+  getMaxRetries,
+  sleep,
+  type QuerySource,
+} from "./withRetry.js";
 
 // ─── Request Parameters ────────────────────────────────────────────
 
@@ -36,7 +48,20 @@ export interface StreamRequestParams {
   maxTokens?: number;
   system?: string;
   tools?: Anthropic.Tool[];
+  /**
+   * Forces a particular tool-use behavior (e.g. `{ type: "tool", name }` to
+   * make the model emit exactly one structured tool call). Used by internal
+   * single-shot callers like the Auto Mode classifier; optional so existing
+   * callers (compaction, summaries) are unaffected when omitted.
+   */
+  toolChoice?: Anthropic.MessageCreateParams["tool_choice"];
   signal?: AbortSignal;
+  /**
+   * Stage 27: foreground (user waiting) vs background (summary / title).
+   * Controls whether a 529 capacity overload is retried. Defaults to
+   * foreground when unset — conservative for untagged paths.
+   */
+  querySource?: QuerySource;
 }
 
 // ─── Streaming Result ──────────────────────────────────────────────
@@ -50,22 +75,26 @@ export interface StreamResult {
 // ─── Core Streaming Function ───────────────────────────────────────
 
 /**
- * Send a streaming request to the Anthropic API and yield StreamEvents.
- *
- * This is the main communication primitive — everything else builds on top.
- * The generator yields incremental events as they arrive (text deltas,
- * tool_use blocks, etc.) and accumulates the full response internally.
- *
- * After the generator completes, call `.return()` value is undefined —
- * the final assembled message is yielded as a `message_done` event
- * containing the usage stats.
+ * One streaming attempt. Yields incremental events and returns the assembled
+ * message. Unlike the public `streamMessage`, this does NOT swallow errors —
+ * it lets them propagate so the retry wrapper can decide whether to re-issue
+ * the request. (The retry decision must live above a single attempt.)
  */
-export async function* streamMessage(
+async function* streamOnce(
   params: StreamRequestParams,
 ): AsyncGenerator<StreamEvent, StreamResult> {
-  const client = getAnthropicClient();
-  const model = params.model ?? DEFAULT_MODEL;
-  const maxTokens = params.maxTokens ?? DEFAULT_MAX_TOKENS;
+  // Stage 30: resolve the model handle into a profile. Non-Anthropic protocols
+  // (OpenAI Chat/Responses, Gemini) are translated at the edge via llm-bridge;
+  // the Anthropic path below is unchanged except it sources its client/model
+  // from the (possibly synthetic) profile.
+  const profile = await resolveProfile(params.model ?? DEFAULT_MODEL);
+  if (profile.protocol !== "anthropic") {
+    return yield* streamViaProvider(profile, params);
+  }
+
+  const client = getAnthropicClientForProfile(profile);
+  const model = profile.model;
+  const maxTokens = profile.maxTokens ?? params.maxTokens ?? DEFAULT_MAX_TOKENS;
 
   // Build the API request
   const requestParams: Anthropic.MessageCreateParamsStreaming = {
@@ -75,6 +104,7 @@ export async function* streamMessage(
     stream: true,
     ...(params.system && { system: params.system }),
     ...(params.tools && params.tools.length > 0 && { tools: params.tools }),
+    ...(params.toolChoice && { tool_choice: params.toolChoice }),
   };
 
   // Initiate the stream
@@ -105,8 +135,7 @@ export async function* streamMessage(
     toolNames: params.tools?.map((t) => t.name),
   });
 
-  try {
-    for await (const event of stream) {
+  for await (const event of stream) {
       writeStreamDebug("event", event);
       switch (event.type) {
         // ── Message lifecycle ──────────────────────────────
@@ -251,14 +280,6 @@ export async function* streamMessage(
           break;
         }
       }
-    }
-  } catch (error) {
-    writeStreamDebug("stream_error", { message: error instanceof Error ? error.message : String(error) });
-    // Yield the error as a stream event so the caller can handle it
-    yield {
-      type: "error",
-      error: error instanceof Error ? error : new Error(String(error)),
-    };
   }
 
   writeStreamDebug("assembled", {
@@ -290,6 +311,114 @@ export async function* streamMessage(
   };
 }
 
+// ─── Public Streaming Function (with retry) ────────────────────────
+
+/**
+ * Send a streaming request to the Anthropic API and yield StreamEvents,
+ * transparently retrying transient failures (429 / 5xx / network) with
+ * exponential backoff before any content is surfaced.
+ *
+ * This is the main communication primitive — everything else builds on top.
+ *
+ * Retry safety: an attempt is only retried while it has NOT yet yielded any
+ * content (text / tool_use). The first-party API surfaces transient errors at
+ * connection time — on the first pull of the underlying SSE stream, before our
+ * own events flow — so in practice the retry happens cleanly. If an error
+ * arrives mid-stream (after content), we don't replay; we surface it, because
+ * silently re-running would duplicate already-shown output.
+ *
+ * On a non-retryable error, or once retries are exhausted, we yield a single
+ * `error` event carrying a friendly, category-tagged message (matching the
+ * pre-Stage-27 contract: the caller sees one `error` event and stops).
+ */
+export async function* streamMessage(
+  params: StreamRequestParams,
+): AsyncGenerator<StreamEvent, StreamResult> {
+  const maxRetries = getMaxRetries();
+  const model = params.model ?? DEFAULT_MODEL;
+  let attempt = 0;
+  let consecutive529 = 0;
+
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    attempt++;
+    const inner = streamOnce(params);
+    let hasYieldedContent = false;
+
+    try {
+      while (true) {
+        const { value, done } = await inner.next();
+        if (done) {
+          return value;
+        }
+        if (
+          value.type === "text" ||
+          value.type === "tool_use_start" ||
+          value.type === "tool_use_input"
+        ) {
+          hasYieldedContent = true;
+        }
+        yield value;
+      }
+    } catch (error) {
+      writeStreamDebug("stream_error", {
+        attempt,
+        message: error instanceof Error ? error.message : String(error),
+      });
+
+      // Aborted requests are never retried — surface the original error and
+      // stop, preserving the pre-Stage-27 abort behavior.
+      if (params.signal?.aborted) {
+        yield {
+          type: "error",
+          error: error instanceof Error ? error : new Error(String(error)),
+          category: "aborted",
+        };
+        return errorStreamResult();
+      }
+
+      const decision = decideRetry(error, attempt, {
+        maxRetries,
+        querySource: params.querySource,
+        consecutive529,
+      });
+      consecutive529 = decision.consecutive529;
+
+      // Only retry if the decision allows it AND nothing has been streamed yet
+      // (re-running after partial output would duplicate visible content).
+      if (decision.retry && !hasYieldedContent) {
+        yield {
+          type: "retry",
+          attempt,
+          maxRetries,
+          delayMs: decision.delayMs,
+          errorMessage: getUserFacingErrorMessage(error, model),
+          category: classifyAPIError(error),
+        };
+        await sleep(decision.delayMs, params.signal);
+        continue;
+      }
+
+      // Non-retryable, exhausted, or mid-stream failure → surface friendly.
+      yield {
+        type: "error",
+        error: toFriendlyError(error, model),
+        category: classifyAPIError(error),
+      };
+      return errorStreamResult();
+    }
+  }
+}
+
+/** Empty result returned after a surfaced error (callers stop on the event). */
+function errorStreamResult(): StreamResult {
+  return {
+    assistantMessage: { role: "assistant", content: [] },
+    usage: { input_tokens: 0, output_tokens: 0 },
+    stopReason: "error",
+  };
+}
+
 // ─── Convenience: Non-streaming single-shot ────────────────────────
 
 /**
@@ -300,17 +429,43 @@ export async function* streamMessage(
 export async function createMessage(
   params: Omit<StreamRequestParams, "signal">,
 ): Promise<{ content: ContentBlock[]; usage: Usage; stopReason: string }> {
-  const client = getAnthropicClient();
-  const model = params.model ?? DEFAULT_MODEL;
-  const maxTokens = params.maxTokens ?? DEFAULT_MAX_TOKENS;
+  const profile = await resolveProfile(params.model ?? DEFAULT_MODEL);
 
-  const response = await client.messages.create({
-    model,
-    max_tokens: maxTokens,
-    messages: params.messages,
-    ...(params.system && { system: params.system }),
-    ...(params.tools && params.tools.length > 0 && { tools: params.tools }),
-  });
+  // Non-Anthropic profiles have no native non-streaming primitive here; drain
+  // the translated provider stream into a single result, with the same
+  // transient-failure resilience as the Anthropic branch below.
+  if (profile.protocol !== "anthropic") {
+    return await callWithRetry(() => collectViaProvider(profile, params), {
+      querySource: params.querySource ?? "background",
+      onRetry: ({ attempt, delayMs, category }) =>
+        writeStreamDebug("createMessage_retry", { attempt, delayMs, category }),
+    });
+  }
+
+  const client = getAnthropicClientForProfile(profile);
+  const model = profile.model;
+  const maxTokens = profile.maxTokens ?? params.maxTokens ?? DEFAULT_MAX_TOKENS;
+
+  // Single-shot calls (compaction summaries, etc.) get the same transient-
+  // failure resilience as streaming, via the shared backoff policy. These are
+  // background work — nobody is blocking on the result — so a 529 capacity
+  // overload bails fast instead of amplifying load.
+  const response = await callWithRetry(
+    () =>
+      client.messages.create({
+        model,
+        max_tokens: maxTokens,
+        messages: params.messages,
+        ...(params.system && { system: params.system }),
+        ...(params.tools && params.tools.length > 0 && { tools: params.tools }),
+        ...(params.toolChoice && { tool_choice: params.toolChoice }),
+      }),
+    {
+      querySource: params.querySource ?? "background",
+      onRetry: ({ attempt, delayMs, category }) =>
+        writeStreamDebug("createMessage_retry", { attempt, delayMs, category }),
+    },
+  );
 
   const contentBlocks: ContentBlock[] = response.content.map((block) => {
     if (block.type === "text") {
@@ -343,58 +498,4 @@ export async function createMessage(
     usage: usageResult,
     stopReason: response.stop_reason ?? "end_turn",
   };
-}
-
-/**
- * Stream with automatic escalated retry when output is truncated.
- *
- * If the model hits max_tokens, retries once with ESCALATED_MAX_TOKENS (64k).
- * If still truncated, injects a continuation message up to
- * MAX_OUTPUT_TOKENS_RECOVERY_LIMIT times.
- */
-export async function* streamMessageWithRetry(
-  params: StreamRequestParams,
-): AsyncGenerator<StreamEvent, StreamResult> {
-  const stream = streamMessage(params);
-  const events: StreamEvent[] = [];
-
-  while (true) {
-    const { value, done } = await stream.next();
-    if (done) {
-      const result = value;
-      if (!result) {
-        return { assistantMessage: { role: "assistant", content: [] }, usage: { input_tokens: 0, output_tokens: 0 }, stopReason: "error" } as StreamResult;
-      }
-
-      if (result.stopReason !== "max_tokens") {
-        return result;
-      }
-
-      // Escalated retry with 64K
-      const escalatedStream = streamMessage({
-        ...params,
-        maxTokens: ESCALATED_MAX_TOKENS,
-      });
-      const escalatedEvents: StreamEvent[] = [];
-      while (true) {
-        const esc = await escalatedStream.next();
-        if (esc.done) {
-          const escalatedResult = esc.value;
-          if (!escalatedResult) {
-            return result;
-          }
-          if (escalatedResult.stopReason !== "max_tokens") {
-            for (const ev of escalatedEvents) yield ev;
-            return escalatedResult;
-          }
-          // Still truncated — return what we have, caller can do multi-turn recovery
-          for (const ev of escalatedEvents) yield ev;
-          return escalatedResult;
-        }
-        escalatedEvents.push(esc.value);
-      }
-    }
-    events.push(value);
-    yield value;
-  }
 }

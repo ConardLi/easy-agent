@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { stat } from "node:fs/promises";
 import { promisify } from "node:util";
 import type { Tool, ToolContext, ToolResult } from "./Tool.js";
 import { resolveWorkspacePath } from "./pathUtils.js";
@@ -16,6 +17,14 @@ async function hasCommand(command: string): Promise<boolean> {
   try {
     await execFileAsync("sh", ["-lc", `command -v ${command}`]);
     return true;
+  } catch {
+    return false;
+  }
+}
+
+async function isDirectory(filePath: string): Promise<boolean> {
+  try {
+    return (await stat(filePath)).isDirectory();
   } catch {
     return false;
   }
@@ -60,8 +69,12 @@ export const grepTool: Tool = {
         if (input.include) {
           args.push("-g", input.include);
         }
-        args.push(input.pattern, targetPath);
-        const { stdout } = await execFileAsync("rg", args, { maxBuffer: 1024 * 1024 });
+        const targetIsDirectory = await isDirectory(targetPath);
+        args.push(input.pattern, targetIsDirectory ? "." : targetPath);
+        const { stdout } = await execFileAsync("rg", args, {
+          cwd: targetIsDirectory ? targetPath : undefined,
+          maxBuffer: 1024 * 1024,
+        });
         const output = stdout.trim();
         return {
           content: output ? output : `No matches found for pattern: ${input.pattern}`,
@@ -75,6 +88,9 @@ export const grepTool: Tool = {
         content: output ? output : `No matches found for pattern: ${input.pattern}`,
       };
     } catch (error: unknown) {
+      if ((error as { code?: unknown })?.code === 1) {
+        return { content: `No matches found for pattern: ${input.pattern}` };
+      }
       const message = error instanceof Error ? error.message : String(error);
       if (message.includes("code 1")) {
         return { content: `No matches found for pattern: ${input.pattern}` };

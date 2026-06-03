@@ -1093,6 +1093,33 @@ export function useAgentSession({
             }
             break;
           }
+          case "api_retry": {
+            // Stage 27: the API layer is backing off before re-issuing a
+            // request after a transient failure. Show a transient notice with
+            // the countdown so the user knows we're retrying, not hung.
+            const secs = (value.delayMs / 1000).toFixed(1);
+            setSpinnerLabel("Retrying");
+            setSystemNotice({
+              tone: "info",
+              title: "Retrying request",
+              body: `${value.message}\nRetrying in ${secs}s… (attempt ${value.attempt}/${value.maxRetries}).`,
+            });
+            break;
+          }
+          case "stream_restart":
+            // Stage 27: about to re-run the turn (max_tokens escalation or
+            // reactive compact). Drop any partially-streamed text so the
+            // re-run renders cleanly instead of concatenating.
+            cancelPendingText();
+            setStreamingText("");
+            if (value.reason === "reactive_compact") {
+              setSystemNotice({
+                tone: "info",
+                title: "Context compacted",
+                body: "The prompt exceeded the context window — history was summarized and the request retried.",
+              });
+            }
+            break;
           case "turn_complete":
             if (value.reason === "max_turns") {
               setSystemNotice({

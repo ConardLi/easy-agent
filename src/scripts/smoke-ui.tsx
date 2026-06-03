@@ -85,7 +85,7 @@ const VERBOSE = process.env.SMOKE_VERBOSE === "1";
 
 function Demo(): React.ReactNode {
   const items = [
-    { key: "welcome", element: <WelcomeBanner model="MiniMax-M3" version="0.1.0" /> },
+    { key: "welcome", element: <WelcomeBanner model="MiniMax-M3" version="0.1.0" permissionMode="auto" /> },
     ...flattenConversation(messages, VERBOSE),
   ];
   return (

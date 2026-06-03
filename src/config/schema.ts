@@ -31,7 +31,34 @@ const PermissionRule = z.string().trim().min(1);
  */
 export const SettingsSchema = z.looseObject({
   model: z.string().trim().min(1).optional(),
+  // Stage 30: multi-protocol model profiles. Each entry declares a provider
+  // target (protocol + model + endpoint + credentials). The map key is the
+  // user-facing handle used by `--model` / `/model`. Validated leniently
+  // (looseObject) so a single bad profile doesn't drop the whole `models` block;
+  // deeper per-profile validation + ${ENV} interpolation lives in profile.ts.
+  models: z
+    .record(
+      z.string(),
+      z.looseObject({
+        protocol: z.string().optional(),
+        model: z.string().optional(),
+        baseURL: z.string().optional(),
+        apiKey: z.string().optional(),
+        maxTokens: z.number().optional(),
+        headers: z.record(z.string(), z.string()).optional(),
+      }),
+    )
+    .optional(),
+  // Stage 30: default profile id (or raw model name) when no --model is given.
+  defaultModel: z.string().trim().min(1).optional(),
+  // Stage 30 (optional): map well-known roles → profile ids for future
+  // task-based routing (background/think/longContext). Parsed but not yet wired.
+  modelRoles: z.record(z.string(), z.string()).optional(),
   mode: z.enum(["default", "plan", "auto"]).optional(),
+  // Stage 29: convenience switch equivalent to `mode: "auto"`. Like `mode`,
+  // it is SECURITY-SENSITIVE and only honored from trusted scopes (user / flag
+  // / policy) — never from a checked-in project/local settings file.
+  autoMode: z.boolean().optional(),
   allow: z.array(PermissionRule).optional(),
   deny: z.array(PermissionRule).optional(),
   ask: z.array(PermissionRule).optional(),

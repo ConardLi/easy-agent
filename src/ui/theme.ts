@@ -45,3 +45,27 @@ export const glyph = {
   promptCaret: "\u203A", // › the input box caret
   bullet: "\u00B7", // · tip bullet
 } as const;
+
+/**
+ * Per-permission-mode presentation (symbol + color + label), mirroring Claude
+ * Code's PermissionMode config so the welcome banner and footer agree on how a
+ * mode looks. The symbol prefixes the label as a quick visual cue; the color
+ * makes a non-default mode pop out of the otherwise muted chrome.
+ */
+export const modeStyle: Record<
+  string,
+  { label: string; color: string; symbol: string }
+> = {
+  // ⏵ caret pair = "running through" confirmations; ⏸ = paused (read-only).
+  default: { label: "default", color: theme.muted, symbol: "" },
+  plan: { label: "plan", color: theme.info, symbol: "\u23F8" }, // ⏸
+  auto: { label: "auto", color: theme.warn, symbol: "\u23F5\u23F5" }, // ⏵⏵
+} as const;
+
+export function getModeStyle(mode: string): {
+  label: string;
+  color: string;
+  symbol: string;
+} {
+  return modeStyle[mode] ?? modeStyle.default!;
+}

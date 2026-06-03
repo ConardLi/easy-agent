@@ -75,6 +75,8 @@ export interface CompactionCheckOptions {
   usageAnchorIndex?: number;
   systemPrompt?: string;
   force?: boolean;
+  /** Model handle used for the summarization call. Falls back to the default model when omitted. */
+  model?: string;
 }
 
 function isContentBlocks(content: unknown): content is ContentBlockParam[] {
@@ -200,12 +202,12 @@ function findPreservedTailStart(messages: MessageParam[], desiredCount: number):
   return 0;
 }
 
-async function summarizeMessages(messages: MessageParam[], focus?: string): Promise<string> {
+async function summarizeMessages(messages: MessageParam[], focus?: string, model?: string): Promise<string> {
   const extraInstruction = focus ? `\n\n## Compact Instructions\n${focus}` : "";
-  debugLog("compact", "summary_request", { messageCount: messages.length, focus: focus ?? null });
+  debugLog("compact", "summary_request", { messageCount: messages.length, focus: focus ?? null, model: model ?? null });
 
   const response = await createMessage({
-    model: process.env.ANTHROPIC_MODEL,
+    model: model ?? process.env.ANTHROPIC_MODEL,
     maxTokens: 8000,
     system: NO_TOOLS_PREAMBLE + BASE_COMPACT_PROMPT + extraInstruction,
     messages: [
@@ -281,7 +283,7 @@ export async function compactMessages(
     };
   }
 
-  const summary = await summarizeMessages(microCompacted, focus);
+  const summary = await summarizeMessages(microCompacted, focus, options.model);
   const desiredTailCount = 8;
   const tailStart = microCompacted.length <= desiredTailCount
     ? microCompacted.length               // short conversation: summary covers everything, no tail

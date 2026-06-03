@@ -252,6 +252,10 @@ export async function runChildAgent(params: RunChildAgentParams): Promise<AgentR
     onPermissionRequest: params.onPermissionRequest,
     shouldAvoidPermissionPrompts: params.shouldAvoidPermissionPrompts,
     subagentInfo: { agentId: agentIdForHooks, agentType: def.agentType },
+    // Stage 27: a backgrounded sub-agent has no one waiting on its result, so
+    // a 529 capacity overload should fail fast rather than amplify load.
+    // Interactive sub-agents stay foreground (retry 529).
+    querySource: params.shouldAvoidPermissionPrompts ? "background" : "foreground",
   });
 
   let finalMessages: MessageParam[] = [];

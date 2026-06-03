@@ -12,7 +12,7 @@
  * identical in-flight and once archived.
  */
 import React from "react";
-import { Box, Text } from "ink";
+import { Box, Text, useStdout } from "ink";
 import { theme, glyph } from "../theme.js";
 import { useBlink } from "../hooks/useBlink.js";
 import type { ToolLine } from "../utils/toolCardFormat.js";
@@ -59,12 +59,20 @@ export function ToolCardHeader({
  * 4-col gutter (`  ⎿ `) lines the body up just past the header's dot+label.
  */
 export function ResultLine({ children }: { children: React.ReactNode }): React.ReactNode {
+  const { stdout } = useStdout();
+  const columns = stdout?.columns ?? 80;
+  // Root App uses paddingX={1}; the result gutter consumes 4 more columns.
+  // Giving the body a concrete width makes Ink's truncate/wrap rules stable
+  // inside <Static>, so long file lists do not wrap back to column 0.
+  const rowWidth = Math.max(8, columns - 2);
+  const bodyWidth = Math.max(8, rowWidth - 4);
+
   return (
-    <Box flexDirection="row">
+    <Box flexDirection="row" width={rowWidth}>
       <Box flexShrink={0}>
         <Text color={theme.muted}>{`  ${glyph.resultCorner} `}</Text>
       </Box>
-      <Box flexDirection="column" flexShrink={1} flexGrow={1}>
+      <Box flexDirection="column" width={bodyWidth}>
         {children}
       </Box>
     </Box>
@@ -95,7 +103,7 @@ export function ToolResultSummary({
             <Text color={theme.error}>{`-${line.removed ?? 0}`}</Text>
           </Text>
         ) : (
-          <Text color={theme.muted}>{line.stat ?? "done"}</Text>
+          <Text color={theme.muted} wrap="truncate-end">{line.stat ?? "done"}</Text>
         )}
         {expandable ? <Text color={theme.muted}>{"  (ctrl+o to expand)"}</Text> : null}
       </Text>

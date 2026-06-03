@@ -13,6 +13,9 @@ import {
   type PermissionSettings,
 } from "../permissions/permissions.js";
 import { streamMessage } from "../services/api/streaming.js";
+import { ESCALATED_MAX_TOKENS, MAX_OUTPUT_TOKENS_RECOVERY_LIMIT } from "../services/api/client.js";
+import type { QuerySource } from "../services/api/withRetry.js";
+import { compactMessages } from "../context/compaction.js";
 import { findToolByName } from "../tools/index.js";
 import { truncateToolResult, type ToolContext, type ToolResult } from "../tools/Tool.js";
 import {
@@ -32,6 +35,17 @@ import {
 } from "../hooks/index.js";
 
 export const MAX_TOOL_TURNS = 50;
+
+/**
+ * Stage 27: injected when output is truncated and the silent 64K escalation
+ * already happened — the model is asked to resume from the cut point. Copied
+ * verbatim from source (query.ts) because the wording is load-bearing: it
+ * stops the model from apologizing / recapping (which would waste the very
+ * tokens we're trying to conserve).
+ */
+const MAX_OUTPUT_TOKENS_RECOVERY_PROMPT =
+  "Output token limit hit. Resume directly — no apology, no recap of what you were doing. " +
+  "Pick up mid-thought if that is where the cut happened. Break remaining work into smaller pieces.";
 
 export type LoopTerminationReason =
   | "completed"
@@ -70,6 +84,29 @@ export type AgenticLoopEvent =
   | { type: "token_warning"; warning: TokenWarningResult }
   | {
       /**
+       * Stage 27: surfaced while the API layer is backing off before
+       * re-issuing a request after a transient failure (429 / 5xx / network).
+       * Lets the UI show "Retrying in Xs… (attempt N/M)".
+       */
+      type: "api_retry";
+      attempt: number;
+      maxRetries: number;
+      delayMs: number;
+      message: string;
+    }
+  | {
+      /**
+       * Stage 27: the loop is about to re-run the current turn from scratch —
+       * either after a silent max_tokens escalation to 64K, or after a
+       * reactive compaction triggered by a prompt-too-long error. The UI uses
+       * this to clear any partially-streamed text so the re-run renders
+       * cleanly instead of concatenating onto the truncated output.
+       */
+      type: "stream_restart";
+      reason: "max_tokens_escalation" | "reactive_compact";
+    }
+  | {
+      /**
        * Emitted right after the per-turn streaming API call resolves and
        * the loop has folded the response usage into its running totals.
        * `turnUsage` is just this turn's usage; `cumulativeUsage` is
@@ -105,6 +142,13 @@ export interface QueryParams {
   abortSignal?: AbortSignal;
   toolContext: ToolContext;
   maxTurns?: number;
+  /**
+   * Stage 27: foreground (user waiting) vs background (sub-agent / summary).
+   * Threaded into the streaming layer so 529 capacity overloads are retried
+   * for foreground turns and dropped fast for background ones. Defaults to
+   * foreground when unset.
+   */
+  querySource?: QuerySource;
   permissionMode?: PermissionMode;
   permissionSettings?: PermissionSettings;
   sessionPermissionRules?: PermissionRuleSet;
@@ -144,6 +188,14 @@ export interface RunToolsOptions {
   onPermissionRequest?: (request: PermissionRequest) => Promise<PermissionDecision>;
   /** See RunQueryParams.shouldAvoidPermissionPrompts. */
   shouldAvoidPermissionPrompts?: boolean;
+  /**
+   * Conversation so far (before the current tool-use action). Threaded into
+   * `checkPermission` so the Auto Mode classifier can infer user intent.
+   * Stage 1: passed through but not yet consumed by the permission engine.
+   */
+  conversationMessages?: MessageParam[];
+  /** Active model handle, forwarded to the Auto Mode classifier. */
+  model?: string;
 }
 
 /**
@@ -305,6 +357,8 @@ async function runOneToolBlock(
       mode: liveMode ?? options.permissionMode,
       settings: options.permissionSettings,
       sessionRules: options.sessionPermissionRules,
+      messages: options.conversationMessages,
+      model: options.model,
     });
 
     // PreToolUse hook can override the rule-based decision (source's
@@ -584,6 +638,19 @@ export async function* query(
   // Stop-hook re-entry guard — see the call site below for context.
   let stopHookFired = false;
 
+  // ─── Stage 27: recovery state ────────────────────────────────────
+  // `maxOutputTokensOverride`: while set, the next API call uses this higher
+  //   max_tokens (the silent 64K escalation). Reset to undefined after a
+  //   normal turn or once multi-turn recovery takes over.
+  // `maxOutputTokensRecoveryCount`: how many continuation prompts we've
+  //   injected after the escalation still hit the cap (bounded by the limit).
+  // `hasAttemptedReactiveCompact`: one-shot guard so a prompt-too-long error
+  //   triggers compaction at most once — without it, "compact → still too
+  //   long → compact" would loop forever burning API calls.
+  let maxOutputTokensOverride: number | undefined = undefined;
+  let maxOutputTokensRecoveryCount = 0;
+  let hasAttemptedReactiveCompact = false;
+
   while (state.turnCount < maxTurns) {
     if (params.abortSignal?.aborted) {
       const abortedState = { ...state, aborted: true };
@@ -626,10 +693,16 @@ export async function* query(
       system: params.systemPrompt,
       tools: currentTools && currentTools.length > 0 ? currentTools : undefined,
       signal: params.abortSignal,
+      // Stage 27: silent 64K escalation override (undefined → default cap).
+      ...(maxOutputTokensOverride !== undefined ? { maxTokens: maxOutputTokensOverride } : {}),
+      querySource: params.querySource,
     });
 
     let assistantContent: ContentBlock[] = [];
     let stopReason = "";
+    // Stage 27: capture a surfaced stream error so the outer scope can decide
+    // on a recovery path (reactive compact) instead of failing inline.
+    let streamError: { error: Error; category?: string } | undefined;
 
     while (true) {
       const { value, done } = await stream.next();
@@ -664,17 +737,121 @@ export async function* query(
         case "tool_use_start":
           yield value;
           break;
-        case "error":
-          yield { type: "error", error: value.error };
-          yield { type: "turn_complete", reason: "model_error", turnCount: nextTurnCount };
-          return {
-            state: { ...state, turnCount: nextTurnCount },
-            usage: totalUsage,
-            lastCallUsage,
-            reason: "model_error",
+        case "retry":
+          // The API layer is backing off before re-issuing the request.
+          // Surface it so the UI can show the countdown; no content was
+          // streamed yet, so nothing needs clearing.
+          yield {
+            type: "api_retry",
+            attempt: value.attempt,
+            maxRetries: value.maxRetries,
+            delayMs: value.delayMs,
+            message: value.errorMessage,
           };
+          break;
+        case "error":
+          // Capture and break; the post-stream block decides whether to
+          // recover (reactive compact) or surface the error.
+          streamError = { error: value.error, category: value.category };
+          break;
       }
+      if (streamError) break;
     }
+
+    // ─── Stage 27: stream error handling (reactive compact) ──────────
+    if (streamError) {
+      // Prompt-too-long → summarize the history once and retry the turn.
+      // Guarded by hasAttemptedReactiveCompact so we never loop on it.
+      if (
+        streamError.category === "prompt_too_long" &&
+        !hasAttemptedReactiveCompact &&
+        state.messages.length > 0
+      ) {
+        hasAttemptedReactiveCompact = true;
+        try {
+          const compactResult = await compactMessages(state.messages, undefined, {
+            systemPrompt: params.systemPrompt,
+            model: params.model,
+            force: true,
+          });
+          if (compactResult.didCompact) {
+            state = {
+              messages: [...compactResult.messages],
+              turnCount: state.turnCount,
+              aborted: false,
+            };
+            // Clear any partially-streamed text and reset token override.
+            maxOutputTokensOverride = undefined;
+            yield { type: "stream_restart", reason: "reactive_compact" };
+            continue;
+          }
+        } catch {
+          // Compaction itself failed — fall through and surface the original.
+        }
+      }
+
+      yield { type: "error", error: streamError.error };
+      yield { type: "turn_complete", reason: "model_error", turnCount: nextTurnCount };
+      return {
+        state: { ...state, turnCount: nextTurnCount },
+        usage: totalUsage,
+        lastCallUsage,
+        reason: "model_error",
+      };
+    }
+
+    // ─── Stage 27: max_output_tokens two-phase recovery ──────────────
+    if (stopReason === "max_tokens") {
+      // Phase 1 — silent escalation: retry the SAME request at 64K without
+      // touching the message history. Fires once per truncation episode.
+      if (maxOutputTokensOverride === undefined) {
+        maxOutputTokensOverride = ESCALATED_MAX_TOKENS;
+        yield { type: "stream_restart", reason: "max_tokens_escalation" };
+        continue; // turnCount unchanged — same turn, higher cap
+      }
+
+      // Phase 2 — multi-turn continuation: commit the (truncated) assistant
+      // output, then inject a recovery prompt asking the model to resume.
+      if (maxOutputTokensRecoveryCount < MAX_OUTPUT_TOKENS_RECOVERY_LIMIT) {
+        const truncatedAssistant: MessageParam = {
+          role: "assistant",
+          content: assistantContent as any,
+        };
+        state = {
+          messages: [...state.messages, truncatedAssistant],
+          turnCount: nextTurnCount,
+          aborted: false,
+        };
+        yield { type: "assistant_message", message: truncatedAssistant };
+        yield {
+          type: "turn_usage",
+          turnUsage: { ...lastCallUsage },
+          cumulativeUsage: { ...totalUsage },
+          turnCount: state.turnCount,
+        };
+
+        const recoveryMessage: MessageParam = {
+          role: "user",
+          content: MAX_OUTPUT_TOKENS_RECOVERY_PROMPT,
+        };
+        state = {
+          messages: [...state.messages, recoveryMessage],
+          turnCount: state.turnCount,
+          aborted: false,
+        };
+        yield { type: "tool_result_message", message: recoveryMessage };
+
+        maxOutputTokensRecoveryCount++;
+        maxOutputTokensOverride = undefined; // let next attempt re-escalate
+        continue;
+      }
+      // Recovery exhausted — fall through and treat the partial output as a
+      // normal completed turn.
+    }
+
+    // Reset the escalation override before a normal (non-truncated) turn so
+    // the next turn starts from the default cap.
+    maxOutputTokensOverride = undefined;
 
     const assistantMessage: MessageParam = {
       role: "assistant",
@@ -760,6 +937,8 @@ export async function* query(
         sessionPermissionRules: params.sessionPermissionRules,
         onPermissionRequest: params.onPermissionRequest,
         shouldAvoidPermissionPrompts: params.shouldAvoidPermissionPrompts,
+        conversationMessages: state.messages,
+        model: params.model,
       },
     );
 

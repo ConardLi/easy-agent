@@ -126,6 +126,7 @@ export async function autoCompactIfNeeded(
       usage: options.usage,
       usageAnchorIndex: options.usageAnchorIndex,
       systemPrompt: options.systemPrompt,
+      model,
       force: true,
     });
     consecutiveAutoCompactFailures = 0;

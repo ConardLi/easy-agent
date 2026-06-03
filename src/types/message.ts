@@ -17,6 +17,13 @@ export interface ToolUseBlock {
   id: string;
   name: string;
   input: Record<string, unknown>;
+  /**
+   * Gemini-3 emits an opaque `thoughtSignature` alongside each function call
+   * and *requires* it to be echoed back on the functionCall part in subsequent
+   * turns (otherwise it rejects the request). We capture it here so it rides
+   * along in conversation history; it is ignored by every non-Gemini path.
+   */
+  thoughtSignature?: string;
 }
 
 export interface ToolResultBlock {
@@ -100,6 +107,28 @@ export interface StreamMessageDoneEvent {
 export interface StreamErrorEvent {
   type: "error";
   error: Error;
+  /**
+   * Stage 27: the classified category of the error (rate_limit,
+   * prompt_too_long, auth_error, …). Lets the agentic loop decide on a
+   * recovery path (e.g. reactive compact for prompt_too_long) instead of
+   * re-parsing the error string. Optional so non-API errors stay simple.
+   */
+  category?: string;
+}
+
+/**
+ * Stage 27: emitted by the retry wrapper while it is waiting to re-issue a
+ * request after a transient failure (429 / 5xx / network). Carries enough for
+ * the UI to show "Retrying in Xs… (attempt N/M)". Yielded BEFORE any content,
+ * so it never interleaves with partial assistant text.
+ */
+export interface StreamRetryEvent {
+  type: "retry";
+  attempt: number;
+  maxRetries: number;
+  delayMs: number;
+  errorMessage: string;
+  category: string;
 }
 
 export type StreamEvent =
@@ -108,4 +137,5 @@ export type StreamEvent =
   | StreamToolUseInputEvent
   | StreamMessageStartEvent
   | StreamMessageDoneEvent
-  | StreamErrorEvent;
+  | StreamErrorEvent
+  | StreamRetryEvent;

@@ -52,8 +52,9 @@ function OutputBody({
  * (terminal columns minus the root's paddingX) rather than `width: "100%"`:
  * inside <Static>, `100%` resolves to the full terminal width and ignores the
  * root padding, making the bar ~2 cols too wide so its background wrapped onto
- * a stray extra line. A concrete width fills the line edge-to-edge with no
- * overflow. Long messages still wrap, with the background filling each line.
+ * a stray extra line. A concrete width fills the content line with no overflow.
+ * The caret intentionally starts at column 0 of the content area so it aligns
+ * with assistant/tool status dots below.
  */
 function UserMessageBar({
   caret,
@@ -70,7 +71,7 @@ function UserMessageBar({
   const width = Math.max(8, columns - 2);
   return (
     <Box marginTop={1}>
-      <Box width={width} backgroundColor={theme.userBarBg} paddingX={1}>
+      <Box width={width} backgroundColor={theme.userBarBg}>
         <Text color={theme.brand} bold>{`${caret} `}</Text>
         <Text color={textColor}>{text}</Text>
       </Box>
@@ -465,6 +466,16 @@ export interface ConversationItem {
   element: React.ReactNode;
 }
 
+type VisibleItemKind = "user" | "assistantText" | "tool";
+
+function withToolLeadSpacing(
+  element: React.ReactNode,
+  previousKind: VisibleItemKind | null,
+): React.ReactNode {
+  if (previousKind !== "user") return element;
+  return <Box marginTop={1}>{element}</Box>;
+}
+
 function renderUserBubble(content: string): React.ReactNode {
   // Background sub-agent finished — compact one-line status pill.
   const taskNotif = extractTaskNotification(content);
@@ -503,6 +514,7 @@ export function flattenConversation(
 ): ConversationItem[] {
   const toolResults = buildToolResultMap(messages);
   const items: ConversationItem[] = [];
+  let lastVisibleKind: VisibleItemKind | null = null;
 
   messages.forEach((message, index) => {
     if (isInternalMessage(message)) return;
@@ -518,9 +530,11 @@ export function flattenConversation(
               <UserMessageBar caret={glyph.userCaret} text={display} textColor={theme.brandLight} />
             ),
           });
+          lastVisibleKind = "user";
           return;
         }
         items.push({ key: `u${index}`, element: renderUserBubble(message.content) });
+        lastVisibleKind = "user";
       }
       // Array content = tool_result blocks — surfaced via their tool_use item.
       return;
@@ -531,15 +545,16 @@ export function flattenConversation(
         if (!message.content) return;
         items.push({
           key: `a${index}`,
-          element: (
-            <Box marginTop={1}>
-              <Text color={theme.assistant}>{`${glyph.assistant} `}</Text>
-              <Markdown content={message.content} />
-            </Box>
-          ),
-        });
-        return;
-      }
+            element: (
+              <Box marginTop={1}>
+                <Text color={theme.assistant}>{`${glyph.assistant} `}</Text>
+                <Markdown content={message.content} />
+              </Box>
+            ),
+          });
+          lastVisibleKind = "assistantText";
+          return;
+        }
 
       if (Array.isArray(message.content)) {
         const blocks = message.content as Array<{
@@ -554,15 +569,16 @@ export function flattenConversation(
           if (block?.type === "text" && block.text) {
             items.push({
               key: `a${index}-t${j}`,
-              element: (
-                <Box marginTop={1}>
-                  <Text color={theme.assistant}>{`${glyph.assistant} `}</Text>
-                  <Markdown content={block.text} />
-                </Box>
-              ),
-            });
-            continue;
-          }
+                element: (
+                  <Box marginTop={1}>
+                    <Text color={theme.assistant}>{`${glyph.assistant} `}</Text>
+                    <Markdown content={block.text} />
+                  </Box>
+                ),
+              });
+              lastVisibleKind = "assistantText";
+              continue;
+            }
           if (block?.type === "tool_use" && typeof block.id === "string" && typeof block.name === "string") {
             const result = toolResults.get(block.id);
             // Only emit once the result is committed — keeps the list
@@ -594,8 +610,12 @@ export function flattenConversation(
               if (run.length >= GROUP_MIN) {
                 items.push({
                   key: `tug${block.id}`,
-                  element: <GroupedReadSearchCard members={run} />,
+                  element: withToolLeadSpacing(
+                    <GroupedReadSearchCard members={run} />,
+                    lastVisibleKind,
+                  ),
                 });
+                lastVisibleKind = "tool";
                 j = k - 1; // skip the consumed blocks
                 continue;
               }
@@ -603,10 +623,12 @@ export function flattenConversation(
 
             items.push({
               key: `tu${block.id}`,
-              element: (
-                <InlineToolCard name={block.name} input={block.input} result={result} verbose={verbose} />
+              element: withToolLeadSpacing(
+                <InlineToolCard name={block.name} input={block.input} result={result} verbose={verbose} />,
+                lastVisibleKind,
               ),
             });
+            lastVisibleKind = "tool";
           }
         }
       }

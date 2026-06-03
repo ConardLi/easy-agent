@@ -80,7 +80,7 @@ const BUILTIN_COMMANDS: CommandSuggestion[] = [
 const MODE_OPTIONS: { mode: PermissionMode; description: string }[] = [
   { mode: "default", description: "Confirm destructive operations" },
   { mode: "plan", description: "Read-only exploration, then plan" },
-  { mode: "auto", description: "Auto-approve all operations" },
+  { mode: "auto", description: "AI classifier auto-approves safe operations" },
 ];
 
 const TASK_MODE_OPTIONS: { mode: TaskMode; description: string }[] = [
@@ -353,6 +353,29 @@ export function usePromptInput({
       return;
     }
 
+    // Shift+Tab opens the permission-mode selector (the same keyboard-navigable
+    // list `/mode` shows). Ink parses Shift+Tab (CSI "\x1b[Z") as key.tab +
+    // key.shift. We deliberately DON'T submit `/mode <x>` directly: that emits a
+    // blocking command panel that swallows the next keypress. Opening the
+    // selector instead lets the user keep pressing Shift+Tab (or ↑/↓) to move
+    // the highlight, then Enter / number to apply.
+    if (key.tab && key.shift && !isLoading && !hasPermissionPrompt) {
+      const currentIdx = MODE_OPTIONS.findIndex((o) => o.mode === permissionMode);
+      const base = currentIdx < 0 ? 0 : currentIdx;
+      if (showModeSelector) {
+        // Already open: advance the highlight so repeated Shift+Tab cycles.
+        setSelectedModeIndex((prev) => {
+          const from = prev < 0 ? base : prev;
+          return (from + 1) % MODE_OPTIONS.length;
+        });
+      } else {
+        // Open it (mirrors typing "/mode ") and pre-highlight the next mode.
+        setInputValue("/mode ");
+        setSelectedModeIndex((base + 1) % MODE_OPTIONS.length);
+      }
+      return;
+    }
+
     if (hasPermissionPrompt) {
       const normalized = input.toLowerCase();
       if (isPlanExitPrompt) {
@@ -460,8 +483,14 @@ export function usePromptInput({
       }
     }
 
-    // Mode selector: arrow keys + Enter + number shortcuts
+    // Mode selector: arrow keys + Enter + number shortcuts. Esc closes it and
+    // clears the "/mode " buffer so Shift+Tab → Esc leaves no stray text.
     if (showModeSelector) {
+      if (key.escape) {
+        setInputValue("");
+        setSelectedModeIndex(-1);
+        return;
+      }
       if (key.upArrow) {
         setSelectedModeIndex((prev) => (prev <= 0 ? MODE_OPTIONS.length - 1 : prev - 1));
         return;

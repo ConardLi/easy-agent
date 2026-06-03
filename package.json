@@ -34,7 +34,9 @@
     "test:stage24-statusline": "tsx src/scripts/smoke-statusline.tsx",
     "test:stage24-command": "tsx src/scripts/smoke-command.tsx",
     "test:stage25": "tsx src/scripts/smoke-config.ts",
+    "test:stage30": "tsx scripts/verify-multi-protocol.ts",
     "test:filehistory": "tsx src/scripts/smoke-filehistory.ts",
+    "test:resilience": "tsx src/scripts/smoke-resilience.ts",
     "smoke:sandbox": "tsx src/scripts/smoke-sandbox.ts",
     "smoke:bash-sandbox": "tsx src/scripts/smoke-bash-sandbox.ts"
   },
@@ -63,6 +65,7 @@
     "figlet": "^1.11.0",
     "ignore": "^7.0.5",
     "ink": "^7.0.0",
+    "llm-bridge": "^2.0.1",
     "marked": "^18.0.4",
     "proper-lockfile": "^4.1.2",
     "react": "^19.2.4",

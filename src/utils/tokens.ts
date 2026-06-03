@@ -23,7 +23,10 @@ const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
 };
 
 export function getContextWindowForModel(model: string): number {
-  const envOverride = process.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS;
+  // EASY_AGENT_MAX_CONTEXT_TOKENS is the project name; CLAUDE_CODE_MAX_CONTEXT_TOKENS
+  // is honored too for parity with source (matches getMaxRetries' alias pattern).
+  const envOverride =
+    process.env.EASY_AGENT_MAX_CONTEXT_TOKENS ?? process.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS;
   if (envOverride) {
     const parsed = parseInt(envOverride, 10);
     if (!isNaN(parsed) && parsed > 0) return parsed;

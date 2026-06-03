@@ -35,11 +35,25 @@ Usage:
 Options:
   -v, --version               Print version and exit
   -h, --help                  Show this help message
-  --model <model>             Override the LLM model
+  --model <handle>            Select the model: a "models" profile id (multi-
+                              protocol: OpenAI/Gemini via settings.json) or a
+                              raw Anthropic model name. See /model list.
+  -p, --print [prompt]        Headless mode: run one non-interactive turn from
+                              the prompt and/or piped stdin, print the result to
+                              stdout, and exit. (e.g. echo "hi" | agent -p)
+  --output-format <fmt>       Headless output: text (default) | json | stream-json
+                              json: one result object; stream-json: NDJSON stream
+                              (system/init → assistant/user → result)
   --resume [session-id]       Resume the latest or a specific session
   --plan                      Start in plan mode (read-only tools only)
-  --auto                      Start in auto mode (allow all tools)
+  --auto                      Start in auto mode: an AI classifier auto-approves
+                              safe tool calls and blocks risky ones (uncertain
+                              cases fall back to confirmation)
   --permission-mode <mode>    Permission mode: default | plan | auto
+  --dangerously-skip-permissions
+                              Headless mode only: auto-approve tool calls that
+                              would otherwise prompt (deny rules still apply).
+                              Without it, -p denies such calls by default.
   --settings <path>           Load an external settings.json as the flag layer
                               (inline --model / --permission-mode still win)
   --agent-teams               Enable Agent Teams (stage 21 — TeamCreate /
@@ -120,6 +134,37 @@ Settings keys (stage 25 — in ~/.easy-agent/settings.json or <cwd>/.easy-agent/
   const model = modelIndex !== -1 ? process.argv[modelIndex + 1] : undefined;
   const dumpSystemPrompt = process.argv.includes("--dump-system-prompt");
   const permissionMode = parsePermissionMode(process.argv);
+
+  // Stage 28: headless / print mode. `-p` / `--print` runs a single
+  // non-interactive turn (stdin and/or the following arg → one Agentic Loop →
+  // stdout → exit). The prompt argument is optional: when absent, input comes
+  // from piped stdin. We only treat the token right after the flag as the
+  // prompt when it isn't itself another flag.
+  const printIndex = process.argv.findIndex((a) => a === "--print" || a === "-p");
+  const isPrintMode = printIndex !== -1;
+  const printPromptCandidate = isPrintMode ? process.argv[printIndex + 1] : undefined;
+  const printPrompt =
+    printPromptCandidate && !printPromptCandidate.startsWith("-") ? printPromptCandidate : undefined;
+  // Stage 28b: bypass permissions (auto-approve `ask` prompts). Honored by the
+  // headless callback; `deny` rules still apply. Currently only wired into
+  // print mode.
+  const bypassPermissions = process.argv.includes("--dangerously-skip-permissions");
+  // Stage 28c: headless output format. `text` (default) prints just the final
+  // answer; `json` emits a single machine-readable `result` object.
+  const outputFormatIndex = process.argv.indexOf("--output-format");
+  const outputFormat = outputFormatIndex !== -1 ? process.argv[outputFormatIndex + 1] : undefined;
+  if (
+    isPrintMode &&
+    outputFormat !== undefined &&
+    outputFormat !== "text" &&
+    outputFormat !== "json" &&
+    outputFormat !== "stream-json"
+  ) {
+    console.error(
+      `[easy-agent] Unsupported --output-format: ${outputFormat}. Use 'text', 'json', or 'stream-json'.`,
+    );
+    process.exit(1);
+  }
 
   // Build the in-memory `flag` settings source from argv and install it as the
   // highest-priority file-equivalent source BEFORE any loader runs. This makes
@@ -216,7 +261,9 @@ Settings keys (stage 25 — in ~/.easy-agent/settings.json or <cwd>/.easy-agent/
   // Trust gate (stage 25): before bringing up the REPL, make sure the user
   // trusts this folder. Declining exits; non-interactive sessions run
   // untrusted (project/local hooks + statusLine are then suppressed).
-  if (process.stdin.isTTY) {
+  // Stage 28: print mode is non-interactive by definition — never prompt for
+  // trust (it would block a piped/CI invocation on a TTY answer).
+  if (process.stdin.isTTY && !isPrintMode) {
     const { ensureTrusted } = await import("../ui/trustGate.js");
     const trusted = await ensureTrusted(process.cwd());
     if (!trusted) {
@@ -278,6 +325,26 @@ Settings keys (stage 25 — in ~/.easy-agent/settings.json or <cwd>/.easy-agent/
     );
   }
 
+  // Stage 28: headless / print mode forks here — AFTER the shared setup
+  // pipeline (bootstrap, apiKeyHelper, additionalDirectories, retention, hook
+  // toggles) but BEFORE any Ink rendering. It runs one turn and exits, so we
+  // never reach the interactive REPL below.
+  if (isPrintMode) {
+    const { runHeadless } = await import("./headless.js");
+    await runHeadless({
+      promptArg: printPrompt,
+      permissionMode,
+      bypassPermissions,
+      outputFormat:
+        outputFormat === "json"
+          ? "json"
+          : outputFormat === "stream-json"
+            ? "stream-json"
+            : "text",
+    });
+    return;
+  }
+
   const React = await import("react");
   const { render } = await import("ink");
   const { App } = await import("../ui/App.js");
@@ -288,7 +355,14 @@ Settings keys (stage 25 — in ~/.easy-agent/settings.json or <cwd>/.easy-agent/
   // Resolve the model through the unified settings chain: flag (--model) →
   // local → project → user → built-in default. `--model` lives in the flag
   // source installed above, so it naturally wins.
-  const resolvedModel = (await readMergedStringSetting(process.cwd(), "model")) ?? DEFAULT_MODEL;
+  //
+  // Stage 30: the resolved value is a model *handle* — either a declared
+  // `models` profile id or a raw model name. When no explicit `model` is set,
+  // fall back to `defaultModel` (the multi-profile default) before the built-in.
+  const resolvedModel =
+    (await readMergedStringSetting(process.cwd(), "model")) ??
+    (await readMergedStringSetting(process.cwd(), "defaultModel")) ??
+    DEFAULT_MODEL;
 
   // Kick off MCP server connections IN THE BACKGROUND. The bootstrap
   // function seeds `pending` registry entries synchronously, then connects

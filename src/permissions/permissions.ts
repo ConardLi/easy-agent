@@ -1,4 +1,5 @@
 import * as path from "node:path";
+import type { MessageParam } from "@anthropic-ai/sdk/resources/messages.js";
 import type { Tool } from "../tools/Tool.js";
 import { isReadOnlyCommand } from "../tools/bashTool.js";
 import { getPlanFilePath } from "../context/plans.js";
@@ -8,6 +9,16 @@ import {
   shouldUseSandbox,
   splitCommand,
 } from "../sandbox/index.js";
+import { classifyAutoModeAction } from "./autoClassifier.js";
+import { stripDangerousAllowRules } from "./dangerousPatterns.js";
+import {
+  recordClassifierDenial,
+  recordClassifierSuccess,
+  recordClassifierFailure,
+  shouldFallbackToPrompting,
+  isAutoModeCircuitBroken,
+  notifyCircuitBreakOnce,
+} from "./autoModeState.js";
 
 export type PermissionBehavior = "allow" | "ask" | "deny";
 export type PermissionMode = "default" | "plan" | "auto";
@@ -43,12 +54,26 @@ export interface PermissionCheckParams {
   mode?: PermissionMode;
   sessionRules?: PermissionRuleSet;
   settings?: PermissionSettings;
+  /**
+   * Conversation transcript before the proposed action. Threaded through so
+   * the Auto Mode AI classifier (Stage 29.2) can infer user intent. Optional
+   * and currently unused by the rule engine — existing callers are
+   * unaffected; the auto-mode branch will consume it in a later stage.
+   */
+  messages?: MessageParam[];
+  /**
+   * Active model handle. Threaded through so the Auto Mode AI classifier uses
+   * the user's selected profile instead of defaulting to an Anthropic model
+   * (which would fail auth for non-Anthropic-only setups).
+   */
+  model?: string;
 }
 
 interface RawSettings {
   allow?: unknown;
   deny?: unknown;
   mode?: unknown;
+  autoMode?: unknown;
 }
 
 const DEFAULT_PERMISSION_SETTINGS: PermissionSettings = {
@@ -58,6 +83,51 @@ const DEFAULT_PERMISSION_SETTINGS: PermissionSettings = {
 };
 
 const PLAN_ALLOWED_TOOLS = new Set(["Read", "Grep", "Glob"]);
+
+// Coordination-only tools — their side effects are confined to Easy Agent's
+// own ~/.easy-agent state directory (planning state, team file + mailbox) and
+// never touch the user's workspace. Auto-approved in every mode, including
+// Auto Mode (they never reach the classifier). Mirrors source's
+// `SAFE_YOLO_ALLOWLISTED_TOOLS` (classifierDecision.ts:78-83).
+const COORDINATION_TOOLS = new Set([
+  "TodoWrite",
+  "TaskCreate",
+  "TaskUpdate",
+  "TaskGet",
+  "TaskList",
+  "TeamCreate",
+  "TeamDelete",
+  "SendMessage",
+]);
+
+function isCoordinationTool(toolName: string): boolean {
+  return COORDINATION_TOOLS.has(toolName);
+}
+
+// Auto Mode hard-deny blacklist — commands that are NEVER safe to auto-run.
+// These are blocked outright without spending a classifier call (and serve as
+// a safety floor even if the classifier would have erred). Narrower than
+// `DANGEROUS_BASH_PREFIXES` (which only triggers "ask" in default mode):
+// commands like `git push` / `mv` / `chmod` are NOT hard-denied — they go to
+// the classifier, which weighs them against user intent.
+const AUTO_HARD_DENY_BASH_PATTERNS: RegExp[] = [
+  /\brm\s+(-[a-z]*r[a-z]*f|-[a-z]*f[a-z]*r)\b/i, // rm -rf / rm -fr (recursive force)
+  /\b(curl|wget|fetch)\b[^|]*\|\s*(sudo\s+)?(bash|sh|zsh|python[0-9.]*|node|perl|ruby)\b/i, // pipe remote → shell
+  /\bsudo\b/i, // privilege escalation
+  /\bsu\s+-?\b/i,
+  /\bdd\b[^|]*\bof=\/dev\//i, // overwrite a block device
+  /\bmkfs(\.\w+)?\b/i, // format a filesystem
+  /\bfdisk\b/i,
+  />\s*\/dev\/(sd|disk|nvme|hd)/i, // redirect into a raw disk
+  /:\(\)\s*\{\s*:\s*\|\s*:&\s*\}\s*;\s*:/, // fork bomb
+];
+
+function isHardDeniedBashCommand(command: string): boolean {
+  const normalized = command.replace(/\s+/g, " ").trim();
+  if (!normalized) return false;
+  return AUTO_HARD_DENY_BASH_PATTERNS.some((re) => re.test(normalized));
+}
+
 const DANGEROUS_BASH_PREFIXES = [
   "rm ",
   "sudo ",
@@ -115,7 +185,9 @@ export async function loadPermissionSettings(cwd: string): Promise<PermissionSet
     allow.push(...normalizeRuleList(raw.allow));
     deny.push(...normalizeRuleList(raw.deny));
     if (!isTrustedScopeForSensitiveKeys(src.source)) continue;
-    const m = normalizeMode(raw.mode);
+    // Explicit `mode` wins within a source; `autoMode: true` is a convenience
+    // alias for `mode: "auto"`. Later trusted source wins overall.
+    const m = normalizeMode(raw.mode) ?? (raw.autoMode === true ? "auto" : undefined);
     if (m) mode = m;
   }
 
@@ -333,6 +405,107 @@ function getRiskLabel(tool: Tool, input: Record<string, unknown>): string {
   return "Medium risk: operation may change local state";
 }
 
+/**
+ * Auto Mode decision pipeline. Reached only when `mode === "auto"`.
+ *
+ * Order is deliberate and security-first:
+ *   1. Coordination-only tools        → allow (never classified)
+ *   2. EnterPlanMode                   → ask  (a mode switch is a conscious choice)
+ *   3. Explicit deny rules             → deny (always win, before any allow)
+ *   4. Bash hard-deny blacklist        → deny (never-safe; saves a classifier call)
+ *   5. Read-only fast-path             → allow (saves a classifier call)
+ *   6. Explicit allow rules            → allow
+ *   7. AI classifier                   → allow / (block → ask) / (unavailable → ask)
+ *
+ * "block" and "unavailable" both degrade to `ask` here — i.e. fall back to the
+ * normal confirmation UI. Stage 3 layers consecutive-denial tracking and a
+ * failure circuit-breaker on top; this stage keeps the mapping simple and
+ * never auto-allows on uncertainty.
+ */
+async function resolveAutoModeDecision(
+  params: PermissionCheckParams,
+  request: PermissionRequest,
+  settings: PermissionSettings,
+  sessionRules: PermissionRuleSet,
+): Promise<PermissionResponse> {
+  if (isCoordinationTool(params.tool.name)) {
+    return { behavior: "allow", reason: `${params.tool.name} writes coordination-only state`, request };
+  }
+
+  if (params.tool.name === "EnterPlanMode") {
+    return { behavior: "ask", reason: "entering plan mode requires confirmation", request };
+  }
+
+  if (
+    matchesAnyRule(sessionRules.deny, params.tool.name, params.input) ||
+    matchesAnyRule(settings.deny, params.tool.name, params.input)
+  ) {
+    return { behavior: "deny", reason: "matched deny rule", request };
+  }
+
+  if (params.tool.name === "Bash") {
+    const command = extractBashCommand(params.input);
+    if (isHardDeniedBashCommand(command)) {
+      return { behavior: "deny", reason: "high-risk shell command blocked in auto mode", request };
+    }
+    if (isReadOnlyCommand(command)) {
+      return { behavior: "allow", reason: "read-only shell command", request };
+    }
+  } else if (params.tool.isReadOnly()) {
+    return { behavior: "allow", reason: "read-only tool", request };
+  }
+
+  // Honor explicit allow rules — but NOT dangerous ones (interpreters, bare
+  // Bash, Agent), which would let the agent bypass the classifier. Those are
+  // stripped here so the action falls through to the classifier instead.
+  const safeSessionAllow = stripDangerousAllowRules(sessionRules.allow);
+  const safeSettingsAllow = stripDangerousAllowRules(settings.allow);
+  if (
+    matchesAnyRule(safeSessionAllow, params.tool.name, params.input) ||
+    matchesAnyRule(safeSettingsAllow, params.tool.name, params.input)
+  ) {
+    return { behavior: "allow", reason: "matched allow rule", request };
+  }
+
+  const verdict = await classifyAutoModeAction({
+    messages: params.messages ?? [],
+    toolName: params.tool.name,
+    toolInput: params.input,
+    allowRules: [...safeSessionAllow, ...safeSettingsAllow],
+    denyRules: [...sessionRules.deny, ...settings.deny],
+    model: params.model,
+  });
+
+  // Classifier unavailable (API/parse failure): never auto-allow on
+  // uncertainty. Degrade to manual confirmation and feed the circuit breaker
+  // — enough consecutive failures disables the classifier for the session.
+  if (verdict.unavailable) {
+    recordClassifierFailure();
+    return {
+      behavior: "ask",
+      reason: `classifier unavailable — manual review (${verdict.reason})`,
+      request,
+    };
+  }
+
+  if (verdict.shouldBlock) {
+    recordClassifierDenial();
+    // After enough consecutive blocks, stop silently denying and let the
+    // human decide instead (the classifier reason is surfaced in the prompt).
+    if (shouldFallbackToPrompting()) {
+      return {
+        behavior: "ask",
+        reason: `classifier blocked repeatedly — please review: ${verdict.reason}`,
+        request,
+      };
+    }
+    return { behavior: "deny", reason: verdict.reason, request };
+  }
+
+  recordClassifierSuccess();
+  return { behavior: "allow", reason: `auto-approved: ${verdict.reason}`, request };
+}
+
 export async function checkPermission(params: PermissionCheckParams): Promise<PermissionResponse> {
   const settings = params.settings ?? (await loadPermissionSettings(params.cwd));
   const mode = params.mode ?? settings.mode;
@@ -345,39 +518,31 @@ export async function checkPermission(params: PermissionCheckParams): Promise<Pe
     ruleHint: buildPermissionRuleHint(params.tool.name, params.input),
   };
 
+  // Auto Mode: replace the legacy "allow everything" short-circuit with a
+  // real decision pipeline (deny rules → Bash fast-path → AI classifier →
+  // degrade to ask). Isolated in its own resolver so the default / plan
+  // paths below are byte-for-byte unchanged.
+  //
+  // If the classifier's circuit breaker has tripped (repeated failures), we
+  // skip the classifier entirely and fall through to the default-mode
+  // handling below — i.e. behave as manual confirmation — notifying once.
+  if (mode === "auto" && !isAutoModeCircuitBroken()) {
+    return await resolveAutoModeDecision(params, request, settings, sessionRules);
+  }
   if (mode === "auto") {
-    return { behavior: "allow", reason: "auto mode allows all operations", request };
+    notifyCircuitBreakOnce();
+    // fall through to default-mode handling below
   }
 
-  // Always-allow set — tools whose side effects are confined to
-  // Easy Agent's own ~/.easy-agent state directory and never touch the
-  // user's workspace. They are auto-approved in every mode (including
-  // Plan Mode) so the model can plan / coordinate without UI prompts.
+  // Always-allow set — tools whose side effects are confined to Easy Agent's
+  // own ~/.easy-agent state directory and never touch the user's workspace.
+  // Auto-approved in every mode (including Plan Mode) so the model can plan /
+  // coordinate without UI prompts. See COORDINATION_TOOLS for details.
   //
-  // Two groups:
-  //   1. TodoWrite + Task V2 tools  →  planning state only
-  //   2. Agent Teams (Stage 21)     →  team file + mailbox under
-  //      ~/.easy-agent/teams. Mirrors Claude Code source's
-  //      `SAFE_YOLO_ALLOWLISTED_TOOLS` set in
-  //      utils/permissions/classifierDecision.ts:78-83, whose comment
-  //      reads: "Swarm coordination (internal mailbox/team state only
-  //      — teammates have their own permission checks, so no actual
-  //      security bypass)."
-  //
-  //      Note: TeamDelete additionally cleans up agent-owned git
-  //      worktrees, but `removeAgentWorktree` refuses to delete dirty
-  //      ones — so the user's uncommitted work is never destroyed
-  //      without their consent.
-  if (
-    params.tool.name === "TodoWrite" ||
-    params.tool.name === "TaskCreate" ||
-    params.tool.name === "TaskUpdate" ||
-    params.tool.name === "TaskGet" ||
-    params.tool.name === "TaskList" ||
-    params.tool.name === "TeamCreate" ||
-    params.tool.name === "TeamDelete" ||
-    params.tool.name === "SendMessage"
-  ) {
+  // Note: TeamDelete additionally cleans up agent-owned git worktrees, but
+  // `removeAgentWorktree` refuses to delete dirty ones — so the user's
+  // uncommitted work is never destroyed without their consent.
+  if (isCoordinationTool(params.tool.name)) {
     return { behavior: "allow", reason: `${params.tool.name} writes coordination-only state`, request };
   }
 
