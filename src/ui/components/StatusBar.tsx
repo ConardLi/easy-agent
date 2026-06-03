@@ -14,6 +14,7 @@ interface StatusBarProps {
   streamingText: string;
   lastUsage: UsageSummary | null;
   permissionPrompt: PermissionPromptState | null;
+  permissionOptionIndex?: number;
   onPlanDecision?: (decision: PermissionDecision, feedback?: string) => void;
 }
 
@@ -23,6 +24,7 @@ export function StatusBar({
   streamingText,
   lastUsage,
   permissionPrompt,
+  permissionOptionIndex = 0,
   onPlanDecision,
 }: StatusBarProps): React.ReactNode {
   return (
@@ -37,7 +39,7 @@ export function StatusBar({
       )}
 
       {permissionPrompt && !permissionPrompt.isPlanExit && (
-        <PermissionRequestCard prompt={permissionPrompt} />
+        <PermissionRequestCard prompt={permissionPrompt} selectedOptionIndex={permissionOptionIndex} />
       )}
 
       {isLoading && !streamingText && !permissionPrompt && (

@@ -11,6 +11,7 @@ import {
 } from "../sandbox/index.js";
 import { classifyAutoModeAction } from "./autoClassifier.js";
 import { stripDangerousAllowRules } from "./dangerousPatterns.js";
+import { isPreapprovedUrl } from "../tools/webFetch/preapproved.js";
 import {
   recordClassifierDenial,
   recordClassifierSuccess,
@@ -82,7 +83,18 @@ const DEFAULT_PERMISSION_SETTINGS: PermissionSettings = {
   mode: "default",
 };
 
-const PLAN_ALLOWED_TOOLS = new Set(["Read", "Grep", "Glob"]);
+// Read-only tools that are safe to use while planning. Beyond the original
+// inspection trio, Stage 31 adds the read-only web/MCP tools (WebSearch and
+// the MCP resource readers). WebFetch is intentionally NOT here — it is gated
+// per-domain by resolveWebFetchDecision, which runs before this branch.
+const PLAN_ALLOWED_TOOLS = new Set([
+  "Read",
+  "Grep",
+  "Glob",
+  "WebSearch",
+  "ListMcpResources",
+  "ReadMcpResource",
+]);
 
 // Coordination-only tools — their side effects are confined to Easy Agent's
 // own ~/.easy-agent state directory (planning state, team file + mailbox) and
@@ -226,6 +238,16 @@ function extractSkillName(input: Record<string, unknown>): string {
   return typeof input.skill === "string" ? input.skill.trim() : "";
 }
 
+/** Extract the hostname from a WebFetch tool input's `url` field. */
+function extractUrlHost(input: Record<string, unknown>): string {
+  if (typeof input.url !== "string") return "";
+  try {
+    return new URL(input.url).hostname;
+  } catch {
+    return "";
+  }
+}
+
 export function matchesPermissionRule(rule: string, toolName: string, input: Record<string, unknown>): boolean {
   const normalizedRule = rule.trim();
   if (!normalizedRule) return false;
@@ -249,6 +271,19 @@ export function matchesPermissionRule(rule: string, toolName: string, input: Rec
   if (toolName === "Bash") {
     const command = extractBashCommand(input);
     return wildcardToRegExp(pattern.trim()).test(command);
+  }
+
+  // WebFetch rules: `WebFetch(domain:example.com)` matches that host and any
+  // subdomain. Mirrors source's `domain:<hostname>` rule content. A bare
+  // `WebFetch(example.com)` form is also accepted for convenience.
+  if (toolName === "WebFetch") {
+    const host = extractUrlHost(input);
+    if (!host) return false;
+    const trimmed = pattern.trim();
+    const domain = trimmed.startsWith("domain:") ? trimmed.slice("domain:".length).trim() : trimmed;
+    if (!domain) return false;
+    if (domain.includes("*")) return wildcardToRegExp(domain).test(host);
+    return host === domain || host.endsWith(`.${domain}`);
   }
 
   // Skill rules: `Skill(my-skill)` exact, `Skill(review:*)` prefix-glob.
@@ -366,6 +401,9 @@ export function summarizePermissionRequest(toolName: string, input: Record<strin
     const command = extractBashCommand(input);
     return command ? `command=${command}` : "command=<empty>";
   }
+  if (toolName === "WebFetch") {
+    return typeof input.url === "string" ? `url=${input.url}` : "url=<empty>";
+  }
   return summarizeInput(input);
 }
 
@@ -378,6 +416,10 @@ export function buildPermissionRuleHint(toolName: string, input: Record<string, 
   if (toolName === "Skill") {
     const skillName = extractSkillName(input);
     return skillName ? `Skill(${skillName})` : "Skill";
+  }
+  if (toolName === "WebFetch") {
+    const host = extractUrlHost(input);
+    return host ? `WebFetch(domain:${host})` : "WebFetch";
   }
   return toolName;
 }
@@ -398,7 +440,7 @@ function getRiskLabel(tool: Tool, input: Record<string, unknown>): string {
     return "Low risk: read-only tool";
   }
 
-  if (tool.name === "Write" || tool.name === "Edit") {
+  if (tool.name === "Write" || tool.name === "Edit" || tool.name === "MultiEdit") {
     return "Medium risk: writes files in the workspace";
   }
 
@@ -506,6 +548,45 @@ async function resolveAutoModeDecision(
   return { behavior: "allow", reason: `auto-approved: ${verdict.reason}`, request };
 }
 
+/**
+ * WebFetch domain-permission pipeline. Runs in EVERY mode (default / plan /
+ * auto) and BEFORE the generic read-only fast-path — WebFetch is read-only but
+ * must still gate per-domain rather than auto-allowing arbitrary hosts.
+ *
+ *   1. Preapproved documentation host → allow (no prompt)
+ *   2. Domain deny rule               → deny
+ *   3. Domain allow rule (session/settings) → allow
+ *   4. Otherwise                      → ask (first visit to this domain)
+ *
+ * Mirrors source's WebFetchTool.checkPermissions (preapproved → deny → allow →
+ * ask), using `WebFetch(domain:<host>)` rule content.
+ */
+function resolveWebFetchDecision(
+  params: PermissionCheckParams,
+  request: PermissionRequest,
+  settings: PermissionSettings,
+  sessionRules: PermissionRuleSet,
+): PermissionResponse {
+  const url = typeof params.input.url === "string" ? params.input.url : "";
+
+  if (url && isPreapprovedUrl(url)) {
+    return { behavior: "allow", reason: "preapproved documentation host", request };
+  }
+  if (
+    matchesAnyRule(sessionRules.deny, "WebFetch", params.input) ||
+    matchesAnyRule(settings.deny, "WebFetch", params.input)
+  ) {
+    return { behavior: "deny", reason: "matched WebFetch deny rule", request };
+  }
+  if (
+    matchesAnyRule(sessionRules.allow, "WebFetch", params.input) ||
+    matchesAnyRule(settings.allow, "WebFetch", params.input)
+  ) {
+    return { behavior: "allow", reason: "matched WebFetch allow rule", request };
+  }
+  return { behavior: "ask", reason: "first fetch from this domain requires confirmation", request };
+}
+
 export async function checkPermission(params: PermissionCheckParams): Promise<PermissionResponse> {
   const settings = params.settings ?? (await loadPermissionSettings(params.cwd));
   const mode = params.mode ?? settings.mode;
@@ -517,6 +598,12 @@ export async function checkPermission(params: PermissionCheckParams): Promise<Pe
     risk: getRiskLabel(params.tool, params.input),
     ruleHint: buildPermissionRuleHint(params.tool.name, params.input),
   };
+
+  // WebFetch domain permission runs in all modes, before any read-only
+  // fast-path. (Read-only status alone must NOT auto-allow arbitrary domains.)
+  if (params.tool.name === "WebFetch") {
+    return resolveWebFetchDecision(params, request, settings, sessionRules);
+  }
 
   // Auto Mode: replace the legacy "allow everything" short-circuit with a
   // real decision pipeline (deny rules → Bash fast-path → AI classifier →

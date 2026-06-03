@@ -106,7 +106,16 @@ export function App({ model, permissionMode, shouldResume, resumeSessionId }: Ap
   // blocks typing, and waits for Esc.
   const commandPanelActive = Boolean(state.systemNotice?.dismissable);
 
-  const { inputValue, cursor, commandSuggestions, modeSuggestions, taskModeSuggestions, fileSuggestions, queued } = usePromptInput({
+  const {
+    inputValue,
+    cursor,
+    commandSuggestions,
+    modeSuggestions,
+    taskModeSuggestions,
+    fileSuggestions,
+    selectedPermissionIndex,
+    queued,
+  } = usePromptInput({
     isLoading: state.isLoading,
     hasPermissionPrompt: Boolean(state.permissionPrompt) && !isPlanExitActive,
     hasQuestionPrompt: Boolean(state.questionPrompt),
@@ -272,7 +281,7 @@ export function App({ model, permissionMode, shouldResume, resumeSessionId }: Ap
                 : <TodoList todos={state.todos} />}
               <ToolCallList
                 toolCalls={state.toolCalls}
-                leadingMarginTop={state.toolCalls.length > 0 && !state.streamingText ? 1 : 0}
+                leadingMarginTop={state.toolCalls.length > 0 ? 1 : 0}
               />
             </>
           )}
@@ -292,6 +301,7 @@ export function App({ model, permissionMode, shouldResume, resumeSessionId }: Ap
             streamingText={state.streamingText}
             lastUsage={state.lastUsage}
             permissionPrompt={state.permissionPrompt}
+            permissionOptionIndex={selectedPermissionIndex}
             onPlanDecision={actions.resolvePermission}
           />
           {view.mode === "selecting" ? (

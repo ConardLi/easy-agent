@@ -449,7 +449,10 @@ async function runOneToolBlock(
     // change, so /rewind can restore it. Runs before tool.call so the
     // backup reflects the original content. Best-effort & non-blocking on
     // failure (handled inside fileHistoryTrackEdit).
-    if (context.messageId && (block.name === "Write" || block.name === "Edit")) {
+    if (
+      context.messageId &&
+      (block.name === "Write" || block.name === "Edit" || block.name === "MultiEdit")
+    ) {
       const fp = toolInput["file_path"];
       if (typeof fp === "string" && fp) {
         const absPath = path.isAbsolute(fp) ? fp : path.resolve(context.cwd, fp);

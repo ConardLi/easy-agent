@@ -98,7 +98,7 @@ const MAX_FILE_SUGGESTIONS = 10;
 // A single input chunk this big is treated as a paste and folded into a
 // reference token instead of being inserted verbatim (Ink delivers bracketed
 // pastes as one `input` string).
-const PASTE_MIN_LINES = 4;
+const PASTE_MIN_LINES = 12;
 const PASTE_MIN_CHARS = 800;
 
 function isLargePaste(input: string): boolean {
@@ -183,6 +183,7 @@ export function usePromptInput({
   const [selectedModeIndex, setSelectedModeIndex] = useState(-1);
   const [selectedTaskModeIndex, setSelectedTaskModeIndex] = useState(-1);
   const [selectedFileIndex, setSelectedFileIndex] = useState(0);
+  const [selectedPermissionIndex, setSelectedPermissionIndex] = useState(0);
 
   // Prompt history: submitted entries oldest→newest. `historyPos` walks the
   // list (== length means "current draft"); `draft` preserves the in-progress
@@ -305,6 +306,15 @@ export function usePromptInput({
     [fileToken, inputValue, cursorPos, textInput],
   );
 
+  const choosePermissionOption = useCallback(
+    (index: number) => {
+      if (index === 0) onPermissionDecision("allow_once");
+      else if (index === 1) onPermissionDecision("allow_always");
+      else onPermissionDecision("deny");
+    },
+    [onPermissionDecision],
+  );
+
   useInput((input, key) => {
     if (key.ctrl && input === "c") {
       onInterrupt();
@@ -387,12 +397,20 @@ export function usePromptInput({
           onPermissionDecision("deny");
         }
       } else {
-        if (normalized === "y") {
-          onPermissionDecision("allow_once");
-        } else if (normalized === "n") {
+        if (key.escape) {
           onPermissionDecision("deny");
-        } else if (normalized === "a") {
+        } else if (key.upArrow) {
+          setSelectedPermissionIndex((prev) => (prev <= 0 ? 2 : prev - 1));
+        } else if (key.downArrow) {
+          setSelectedPermissionIndex((prev) => (prev >= 2 ? 0 : prev + 1));
+        } else if (key.return) {
+          choosePermissionOption(selectedPermissionIndex);
+        } else if (normalized === "y" || normalized === "1") {
+          onPermissionDecision("allow_once");
+        } else if (normalized === "a" || normalized === "2") {
           onPermissionDecision("allow_always");
+        } else if (normalized === "n" || normalized === "3") {
+          onPermissionDecision("deny");
         }
       }
       return;
@@ -624,6 +642,12 @@ export function usePromptInput({
 
   const showCommandSuggestions = filteredCommands.length > 0 && !showModeSelector && !showTaskModeSelector;
 
+  useEffect(() => {
+    if (!hasPermissionPrompt && selectedPermissionIndex !== 0) {
+      setSelectedPermissionIndex(0);
+    }
+  }, [hasPermissionPrompt, selectedPermissionIndex]);
+
   const commandSuggestions: CommandSuggestion[] = useMemo(() => {
     if (!showCommandSuggestions) {
       setSelectedCommandIndex(-1);
@@ -680,6 +704,7 @@ export function usePromptInput({
     modeSuggestions,
     taskModeSuggestions,
     fileSuggestions,
+    selectedPermissionIndex,
     queued,
   };
 }

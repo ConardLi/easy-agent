@@ -472,7 +472,7 @@ function withToolLeadSpacing(
   element: React.ReactNode,
   previousKind: VisibleItemKind | null,
 ): React.ReactNode {
-  if (previousKind !== "user") return element;
+  if (!previousKind || previousKind === "tool") return element;
   return <Box marginTop={1}>{element}</Box>;
 }
 

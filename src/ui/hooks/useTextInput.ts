@@ -44,6 +44,10 @@ function isWordChar(ch: string | undefined): boolean {
   return ch !== undefined && /\S/.test(ch);
 }
 
+function normalizeInsertedText(input: string): string {
+  return input.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+}
+
 export function useTextInput(options: UseTextInputOptions = {}) {
   const { onHistoryPrev, onHistoryNext, onSubmit } = options;
   const [value, setValueRaw] = useState("");
@@ -229,9 +233,10 @@ export function useTextInput(options: UseTextInputOptions = {}) {
 
       // ── Printable insertion (handles pasted multi-char chunks too) ────
       if (input && !key.ctrl && !key.meta) {
+        const inserted = normalizeInsertedText(input);
         apply((s) => ({
-          value: s.value.slice(0, s.cursor) + input + s.value.slice(s.cursor),
-          cursor: s.cursor + input.length,
+          value: s.value.slice(0, s.cursor) + inserted + s.value.slice(s.cursor),
+          cursor: s.cursor + inserted.length,
         }));
         return true;
       }

@@ -93,10 +93,45 @@ export function extractBashOutput(content: string): string {
   return body.join("\n").trim();
 }
 
-/** Parse the `Exit code: N` line from a Bash result, if present. */
+/** Parse the `Exit code: N` line from a Bash/PowerShell result, if present. */
 function bashExitCode(result: string): number | undefined {
   const m = result.match(/^Exit code: (-?\d+)$/m);
   return m ? Number(m[1]) : undefined;
+}
+
+/** Hostname of a URL, falling back to the raw string. */
+function urlHost(url: string | undefined): string | undefined {
+  if (!url) return undefined;
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return url;
+  }
+}
+
+/** WebFetch result → the parenthesized status, e.g. "200 OK". */
+function webFetchStat(result: string): string | undefined {
+  const m = result.match(/^Fetched .+? \((\d{3} [^,)]+)/);
+  return m ? m[1] : undefined;
+}
+
+/** WebSearch result → "N results" (counts the `- [..](..)` link lines). */
+function webSearchStat(result: string): string | undefined {
+  if (result.includes("No results found")) return "0 results";
+  const n = (result.match(/^\s*-\s+\[/gm) ?? []).length;
+  return `${n} result${n === 1 ? "" : "s"}`;
+}
+
+/** ListMcpResources result → "N resources". */
+function mcpListStat(result: string): string | undefined {
+  if (result.includes("No MCP resources")) return "0 resources";
+  try {
+    const parsed = JSON.parse(result);
+    if (Array.isArray(parsed)) return `${parsed.length} resource${parsed.length === 1 ? "" : "s"}`;
+  } catch {
+    // not JSON — leave blank
+  }
+  return undefined;
 }
 
 /**
@@ -149,6 +184,29 @@ export function summarizeTool(
       const stat = code !== undefined && code !== 0 ? `exit ${code}` : undefined;
       return { label: "Bash", target, stat };
     }
+    case "PowerShell": {
+      const cmd = asString(inp.command);
+      const target = cmd ? shortenCommand(cmd) : undefined;
+      const code = result ? bashExitCode(result) : undefined;
+      const stat = code !== undefined && code !== 0 ? `exit ${code}` : undefined;
+      return { label: "PowerShell", target, stat };
+    }
+    case "MultiEdit": {
+      const target = displayPath(asString(inp.file_path));
+      const edits = Array.isArray(inp.edits) ? inp.edits.length : undefined;
+      const stat = edits !== undefined ? `${edits} edit${edits === 1 ? "" : "s"}` : undefined;
+      return { label: "MultiEdit", target, stat };
+    }
+    case "WebFetch":
+      return { label: "WebFetch", target: urlHost(asString(inp.url)), stat: result ? webFetchStat(result) : undefined };
+    case "WebSearch": {
+      const q = asString(inp.query);
+      return { label: "WebSearch", target: q ? `"${q}"` : undefined, stat: result ? webSearchStat(result) : undefined };
+    }
+    case "ListMcpResources":
+      return { label: "ListMcpResources", target: asString(inp.server) ?? "all servers", stat: result ? mcpListStat(result) : undefined };
+    case "ReadMcpResource":
+      return { label: "ReadMcpResource", target: asString(inp.uri), stat: asString(inp.server) };
     default:
       return { label: name };
   }

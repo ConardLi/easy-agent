@@ -670,10 +670,6 @@ export function useAgentSession({
       setSystemNotice({ tone: "info", title: "Plan approved", body: "Plan approved. Edits auto-accepted. Context will be cleared for implementation." });
     } else if (decision === "allow_accept_edits") {
       setSystemNotice({ tone: "info", title: "Plan approved", body: "Plan approved. Edits auto-accepted. Continuing with current context." });
-    } else if (decision === "allow_always") {
-      setSystemNotice({ tone: "info", title: "Permission granted", body: "Permission granted and remembered for this session." });
-    } else {
-      setSystemNotice({ tone: "info", title: "Permission granted", body: "Permission granted." });
     }
     return true;
   }, []);

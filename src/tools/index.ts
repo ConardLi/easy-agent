@@ -12,10 +12,16 @@ import type { Tool } from "./Tool.js";
 import { toolToApiParam } from "./Tool.js";
 import { bashTool } from "./bashTool.js";
 import { fileEditTool } from "./fileEditTool.js";
+import { multiEditTool } from "./multiEditTool.js";
 import { fileReadTool } from "./fileReadTool.js";
 import { fileWriteTool } from "./fileWriteTool.js";
 import { globTool } from "./globTool.js";
 import { grepTool } from "./grepTool.js";
+import { webFetchTool } from "./webFetchTool.js";
+import { webSearchTool } from "./webSearchTool.js";
+import { listMcpResourcesTool } from "./listMcpResourcesTool.js";
+import { readMcpResourceTool } from "./readMcpResourceTool.js";
+import { powerShellTool } from "./powerShellTool.js";
 import { memoryWriteTool } from "./memoryWriteTool.js";
 import { enterPlanModeTool } from "./enterPlanModeTool.js";
 import { exitPlanModeTool } from "./exitPlanModeTool.js";
@@ -36,9 +42,15 @@ const BUILTIN_TOOLS: Tool[] = [
   fileReadTool,
   fileWriteTool,
   fileEditTool,
+  multiEditTool,
   globTool,
   grepTool,
   bashTool,
+  powerShellTool,
+  webFetchTool,
+  webSearchTool,
+  listMcpResourcesTool,
+  readMcpResourceTool,
   memoryWriteTool,
   todoWriteTool,
   taskCreateTool,

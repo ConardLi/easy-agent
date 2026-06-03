@@ -1,50 +1,39 @@
 import * as fs from "node:fs/promises";
 import type { Tool, ToolContext, ToolResult } from "./Tool.js";
 import { resolveWorkspacePath } from "./pathUtils.js";
+import {
+  applyEditToContent,
+  buildEditPreview,
+  EditError,
+  normalizeQuotes,
+} from "./editCore.js";
 
 interface FileEditInput {
   file_path: string;
   old_string: string;
   new_string: string;
-}
-
-function normalizeQuotes(value: string): string {
-  return value
-    .replace(/[\u2018\u2019]/g, "'")
-    .replace(/[\u201C\u201D]/g, '"');
-}
-
-function countOccurrences(haystack: string, needle: string): number {
-  if (!needle) return 0;
-  let count = 0;
-  let fromIndex = 0;
-  while (true) {
-    const foundIndex = haystack.indexOf(needle, fromIndex);
-    if (foundIndex === -1) return count;
-    count += 1;
-    fromIndex = foundIndex + needle.length;
-  }
-}
-
-function buildEditPreview(oldString: string, newString: string): string {
-  const oldLines = oldString.split("\n").slice(0, 3);
-  const newLines = newString.split("\n").slice(0, 3);
-  return [
-    "Preview:",
-    ...oldLines.map((line) => `- ${line}`),
-    ...newLines.map((line) => `+ ${line}`),
-  ].join("\n");
+  /**
+   * When true, replace EVERY occurrence of old_string (and report the count)
+   * instead of requiring a unique match. Defaults to false, which keeps the
+   * safe "must match exactly once" behavior.
+   */
+  replace_all?: boolean;
 }
 
 export const fileEditTool: Tool = {
   name: "Edit",
-  description: "Find a unique string in a file, replace it, and write the updated content back.",
+  description:
+    "Find a string in a file and replace it. By default old_string must match uniquely; set replace_all=true to replace all occurrences.",
   inputSchema: {
     type: "object" as const,
     properties: {
       file_path: { type: "string", description: "File path to edit" },
-      old_string: { type: "string", description: "Existing text to replace; must match uniquely" },
+      old_string: { type: "string", description: "Existing text to replace; must match uniquely unless replace_all is true" },
       new_string: { type: "string", description: "Replacement text" },
+      replace_all: {
+        type: "boolean",
+        description: "Replace all occurrences of old_string (default false). Use for renaming a symbol across a file.",
+      },
     },
     required: ["file_path", "old_string", "new_string"],
   },
@@ -52,13 +41,6 @@ export const fileEditTool: Tool = {
     const input = rawInput as unknown as FileEditInput;
     if (!input.file_path || typeof input.old_string !== "string" || typeof input.new_string !== "string") {
       return { content: "Error: file_path, old_string, and new_string are required", isError: true };
-    }
-
-    const oldString = normalizeQuotes(input.old_string);
-    const newString = normalizeQuotes(input.new_string);
-
-    if (!oldString) {
-      return { content: "Error: old_string must not be empty", isError: true };
     }
 
     let resolvedPath: string;
@@ -73,19 +55,32 @@ export const fileEditTool: Tool = {
 
     try {
       const original = await fs.readFile(resolvedPath, "utf-8");
-      const occurrences = countOccurrences(original, oldString);
-      if (occurrences === 0) {
-        return { content: `Error: old_string not found in ${resolvedPath}`, isError: true };
-      }
-      if (occurrences > 1) {
-        return { content: `Error: old_string matched ${occurrences} times; Edit requires a unique match`, isError: true };
+
+      let updated: string;
+      let replacements: number;
+      try {
+        const result = applyEditToContent(original, {
+          old_string: input.old_string,
+          new_string: input.new_string,
+          replace_all: input.replace_all === true,
+        });
+        updated = result.content;
+        replacements = result.replacements;
+      } catch (error) {
+        if (error instanceof EditError) {
+          return { content: `Error: ${error.message} in ${resolvedPath}`, isError: true };
+        }
+        throw error;
       }
 
-      const updated = original.replace(oldString, newString);
       await fs.writeFile(resolvedPath, updated, "utf-8");
 
+      const countNote = replacements > 1 ? ` (${replacements} occurrences)` : "";
       return {
-        content: `Updated file: ${resolvedPath}\n${buildEditPreview(oldString, newString)}`,
+        content: `Updated file: ${resolvedPath}${countNote}\n${buildEditPreview(
+          normalizeQuotes(input.old_string),
+          normalizeQuotes(input.new_string),
+        )}`,
       };
     } catch (error: unknown) {
       return {
