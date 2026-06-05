@@ -20,13 +20,15 @@ Core goals:
 - Keep the architecture layered, explicit, and extensible
 - Prioritize real engineering systems over toy examples
 - Evolve incrementally toward a complete local Agent CLI
-- Preserve a stable path toward persistence, compaction, MCP, skills, sandboxing, sub-agents, multi-agent collaboration, and multi-provider support
+- Preserve a stable path toward persistence, compaction, MCP, skills, sandboxing, sub-agents, multi-agent collaboration, multimodal input, plugins, and packaging
 
 ## Project Status
 
-**Current stage:** Stage 27 — error handling and resilience, next
+**Current stage:** Stage 32 — multimodal input, next
 
-The project has completed the tutorial-friendly implementation track through Stage 26, including the CLI, streaming communication, tool execution, terminal UI, session orchestration, context management, MCP, skills, sandboxing, sub-agents, background agent execution, git worktree isolation, Agent Teams, lifecycle hooks, output styles, user-defined slash commands, rendering experience upgrades, the unified configuration system, project trust, file history, and rewind support. Stage 27 is the next major planned area: error handling and resilience.
+The implementation track has completed through Stage 31, including the CLI, streaming communication, tool execution, terminal UI, session orchestration, context management, MCP, skills, sandboxing, sub-agents, background execution, Agent Teams, hooks, output styles, user commands, rendering upgrades, unified configuration, file history, resilience, headless print mode, classifier-driven Auto Mode, multi-provider streaming, and the core-tool expansion for Web, MultiEdit, MCP resources, and PowerShell. Stage 32 is the next planned area: multimodal input for images and screenshots.
+
+The single-file `step/` snapshots now cover Stages 1–31, so the completed implementation chapters can be studied from focused standalone files as well as from the main source tree.
 
 Easy Agent should currently be understood as a serious open-source rebuild in progress rather than a finished end-user product.
 
@@ -46,16 +48,16 @@ Easy Agent is being built around a five-layer architecture:
 |    Reason -> tool call -> observe -> continue     |
 +---------------------------------------------------+
 | 4. Tooling Layer                                  |
-|    File, shell, search, and local actions         |
+|    File, shell, search, web, MCP, local actions   |
 +---------------------------------------------------+
 | 5. Model Communication Layer                      |
-|    Streaming API communication with LLMs          |
+|    Provider profiles and streaming LLM I/O        |
 +---------------------------------------------------+
 ```
 
 This separation makes the system easier to evolve:
 
-- the **communication layer** handles model I/O
+- the **communication layer** handles provider selection, request translation, and streaming model I/O
 - the **tool layer** exposes actionable capabilities
 - the **agentic loop** drives single-turn autonomous execution
 - the **orchestration layer** manages multi-turn state and control flow
@@ -71,7 +73,7 @@ easy-agent/
 │   ├── core/            # agentic loop and query orchestration
 │   ├── agents/          # sub-agent definitions, registry, and runners
 │   ├── tools/           # local tools and tool registry
-│   ├── services/        # model API, MCP, and skills services
+│   ├── services/        # provider API, MCP, and skills services
 │   ├── permissions/     # permission and safety controls
 │   ├── context/         # system prompt and context management
 │   ├── sandbox/         # Bash sandbox profiles and wrapping
@@ -87,7 +89,7 @@ easy-agent/
 
 ## Roadmap and Progress
 
-The project follows a 32-phase roadmap designed to recreate the full Claude Code-style system progressively.
+The project follows a 37-phase roadmap designed to recreate the full Claude Code-style system progressively.
 
 | Phase | Area | Core Code | Status |
 |---|---|---|---:|
@@ -118,18 +120,23 @@ The project follows a 32-phase roadmap designed to recreate the full Claude Code
 | 24 | Rendering experience upgrades | [`step/step24.js`](./step/step24.js) | ✅ Done |
 | 25 | Configuration system improvements | [`step/step25.js`](./step/step25.js) | ✅ Done |
 | 26 | File history and rollback | [`step/step26.js`](./step/step26.js) | ✅ Done |
-| 27 | Error handling and resilience | `planned` | ⏳ Not started |
-| 28 | Pipe mode / non-interactive execution | `planned` | ⏳ Not started |
-| 29 | Auto mode | `planned in step series` | 🚧 Partial |
-| 30 | Multi-provider support | `planned in step series` | ⏳ Not started |
-| 31 | Packaging, publishing, and documentation | `planned in step series` | 🚧 Partial |
+| 27 | Error handling and resilience | [`step/step27.js`](./step/step27.js) | ✅ Done |
+| 28 | Pipe mode / non-interactive execution | [`step/step28.js`](./step/step28.js) | ✅ Done |
+| 29 | Auto mode classifier | [`step/step29.js`](./step/step29.js) | ✅ Done |
+| 30 | Multi-provider support | [`step/step30.js`](./step/step30.js) | ✅ Done |
+| 31 | Core tool expansion: Web, MultiEdit, MCP resources, PowerShell | [`step/step31.js`](./step/step31.js) | ✅ Done |
+| 32 | Multimodal input: images and screenshots | `planned` | ⏳ Planned |
+| 33 | Built-in command completion | `planned` | ⏳ Planned |
+| 34 | Extended Thinking control and display | `planned` | ⏳ Planned |
+| 35 | Plugins and marketplace | `planned` | ⏳ Planned |
+| 36 | Packaging, publishing, and documentation | `planned` | ⏳ Planned |
 
 The [`easy-agent/step/`](./step/) directory contains tutorial-friendly milestone code, so each completed chapter is directly learnable and reproducible from a focused single file.
 
 Current implementation notes:
 
-- Stage 26 is complete in source and the step snapshot.
-- Stage 27 error handling and resilience is next; it builds on the request, tool, and session recovery paths added earlier.
+- Stage 31 is complete in source, article track, and the step snapshot series.
+- Stage 32 multimodal input is next; it will connect image content blocks through tools, providers, compaction, and the terminal input flow.
 
 ## What Easy Agent Is — and Is Not
 
@@ -149,17 +156,48 @@ Current implementation notes:
 
 ### Requirements
 
-- Node.js
+- Node.js 22+
 - npm
-- Anthropic-compatible model access
+- Access to at least one supported model provider: Anthropic, OpenAI-compatible APIs, Gemini, or a local OpenAI-compatible endpoint such as Ollama
 
-### Environment Variables
+### Model Providers
 
-Easy Agent currently supports the following environment variables:
+Easy Agent supports multiple providers by default. Anthropic model names still work directly, while OpenAI-compatible and Gemini models are configured as named profiles in `settings.json` and selected with `--model` or `/model`.
 
-- `ANTHROPIC_MODEL` — default model name
-- `ANTHROPIC_BASE_URL` — custom API base URL
-- `ANTHROPIC_AUTH_TOKEN` — API authentication token
+Example user or project settings:
+
+```json
+{
+  "defaultModel": "gpt",
+  "models": {
+    "gpt": {
+      "protocol": "openai-chat",
+      "model": "gpt-5.1",
+      "baseURL": "https://api.openai.com/v1",
+      "apiKey": "${OPENAI_API_KEY}"
+    },
+    "gemini": {
+      "protocol": "gemini",
+      "model": "gemini-2.5-pro",
+      "apiKey": "${GEMINI_API_KEY}"
+    },
+    "ollama": {
+      "protocol": "openai-chat",
+      "model": "qwen2.5-coder",
+      "baseURL": "http://localhost:11434/v1"
+    }
+  }
+}
+```
+
+Common environment variables:
+
+- `ANTHROPIC_AUTH_TOKEN` — Anthropic API token for raw Claude model names
+- `ANTHROPIC_BASE_URL` — optional Anthropic-compatible API base URL
+- `ANTHROPIC_MODEL` — legacy/default raw Anthropic model name
+- `OPENAI_API_KEY` — OpenAI-compatible API key used by `${OPENAI_API_KEY}` profiles
+- `GEMINI_API_KEY` — Gemini API key used by `${GEMINI_API_KEY}` profiles
+- `WEB_SEARCH_API_KEY` — optional web search provider key
 
 ### Install
 
@@ -185,6 +223,9 @@ npm start
 ```bash
 agent --help
 agent --model claude-sonnet-4-20250514
+agent --model gpt
+agent --model gemini
+echo "summarize this repo" | agent --print --output-format json
 agent --plan
 agent --auto
 agent --dump-system-prompt
@@ -194,10 +235,10 @@ agent --dump-system-prompt
 
 The next major milestones are:
 
-1. implement Stage 27 error handling and resilience
-2. write the Stage 27 tutorial article and `step/step27.js`
-3. continue toward pipe mode and Auto Mode
-4. prepare the multi-provider architecture and final packaging work
+1. implement Stage 32 multimodal input for images and screenshots
+2. continue with Stage 33 built-in command completion
+3. add Extended Thinking controls and UI in Stage 34
+4. close the extension ecosystem and packaging work in Stages 35–36
 
 ## Contribution Policy
 

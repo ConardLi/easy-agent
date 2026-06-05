@@ -20,13 +20,15 @@ Easy Agent 的目标，是成为一个严肃的、可持续演进的、本地 Co
 - 保持架构清晰、职责明确、便于扩展
 - 优先实现真实工程系统，而不是玩具示例
 - 逐步演进为完整的本地 Agent CLI
-- 为持久化、上下文压缩、MCP、Skills、Sandbox、Sub-Agent、多 Agent 协作、多 Provider 支持等能力保留稳定的扩展路径
+- 为持久化、上下文压缩、MCP、Skills、Sandbox、Sub-Agent、多 Agent 协作、多模态输入、插件生态与打包发布保留稳定的扩展路径
 
 ## 当前状态
 
-**当前阶段：** 阶段 27 —— 错误处理与韧性，下一阶段
+**当前阶段：** 阶段 32 —— 多模态输入，下一阶段
 
-当前项目已经完成到阶段 26 的教程化实现主线，包括 CLI、流式通信、工具执行、终端 UI、会话编排、上下文管理、MCP、Skills、Sandbox、Sub-Agent、后台 Agent 执行、Git Worktree 隔离、Agent Teams、Hooks 生命周期系统、Output Styles、用户自定义 Slash Commands、渲染体验升级、统一配置系统、项目信任、文件历史与回滚能力。阶段 27 是下一块重点：错误处理与韧性。
+当前实现主线已经完成到阶段 31，包括 CLI、流式通信、工具执行、终端 UI、会话编排、上下文管理、MCP、Skills、Sandbox、Sub-Agent、后台执行、Agent Teams、Hooks、Output Styles、用户命令、渲染体验升级、统一配置、文件历史、错误韧性、管道模式、AI 分类器 Auto Mode、多 Provider 流式适配，以及 Web、MultiEdit、MCP Resources、PowerShell 等核心工具补全。阶段 32 是下一块重点：图片与截图多模态输入。
+
+单文件 `step/` 快照现在已经覆盖阶段 1–31，因此已完成章节既可以从主源码阅读，也可以从聚焦的独立快照文件中对照学习。
 
 因此，当前的 Easy Agent 更适合被理解为一个正在稳步推进的开源复刻工程，而不是已经面向终端用户完全交付的成品。
 
@@ -46,16 +48,16 @@ Easy Agent 按照五层架构推进：
 |    推理 -> 调工具 -> 观察结果 -> 继续推理              |
 +---------------------------------------------------+
 | 4. 工具层                                          |
-|    文件、Shell、搜索等本地行动能力                    |
+|    文件、Shell、搜索、Web、MCP 等本地行动能力            |
 +---------------------------------------------------+
 | 5. 通信层                                          |
-|    与大模型之间的流式通信                             |
+|    Provider Profile 与多模型流式通信                   |
 +---------------------------------------------------+
 ```
 
 这种分层方式让系统更容易持续演进：
 
-- **通信层** 负责模型输入输出
+- **通信层** 负责 Provider 选择、请求格式转换与模型流式输入输出
 - **工具层** 负责向模型暴露行动能力
 - **核心循环层** 负责单轮自主执行闭环
 - **编排层** 负责多轮状态与控制流
@@ -71,7 +73,7 @@ easy-agent/
 │   ├── core/            # agentic loop 与 query orchestration
 │   ├── agents/          # 子 Agent 定义、注册表与运行器
 │   ├── tools/           # 本地工具与工具注册系统
-│   ├── services/        # 模型 API、MCP 与 Skills 服务
+│   ├── services/        # Provider API、MCP 与 Skills 服务
 │   ├── permissions/     # 权限与安全控制
 │   ├── context/         # system prompt 与上下文管理
 │   ├── sandbox/         # Bash 沙箱 profile 与命令包装
@@ -87,7 +89,7 @@ easy-agent/
 
 ## 路线图与当前进度
 
-项目遵循一个 32 阶段路线图，以渐进方式完整复刻 Claude Code 风格系统。
+项目遵循一个 37 阶段路线图，以渐进方式完整复刻 Claude Code 风格系统。
 
 | 阶段 | 模块 | 核心代码 | 状态 |
 |---|---|---|---:|
@@ -118,18 +120,23 @@ easy-agent/
 | 24 | 渲染体验升级 | [`step/step24.js`](./step/step24.js) | ✅ 已完成 |
 | 25 | 配置系统完善 | [`step/step25.js`](./step/step25.js) | ✅ 已完成 |
 | 26 | 文件历史与回滚 | [`step/step26.js`](./step/step26.js) | ✅ 已完成 |
-| 27 | 错误处理与韧性 | `planned` | ⏳ 未开始 |
-| 28 | 管道模式 / 非交互执行 | `planned` | ⏳ 未开始 |
-| 29 | Auto Mode | `planned in step series` | 🚧 部分完成 |
-| 30 | 多 Provider 支持 | `planned in step series` | ⏳ 未开始 |
-| 31 | 打包发布与文档 | `planned in step series` | 🚧 部分完成 |
+| 27 | 错误处理与韧性 | [`step/step27.js`](./step/step27.js) | ✅ 已完成 |
+| 28 | 管道模式 / 非交互执行 | [`step/step28.js`](./step/step28.js) | ✅ 已完成 |
+| 29 | Auto Mode 分类器 | [`step/step29.js`](./step/step29.js) | ✅ 已完成 |
+| 30 | 多 Provider 支持 | [`step/step30.js`](./step/step30.js) | ✅ 已完成 |
+| 31 | 核心工具补全：Web、MultiEdit、MCP Resources、PowerShell | [`step/step31.js`](./step/step31.js) | ✅ 已完成 |
+| 32 | 多模态输入：图片与截图 | `planned` | ⏳ 计划中 |
+| 33 | 内置命令补全 | `planned` | ⏳ 计划中 |
+| 34 | Extended Thinking 控制与展示 | `planned` | ⏳ 计划中 |
+| 35 | Plugins 与 Marketplace | `planned` | ⏳ 计划中 |
+| 36 | 打包发布与文档 | `planned` | ⏳ 计划中 |
 
 [`easy-agent/step/`](./step/) 目录中已经补充了教程化的里程碑核心代码，意味着每个已完成章节都可以直接对照学习、逐步复刻。
 
 当前实现进度补充：
 
-- 阶段 26 已在源码和 step 快照中完成。
-- 阶段 27 错误处理与韧性是下一阶段，它会继续补强请求、工具执行和会话恢复链路。
+- 阶段 31 已在源码、文章主线和 step 快照中完成。
+- 阶段 32 多模态输入是下一阶段，它会把图片内容块贯通到工具、Provider、压缩和终端输入流程中。
 
 ## Easy Agent 是什么，以及它不是什么
 
@@ -149,17 +156,48 @@ easy-agent/
 
 ### 环境要求
 
-- Node.js
+- Node.js 22+
 - npm
-- Anthropic 兼容模型访问能力
+- 至少一种受支持模型 Provider 的访问能力：Anthropic、OpenAI 兼容 API、Gemini，或 Ollama 这类本地 OpenAI 兼容端点
 
-### 环境变量
+### 模型 Provider
 
-Easy Agent 当前支持以下环境变量：
+Easy Agent 默认支持多 Provider。原始 Claude/Anthropic 模型名仍可直接使用；OpenAI 兼容 API 与 Gemini 通过 `settings.json` 中的命名模型 Profile 配置，再用 `--model` 或 `/model` 选择。
 
-- `ANTHROPIC_MODEL` —— 默认模型名
-- `ANTHROPIC_BASE_URL` —— 自定义 API Base URL
-- `ANTHROPIC_AUTH_TOKEN` —— API 鉴权 Token
+用户级或项目级 settings 示例：
+
+```json
+{
+  "defaultModel": "gpt",
+  "models": {
+    "gpt": {
+      "protocol": "openai-chat",
+      "model": "gpt-5.1",
+      "baseURL": "https://api.openai.com/v1",
+      "apiKey": "${OPENAI_API_KEY}"
+    },
+    "gemini": {
+      "protocol": "gemini",
+      "model": "gemini-2.5-pro",
+      "apiKey": "${GEMINI_API_KEY}"
+    },
+    "ollama": {
+      "protocol": "openai-chat",
+      "model": "qwen2.5-coder",
+      "baseURL": "http://localhost:11434/v1"
+    }
+  }
+}
+```
+
+常用环境变量：
+
+- `ANTHROPIC_AUTH_TOKEN` —— 原始 Claude/Anthropic 模型名使用的 API Token
+- `ANTHROPIC_BASE_URL` —— 可选的 Anthropic 兼容 API Base URL
+- `ANTHROPIC_MODEL` —— 旧式/默认原始 Anthropic 模型名
+- `OPENAI_API_KEY` —— `${OPENAI_API_KEY}` Profile 使用的 OpenAI 兼容 API Key
+- `GEMINI_API_KEY` —— `${GEMINI_API_KEY}` Profile 使用的 Gemini API Key
+- `WEB_SEARCH_API_KEY` —— 可选的 WebSearch Provider Key
 
 ### 安装
 
@@ -185,6 +223,9 @@ npm start
 ```bash
 agent --help
 agent --model claude-sonnet-4-20250514
+agent --model gpt
+agent --model gemini
+echo "summarize this repo" | agent --print --output-format json
 agent --plan
 agent --auto
 agent --dump-system-prompt
@@ -194,10 +235,10 @@ agent --dump-system-prompt
 
 接下来最重要的几个里程碑是：
 
-1. 实现阶段 27 错误处理与韧性
-2. 补齐阶段 27 教程文章和 `step/step27.js`
-3. 继续推进管道模式与 Auto Mode
-4. 准备多 Provider 架构与最终打包发布工作
+1. 实现阶段 32 图片与截图多模态输入
+2. 继续推进阶段 33 内置命令补全
+3. 在阶段 34 补齐 Extended Thinking 控制与展示
+4. 在阶段 35–36 收拢插件生态与打包发布工作
 
 ## 贡献策略
 

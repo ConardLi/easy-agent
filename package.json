@@ -36,6 +36,7 @@
     "test:stage25": "tsx src/scripts/smoke-config.ts",
     "test:stage30": "tsx scripts/verify-multi-protocol.ts",
     "test:stage31": "tsx src/scripts/test-stage31.ts",
+    "test:stage32": "tsx src/scripts/test-stage32.ts",
     "test:filehistory": "tsx src/scripts/smoke-filehistory.ts",
     "test:resilience": "tsx src/scripts/smoke-resilience.ts",
     "smoke:sandbox": "tsx src/scripts/smoke-sandbox.ts",
