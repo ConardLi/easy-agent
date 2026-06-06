@@ -2,6 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useStdout } from "ink";
 import type { MessageParam } from "@anthropic-ai/sdk/resources/messages.js";
 import { QueryEngine } from "../../core/queryEngine.js";
+import type {
+  ResumeSessionInfo,
+  DiffViewData,
+  MemoryPickerItem,
+  PermissionsViewData,
+} from "../../core/queryEngine.js";
+import type { SettingSource } from "../../config/sources.js";
 import { buildTokenBudgetSnapshot } from "../../utils/tokens.js";
 import {
   appendCompactionSnapshot,
@@ -60,7 +67,10 @@ import {
 import { loadSettingsDiagnostics } from "../../utils/settings.js";
 import { findSkill } from "../../services/skills/registry.js";
 import { findUserCommand } from "../../commands/userCommands/registry.js";
-import { isBuiltinCommandName } from "../../commands/builtinCommandNames.js";
+import {
+  isBuiltinCommandName,
+  isBuiltinPromptCommand,
+} from "../../commands/builtinCommandNames.js";
 import { removeSandboxViolationTags } from "../../sandbox/index.js";
 import {
   getTaskMode,
@@ -75,6 +85,12 @@ interface UseAgentSessionOptions {
   permissionMode?: PermissionMode;
   shouldResume?: boolean;
   resumeSessionId?: string | null;
+  /**
+   * Stage 33: launch `$EDITOR` on a memory file (`/memory edit <n>`). The UI
+   * owns the TTY, so the App provides this; the engine only emits the
+   * `open_editor` event with the resolved path. Returns whether the editor ran.
+   */
+  openEditor?: (filePath: string) => Promise<{ ok: boolean; error?: string }>;
 }
 
 interface SubmitResult {
@@ -142,6 +158,16 @@ function buildCommandNotice(message: string, kind: "info" | "error"): SystemNoti
         "/agents — List built-in + custom sub-agent definitions",
         "/history — Show saved sessions for this project",
         "/compact — Compact conversation context",
+        "/status — Snapshot of the current session config",
+        "/context — Visualize context window usage by category",
+        "/doctor — Run an environment health check",
+        "/copy [n] — Copy an assistant reply to the clipboard",
+        "/export [file] — Export the conversation to Markdown",
+        "/resume [n|id] — List and switch to a saved session",
+        "/diff [n] — Show uncommitted git changes + recent agent edits",
+        "/init — Analyze the repo and draft an AGENT.md (runs a model turn)",
+        "/permissions [allow|deny|remove <rule>] — Manage allow/deny rules by layer",
+        "/memory [edit <n>] — List/edit AGENT.md + project memory files in $EDITOR",
         "/exit | /quit | /bye — Exit session",
       ].join("\n"),
     };
@@ -181,6 +207,7 @@ export function useAgentSession({
   permissionMode,
   shouldResume,
   resumeSessionId,
+  openEditor,
 }: UseAgentSessionOptions) {
   const [messages, setMessages] = useState<MessageParam[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -204,6 +231,16 @@ export function useAgentSession({
   // transcript rebuilt from the message log — so any past tool call can be
   // expanded retroactively without repainting the <Static> scrollback.
   const [transcriptOpen, setTranscriptOpen] = useState(false);
+  // Stage 33 — `/resume` interactive picker + `/diff` colorized panel. Both are
+  // live-frame overlays (not <Static>): the picker owns the keyboard while open,
+  // the diff panel is dismissed with Esc like any command result.
+  const [resumePicker, setResumePicker] = useState<ResumeSessionInfo[] | null>(null);
+  const [resumePickerIndex, setResumePickerIndex] = useState(0);
+  const [diffView, setDiffView] = useState<DiffViewData | null>(null);
+  // Stage 33 — `/memory` picker + `/permissions` manager interactive overlays.
+  const [memoryPicker, setMemoryPicker] = useState<MemoryPickerItem[] | null>(null);
+  const [memoryPickerIndex, setMemoryPickerIndex] = useState(0);
+  const [permissionView, setPermissionView] = useState<PermissionsViewData | null>(null);
   // Stage 20: live snapshot of the asyncAgentStore. The footer
   // BackgroundAgentBar component reads this to show running background
   // sub-agents (count + per-agent token / tool stats). We take a fresh
@@ -237,6 +274,12 @@ export function useAgentSession({
   const { write: writeStdout } = useStdout();
   const writeStdoutRef = useRef(writeStdout);
   writeStdoutRef.current = writeStdout;
+
+  // Editor launcher (provided by App, which owns the TTY). Mirrored into a ref
+  // for the same reason as writeStdout — the event loop closes over an older
+  // render scope.
+  const openEditorRef = useRef(openEditor);
+  openEditorRef.current = openEditor;
 
   // Streaming-text throttling. SSE chunks can arrive at >100 Hz from fast
   // models, and every setStreamingText forces Ink to repaint the whole
@@ -780,12 +823,22 @@ export function useAgentSession({
       !!rawCommandName &&
       !isBuiltinCommandName(rawCommandName) &&
       !!findUserCommand(rawCommandName);
-    const isLlmTriggering = !isSlashCommand || isSkillCommand || isUserCommand;
+    // Stage 33: built-in `prompt` commands (`/init`) expand into a real prompt
+    // and run a normal model turn, so they too are LLM-triggering.
+    const isPromptCommand =
+      isSlashCommand && isBuiltinPromptCommand(rawCommandName);
+    const isLlmTriggering =
+      !isSlashCommand || isSkillCommand || isUserCommand || isPromptCommand;
 
     cancelPendingText();
     setStreamingText("");
     setToolCalls([]);
     setSystemNotice(null);
+    // A new turn (or command) dismisses any open stage-33 overlay.
+    setResumePicker(null);
+    setDiffView(null);
+    setMemoryPicker(null);
+    setPermissionView(null);
     if (isLlmTriggering) {
       setLastUsage(null);
       // Persist what the user actually typed (`/hello-world Easy Agent`)
@@ -1019,6 +1072,58 @@ export function useAgentSession({
             // the input — it just shows above it and is replaced by the next.
             setSystemNotice({ tone: value.tone, title: value.title, body: value.body });
             break;
+          case "resume_picker":
+            // `/resume` (no arg) → open the interactive session picker.
+            // useResumePicker owns the keyboard from here; Enter re-invokes
+            // `/resume <id>` to perform the actual in-process switch.
+            setResumePicker(value.sessions);
+            setResumePickerIndex(0);
+            break;
+          case "diff_view":
+            // `/diff` → colorized panel (dismissed with Esc, like a command).
+            setDiffView(value.data);
+            break;
+          case "memory_picker":
+            // `/memory` (no args) → interactive file picker; Enter re-invokes
+            // `/memory edit <n>` to launch $EDITOR.
+            setMemoryPicker(value.items);
+            setMemoryPickerIndex(0);
+            break;
+          case "permissions_view":
+            // `/permissions` (no args) → interactive allow/deny manager. The
+            // overlay mutates rules directly via engine.mutatePermissionRule().
+            setPermissionView(value.data);
+            break;
+          case "open_editor": {
+            // `/memory edit <n>` → hand the TTY to $EDITOR. The launcher
+            // (App, via useStdin) suspends Ink's raw mode, runs the editor with
+            // inherited stdio, then restores + repaints. We await it inline so
+            // the result notice fires only after the editor exits.
+            const launcher = openEditorRef.current;
+            if (!launcher) {
+              setSystemNotice({
+                tone: "error",
+                title: "Cannot open editor",
+                body: "No editor handler is available in this session.",
+              });
+              break;
+            }
+            const result = await launcher(value.filePath);
+            if (result.ok) {
+              setSystemNotice({
+                tone: "info",
+                title: "Memory file saved",
+                body: `Edited ${value.label}\n${value.filePath}`,
+              });
+            } else {
+              setSystemNotice({
+                tone: "error",
+                title: "Editor did not complete",
+                body: result.error ?? "Unknown error opening the editor.",
+              });
+            }
+            break;
+          }
           case "compacted": {
             const compactTitle = value.trigger === "micro"
               ? "Context micro-compacted"
@@ -1056,6 +1161,52 @@ export function useAgentSession({
           case "task_mode_changed":
             setTaskModeState(value.mode);
             break;
+          case "session_switched": {
+            // Stage 33: `/resume <n|id>` swapped the engine's conversation in
+            // place. Rebind the UI to the resumed session: new id (so tools
+            // and transcript appends target it), restored messages + usage,
+            // and the file-history snapshots so /rewind keeps working.
+            cancelPendingText();
+            setStreamingText("");
+            setToolCalls([]);
+            clearAllSubAgentProgress();
+            clearAllBashProgress();
+            clearUiNotices();
+            setResumePicker(null);
+            setDiffView(null);
+            setMemoryPicker(null);
+            setPermissionView(null);
+            clearTodos(sessionIdRef.current);
+            sessionIdRef.current = value.sessionId;
+            // Repaint the restored conversation cleanly. Ink's <Static> only
+            // resets its print cursor when the item count DROPS, so we blank the
+            // list first (commit 1 → Static resets), wipe the terminal, then
+            // restore the messages on a later tick (commit 2 → Static reprints
+            // from a clean slate). A single setMessages(restored) would leave the
+            // cursor past the end and the screen would look empty after the clear
+            // — which reads as "/resume didn't switch".
+            setMessages([]);
+            setTotalUsage({
+              input: value.totalUsage.input_tokens,
+              output: value.totalUsage.output_tokens,
+            });
+            setLastUsage(null);
+            setTodosState(getTodos(value.sessionId));
+            try {
+              await configureFileHistory(toolContext.cwd, value.sessionId);
+              if (value.fileHistorySnapshots.length > 0) {
+                restoreFileHistorySnapshots(value.fileHistorySnapshots);
+              }
+            } catch {
+              // file-history rebind is best-effort
+            }
+            writeStdoutRef.current?.(CLEAR_TERMINAL);
+            {
+              const restoredMessages = value.messages;
+              setTimeout(() => setMessages(restoredMessages), 0);
+            }
+            break;
+          }
           case "session_cleared":
             cancelPendingText();
             setMessages([]);
@@ -1239,6 +1390,12 @@ export function useAgentSession({
       currentModel,
       asyncAgents,
       transcriptOpen,
+      resumePicker,
+      resumePickerIndex,
+      diffView,
+      memoryPicker,
+      memoryPickerIndex,
+      permissionView,
     },
     actions: {
       submit,
@@ -1247,8 +1404,52 @@ export function useAgentSession({
       resolveQuestion,
       toggleTranscript,
       closeTranscript,
-      dismissNotice: () => setSystemNotice(null),
+      // A command result panel and the /diff panel share one dismiss path.
+      dismissNotice: () => {
+        setSystemNotice(null);
+        setDiffView(null);
+      },
       showNotice: (notice: SystemNotice) => setSystemNotice(notice),
+      // Resume-picker controls, driven by useResumePicker.
+      moveResumePicker: (nextIndex: number) => setResumePickerIndex(nextIndex),
+      closeResumePicker: () => setResumePicker(null),
+      // Selecting a session closes the picker and re-invokes `/resume <id>`,
+      // reusing the engine's in-process switch (session_switched).
+      confirmResume: (sessionId: string) => {
+        setResumePicker(null);
+        void submit(`/resume ${sessionId}`);
+      },
+      // Memory-picker controls, driven by useMemoryPicker.
+      moveMemoryPicker: (nextIndex: number) => setMemoryPickerIndex(nextIndex),
+      closeMemoryPicker: () => setMemoryPicker(null),
+      // Selecting a file closes the picker and re-invokes `/memory edit <n>`,
+      // reusing the engine's $EDITOR launch (open_editor).
+      confirmMemoryEdit: (pickIndex: number) => {
+        setMemoryPicker(null);
+        void submit(`/memory edit ${pickIndex + 1}`);
+      },
+      // Permission-manager controls. Mutations call the engine directly (write +
+      // reload) and feed back the fresh view so the overlay stays open.
+      closePermissions: () => setPermissionView(null),
+      permissionMutate: (
+        op: "allow" | "deny" | "remove",
+        rule: string,
+        scope: SettingSource,
+      ) => {
+        const engine = engineRef.current;
+        if (!engine) return;
+        void engine
+          .mutatePermissionRule(op, rule, scope)
+          .then((next) => setPermissionView(next))
+          .catch((error: unknown) => {
+            setSystemNotice({
+              tone: "error",
+              title: "Permission update failed",
+              body: error instanceof Error ? error.message : String(error),
+            });
+            setPermissionView(null);
+          });
+      },
     },
   };
 }

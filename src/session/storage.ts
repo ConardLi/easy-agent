@@ -53,6 +53,8 @@ export interface SessionSummary {
   model: string;
   messageCount: number;
   totalUsage: Usage;
+  /** The first user prompt, used as a human-readable label (may be empty). */
+  firstPrompt: string;
 }
 
 /**
@@ -243,6 +245,31 @@ function getLastUpdatedAt(entries: TranscriptEntry[], fallback: string): string 
   return latest?.timestamp ?? fallback;
 }
 
+/**
+ * The first user prompt of a session, used as its human-readable label in the
+ * `/resume` picker (mirrors source's per-session firstPrompt). XML command/skill
+ * markers are stripped so a `/foo` invocation shows its text, not raw tags.
+ */
+function extractFirstPrompt(messages: MessageParam[]): string {
+  const firstUser = messages.find((m) => m.role === "user");
+  if (!firstUser) return "";
+  const content = firstUser.content;
+  let text = "";
+  if (typeof content === "string") {
+    text = content;
+  } else if (Array.isArray(content)) {
+    text = content
+      .filter((block) => (block as { type?: string }).type === "text")
+      .map((block) => (block as { text?: string }).text ?? "")
+      .join(" ");
+  }
+  return text
+    .replace(/<[^>]+>/g, " ")
+    .replace(/^\[(?:skill|command)_invocation:[^\]]*\]\s*/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export function createSessionId(): string {
   return crypto.randomUUID();
 }
@@ -390,6 +417,7 @@ export async function restoreSession(cwd: string, sessionId?: string): Promise<R
       model: meta.model,
       messageCount: messages.length,
       totalUsage: latestUsage?.total ?? createEmptyUsage(),
+      firstPrompt: extractFirstPrompt(messages),
     },
     messages,
     fileHistorySnapshots: [...fhMap.values()],
@@ -521,6 +549,7 @@ export async function listProjectSessions(cwd: string, limit = MAX_SESSIONS): Pr
         model: meta.model,
         messageCount: messages.length,
         totalUsage: latestUsage?.total ?? createEmptyUsage(),
+        firstPrompt: extractFirstPrompt(messages.map((m) => m.message)),
       } satisfies SessionSummary;
     }),
   );

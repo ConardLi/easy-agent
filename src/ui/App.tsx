@@ -1,5 +1,6 @@
 import React from "react";
-import { Box, Static, Text, useApp, useStdout } from "ink";
+import { spawnSync } from "node:child_process";
+import { Box, Static, Text, useApp, useStdin, useStdout } from "ink";
 import type { PermissionMode } from "../permissions/permissions.js";
 import { BackgroundAgentBar } from "./components/BackgroundAgentBar.js";
 import { CommandSuggestions } from "./components/CommandSuggestions.js";
@@ -12,6 +13,10 @@ import { ModeSelector } from "./components/ModeSelector.js";
 import { QuestionPrompt } from "./components/QuestionPrompt.js";
 import { StatusBar } from "./components/StatusBar.js";
 import { SystemPanel } from "./components/SystemPanel.js";
+import { DiffView } from "./components/DiffView.js";
+import { SessionPicker } from "./components/SessionPicker.js";
+import { MemoryPicker } from "./components/MemoryPicker.js";
+import { PermissionManager } from "./components/PermissionManager.js";
 import { TaskList } from "./components/TaskList.js";
 import { TeammatePicker } from "./components/TeammatePicker.js";
 import { TeammateViewer } from "./components/TeammateViewer.js";
@@ -26,6 +31,8 @@ import { usePromptInput } from "./hooks/usePromptInput.js";
 import { useQuestionPrompt } from "./hooks/useQuestionPrompt.js";
 import { useTranscript } from "./hooks/useTranscript.js";
 import { useAgentSession } from "./hooks/useAgentSession.js";
+import { useResumePicker } from "./hooks/useResumePicker.js";
+import { useMemoryPicker } from "./hooks/useMemoryPicker.js";
 import { useTeammateNavigation } from "./hooks/useTeammateNavigation.js";
 import { useTeammateView } from "./hooks/useTeammateViewState.js";
 import { getAllUserInvocableSkills } from "../services/skills/registry.js";
@@ -43,7 +50,45 @@ interface AppProps {
 
 export function App({ model, permissionMode, shouldResume, resumeSessionId }: AppProps): React.ReactNode {
   const { exit } = useApp();
-  const { state, actions } = useAgentSession({ model, onExit: exit, permissionMode, shouldResume, resumeSessionId });
+  const { setRawMode, isRawModeSupported } = useStdin();
+  const { write: writeStdout } = useStdout();
+
+  // Stage 33: `/memory edit <n>` launches `$EDITOR` on a memory file. The App
+  // owns the TTY, so it suspends Ink's raw mode, hands the terminal to the
+  // editor (synchronous spawn — nothing else runs, so Ink can't repaint over
+  // it), then restores raw mode and clears the screen so the live frame repaints
+  // cleanly. Falls back to `vi` (POSIX) / `notepad` (Windows) when neither
+  // $VISUAL nor $EDITOR is set.
+  const openEditor = React.useCallback(
+    async (filePath: string): Promise<{ ok: boolean; error?: string }> => {
+      const editorCmd =
+        process.env.VISUAL ||
+        process.env.EDITOR ||
+        (process.platform === "win32" ? "notepad" : "vi");
+      const [cmd, ...preArgs] = editorCmd.split(/\s+/).filter(Boolean);
+      if (!cmd) return { ok: false, error: "No editor configured ($EDITOR/$VISUAL)." };
+
+      const clear = "\u001B[2J\u001B[3J\u001B[H";
+      try {
+        if (isRawModeSupported) setRawMode(false);
+        writeStdout(clear);
+        const res = spawnSync(cmd, [...preArgs, filePath], { stdio: "inherit" });
+        if (isRawModeSupported) setRawMode(true);
+        writeStdout(clear);
+        if (res.error) return { ok: false, error: res.error.message };
+        if (typeof res.status === "number" && res.status !== 0) {
+          return { ok: false, error: `${editorCmd} exited with status ${res.status}.` };
+        }
+        return { ok: true };
+      } catch (error) {
+        if (isRawModeSupported) setRawMode(true);
+        return { ok: false, error: error instanceof Error ? error.message : String(error) };
+      }
+    },
+    [isRawModeSupported, setRawMode, writeStdout],
+  );
+
+  const { state, actions } = useAgentSession({ model, onExit: exit, permissionMode, shouldResume, resumeSessionId, openEditor });
   const isPlanExitActive = Boolean(state.permissionPrompt?.isPlanExit);
 
   // Surface the current in-progress item's activeForm via the global
@@ -103,8 +148,15 @@ export function App({ model, permissionMode, shouldResume, resumeSessionId }: Ap
   );
 
   // A slash-command result panel (dismissable notice) pins above the input,
-  // blocks typing, and waits for Esc.
-  const commandPanelActive = Boolean(state.systemNotice?.dismissable);
+  // blocks typing, and waits for Esc. The /diff colorized panel shares the same
+  // dismiss semantics, so it counts as an active command panel too.
+  const commandPanelActive = Boolean(state.systemNotice?.dismissable) || Boolean(state.diffView);
+  // Keyboard-owning overlays (handled by their own input hooks/components below):
+  // while any is up the prompt input is hidden and keystrokes are swallowed.
+  const resumePickerActive = Boolean(state.resumePicker);
+  const memoryPickerActive = Boolean(state.memoryPicker);
+  const permissionManagerActive = Boolean(state.permissionView);
+  const overlayActive = resumePickerActive || memoryPickerActive || permissionManagerActive;
 
   const {
     inputValue,
@@ -126,6 +178,7 @@ export function App({ model, permissionMode, shouldResume, resumeSessionId }: Ap
     hasTranscript: state.transcriptOpen,
     hasCommandPanel: commandPanelActive,
     onDismissCommandPanel: actions.dismissNotice,
+    hasResumePicker: overlayActive,
     onSubmit: actions.submit,
     onExit: exit,
     onInterrupt: actions.interrupt,
@@ -187,7 +240,32 @@ export function App({ model, permissionMode, shouldResume, resumeSessionId }: Ap
   const view = useTeammateView(state.asyncAgents);
   useTeammateNavigation({
     agents: state.asyncAgents,
-    disabled: Boolean(state.permissionPrompt),
+    disabled: Boolean(state.permissionPrompt) || overlayActive,
+  });
+
+  // Stage 33 — `/resume` session picker keyboard handler. Owns ↑↓/Enter/Esc
+  // only while the picker is open; selection re-invokes `/resume <id>`.
+  useResumePicker({
+    sessions: state.resumePicker,
+    index: state.resumePickerIndex,
+    disabled: Boolean(state.permissionPrompt) || Boolean(state.questionPrompt),
+    onMove: actions.moveResumePicker,
+    onSelect: (pickIndex) => {
+      const picked = state.resumePicker?.[pickIndex];
+      if (picked) actions.confirmResume(picked.sessionId);
+    },
+    onCancel: actions.closeResumePicker,
+  });
+
+  // Stage 33 — `/memory` file picker keyboard handler. Selection re-invokes
+  // `/memory edit <n>` to launch $EDITOR.
+  useMemoryPicker({
+    items: state.memoryPicker,
+    index: state.memoryPickerIndex,
+    disabled: Boolean(state.permissionPrompt) || Boolean(state.questionPrompt),
+    onMove: actions.moveMemoryPicker,
+    onSelect: actions.confirmMemoryEdit,
+    onCancel: actions.closeMemoryPicker,
   });
   const viewedAgent =
     view.mode === "viewing" && view.viewingAgentId
@@ -287,6 +365,7 @@ export function App({ model, permissionMode, shouldResume, resumeSessionId }: Ap
             </>
           )}
           <SystemPanel notice={state.systemNotice} />
+          <DiffView data={state.diffView} />
           {state.questionPrompt ? (
             <QuestionPrompt
               questions={state.questionPrompt.questions}
@@ -311,6 +390,27 @@ export function App({ model, permissionMode, shouldResume, resumeSessionId }: Ap
               selectedAgentId={view.selectedAgentId}
             />
           ) : null}
+          {state.resumePicker ? (
+            <SessionPicker
+              sessions={state.resumePicker}
+              index={state.resumePickerIndex}
+            />
+          ) : null}
+          {state.memoryPicker ? (
+            <MemoryPicker
+              items={state.memoryPicker}
+              index={state.memoryPickerIndex}
+              cwd={statusCwd}
+            />
+          ) : null}
+          {state.permissionView ? (
+            <PermissionManager
+              data={state.permissionView}
+              active={permissionManagerActive && !state.permissionPrompt && !state.questionPrompt}
+              onMutate={actions.permissionMutate}
+              onClose={actions.closePermissions}
+            />
+          ) : null}
           <StartupNotices />
           <BackgroundAgentBar agents={state.asyncAgents} />
           {state.asyncAgents.some((a) => a.status === "running") ? (
@@ -330,8 +430,8 @@ export function App({ model, permissionMode, shouldResume, resumeSessionId }: Ap
           ) : null}
           {/* Input stays visible during a turn so the user can queue messages;
               a permission / question dialog or a command result panel hides it. */}
-          <InputPrompt isLoading={Boolean(state.permissionPrompt) || Boolean(state.questionPrompt) || commandPanelActive} inputValue={inputValue} cursor={cursor} />
-          <CommandSuggestions items={commandPanelActive ? [] : commandSuggestions} />
+          <InputPrompt isLoading={Boolean(state.permissionPrompt) || Boolean(state.questionPrompt) || commandPanelActive || overlayActive} inputValue={inputValue} cursor={cursor} />
+          <CommandSuggestions items={commandPanelActive || overlayActive ? [] : commandSuggestions} />
           <FileSuggestions items={fileSuggestions} />
           <ModeSelector items={modeSuggestions} />
           <ModeSelector

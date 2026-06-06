@@ -42,6 +42,13 @@ interface UsePromptInputOptions {
   hasCommandPanel?: boolean;
   /** Dismiss the command result panel (Esc). */
   onDismissCommandPanel?: () => void;
+  /**
+   * True while the `/resume` session picker overlay owns the keyboard
+   * (useResumePicker handles ↑↓/Enter/Esc). We swallow everything else so a
+   * keystroke — notably a bare digit used to pick a row — can't leak into the
+   * hidden prompt buffer and get sent to the model.
+   */
+  hasResumePicker?: boolean;
   isPlanExitPrompt: boolean;
   permissionMode: string;
   taskMode: TaskMode;
@@ -81,6 +88,16 @@ const BUILTIN_COMMANDS: CommandSuggestion[] = [
   { name: "/history", description: "Show saved sessions for this project" },
   { name: "/compact", description: "Compact the conversation context" },
   { name: "/rewind", description: "Restore files to a previous turn (alias: /checkpoint)" },
+  { name: "/status", description: "Show a snapshot of the current session config" },
+  { name: "/context", description: "Visualize context window usage by category" },
+  { name: "/doctor", description: "Run an environment health check" },
+  { name: "/copy", description: "Copy an assistant reply to the clipboard (/copy [n])" },
+  { name: "/export", description: "Export the conversation to a Markdown file (/export [file])" },
+  { name: "/resume", description: "List and switch to a saved session (/resume [n|id])" },
+  { name: "/diff", description: "Show uncommitted git changes + recent agent edits (/diff [n])" },
+  { name: "/init", description: "Analyze the repo and draft an AGENT.md (runs a model turn)" },
+  { name: "/permissions", description: "List/add/remove allow & deny rules by layer (alias: /allowed-tools)" },
+  { name: "/memory", description: "List AGENT.md + project memory files; edit one in $EDITOR (/memory edit <n>)" },
   { name: "/exit", description: "Exit the session" },
 ];
 
@@ -175,6 +192,7 @@ export function usePromptInput({
   hasTranscript,
   hasCommandPanel,
   onDismissCommandPanel,
+  hasResumePicker,
   isPlanExitPrompt,
   permissionMode,
   taskMode,
@@ -413,7 +431,7 @@ export function usePromptInput({
   // "go read the image off the clipboard" — exactly how Claude Code does it.
   usePaste((text: string) => {
     // Overlays own the keyboard; don't leak pastes into the hidden buffer.
-    if (hasCommandPanel || hasTranscript || hasPermissionPrompt || hasQuestionPrompt) {
+    if (hasCommandPanel || hasTranscript || hasPermissionPrompt || hasQuestionPrompt || hasResumePicker) {
       return;
     }
 
@@ -458,6 +476,11 @@ export function usePromptInput({
     // prompt input). Sits before everything else so no keystroke leaks through.
     if (hasCommandPanel) {
       if (key.escape) onDismissCommandPanel?.();
+      return;
+    }
+    // The /resume picker owns the keyboard (useResumePicker). Swallow all keys
+    // here so a row-selecting digit or Enter never reaches the prompt buffer.
+    if (hasResumePicker) {
       return;
     }
     // Esc interrupts the running turn (Claude's "esc to interrupt"). Only while

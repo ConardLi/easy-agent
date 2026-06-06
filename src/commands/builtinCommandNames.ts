@@ -26,6 +26,19 @@ export const BUILTIN_COMMAND_NAMES = new Set<string>([
   "compact",
   "rewind",
   "checkpoint",
+  "status",
+  "context",
+  "doctor",
+  "copy",
+  "export",
+  "resume",
+  "continue",
+  "diff",
+  "permissions",
+  "allowed-tools",
+  "allowed_tools",
+  "memory",
+  "init",
   "exit",
   "quit",
   "bye",
@@ -36,4 +49,17 @@ export const BUILTIN_COMMAND_NAMES = new Set<string>([
 /** Case-insensitive membership check against the reserved built-in names. */
 export function isBuiltinCommandName(name: string): boolean {
   return BUILTIN_COMMAND_NAMES.has(name.toLowerCase());
+}
+
+/**
+ * Built-in commands of the `prompt` kind: instead of producing a local panel,
+ * they expand into a prompt that runs a normal model turn (mirrors Claude
+ * Code's `type: 'prompt'` commands, e.g. `/init`). They must be recognised as
+ * LLM-triggering by the UI and routed through prompt expansion by the engine.
+ */
+export const BUILTIN_PROMPT_COMMAND_NAMES = new Set<string>(["init"]);
+
+/** Case-insensitive membership check for built-in `prompt` commands. */
+export function isBuiltinPromptCommand(name: string): boolean {
+  return BUILTIN_PROMPT_COMMAND_NAMES.has(name.toLowerCase());
 }
