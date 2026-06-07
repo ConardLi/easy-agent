@@ -40,6 +40,17 @@ import type {
   ToolCallInfo,
   UsageSummary,
 } from "../types.js";
+import {
+  markToolCallComplete,
+  buildCommandNotice,
+  CLEAR_TERMINAL,
+  tokenWarningNotice,
+  turnCompleteNotice,
+  compactionNotice,
+  apiRetryNotice,
+  modeChangeNotice,
+} from "./useAgentSession/notices.js";
+import { classifyUserInput } from "./useAgentSession/inputClassification.js";
 import { formatToolInputPreview, extractBashOutput } from "../utils/toolCardFormat.js";
 import { bashTool } from "../../tools/bashTool.js";
 import { clearTodos, getTodos, subscribeTodos } from "../../state/todoStore.js";
@@ -65,12 +76,6 @@ import {
   subscribePendingNotifications,
 } from "../../state/notificationStore.js";
 import { loadSettingsDiagnostics } from "../../utils/settings.js";
-import { findSkill } from "../../services/skills/registry.js";
-import { findUserCommand } from "../../commands/userCommands/registry.js";
-import {
-  isBuiltinCommandName,
-  isBuiltinPromptCommand,
-} from "../../commands/builtinCommandNames.js";
 import { removeSandboxViolationTags } from "../../sandbox/index.js";
 import {
   getTaskMode,
@@ -96,110 +101,6 @@ interface UseAgentSessionOptions {
 interface SubmitResult {
   handled: boolean;
 }
-
-interface ToolCallCompletion {
-  resultLength: number;
-  isError?: boolean;
-  displayName?: string;
-  displayHint?: string;
-  inputPreview?: string;
-  input?: Record<string, unknown>;
-  errorMessage?: string;
-}
-
-/**
- * Mark a specific tool call card as complete, identified by its unique
- * tool_use id. We must NOT match by `name` alone — when an assistant turn
- * fires several parallel calls of the same tool (e.g. three Reads), a
- * name-based match would either update every pending card with the first
- * result that lands, or silently drop subsequent results.
- */
-function markToolCallComplete(
-  toolCalls: ToolCallInfo[],
-  id: string,
-  completion: ToolCallCompletion,
-): ToolCallInfo[] {
-  return toolCalls.map((toolCall) =>
-    toolCall.id === id ? { ...toolCall, ...completion } : toolCall,
-  );
-}
-
-/**
- * Split a command message into a header title + body. The first non-empty
- * line becomes the panel title (e.g. "Skills (3 loaded)", "Model status"),
- * and the remaining lines become the body — removing the duplication of
- * rendering the same header both as the panel title and as the first body row.
- */
-function splitHeader(message: string): { title: string; body: string } {
-  const lines = message.split("\n");
-  const title = (lines.shift() ?? "").trim();
-  while (lines.length > 0 && lines[0]!.trim() === "") lines.shift();
-  return { title, body: lines.join("\n") };
-}
-
-function buildCommandNotice(message: string, kind: "info" | "error"): SystemNotice {
-  if (message.startsWith("Commands:")) {
-    return {
-      tone: "info",
-      title: "Available commands",
-      body: [
-        "/help — Show available commands",
-        "/clear — Clear conversation history",
-        "/config [list|get|set] — Inspect or change settings (--user/--project/--local)",
-        "/cost — Show session token usage",
-        "/model [name|default] — Inspect or override the session model",
-        "/mode [default|plan|auto] — Inspect or switch permission mode",
-        "/tasks [task|todo|reset] — Switch task system or reset the task graph",
-        "/mcp — Inspect MCP servers and their tools",
-        "/skills — List loaded skills (user + project scope)",
-        "/<skill-name> [args] — Run a registered skill as a chat turn",
-        "/<command> [args] — Run a user-defined command (~/.easy-agent/commands)",
-        "/output-style [name] — Inspect or switch the answer style",
-        "/agents — List built-in + custom sub-agent definitions",
-        "/history — Show saved sessions for this project",
-        "/compact — Compact conversation context",
-        "/status — Snapshot of the current session config",
-        "/context — Visualize context window usage by category",
-        "/doctor — Run an environment health check",
-        "/copy [n] — Copy an assistant reply to the clipboard",
-        "/export [file] — Export the conversation to Markdown",
-        "/resume [n|id] — List and switch to a saved session",
-        "/diff [n] — Show uncommitted git changes + recent agent edits",
-        "/init — Analyze the repo and draft an AGENT.md (runs a model turn)",
-        "/permissions [allow|deny|remove <rule>] — Manage allow/deny rules by layer",
-        "/memory [edit <n>] — List/edit AGENT.md + project memory files in $EDITOR",
-        "/exit | /quit | /bye — Exit session",
-      ].join("\n"),
-    };
-  }
-
-  if (message.startsWith("Unknown command:") || message.startsWith("Unknown skill:")) {
-    const { title, body } = splitHeader(message);
-    return { tone: "error", title, body };
-  }
-
-  // Errors: keep the full text as the body under a short label unless the
-  // message already reads as a header + detail block.
-  if (kind === "error") {
-    const { title, body } = splitHeader(message);
-    return body ? { tone: "error", title, body } : { tone: "error", title: "Error", body: message };
-  }
-
-  // Generic info commands (skills / agents / model / task / mcp / output-style
-  // / session usage / cleared …): first line is the section header, the rest
-  // is the detail body. One rule replaces a dozen hand-written branches.
-  const { title, body } = splitHeader(message);
-  return { tone: "info", title, body };
-}
-
-// Erase visible screen (2J) + the terminal's scrollback buffer (3J) + home the
-// cursor (H). Identical to ansi-escapes' `clearTerminal` on POSIX. We write this
-// through Ink's `useStdout().write`, which erases the live frame, emits our
-// escape, then restores the live frame — so the committed <Static> history
-// (banner + old conversation) is wiped from both the screen and the scrollback,
-// and never reprints (Static's cursor is already past it). The input prompt is
-// re-drawn at the top and new turns append fresh below.
-const CLEAR_TERMINAL = "\u001B[2J\u001B[3J\u001B[H";
 
 export function useAgentSession({
   model,
@@ -609,11 +510,7 @@ export function useAgentSession({
         });
         engine.onModeChange((newMode, previousMode) => {
           setActivePermissionMode(newMode);
-          const label = newMode === "plan" ? "Entered plan mode" : "Exited plan mode";
-          const body = newMode === "plan"
-            ? "Only read-only tools are available. Explore the codebase and write your plan."
-            : `Returned to ${newMode} mode. Full tool access restored.`;
-          setSystemNotice({ tone: "info", title: label, body });
+          setSystemNotice(modeChangeNotice(newMode));
         });
         engineRef.current = engine;
         setCurrentModel(model);
@@ -797,38 +694,10 @@ export function useAgentSession({
       return { handled: true };
     }
 
-    const isSlashCommand = trimmed.startsWith("/");
-    // Slash commands fall into two categories that need different UX:
-    //   1. *System* commands (/help, /cost, /model, /skills, /mcp, …) —
-    //      synchronous, never call the LLM, just print a notice.
-    //   2. *Skill* commands (/<skill-name> [args]) — expand into a real
-    //      user prompt and engage the full agentic loop, exactly like a
-    //      typed chat message.
-    // Without this distinction every `/` input was treated as case (1):
-    // no spinner, no streaming, no transcript entry — which made skill
-    // invocations feel broken even though events were flowing through
-    // the engine. Detect skill commands by peeking at the registry here
-    // and treat them as LLM-triggering input below.
-    const rawCommandName = isSlashCommand
-      ? trimmed.slice(1).split(/\s+/, 1)[0] ?? ""
-      : "";
-    const skillCommandName = rawCommandName.toLowerCase();
-    const isSkillCommand =
-      isSlashCommand && !!skillCommandName && !!findSkill(skillCommandName);
-    // Stage 23: user-defined commands also engage the full agentic loop
-    // (they expand into a real prompt). Skip reserved built-in names so
-    // `/help` etc. stay synchronous notices, mirroring the engine's guard.
-    const isUserCommand =
-      isSlashCommand &&
-      !!rawCommandName &&
-      !isBuiltinCommandName(rawCommandName) &&
-      !!findUserCommand(rawCommandName);
-    // Stage 33: built-in `prompt` commands (`/init`) expand into a real prompt
-    // and run a normal model turn, so they too are LLM-triggering.
-    const isPromptCommand =
-      isSlashCommand && isBuiltinPromptCommand(rawCommandName);
-    const isLlmTriggering =
-      !isSlashCommand || isSkillCommand || isUserCommand || isPromptCommand;
+    // Classify the input: system command (synchronous notice) vs. LLM-
+    // triggering (skill / user-defined / built-in prompt command, or plain
+    // chat) — the latter engages the full agentic loop. See classifyUserInput.
+    const { isLlmTriggering } = classifyUserInput(trimmed);
 
     cancelPendingText();
     setStreamingText("");
@@ -1125,15 +994,7 @@ export function useAgentSession({
             break;
           }
           case "compacted": {
-            const compactTitle = value.trigger === "micro"
-              ? "Context micro-compacted"
-              : value.trigger === "auto"
-                ? "Context auto-compacted"
-                : "Conversation compacted";
-            const compactBody = value.trigger === "micro"
-              ? "Old tool results cleared to save context space."
-              : "Conversation history has been summarized to free up context window.";
-            setSystemNotice({ tone: "info", title: compactTitle, body: compactBody });
+            setSystemNotice(compactionNotice(value.trigger));
             if (value.trigger !== "micro") {
               const compactedMessages = engineRef.current?.getState().messages ?? [];
               await appendCompactionSnapshot(
@@ -1225,40 +1086,16 @@ export function useAgentSession({
             writeStdoutRef.current?.(CLEAR_TERMINAL);
             break;
           case "token_warning": {
-            const w = value.warning;
-            const pct = Math.round((w.estimatedTokens / w.contextWindow) * 100);
-            if (w.state === "warning") {
-              setSystemNotice({
-                tone: "info",
-                title: "Context window filling up",
-                body: `${pct}% used (${w.estimatedTokens} / ${w.contextWindow} tokens). Consider using /compact.`,
-              });
-            } else if (w.state === "error") {
-              setSystemNotice({
-                tone: "error",
-                title: "Context window nearly full",
-                body: `${pct}% used (${w.estimatedTokens} / ${w.contextWindow} tokens). Auto-compaction will trigger.`,
-              });
-            } else if (w.state === "blocking") {
-              setSystemNotice({
-                tone: "error",
-                title: "Context window limit reached",
-                body: `${pct}% used (${w.estimatedTokens} / ${w.contextWindow} tokens). Use /compact to free space.`,
-              });
-            }
+            const notice = tokenWarningNotice(value.warning);
+            if (notice) setSystemNotice(notice);
             break;
           }
           case "api_retry": {
             // Stage 27: the API layer is backing off before re-issuing a
             // request after a transient failure. Show a transient notice with
             // the countdown so the user knows we're retrying, not hung.
-            const secs = (value.delayMs / 1000).toFixed(1);
             setSpinnerLabel("Retrying");
-            setSystemNotice({
-              tone: "info",
-              title: "Retrying request",
-              body: `${value.message}\nRetrying in ${secs}s… (attempt ${value.attempt}/${value.maxRetries}).`,
-            });
+            setSystemNotice(apiRetryNotice(value));
             break;
           }
           case "stream_restart":
@@ -1275,21 +1112,11 @@ export function useAgentSession({
               });
             }
             break;
-          case "turn_complete":
-            if (value.reason === "max_turns") {
-              setSystemNotice({
-                tone: "error",
-                title: "Maximum tool turns reached",
-                body: `Reached maximum tool turns (${value.turnCount}).`,
-              });
-            } else if (value.reason === "blocking_limit") {
-              setSystemNotice({
-                tone: "error",
-                title: "Context window limit reached",
-                body: "Cannot continue — context is full. Use /compact to free space.",
-              });
-            }
+          case "turn_complete": {
+            const notice = turnCompleteNotice(value.reason, value.turnCount);
+            if (notice) setSystemNotice(notice);
             break;
+          }
           case "error":
             setSystemNotice({
               tone: "error",

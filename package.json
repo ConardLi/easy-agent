@@ -12,6 +12,8 @@
     "build": "tsc",
     "start": "node dist/entrypoint/cli.js",
     "test:queryengine": "tsx src/scripts/test-queryengine-characterization.ts",
+    "test:providerstream": "tsx src/scripts/test-providerstream-characterization.ts",
+    "test:notices": "tsx src/scripts/test-useagentsession-notices.ts",
     "test:streaming": "tsx src/scripts/test-streaming.ts",
     "test:tasks": "tsx src/scripts/test-tasks.ts",
     "test:mcp": "tsx src/scripts/test-mcp.ts",

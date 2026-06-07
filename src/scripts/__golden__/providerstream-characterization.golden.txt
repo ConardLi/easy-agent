@@ -1,0 +1,633 @@
+### openai-chat / text + stream
+>>> openai-chat text
+-- REQUEST --
+url: https://api.openai.test/v1/chat/completions
+headers: {
+  "authorization": "Bearer <KEY>",
+  "content-type": "application/json"
+}
+body: {
+  "max_tokens": 1024,
+  "messages": [
+    {
+      "content": "You are a test assistant.",
+      "role": "system"
+    },
+    {
+      "content": "Say hello.",
+      "role": "user"
+    }
+  ],
+  "model": "model-test",
+  "stream": true,
+  "stream_options": {
+    "include_usage": true
+  }
+}
+-- EVENTS --
+{"type":"message_start","messageId":"cmpl-test"}
+{"type":"text","text":"Hello"}
+{"type":"message_done","stopReason":"end_turn","usage":{"input_tokens":5,"output_tokens":2}}
+-- RESULT --
+{
+  "assistantMessage": {
+    "content": [
+      {
+        "text": "Hello",
+        "type": "text"
+      }
+    ],
+    "role": "assistant"
+  },
+  "stopReason": "end_turn",
+  "usage": {
+    "input_tokens": 5,
+    "output_tokens": 2
+  }
+}
+
+### openai-chat / finish=length → max_tokens
+>>> openai-chat length
+-- REQUEST --
+url: https://api.openai.test/v1/chat/completions
+headers: {
+  "authorization": "Bearer <KEY>",
+  "content-type": "application/json"
+}
+body: {
+  "max_tokens": 1024,
+  "messages": [
+    {
+      "content": "Say hello.",
+      "role": "user"
+    }
+  ],
+  "model": "model-test",
+  "stream": true,
+  "stream_options": {
+    "include_usage": true
+  }
+}
+-- EVENTS --
+{"type":"message_start","messageId":"cmpl-test"}
+{"type":"text","text":"Partial"}
+{"type":"message_done","stopReason":"max_tokens","usage":{"input_tokens":0,"output_tokens":0}}
+-- RESULT --
+{
+  "assistantMessage": {
+    "content": [
+      {
+        "text": "Partial",
+        "type": "text"
+      }
+    ],
+    "role": "assistant"
+  },
+  "stopReason": "max_tokens",
+  "usage": {
+    "input_tokens": 0,
+    "output_tokens": 0
+  }
+}
+
+### openai-chat / tool history → messages[]
+>>> openai-chat tool history
+-- REQUEST --
+url: https://api.openai.test/v1/chat/completions
+headers: {
+  "authorization": "Bearer <KEY>",
+  "content-type": "application/json"
+}
+body: {
+  "max_tokens": 1024,
+  "messages": [
+    {
+      "content": "You are a test assistant.",
+      "role": "system"
+    },
+    {
+      "content": "Read a.txt",
+      "role": "user"
+    },
+    {
+      "content": "Reading it.",
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "function": {
+            "arguments": "{\"path\":\"a.txt\"}",
+            "name": "Read"
+          },
+          "id": "toolu_1",
+          "type": "function"
+        }
+      ]
+    },
+    {
+      "content": "file body",
+      "role": "tool",
+      "tool_call_id": "toolu_1"
+    },
+    {
+      "content": "Thanks.",
+      "role": "user"
+    }
+  ],
+  "model": "model-test",
+  "stream": true,
+  "stream_options": {
+    "include_usage": true
+  },
+  "tools": [
+    {
+      "function": {
+        "description": "Read a file",
+        "name": "Read",
+        "parameters": {
+          "properties": {
+            "path": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "path"
+          ],
+          "type": "object"
+        }
+      },
+      "type": "function"
+    }
+  ]
+}
+-- EVENTS --
+{"type":"message_done","stopReason":"end_turn","usage":{"input_tokens":0,"output_tokens":0}}
+-- RESULT --
+{
+  "assistantMessage": {
+    "content": [],
+    "role": "assistant"
+  },
+  "stopReason": "end_turn",
+  "usage": {
+    "input_tokens": 0,
+    "output_tokens": 0
+  }
+}
+
+### openai-chat / image → image_url
+>>> openai-chat image
+-- REQUEST --
+url: https://api.openai.test/v1/chat/completions
+headers: {
+  "authorization": "Bearer <KEY>",
+  "content-type": "application/json"
+}
+body: {
+  "max_tokens": 1024,
+  "messages": [
+    {
+      "content": [
+        {
+          "text": "What is in this image?",
+          "type": "text"
+        },
+        {
+          "image_url": {
+            "url": "data:image/jpeg;base64,QUJDRA=="
+          },
+          "type": "image_url"
+        }
+      ],
+      "role": "user"
+    }
+  ],
+  "model": "model-test",
+  "stream": true,
+  "stream_options": {
+    "include_usage": true
+  }
+}
+-- EVENTS --
+{"type":"message_done","stopReason":"end_turn","usage":{"input_tokens":0,"output_tokens":0}}
+-- RESULT --
+{
+  "assistantMessage": {
+    "content": [],
+    "role": "assistant"
+  },
+  "stopReason": "end_turn",
+  "usage": {
+    "input_tokens": 0,
+    "output_tokens": 0
+  }
+}
+
+### openai-responses / tool history → input[]
+>>> openai-responses tool history
+-- REQUEST --
+url: https://api.openai.test/v1/responses
+headers: {
+  "authorization": "Bearer <KEY>",
+  "content-type": "application/json"
+}
+body: {
+  "input": [
+    {
+      "content": "You are a test assistant.",
+      "role": "system"
+    },
+    {
+      "content": "Read a.txt",
+      "role": "user"
+    },
+    {
+      "content": "Reading it.",
+      "role": "assistant"
+    },
+    {
+      "arguments": "{\"path\":\"a.txt\"}",
+      "call_id": "toolu_1",
+      "name": "Read",
+      "type": "function_call"
+    },
+    {
+      "call_id": "toolu_1",
+      "output": "file body",
+      "type": "function_call_output"
+    },
+    {
+      "content": "Thanks.",
+      "role": "user"
+    }
+  ],
+  "max_output_tokens": 1024,
+  "model": "model-test",
+  "stream": true,
+  "tools": [
+    {
+      "description": "Read a file",
+      "name": "Read",
+      "parameters": {
+        "properties": {
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "type": "object"
+      },
+      "type": "function"
+    }
+  ]
+}
+-- EVENTS --
+{"type":"message_done","stopReason":"end_turn","usage":{"input_tokens":0,"output_tokens":0}}
+-- RESULT --
+{
+  "assistantMessage": {
+    "content": [],
+    "role": "assistant"
+  },
+  "stopReason": "end_turn",
+  "usage": {
+    "input_tokens": 0,
+    "output_tokens": 0
+  }
+}
+
+### openai-responses / image → input_image
+>>> openai-responses image
+-- REQUEST --
+url: https://api.openai.test/v1/responses
+headers: {
+  "authorization": "Bearer <KEY>",
+  "content-type": "application/json"
+}
+body: {
+  "input": [
+    {
+      "content": [
+        {
+          "text": "What is in this image?",
+          "type": "input_text"
+        },
+        {
+          "image_url": "data:image/jpeg;base64,QUJDRA==",
+          "type": "input_image"
+        }
+      ],
+      "role": "user"
+    }
+  ],
+  "max_output_tokens": 1024,
+  "model": "model-test",
+  "stream": true
+}
+-- EVENTS --
+{"type":"message_done","stopReason":"end_turn","usage":{"input_tokens":0,"output_tokens":0}}
+-- RESULT --
+{
+  "assistantMessage": {
+    "content": [],
+    "role": "assistant"
+  },
+  "stopReason": "end_turn",
+  "usage": {
+    "input_tokens": 0,
+    "output_tokens": 0
+  }
+}
+
+### gemini / tool history → contents[]
+>>> gemini tool history
+-- REQUEST --
+url: https://gemini.test/v1beta/models/gemini-test:streamGenerateContent?alt=sse
+headers: {
+  "content-type": "application/json",
+  "x-goog-api-key": "<KEY>"
+}
+body: {
+  "contents": [
+    {
+      "parts": [
+        {
+          "text": "Read a.txt"
+        }
+      ],
+      "role": "user"
+    },
+    {
+      "parts": [
+        {
+          "text": "Reading it."
+        },
+        {
+          "functionCall": {
+            "args": {
+              "path": "a.txt"
+            },
+            "id": "toolu_1",
+            "name": "Read"
+          },
+          "thoughtSignature": "SIG_HIST"
+        }
+      ],
+      "role": "model"
+    },
+    {
+      "parts": [
+        {
+          "functionResponse": {
+            "id": "toolu_1",
+            "name": "Read",
+            "response": {
+              "output": "file body"
+            }
+          }
+        }
+      ],
+      "role": "user"
+    },
+    {
+      "parts": [
+        {
+          "text": "Thanks."
+        }
+      ],
+      "role": "user"
+    }
+  ],
+  "generationConfig": {
+    "maxOutputTokens": 1024
+  },
+  "systemInstruction": {
+    "parts": [
+      {
+        "text": "You are a test assistant."
+      }
+    ]
+  },
+  "tools": [
+    {
+      "functionDeclarations": [
+        {
+          "description": "Read a file",
+          "name": "Read",
+          "parameters": {
+            "properties": {
+              "path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path"
+            ],
+            "type": "object"
+          }
+        }
+      ]
+    }
+  ]
+}
+-- EVENTS --
+{"type":"message_start","messageId":"resp-test"}
+{"type":"text","text":"ok"}
+{"type":"message_done","stopReason":"end_turn","usage":{"input_tokens":0,"output_tokens":0}}
+-- RESULT --
+{
+  "assistantMessage": {
+    "content": [
+      {
+        "text": "ok",
+        "type": "text"
+      }
+    ],
+    "role": "assistant"
+  },
+  "stopReason": "end_turn",
+  "usage": {
+    "input_tokens": 0,
+    "output_tokens": 0
+  }
+}
+
+### gemini / image → inlineData
+>>> gemini image
+-- REQUEST --
+url: https://gemini.test/v1beta/models/gemini-test:streamGenerateContent?alt=sse
+headers: {
+  "content-type": "application/json",
+  "x-goog-api-key": "<KEY>"
+}
+body: {
+  "contents": [
+    {
+      "parts": [
+        {
+          "text": "What is in this image?"
+        },
+        {
+          "inlineData": {
+            "data": "QUJDRA==",
+            "mimeType": "image/jpeg"
+          }
+        }
+      ],
+      "role": "user"
+    }
+  ],
+  "generationConfig": {
+    "maxOutputTokens": 1024
+  }
+}
+-- EVENTS --
+{"type":"message_start","messageId":"resp-test"}
+{"type":"text","text":"ok"}
+{"type":"message_done","stopReason":"end_turn","usage":{"input_tokens":0,"output_tokens":0}}
+-- RESULT --
+{
+  "assistantMessage": {
+    "content": [
+      {
+        "text": "ok",
+        "type": "text"
+      }
+    ],
+    "role": "assistant"
+  },
+  "stopReason": "end_turn",
+  "usage": {
+    "input_tokens": 0,
+    "output_tokens": 0
+  }
+}
+
+### gemini / rich stream (thinking + text + tool_use)
+>>> gemini rich stream
+-- REQUEST --
+url: https://gemini.test/v1beta/models/gemini-test:streamGenerateContent?alt=sse
+headers: {
+  "content-type": "application/json",
+  "x-goog-api-key": "<KEY>"
+}
+body: {
+  "contents": [
+    {
+      "parts": [
+        {
+          "text": "Say hello."
+        }
+      ],
+      "role": "user"
+    }
+  ],
+  "generationConfig": {
+    "maxOutputTokens": 1024
+  },
+  "systemInstruction": {
+    "parts": [
+      {
+        "text": "You are a test assistant."
+      }
+    ]
+  }
+}
+-- EVENTS --
+{"type":"message_start","messageId":"resp-test"}
+{"type":"text","text":"Here you go"}
+{"type":"tool_use_start","id":"call_fixed_1","name":"Read"}
+{"type":"tool_use_input","id":"call_fixed_1","partial_json":"{\"path\":\"a.txt\"}"}
+{"type":"message_done","stopReason":"tool_use","usage":{"input_tokens":3,"output_tokens":4}}
+-- RESULT --
+{
+  "assistantMessage": {
+    "content": [
+      {
+        "thinking": "pondering",
+        "type": "thinking"
+      },
+      {
+        "text": "Here you go",
+        "type": "text"
+      },
+      {
+        "id": "call_fixed_1",
+        "input": {
+          "path": "a.txt"
+        },
+        "name": "Read",
+        "thoughtSignature": "SIG123",
+        "type": "tool_use"
+      }
+    ],
+    "role": "assistant"
+  },
+  "stopReason": "tool_use",
+  "usage": {
+    "input_tokens": 3,
+    "output_tokens": 4
+  }
+}
+
+### gemini / finish=MAX_TOKENS → max_tokens
+>>> gemini maxtokens
+-- REQUEST --
+url: https://gemini.test/v1beta/models/gemini-test:streamGenerateContent?alt=sse
+headers: {
+  "content-type": "application/json",
+  "x-goog-api-key": "<KEY>"
+}
+body: {
+  "contents": [
+    {
+      "parts": [
+        {
+          "text": "Say hello."
+        }
+      ],
+      "role": "user"
+    }
+  ],
+  "generationConfig": {
+    "maxOutputTokens": 1024
+  }
+}
+-- EVENTS --
+{"type":"message_start","messageId":"resp-test"}
+{"type":"text","text":"truncated"}
+{"type":"message_done","stopReason":"max_tokens","usage":{"input_tokens":2,"output_tokens":9}}
+-- RESULT --
+{
+  "assistantMessage": {
+    "content": [
+      {
+        "text": "truncated",
+        "type": "text"
+      }
+    ],
+    "role": "assistant"
+  },
+  "stopReason": "max_tokens",
+  "usage": {
+    "input_tokens": 2,
+    "output_tokens": 9
+  }
+}
+
+### collectViaProvider / gemini
+>>> collect gemini
+{
+  "content": [
+    {
+      "text": "ok",
+      "type": "text"
+    }
+  ],
+  "stopReason": "end_turn",
+  "usage": {
+    "input_tokens": 0,
+    "output_tokens": 0
+  }
+}
