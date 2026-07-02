@@ -24,11 +24,11 @@ Core goals:
 
 ## Project Status
 
-**Current stage:** Stage 32 — multimodal input, next
+**Current stage:** Stage 34 — Extended Thinking, next
 
-The implementation track has completed through Stage 31, including the CLI, streaming communication, tool execution, terminal UI, session orchestration, context management, MCP, skills, sandboxing, sub-agents, background execution, Agent Teams, hooks, output styles, user commands, rendering upgrades, unified configuration, file history, resilience, headless print mode, classifier-driven Auto Mode, multi-provider streaming, and the core-tool expansion for Web, MultiEdit, MCP resources, and PowerShell. Stage 32 is the next planned area: multimodal input for images and screenshots.
+The implementation track has completed through Stage 33, including the CLI, streaming communication, tool execution, terminal UI, session orchestration, context management, MCP, skills, sandboxing, sub-agents, background execution, Agent Teams, hooks, output styles, user commands, rendering upgrades, unified configuration, file history, resilience, headless print mode, classifier-driven Auto Mode, multi-provider streaming, the core-tool expansion for Web, MultiEdit, MCP resources, and PowerShell, multimodal image input, and the expanded built-in command set. Stage 34 is the next planned area: Extended Thinking controls and display.
 
-The single-file `step/` snapshots now cover Stages 1–31, so the completed implementation chapters can be studied from focused standalone files as well as from the main source tree.
+The single-file `step/` snapshots now cover Stages 1–33, so the completed implementation chapters can be studied from focused standalone files as well as from the main source tree.
 
 Easy Agent should currently be understood as a serious open-source rebuild in progress rather than a finished end-user product.
 
@@ -125,8 +125,8 @@ The project follows a 37-phase roadmap designed to recreate the full Claude Code
 | 29 | Auto mode classifier | [`step/step29.js`](./step/step29.js) | ✅ Done |
 | 30 | Multi-provider support | [`step/step30.js`](./step/step30.js) | ✅ Done |
 | 31 | Core tool expansion: Web, MultiEdit, MCP resources, PowerShell | [`step/step31.js`](./step/step31.js) | ✅ Done |
-| 32 | Multimodal input: images and screenshots | `planned` | ⏳ Planned |
-| 33 | Built-in command completion | `planned` | ⏳ Planned |
+| 32 | Multimodal input: images and screenshots | [`step/step32.js`](./step/step32.js) | ✅ Done |
+| 33 | Built-in command completion | [`step/step33.js`](./step/step33.js) | ✅ Done |
 | 34 | Extended Thinking control and display | `planned` | ⏳ Planned |
 | 35 | Plugins and marketplace | `planned` | ⏳ Planned |
 | 36 | Packaging, publishing, and documentation | `planned` | ⏳ Planned |
@@ -135,8 +135,9 @@ The [`easy-agent/step/`](./step/) directory contains tutorial-friendly milestone
 
 Current implementation notes:
 
-- Stage 31 is complete in source, article track, and the step snapshot series.
-- Stage 32 multimodal input is next; it will connect image content blocks through tools, providers, compaction, and the terminal input flow.
+- Stage 32 is complete in source, article track, and the step snapshot series.
+- Stage 33 is complete in source, article track, and the step snapshot series.
+- Stage 34 Extended Thinking is next; it will add request-side thinking controls, budget settings, streaming thinking events, and terminal display affordances.
 
 ## What Easy Agent Is — and Is Not
 
@@ -235,10 +236,9 @@ agent --dump-system-prompt
 
 The next major milestones are:
 
-1. implement Stage 32 multimodal input for images and screenshots
-2. continue with Stage 33 built-in command completion
-3. add Extended Thinking controls and UI in Stage 34
-4. close the extension ecosystem and packaging work in Stages 35–36
+1. add Extended Thinking controls and UI in Stage 34
+2. continue with Plugins and Marketplace in Stage 35
+3. close packaging, publishing, and documentation work in Stage 36
 
 ## Contribution Policy
 

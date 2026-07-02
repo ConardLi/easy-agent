@@ -24,11 +24,11 @@ Easy Agent 的目标，是成为一个严肃的、可持续演进的、本地 Co
 
 ## 当前状态
 
-**当前阶段：** 阶段 32 —— 多模态输入，下一阶段
+**当前阶段：** 阶段 34 —— Extended Thinking，下一阶段
 
-当前实现主线已经完成到阶段 31，包括 CLI、流式通信、工具执行、终端 UI、会话编排、上下文管理、MCP、Skills、Sandbox、Sub-Agent、后台执行、Agent Teams、Hooks、Output Styles、用户命令、渲染体验升级、统一配置、文件历史、错误韧性、管道模式、AI 分类器 Auto Mode、多 Provider 流式适配，以及 Web、MultiEdit、MCP Resources、PowerShell 等核心工具补全。阶段 32 是下一块重点：图片与截图多模态输入。
+当前实现主线已经完成到阶段 33，包括 CLI、流式通信、工具执行、终端 UI、会话编排、上下文管理、MCP、Skills、Sandbox、Sub-Agent、后台执行、Agent Teams、Hooks、Output Styles、用户命令、渲染体验升级、统一配置、文件历史、错误韧性、管道模式、AI 分类器 Auto Mode、多 Provider 流式适配，Web、MultiEdit、MCP Resources、PowerShell 等核心工具补全，图片多模态输入，以及更完整的内置命令集。阶段 34 是下一块重点：Extended Thinking 控制与展示。
 
-单文件 `step/` 快照现在已经覆盖阶段 1–31，因此已完成章节既可以从主源码阅读，也可以从聚焦的独立快照文件中对照学习。
+单文件 `step/` 快照现在已经覆盖阶段 1–33，因此已完成章节既可以从主源码阅读，也可以从聚焦的独立快照文件中对照学习。
 
 因此，当前的 Easy Agent 更适合被理解为一个正在稳步推进的开源复刻工程，而不是已经面向终端用户完全交付的成品。
 
@@ -125,8 +125,8 @@ easy-agent/
 | 29 | Auto Mode 分类器 | [`step/step29.js`](./step/step29.js) | ✅ 已完成 |
 | 30 | 多 Provider 支持 | [`step/step30.js`](./step/step30.js) | ✅ 已完成 |
 | 31 | 核心工具补全：Web、MultiEdit、MCP Resources、PowerShell | [`step/step31.js`](./step/step31.js) | ✅ 已完成 |
-| 32 | 多模态输入：图片与截图 | `planned` | ⏳ 计划中 |
-| 33 | 内置命令补全 | `planned` | ⏳ 计划中 |
+| 32 | 多模态输入：图片与截图 | [`step/step32.js`](./step/step32.js) | ✅ 已完成 |
+| 33 | 内置命令补全 | [`step/step33.js`](./step/step33.js) | ✅ 已完成 |
 | 34 | Extended Thinking 控制与展示 | `planned` | ⏳ 计划中 |
 | 35 | Plugins 与 Marketplace | `planned` | ⏳ 计划中 |
 | 36 | 打包发布与文档 | `planned` | ⏳ 计划中 |
@@ -135,8 +135,9 @@ easy-agent/
 
 当前实现进度补充：
 
-- 阶段 31 已在源码、文章主线和 step 快照中完成。
-- 阶段 32 多模态输入是下一阶段，它会把图片内容块贯通到工具、Provider、压缩和终端输入流程中。
+- 阶段 32 已在源码、文章主线和 step 快照中完成。
+- 阶段 33 已在源码、文章主线和 step 快照中完成。
+- 阶段 34 Extended Thinking 是下一阶段，它会补齐请求侧 thinking 控制、预算配置、流式 thinking 事件和终端展示。
 
 ## Easy Agent 是什么，以及它不是什么
 
@@ -235,10 +236,9 @@ agent --dump-system-prompt
 
 接下来最重要的几个里程碑是：
 
-1. 实现阶段 32 图片与截图多模态输入
-2. 继续推进阶段 33 内置命令补全
-3. 在阶段 34 补齐 Extended Thinking 控制与展示
-4. 在阶段 35–36 收拢插件生态与打包发布工作
+1. 在阶段 34 补齐 Extended Thinking 控制与展示
+2. 继续推进阶段 35 Plugins 与 Marketplace
+3. 在阶段 36 收拢打包发布与文档工作
 
 ## 贡献策略
 
