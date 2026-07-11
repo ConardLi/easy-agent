@@ -164,6 +164,8 @@ export function App({ model, permissionMode, shouldResume, resumeSessionId }: Ap
     commandSuggestions,
     modeSuggestions,
     taskModeSuggestions,
+    thinkSuggestions,
+    effortSuggestions,
     fileSuggestions,
     selectedPermissionIndex,
     queued,
@@ -437,6 +439,14 @@ export function App({ model, permissionMode, shouldResume, resumeSessionId }: Ap
           <ModeSelector
             items={taskModeSuggestions}
             title={`select task system (↑↓ navigate, Enter confirm, 1-${taskModeSuggestions.length || 2} shortcut)`}
+          />
+          <ModeSelector
+            items={thinkSuggestions}
+            title={`extended thinking (↑↓ navigate, Enter confirm, 1-${thinkSuggestions.length || 2} shortcut)`}
+          />
+          <ModeSelector
+            items={effortSuggestions}
+            title={`reasoning effort (↑↓ navigate, Enter confirm, 1-${effortSuggestions.length || 5} shortcut)`}
           />
           {/* Minimal footer by default; an extra row appears only when the user
               configures a `statusLine` command in settings.json. */}

@@ -60,6 +60,20 @@ export function getAnthropicClient(options?: {
 
 const profileClientCache = new Map<string, Anthropic>();
 
+/**
+ * Normalize a custom Anthropic baseURL for the SDK.
+ *
+ * The SDK builds request URLs by CONCATENATING `baseURL + "/v1/messages"`
+ * (see @anthropic-ai/sdk client `buildURL`). So a baseURL that already ends in
+ * `/v1` — common when the same gateway host is reused across protocols, e.g.
+ * `https://host/v1` for OpenAI — would produce `https://host/v1/v1/messages`.
+ * We strip a single trailing `/v1` (and any trailing slashes) so the SDK's
+ * appended path lands on the correct `/v1/messages`.
+ */
+export function normalizeAnthropicBaseURL(baseURL: string): string {
+  return baseURL.replace(/\/+$/, "").replace(/\/v1$/i, "");
+}
+
 export function getAnthropicClientForProfile(profile: {
   baseURL?: string;
   apiKey?: string;
@@ -67,12 +81,23 @@ export function getAnthropicClientForProfile(profile: {
   if (!profile.baseURL && !profile.apiKey) {
     return getAnthropicClient();
   }
-  const key = `${profile.baseURL ?? ""}|${profile.apiKey ?? ""}`;
+  const baseURL = profile.baseURL ? normalizeAnthropicBaseURL(profile.baseURL) : undefined;
+  // A custom endpoint may not require auth (self-hosted / gateway). The SDK
+  // throws at construction when neither apiKey nor ANTHROPIC_AUTH_TOKEN is
+  // present, so supply a placeholder for a keyless custom endpoint — mirroring
+  // the OpenAI/Gemini paths, which simply omit the auth header. The env token
+  // still wins when set; a real api.anthropic.com target (no baseURL) keeps the
+  // strict behavior and surfaces the friendly missing-key error.
+  const apiKey =
+    profile.apiKey ??
+    process.env.ANTHROPIC_AUTH_TOKEN ??
+    (baseURL ? "not-required" : undefined);
+  const key = `${baseURL ?? ""}|${apiKey ?? ""}`;
   const cached = profileClientCache.get(key);
   if (cached) return cached;
   const client = getAnthropicClient({
-    ...(profile.apiKey ? { apiKey: profile.apiKey } : {}),
-    ...(profile.baseURL ? { baseURL: profile.baseURL } : {}),
+    ...(apiKey ? { apiKey } : {}),
+    ...(baseURL ? { baseURL } : {}),
   });
   profileClientCache.set(key, client);
   return client;

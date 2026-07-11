@@ -184,11 +184,26 @@ function buildLogicalLines(messages: MessageParam[]): string[] {
         const blocks = message.content as Array<{
           type?: string;
           text?: string;
+          thinking?: string;
           id?: string;
           name?: string;
           input?: Record<string, unknown>;
         }>;
         for (const block of blocks) {
+          // Stage 34: the transcript overlay is the verbose view, so thinking
+          // blocks are fully expanded here (unlike the condensed inline view).
+          if (block?.type === "thinking" && block.thinking?.trim()) {
+            blank();
+            out.push(paint.muted(`✻ Thinking`));
+            const md = markdownToAnsi(block.thinking.trim()).split("\n");
+            for (const line of md) out.push(paint.muted(`  ${line}`));
+            continue;
+          }
+          if (block?.type === "redacted_thinking") {
+            blank();
+            out.push(paint.muted(`✻ Thinking… (redacted)`));
+            continue;
+          }
           if (block?.type === "text" && block.text) {
             blank();
             const md = markdownToAnsi(block.text).split("\n");

@@ -43,6 +43,17 @@ import {
   runSessionStartHooks,
   runUserPromptSubmitHooks,
 } from "../hooks/index.js";
+import {
+  type ThinkingConfig,
+  type EffortLevel,
+  hasUltrathinkKeyword,
+  modelSupportsAdaptiveThinking,
+  setSessionThinkingConfig,
+  getSessionThinkingConfig,
+  setSessionEffortLevel,
+  getSessionEffortLevel,
+  ULTRATHINK_META_MESSAGE,
+} from "../utils/thinking.js";
 
 // Public types live in ./queryEngine/types.ts — imported for internal use and
 // re-exported so existing `from "../core/queryEngine.js"` imports (UI hooks,
@@ -395,6 +406,12 @@ export class QueryEngine {
       this.addSessionAllowRules(skill.frontmatter.allowedTools);
     }
 
+    // Stage 34: a skill can declare a reasoning-effort level; invoking it
+    // sets the session effort (maps to output_config.effort on Anthropic).
+    if (skill.frontmatter.effort) {
+      setSessionEffortLevel(skill.frontmatter.effort);
+    }
+
     const body = skill.body
       .replaceAll("${CLAUDE_SKILL_DIR}", dir)
       .replaceAll("${CLAUDE_SESSION_ID}", sessionId)
@@ -637,6 +654,20 @@ export class QueryEngine {
       yield { type: "messages_updated", messages: [...this.messages] };
     }
 
+    // ─── Stage 34: ultrathink keyword ──────────────────────────────
+    // When the user prompt contains the whole-word keyword "ultrathink",
+    // inject a hidden meta user message asking the model for high reasoning
+    // effort. Mirrors source's ultrathink_effort branch: it does NOT change
+    // the thinking budget — it only nudges effort via a meta message. The
+    // marker prefix keeps it out of the human-visible transcript.
+    if (promptToSubmit.length > 0 && hasUltrathinkKeyword(promptToSubmit)) {
+      const ultrathinkMessage: MessageParam = {
+        role: "user",
+        content: `[ultrathink]\n${ULTRATHINK_META_MESSAGE}`,
+      };
+      this.messages = [...this.messages, ultrathinkMessage];
+    }
+
     // Stage 20: when this turn was triggered by a background-agent
     // notification (no real user input), skip appending an empty user
     // message — the notification(s) we just drained ARE the user-side
@@ -798,7 +829,7 @@ export class QueryEngine {
         yield {
           type: "command",
           kind: "info",
-          message: "Commands: /help /clear /config [list|get|set] /cost /model [name|list|default] /mode [default|plan|auto] /tasks [task|todo|reset] /mcp [tools <name>|reconnect <name>] /skills /agents /hooks /output-style [name] /history /compact /rewind [n] /status /context /doctor /copy [n] /export [file] /resume [n|id] /diff [n] /init /permissions [allow|deny|remove <rule>] /memory [edit <n>] /<skill-or-command> [args] /exit /quit /bye",
+          message: "Commands: /help /clear /config [list|get|set] /cost /model [name|list|default] /mode [default|plan|auto] /think [on|off|<budget>] /effort [low|medium|high|max] /tasks [task|todo|reset] /mcp [tools <name>|reconnect <name>] /skills /agents /hooks /output-style [name] /history /compact /rewind [n] /status /context /doctor /copy [n] /export [file] /resume [n|id] /diff [n] /init /permissions [allow|deny|remove <rule>] /memory [edit <n>] /<skill-or-command> [args] /exit /quit /bye",
         };
         return { handled: true };
       case "config":
@@ -1037,6 +1068,93 @@ export class QueryEngine {
         return yield* handlePermissionsCommand(this.commandContext(), args);
       case "memory":
         return yield* handleMemoryCommand(this.commandContext(), args);
+      case "think": {
+        // /think on|off|<budget> — per-session extended-thinking override.
+        // Mirrors source's thinking three-state:
+        //   on      → adaptive (or enabled+default budget on non-adaptive models)
+        //   off     → disabled
+        //   <N>     → enabled + budget N
+        const arg = args[0]?.trim().toLowerCase();
+        if (!arg) {
+          const cfg = getSessionThinkingConfig();
+          const desc = cfg
+            ? cfg.type === "enabled"
+              ? `enabled (budget ${cfg.budgetTokens})`
+              : cfg.type
+            : "default (adaptive unless settings/env disable it)";
+          yield {
+            type: "command",
+            kind: "info",
+            message: [
+              `Extended thinking: ${desc}`,
+              "- Usage: /think on        Enable (adaptive, or budgeted on older models)",
+              "- Usage: /think off       Disable thinking for this session",
+              "- Usage: /think <tokens>  Enable with an explicit token budget",
+            ].join("\n"),
+          };
+          return { handled: true };
+        }
+        let next: ThinkingConfig;
+        if (arg === "off" || arg === "false" || arg === "0") {
+          next = { type: "disabled" };
+        } else if (arg === "on" || arg === "true" || arg === "adaptive") {
+          next = modelSupportsAdaptiveThinking(this.getActiveModel())
+            ? { type: "adaptive" }
+            : { type: "enabled", budgetTokens: 10_000 };
+        } else {
+          const budget = parseInt(arg, 10);
+          if (!Number.isFinite(budget) || budget <= 0) {
+            yield {
+              type: "command",
+              kind: "error",
+              message: `Invalid /think argument: ${arg}. Use on, off, or a positive token budget.`,
+            };
+            return { handled: true };
+          }
+          next = { type: "enabled", budgetTokens: budget };
+        }
+        setSessionThinkingConfig(next);
+        const label =
+          next.type === "enabled"
+            ? `enabled (budget ${next.budgetTokens})`
+            : next.type;
+        yield { type: "command", kind: "info", message: `Extended thinking: ${label}` };
+        return { handled: true };
+      }
+      case "effort": {
+        // /effort low|medium|high|max — set output_config.effort (Anthropic).
+        const arg = args[0]?.trim().toLowerCase();
+        if (!arg) {
+          const current = getSessionEffortLevel();
+          yield {
+            type: "command",
+            kind: "info",
+            message: [
+              `Reasoning effort: ${current ?? "default (model decides)"}`,
+              "- Usage: /effort low|medium|high|max   Set effort for this session",
+              "- Usage: /effort default               Clear the override",
+              "- Note: only applies to Anthropic models that support effort.",
+            ].join("\n"),
+          };
+          return { handled: true };
+        }
+        if (arg === "auto" || arg === "default" || arg === "clear" || arg === "off") {
+          setSessionEffortLevel(undefined);
+          yield { type: "command", kind: "info", message: "Reasoning effort cleared (model default)." };
+          return { handled: true };
+        }
+        if (arg !== "low" && arg !== "medium" && arg !== "high" && arg !== "max") {
+          yield {
+            type: "command",
+            kind: "error",
+            message: `Invalid effort level: ${arg}. Must be low, medium, high, or max.`,
+          };
+          return { handled: true };
+        }
+        setSessionEffortLevel(arg as EffortLevel);
+        yield { type: "command", kind: "info", message: `Reasoning effort: ${arg}` };
+        return { handled: true };
+      }
       default:
         yield {
           type: "command",

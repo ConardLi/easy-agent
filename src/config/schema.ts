@@ -75,6 +75,14 @@ export const SettingsSchema = z.looseObject({
   disableAllHooks: z.boolean().optional(),
   // Stage 26: master switch for file-history checkpointing (default on).
   checkpointingEnabled: z.boolean().optional(),
+  // Stage 34: extended-thinking default switch. When false, thinking is
+  // off by default (the `/think on` command can still enable it per-session).
+  // When unset/true, thinking defaults to adaptive. Env var
+  // MAX_THINKING_TOKENS overrides this (0 → disabled, N>0 → budget N).
+  alwaysThinkingEnabled: z.boolean().optional(),
+  // Stage 34: default reasoning-effort level for output_config.effort
+  // (Anthropic only). The `/effort` command overrides this per-session.
+  effortLevel: z.enum(["low", "medium", "high", "max"]).optional(),
   respectGitignore: z.boolean().optional(),
   syntaxHighlightingDisabled: z.boolean().optional(),
   prefersReducedMotion: z.boolean().optional(),

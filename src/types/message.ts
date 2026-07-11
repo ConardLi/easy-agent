@@ -46,6 +46,19 @@ export interface ThinkingBlock {
 }
 
 /**
+ * Redacted-thinking block returned when the model's internal reasoning
+ * is not surfaced to the user (e.g. when the redact-thinking beta is
+ * active). The encrypted `data` field must be echoed back to the API
+ * unchanged on the next turn — it is opaque to the client.
+ *
+ * Source reference: Anthropic beta `redact-thinking-2025-05-14`.
+ */
+export interface RedactedThinkingBlock {
+  type: "redacted_thinking";
+  data: string;
+}
+
+/**
  * Image content block. The shape mirrors Anthropic's `ImageBlockParam`
  * exactly so it can be embedded in a `MessageParam` and sent to the
  * Anthropic API verbatim (zero translation). The provider layer maps it
@@ -67,6 +80,7 @@ export type ContentBlock =
   | ToolUseBlock
   | ToolResultBlock
   | ThinkingBlock
+  | RedactedThinkingBlock
   | ImageBlock;
 
 // ─── Message Types ─────────────────────────────────────────────────
@@ -149,6 +163,42 @@ export interface StreamRetryEvent {
   category: string;
 }
 
+/**
+ * Stage 34: emitted when a thinking block starts streaming. Lets the
+ * UI show a "thinking…" indicator in real-time.
+ */
+export interface StreamThinkingStartEvent {
+  type: "thinking_start";
+}
+
+/**
+ * Stage 34: incremental thinking text delta (mirrors text_delta for
+ * text blocks). Batched at 30ms by the agentic loop / UI hook.
+ */
+export interface StreamThinkingDeltaEvent {
+  type: "thinking_delta";
+  thinking: string;
+}
+
+/**
+ * Stage 34: thinking block complete, carries the accumulated text and
+ * the cryptographic signature required for API replay.
+ */
+export interface StreamThinkingDoneEvent {
+  type: "thinking_done";
+  thinking: string;
+  signature?: string;
+}
+
+/**
+ * Stage 34: a redacted_thinking block was received (content opaque,
+ * echoed back to API as-is on next turn).
+ */
+export interface StreamRedactedThinkingEvent {
+  type: "redacted_thinking";
+  data: string;
+}
+
 export type StreamEvent =
   | StreamTextEvent
   | StreamToolUseStartEvent
@@ -156,4 +206,8 @@ export type StreamEvent =
   | StreamMessageStartEvent
   | StreamMessageDoneEvent
   | StreamErrorEvent
-  | StreamRetryEvent;
+  | StreamRetryEvent
+  | StreamThinkingStartEvent
+  | StreamThinkingDeltaEvent
+  | StreamThinkingDoneEvent
+  | StreamRedactedThinkingEvent;

@@ -796,6 +796,19 @@ export function useAgentSession({
               flushTimerRef.current = setTimeout(flushPendingText, 30);
             }
             break;
+          case "thinking_start":
+            // Stage 34: mirror source — during the thinking stream we only
+            // surface a spinner ("✻ Thinking…"), not the reasoning text.
+            // The finished thinking block lands in the committed assistant
+            // message and renders (folded) via ConversationView.
+            setSpinnerLabel("Thinking");
+            break;
+          case "thinking_delta":
+          case "thinking_done":
+          case "redacted_thinking":
+            // No live-text rendering (source shows thinking only once the
+            // block completes and is committed to the transcript).
+            break;
           case "tool_use_start": {
             // For the Agent tool: by the time tool_use_start fires the
             // agentTool body has either not started yet OR has already

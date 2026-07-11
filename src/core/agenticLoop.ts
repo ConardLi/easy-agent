@@ -71,6 +71,10 @@ export interface ToolExecutionResult {
 
 export type AgenticLoopEvent =
   | { type: "text"; text: string }
+  | { type: "thinking_start" }
+  | { type: "thinking_delta"; thinking: string }
+  | { type: "thinking_done"; thinking: string; signature?: string }
+  | { type: "redacted_thinking"; data: string }
   | { type: "tool_use_start"; id: string; name: string }
   | { type: "permission_request"; request: PermissionRequest }
   | {
@@ -751,6 +755,12 @@ export async function* query(
 
       switch (value.type) {
         case "text":
+          yield value;
+          break;
+        case "thinking_start":
+        case "thinking_delta":
+        case "thinking_done":
+        case "redacted_thinking":
           yield value;
           break;
         case "tool_use_start":

@@ -280,11 +280,20 @@ export async function* assembleGemini(
           currentThinking = { type: "thinking", thinking: "" };
           contentBlocks.push(currentThinking);
           currentText = null;
+          yield { type: "thinking_start" };
         }
         currentThinking.thinking += event.text;
+        yield { type: "thinking_delta", thinking: event.text };
         break;
       }
       case "tool_call": {
+        if (currentThinking) {
+          yield {
+            type: "thinking_done",
+            thinking: currentThinking.thinking,
+            signature: currentThinking.signature,
+          };
+        }
         currentText = null;
         currentThinking = null;
         const block: ToolUseBlock = {
@@ -300,6 +309,14 @@ export async function* assembleGemini(
         break;
       }
       case "message_end": {
+        if (currentThinking) {
+          yield {
+            type: "thinking_done",
+            thinking: currentThinking.thinking,
+            signature: currentThinking.signature,
+          };
+          currentThinking = null;
+        }
         rawStopReason = event.stop_reason;
         if (event.usage) {
           if (typeof event.usage.input_tokens === "number") usage.input_tokens = event.usage.input_tokens;

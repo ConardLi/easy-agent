@@ -40,6 +40,11 @@ import type {
   Usage,
 } from "../../../types/message.js";
 import { writeStreamDebug } from "../../../utils/streamDebug.js";
+import {
+  buildDefaultThinkingConfig,
+  getSessionEffortLevel,
+  type EffortLevel,
+} from "../../../utils/thinking.js";
 import { normalizeStopReason } from "./translateShared.js";
 import {
   buildGeminiContents,
@@ -70,6 +75,40 @@ function stripTrailingSlash(url: string): string {
   return url.replace(/\/+$/, "");
 }
 
+/**
+ * Map an app effort level to the OpenAI `reasoning_effort` value.
+ * App levels are low|medium|high|max; OpenAI accepts
+ * minimal|low|medium|high|xhigh, so `max` maps to `xhigh`.
+ * Source: doc/CURL_EXAMPLES.md §1–§2.
+ */
+function toOpenAIReasoningEffort(level: EffortLevel): string {
+  return level === "max" ? "xhigh" : level;
+}
+
+/**
+ * Map an app effort level to the Gemini `thinkingLevel` value.
+ * Gemini accepts minimal|low|medium|high (no xhigh/max), so `max` clamps
+ * to `high`. Source: doc/CURL_EXAMPLES.md §3.
+ */
+function toGeminiThinkingLevel(level: EffortLevel): string {
+  return level === "max" ? "high" : level;
+}
+
+/**
+ * Resolve the reasoning-effort string to send to an OpenAI-protocol provider.
+ * Precedence mirrors the Anthropic path: an explicit request/session effort
+ * wins; otherwise `/think off` (disabled) maps to the lowest ("minimal") so
+ * the toggle is observable, and the default (thinking on, no effort) sends
+ * nothing so the server applies its own reasoning default.
+ */
+function resolveOpenAIReasoningEffort(params: StreamRequestParams): string | undefined {
+  const effort = params.effortLevel ?? getSessionEffortLevel();
+  if (effort) return toOpenAIReasoningEffort(effort);
+  const thinkingCfg = params.thinking ?? buildDefaultThinkingConfig();
+  if (thinkingCfg.type === "disabled") return "minimal";
+  return undefined;
+}
+
 interface PreparedRequest {
   provider: ProviderType;
   url: string;
@@ -78,7 +117,7 @@ interface PreparedRequest {
 }
 
 /** Translate Anthropic-shaped params into a ready-to-fetch provider request. */
-function prepareRequest(profile: ModelProfile, params: StreamRequestParams): PreparedRequest {
+export function prepareRequest(profile: ModelProfile, params: StreamRequestParams): PreparedRequest {
   if (profile.protocol === "anthropic") {
     // Defensive: callers route anthropic elsewhere. Keep the type total.
     throw new Error("prepareRequest called with anthropic profile");
@@ -104,6 +143,28 @@ function prepareRequest(profile: ModelProfile, params: StreamRequestParams): Pre
     // exact thoughtSignature + id and thinking parts are not fabricated back
     // (llm-bridge mishandles both, breaking Gemini-3 multi/parallel tool turns).
     translated.contents = buildGeminiContents(params.messages);
+
+    // Stage 34: request-side thinking. Gemini expresses thinking via
+    // generationConfig.thinkingConfig — includeThoughts surfaces the
+    // `thought` parts. The effort level maps to `thinkingLevel`; the legacy
+    // numeric `thinkingBudget` is only used when an explicit budget is set
+    // (and never alongside thinkingLevel, which 400s per doc §3).
+    // Source: doc/CURL_EXAMPLES.md §3.
+    const thinkingCfg = params.thinking ?? buildDefaultThinkingConfig();
+    if (thinkingCfg.type !== "disabled" && !process.env.CLAUDE_CODE_DISABLE_THINKING) {
+      const genConfig =
+        (translated.generationConfig as Record<string, unknown>) ?? {};
+      const thinkingConfig: Record<string, unknown> = { includeThoughts: true };
+      const effort = params.effortLevel ?? getSessionEffortLevel();
+      if (effort) {
+        thinkingConfig.thinkingLevel = toGeminiThinkingLevel(effort);
+      } else if (thinkingCfg.type === "enabled" && thinkingCfg.budgetTokens) {
+        thinkingConfig.thinkingBudget = thinkingCfg.budgetTokens;
+      }
+      genConfig.thinkingConfig = thinkingConfig;
+      translated.generationConfig = genConfig;
+    }
+
     const base = stripTrailingSlash(profile.baseURL ?? DEFAULT_GEMINI_BASE_URL);
     const url = `${base}/models/${encodeURIComponent(profile.model)}:streamGenerateContent?alt=sse`;
     return {
@@ -122,16 +183,22 @@ function prepareRequest(profile: ModelProfile, params: StreamRequestParams): Pre
   const base = stripTrailingSlash(profile.baseURL ?? DEFAULT_OPENAI_BASE_URL);
   const path = profile.protocol === "openai-responses" ? "/responses" : "/chat/completions";
   const body: Record<string, unknown> = { ...translated, stream: true };
+  // Stage 34: request-side reasoning effort. Chat Completions takes a top-level
+  // `reasoning_effort` string; the Responses API takes a nested `reasoning.effort`.
+  // Source: doc/CURL_EXAMPLES.md §1–§2.
+  const reasoningEffort = resolveOpenAIReasoningEffort(params);
   if (profile.protocol === "openai-responses") {
     // Rebuild `input[]` from the universal IR so multi-turn tool calls keep
     // their function_call / function_call_output pairing (llm-bridge drops it).
     body.input = universalToOpenAIResponsesInput(universal);
+    if (reasoningEffort) body.reasoning = { effort: reasoningEffort };
   } else {
     // openai-chat: rebuild `messages[]` so tool results become `role:"tool"`
     // messages carrying tool_call_id (llm-bridge mis-emits these).
     body.messages = universalToOpenAIChatMessages(universal);
     // Ask for a final usage chunk so token accounting matches the Anthropic path.
     body.stream_options = { include_usage: true };
+    if (reasoningEffort) body.reasoning_effort = reasoningEffort;
   }
   return {
     provider,
@@ -188,6 +255,11 @@ export async function* streamViaProvider(
     url: prepared.url,
     messageCount: params.messages.length,
     toolNames: params.tools?.map((t) => t.name),
+    hasAuthHeader: Boolean(prepared.headers.authorization || prepared.headers["x-goog-api-key"]),
+    // Reasoning/thinking params actually placed on the wire (for /think + /effort verification).
+    reasoning_effort: prepared.body.reasoning_effort,
+    reasoning: prepared.body.reasoning,
+    thinkingConfig: (prepared.body.generationConfig as Record<string, unknown> | undefined)?.thinkingConfig,
   });
 
   let response = await fetch(prepared.url, {
@@ -321,12 +393,22 @@ export async function* streamViaProvider(
             currentThinking = { type: "thinking", thinking: "" };
             contentBlocks.push(currentThinking);
             currentText = null;
+            yield { type: "thinking_start" };
           }
-          currentThinking.thinking += event.delta.thinking;
+          const chunk = event.delta.thinking;
+          currentThinking.thinking += chunk;
+          yield { type: "thinking_delta", thinking: chunk };
         }
         break;
       }
       case "tool_call_start": {
+        if (currentThinking) {
+          yield {
+            type: "thinking_done",
+            thinking: currentThinking.thinking,
+            signature: currentThinking.signature,
+          };
+        }
         currentText = null;
         currentThinking = null;
         const block: ToolUseBlock = {
@@ -356,6 +438,14 @@ export async function* streamViaProvider(
         break;
       }
       case "message_end": {
+        if (currentThinking) {
+          yield {
+            type: "thinking_done",
+            thinking: currentThinking.thinking,
+            signature: currentThinking.signature,
+          };
+          currentThinking = null;
+        }
         rawStopReason = event.stop_reason;
         if (event.usage) {
           if (typeof event.usage.input_tokens === "number") {

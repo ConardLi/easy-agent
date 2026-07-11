@@ -6,6 +6,10 @@ import { classifyToolForCollapse, getCollapsedSummaryText } from "../utils/toolC
 import { Markdown } from "../markdown/Markdown.js";
 import { ResultLine } from "./ToolCard.js";
 import { renderInlineToolCard } from "./toolRenderers.js";
+import {
+  AssistantThinkingMessage,
+  AssistantRedactedThinkingMessage,
+} from "./AssistantThinkingMessage.js";
 import { theme, glyph } from "../theme.js";
 
 // Re-exported for back-compat: ToolResultInfo now lives (React-free) in
@@ -62,6 +66,8 @@ export function isInternalMessage(message: MessageParam): boolean {
   // prompt, but the user already sees the bubble + the assistant's
   // streaming reply, so the raw SKILL.md dump would just be noise here.
   if (content.startsWith("[skill_invocation:")) return true;
+  // Stage 34: the hidden ultrathink meta message (model-only nudge).
+  if (content.startsWith("[ultrathink]")) return true;
   // Stage 23: user-command invocations follow the same two-message pattern
   // as skills — a visible `<command-name>` bubble plus this hidden body that
   // carries the substituted prompt template to the model.
@@ -331,6 +337,21 @@ export function flattenConversation(
   const items: ConversationItem[] = [];
   let lastVisibleKind: VisibleItemKind | null = null;
 
+  // Stage 34: only the *current round's* thinking is shown; historical
+  // thinking is folded away (mirrors source's hidePastThinking /
+  // lastThinkingBlockId in Messages.tsx:455-477). We find the index of the
+  // last assistant message that carries a thinking/redacted_thinking block —
+  // thinking blocks in any earlier assistant message are hidden entirely
+  // (unless verbose, which shows everything for the Ctrl+O transcript).
+  let lastThinkingMessageIndex = -1;
+  messages.forEach((message, index) => {
+    if (message.role !== "assistant" || !Array.isArray(message.content)) return;
+    const hasThinking = (message.content as Array<{ type?: string }>).some(
+      (b) => b?.type === "thinking" || b?.type === "redacted_thinking",
+    );
+    if (hasThinking) lastThinkingMessageIndex = index;
+  });
+
   messages.forEach((message, index) => {
     if (isInternalMessage(message)) return;
 
@@ -405,7 +426,44 @@ export function flattenConversation(
           input?: Record<string, unknown>;
         }>;
         for (let j = 0; j < blocks.length; j++) {
-          const block = blocks[j];
+          const block = blocks[j] as {
+            type?: string;
+            text?: string;
+            thinking?: string;
+            id?: string;
+            name?: string;
+            input?: Record<string, unknown>;
+          };
+          // Stage 34: thinking / redacted_thinking blocks. Only the current
+          // round is shown by default; historical thinking is hidden unless
+          // verbose (Ctrl+O transcript) is on.
+          if (block?.type === "thinking") {
+            const showThinking = verbose || index === lastThinkingMessageIndex;
+            if (showThinking) {
+              items.push({
+                key: `a${index}-th${j}`,
+                element: (
+                  <AssistantThinkingMessage
+                    thinking={block.thinking ?? ""}
+                    verbose={verbose}
+                  />
+                ),
+              });
+              lastVisibleKind = "assistantText";
+            }
+            continue;
+          }
+          if (block?.type === "redacted_thinking") {
+            const showThinking = verbose || index === lastThinkingMessageIndex;
+            if (showThinking) {
+              items.push({
+                key: `a${index}-rth${j}`,
+                element: <AssistantRedactedThinkingMessage verbose={verbose} />,
+              });
+              lastVisibleKind = "assistantText";
+            }
+            continue;
+          }
           if (block?.type === "text" && block.text) {
             items.push({
               key: `a${index}-t${j}`,

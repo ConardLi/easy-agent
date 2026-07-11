@@ -38,6 +38,8 @@ export const BUILTIN_COMMAND_NAMES = new Set<string>([
   "allowed-tools",
   "allowed_tools",
   "memory",
+  "think",
+  "effort",
   "init",
   "exit",
   "quit",

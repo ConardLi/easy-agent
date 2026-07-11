@@ -20,12 +20,22 @@ import { streamViaProvider, collectViaProvider } from "./providers/providerStrea
 import type {
   AssistantMessage,
   ContentBlock,
+  RedactedThinkingBlock,
   StreamEvent,
   TextBlock,
   ThinkingBlock,
   ToolUseBlock,
   Usage,
 } from "../../types/message.js";
+import type { ThinkingConfig, EffortLevel } from "../../utils/thinking.js";
+import {
+  modelSupportsThinking,
+  modelSupportsAdaptiveThinking,
+  modelSupportsInterleavedThinking,
+  modelSupportsEffort,
+  buildDefaultThinkingConfig,
+  getSessionEffortLevel,
+} from "../../utils/thinking.js";
 import { writeStreamDebug } from "../../utils/streamDebug.js";
 import {
   classifyAPIError,
@@ -62,6 +72,19 @@ export interface StreamRequestParams {
    * foreground when unset — conservative for untagged paths.
    */
   querySource?: QuerySource;
+  /**
+   * Stage 34: extended thinking configuration.
+   * When undefined the layer uses the session/default config
+   * (`buildDefaultThinkingConfig()`). Pass `{ type: "disabled" }` to
+   * suppress thinking for background / internal calls (compaction, etc.).
+   */
+  thinking?: ThinkingConfig;
+  /**
+   * Stage 34: effort level for `output_config.effort`.
+   * Only honoured for Anthropic models that support it; ignored otherwise.
+   * Source: claude-code-source-code/src/utils/effort.ts
+   */
+  effortLevel?: EffortLevel;
 }
 
 // ─── Streaming Result ──────────────────────────────────────────────
@@ -96,20 +119,95 @@ async function* streamOnce(
   const model = profile.model;
   const maxTokens = profile.maxTokens ?? params.maxTokens ?? DEFAULT_MAX_TOKENS;
 
+  // ─── Stage 34: thinking + interleaved beta + effort ───────────────
+  const thinkingCfg: ThinkingConfig =
+    params.thinking ?? buildDefaultThinkingConfig();
+  const hasThinking =
+    thinkingCfg.type !== "disabled" &&
+    !process.env.CLAUDE_CODE_DISABLE_THINKING &&
+    modelSupportsThinking(model);
+
+  let thinkingParam: Record<string, unknown> | undefined;
+  if (hasThinking) {
+    if (
+      !process.env.CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING &&
+      modelSupportsAdaptiveThinking(model)
+    ) {
+      thinkingParam = { type: "adaptive" };
+    } else {
+      let budget =
+        thinkingCfg.type === "enabled" && thinkingCfg.budgetTokens
+          ? thinkingCfg.budgetTokens
+          : maxTokens - 1;
+      budget = Math.min(maxTokens - 1, budget);
+      thinkingParam = { type: "enabled", budget_tokens: budget };
+    }
+  }
+
+  const betaHeaders: string[] = [];
+  if (hasThinking && modelSupportsInterleavedThinking(model) && !process.env.DISABLE_INTERLEAVED_THINKING) {
+    betaHeaders.push("interleaved-thinking-2025-05-14");
+  }
+
+  const effortLevel = params.effortLevel ?? getSessionEffortLevel();
+  let outputConfig: Record<string, unknown> | undefined;
+  if (effortLevel && modelSupportsEffort(model)) {
+    outputConfig = { effort: effortLevel };
+    betaHeaders.push("effort-2025-11-24");
+  }
+
   // Build the API request
-  const requestParams: Anthropic.MessageCreateParamsStreaming = {
+  // When thinking is active, temperature must NOT be set (API requirement).
+  // Endpoint identity = baseURL + model; thinking signatures are bound to the
+  // endpoint that issued them, so a change strips them (mirrors source's
+  // stripSignatureBlocks on credential change).
+  const endpointKey = `${profile.baseURL ?? ""}|${model}`;
+  const normalizedMessages = normalizeMessagesForAPI(
+    params.messages,
+    model,
+    thinkingParam !== undefined,
+    endpointKey,
+  );
+  const baseParams = {
     model,
     max_tokens: maxTokens,
-    messages: params.messages,
-    stream: true,
+    messages: normalizedMessages,
+    stream: true as const,
     ...(params.system && { system: params.system }),
     ...(params.tools && params.tools.length > 0 && { tools: params.tools }),
     ...(params.toolChoice && { tool_choice: params.toolChoice }),
   };
+  // Pass thinking / output_config as extra body entries to avoid strict-SDK
+  // type conflicts (they are new beta params not yet in the SDK types in all
+  // versions). The SDK forwards unknown top-level keys as-is.
+  const requestParams: Anthropic.MessageCreateParamsStreaming = baseParams as unknown as Anthropic.MessageCreateParamsStreaming;
+  const extraBody: Record<string, unknown> = {};
+  if (thinkingParam) extraBody.thinking = thinkingParam;
+  if (outputConfig) extraBody.output_config = outputConfig;
+  Object.assign(requestParams, extraBody);
+
+  // Beta features are enabled via the `anthropic-beta` request header
+  // (comma-joined), NOT a body field. Merge with any profile headers.
+  const requestHeaders: Record<string, string> = {};
+  if (betaHeaders.length > 0) {
+    requestHeaders["anthropic-beta"] = betaHeaders.join(",");
+  }
+
+  // Log the thinking/effort params actually placed on the wire so `/think`
+  // and `/effort` can be verified (EASY_AGENT_DEBUG_STREAM=1 → stream-debug.log).
+  writeStreamDebug("anthropic_request", {
+    model,
+    baseURL: profile.baseURL,
+    thinking: thinkingParam,
+    output_config: outputConfig,
+    betas: betaHeaders,
+    hasApiKey: Boolean(profile.apiKey || process.env.ANTHROPIC_AUTH_TOKEN),
+  });
 
   // Initiate the stream
   const stream = client.messages.stream(requestParams, {
     signal: params.signal,
+    ...(Object.keys(requestHeaders).length > 0 ? { headers: requestHeaders } : {}),
   });
 
   // State accumulators — mirrors the pattern in claude.ts.
@@ -204,6 +302,15 @@ async function* streamOnce(
               type: "thinking",
               thinking: tb.thinking ?? "",
             };
+            yield { type: "thinking_start" };
+          } else if ((event.content_block.type as string) === "redacted_thinking") {
+            const rtb = event.content_block as { data?: string };
+            const rtBlock: RedactedThinkingBlock = {
+              type: "redacted_thinking",
+              data: rtb.data ?? "",
+            };
+            contentBlocks[index] = rtBlock;
+            yield { type: "redacted_thinking", data: rtBlock.data };
           } else if (event.content_block.type === "tool_use") {
             const block = event.content_block;
             // Some providers pre-populate the full input object on start
@@ -238,13 +345,15 @@ async function* streamOnce(
           } else if ((delta as { type: string }).type === "thinking_delta") {
             const block = contentBlocks[index] as ThinkingBlock | undefined;
             if (block && block.type === "thinking") {
-              block.thinking += (delta as unknown as { thinking: string }).thinking ?? "";
+              const chunk = (delta as unknown as { thinking: string }).thinking ?? "";
+              block.thinking += chunk;
+              yield { type: "thinking_delta", thinking: chunk };
             }
           } else if ((delta as { type: string }).type === "signature_delta") {
             const block = contentBlocks[index] as ThinkingBlock | undefined;
             if (block && block.type === "thinking") {
-              const sig = (delta as unknown as { signature: string }).signature;
-              block.signature = (block.signature ?? "") + (sig ?? "");
+              const sig = (delta as unknown as { signature: string }).signature ?? "";
+              block.signature = (block.signature ?? "") + sig;
             }
           } else if (delta.type === "input_json_delta") {
             // Accumulate tool input JSON **per block index** — blocks may
@@ -275,6 +384,13 @@ async function* streamOnce(
               // rather than silently pretending the call had no input.
               block.input = { _raw: accumulated };
             }
+          }
+          if (block && block.type === "thinking") {
+            yield {
+              type: "thinking_done",
+              thinking: (block as ThinkingBlock).thinking,
+              signature: (block as ThinkingBlock).signature,
+            };
           }
           toolInputJsonByIndex.delete(index);
           break;
@@ -450,12 +566,16 @@ export async function createMessage(
   // failure resilience as streaming, via the shared backoff policy. These are
   // background work — nobody is blocking on the result — so a 529 capacity
   // overload bails fast instead of amplifying load.
+  // Background single-shot calls never enable thinking, so normalize the
+  // history with thinkingOn=false: this strips signatures + trailing/orphan
+  // thinking blocks that would otherwise 400 a thinking-disabled request.
+  const bgMessages = normalizeMessagesForAPI(params.messages, model, false);
   const response = await callWithRetry(
     () =>
       client.messages.create({
         model,
         max_tokens: maxTokens,
-        messages: params.messages,
+        messages: bgMessages,
         ...(params.system && { system: params.system }),
         ...(params.tools && params.tools.length > 0 && { tools: params.tools }),
         ...(params.toolChoice && { tool_choice: params.toolChoice }),
@@ -477,6 +597,12 @@ export async function createMessage(
         name: block.name,
         input: block.input as Record<string, unknown>,
       };
+    } else if (block.type === "thinking") {
+      const tb = block as unknown as { thinking: string; signature?: string };
+      return { type: "thinking" as const, thinking: tb.thinking, signature: tb.signature };
+    } else if ((block.type as string) === "redacted_thinking") {
+      const rtb = block as unknown as { data: string };
+      return { type: "redacted_thinking" as const, data: rtb.data };
     }
     return { type: "text" as const, text: "" };
   });
@@ -498,4 +624,122 @@ export async function createMessage(
     usage: usageResult,
     stopReason: response.stop_reason ?? "end_turn",
   };
+}
+
+// ─── Stage 34: Historical normalization pipeline ──────────────────────
+//
+// Mirrors the post-processing chain in source's normalizeMessagesForAPI
+// (claude-code-source-code/src/utils/messages.ts:2008-2348) that prevents
+// 400 errors when thinking blocks are in the conversation history.
+//
+// We only implement the subset needed to prevent the common errors:
+//   1. Strip trailing thinking/redacted_thinking blocks from the last
+//      assistant message (API rejects them if they trail the content).
+//   2. Filter out "orphan" thinking-only assistant messages (a message
+//      that contains ONLY thinking/redacted_thinking blocks and no text
+//      or tool_use — the API treats this as empty and errors).
+//   3. When thinking is disabled in the current turn, strip signatures
+//      from thinking blocks so the API doesn't try to validate them.
+
+function isThinkingOnlyContent(content: unknown): boolean {
+  if (!Array.isArray(content)) return false;
+  if (content.length === 0) return false;
+  return content.every(
+    (b: unknown) =>
+      typeof b === "object" &&
+      b !== null &&
+      ((b as { type?: string }).type === "thinking" ||
+        (b as { type?: string }).type === "redacted_thinking"),
+  );
+}
+
+// Module-level memo of the endpoint identity that issued the thinking
+// signatures currently in history. When the active endpoint changes
+// (different baseURL / model), the stored signatures are invalid — the API
+// rejects them with a 400 — so we strip them. Mirrors source's
+// stripSignatureBlocks-on-credential-change behavior.
+let lastEndpointKey: string | undefined;
+
+/**
+ * Normalize the conversation history before sending to the Anthropic API.
+ *
+ * @param messages     Raw MessageParam array from the session store.
+ * @param model        The target model (unused today, kept for future routing).
+ * @param thinkingOn   Whether thinking is enabled in the current request.
+ *                     When false we strip signature fields from thinking blocks
+ *                     to avoid the API rejecting stale cryptographic signatures.
+ * @param endpointKey  Identity of the active endpoint (baseURL + model). When it
+ *                     differs from the previous request, thinking signatures are
+ *                     stripped because they're bound to the issuing endpoint.
+ */
+export function normalizeMessagesForAPI(
+  messages: MessageParam[],
+  _model: string,
+  thinkingOn: boolean,
+  endpointKey?: string,
+): MessageParam[] {
+  let normalized = messages.slice();
+
+  // Detect an endpoint switch: signatures from the previous endpoint are
+  // invalid on the new one, so strip them this request.
+  const endpointChanged =
+    endpointKey !== undefined &&
+    lastEndpointKey !== undefined &&
+    endpointKey !== lastEndpointKey;
+  if (endpointKey !== undefined) {
+    lastEndpointKey = endpointKey;
+  }
+  const stripSignatures = !thinkingOn || endpointChanged;
+
+  // 1) Filter orphan thinking-only assistant messages
+  normalized = normalized.filter((msg) => {
+    if (msg.role !== "assistant") return true;
+    if (isThinkingOnlyContent(msg.content)) return false;
+    return true;
+  });
+
+  // 2) Strip trailing thinking/redacted_thinking blocks from the last
+  //    assistant message. The API rejects an assistant turn if its last
+  //    content block is a thinking block with no following text/tool_use.
+  const last = normalized[normalized.length - 1];
+  if (last && last.role === "assistant" && Array.isArray(last.content)) {
+    const content = last.content as unknown as Array<{ type?: string }>;
+    let trimIndex = content.length - 1;
+    while (
+      trimIndex >= 0 &&
+      (content[trimIndex]?.type === "thinking" ||
+        content[trimIndex]?.type === "redacted_thinking")
+    ) {
+      trimIndex--;
+    }
+    if (trimIndex < content.length - 1) {
+      const trimmed = trimIndex >= 0
+        ? content.slice(0, trimIndex + 1)
+        : [{ type: "text", text: "[No message content]" }];
+      normalized = [
+        ...normalized.slice(0, -1),
+        { ...last, content: trimmed as unknown as MessageParam["content"] },
+      ];
+    }
+  }
+
+  // 3) Strip signatures from history thinking blocks when thinking is off
+  //    OR the endpoint changed — the API validates signatures against the
+  //    issuing endpoint/key and rejects stale ones with a 400.
+  if (stripSignatures) {
+    normalized = normalized.map((msg) => {
+      if (msg.role !== "assistant" || !Array.isArray(msg.content)) return msg;
+      const blocks = msg.content as unknown as Array<Record<string, unknown>>;
+      const newContent = blocks.map((block) => {
+        if (block["type"] === "thinking" && block["signature"] !== undefined) {
+          const { signature: _sig, ...rest } = block;
+          return rest;
+        }
+        return block;
+      });
+      return { ...msg, content: newContent as unknown as MessageParam["content"] };
+    });
+  }
+
+  return normalized;
 }

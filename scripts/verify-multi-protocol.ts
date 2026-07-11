@@ -469,6 +469,117 @@ async function main(): Promise<void> {
     globalThis.fetch = originalFetch;
   }
 
+  // ── [10] Reasoning params on the wire (/effort + /think) ──────────────────
+  section("[10] /effort + /think reach the provider request body (Stage 34)");
+  {
+    const { setSessionEffortLevel, setSessionThinkingConfig } = await import(
+      "../src/utils/thinking.js"
+    );
+    const { streamViaProvider: svp2 } = await import(
+      "../src/services/api/providers/providerStream.js"
+    );
+
+    let capturedBody: Record<string, unknown> = {};
+    function capture(chunk: string): void {
+      globalThis.fetch = (async (_url: string, init: { body: string }) => {
+        capturedBody = JSON.parse(init.body) as Record<string, unknown>;
+        return new Response(sseStream([chunk]), {
+          status: 200,
+          headers: { "content-type": "text/event-stream" },
+        });
+      }) as typeof fetch;
+    }
+    const chatDone =
+      `data: {"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}]}\n\n` + `data: [DONE]\n\n`;
+    const respDone = `data: [DONE]\n\n`;
+    const gemDone = `data: {"candidates":[{"content":{"parts":[{"text":"ok"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":1,"candidatesTokenCount":1}}\n\n`;
+    async function run(profile: Record<string, unknown>, chunk: string): Promise<void> {
+      capture(chunk);
+      const gen = svp2(profile as never, {
+        messages: [{ role: "user", content: "hi" }],
+        model: String(profile.id),
+      } as never);
+      let n = await gen.next();
+      while (!n.done) n = await gen.next();
+    }
+    const chat = { id: "gpt5", protocol: "openai-chat", model: "gpt-5.5", apiKey: "x" };
+    const resp = { id: "gpt5r", protocol: "openai-responses", model: "gpt-5.5", apiKey: "x" };
+    const gem = { id: "gemini", protocol: "gemini", model: "gemini-3.5-flash", apiKey: "x" };
+
+    try {
+      // Default (no /effort, thinking on) → server decides; no explicit param.
+      setSessionEffortLevel(undefined);
+      setSessionThinkingConfig(undefined);
+      await run(chat, chatDone);
+      assert(capturedBody.reasoning_effort === undefined, "openai-chat: default sends no reasoning_effort");
+
+      // /effort high → reasoning_effort: "high".
+      setSessionEffortLevel("high");
+      await run(chat, chatDone);
+      assert(capturedBody.reasoning_effort === "high", "openai-chat: /effort high → reasoning_effort:high");
+
+      // /effort max → clamps to OpenAI "xhigh".
+      setSessionEffortLevel("max");
+      await run(chat, chatDone);
+      assert(capturedBody.reasoning_effort === "xhigh", "openai-chat: /effort max → reasoning_effort:xhigh");
+
+      // openai-responses uses the nested reasoning.effort field.
+      setSessionEffortLevel("medium");
+      await run(resp, respDone);
+      assert(
+        (capturedBody.reasoning as { effort?: string } | undefined)?.effort === "medium",
+        "openai-responses: /effort medium → reasoning.effort:medium",
+      );
+
+      // /think off → OpenAI "minimal" (lowest, observable toggle).
+      setSessionEffortLevel(undefined);
+      setSessionThinkingConfig({ type: "disabled" });
+      await run(chat, chatDone);
+      assert(capturedBody.reasoning_effort === "minimal", "openai-chat: /think off → reasoning_effort:minimal");
+
+      // Gemini /effort high → thinkingLevel (NOT the deprecated thinkingBudget).
+      setSessionEffortLevel("high");
+      setSessionThinkingConfig(undefined);
+      await run(gem, gemDone);
+      const gcfg = (capturedBody.generationConfig as { thinkingConfig?: Record<string, unknown> } | undefined)
+        ?.thinkingConfig;
+      assert(gcfg?.thinkingLevel === "high", "gemini: /effort high → thinkingConfig.thinkingLevel:high");
+      assert(gcfg?.thinkingBudget === undefined, "gemini: thinkingLevel not mixed with thinkingBudget (avoids 400)");
+
+      // Gemini /think off → no thinkingConfig at all.
+      setSessionEffortLevel(undefined);
+      setSessionThinkingConfig({ type: "disabled" });
+      await run(gem, gemDone);
+      assert(
+        (capturedBody.generationConfig as { thinkingConfig?: unknown } | undefined)?.thinkingConfig ===
+          undefined,
+        "gemini: /think off → no thinkingConfig",
+      );
+    } finally {
+      setSessionEffortLevel(undefined);
+      setSessionThinkingConfig(undefined);
+      globalThis.fetch = originalFetch;
+    }
+  }
+
+  // ── [11] Anthropic custom-endpoint client (baseURL /v1 + keyless) ─────────
+  section("[11] Anthropic baseURL normalization + keyless custom endpoint");
+  {
+    const { normalizeAnthropicBaseURL } = await import("../src/services/api/client.js");
+    assert(
+      normalizeAnthropicBaseURL("https://token.mmh1.top/v1") === "https://token.mmh1.top",
+      "strips a trailing /v1 (SDK re-adds /v1/messages → no double /v1)",
+    );
+    assert(
+      normalizeAnthropicBaseURL("https://api.minimaxi.com/anthropic") === "https://api.minimaxi.com/anthropic",
+      "leaves a non-/v1 baseURL untouched (MiniMax stays correct)",
+    );
+    assert(
+      normalizeAnthropicBaseURL("https://host/v1/") === "https://host",
+      "strips trailing slash then /v1",
+    );
+  }
+
   await fs.rm(tmp, { recursive: true, force: true });
 
   console.log(`\n${fail === 0 ? "✅" : "❌"} ${pass} passed, ${fail} failed`);

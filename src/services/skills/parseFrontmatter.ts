@@ -130,12 +130,18 @@ export function normalizeFrontmatter(
 ): SkillFrontmatter {
   const allowedTools = asStringArray(raw["allowed-tools"] ?? raw["allowedTools"]);
   const paths = asStringArray(raw["paths"]);
+  const effortRaw = asString(raw["effort"])?.toLowerCase();
+  const effort =
+    effortRaw === "low" || effortRaw === "medium" || effortRaw === "high" || effortRaw === "max"
+      ? effortRaw
+      : undefined;
   return {
     name: asString(raw["name"]),
     description: asString(raw["description"]),
     when_to_use: asString(raw["when_to_use"] ?? raw["whenToUse"]),
     allowedTools,
     argumentHint: asString(raw["argument-hint"] ?? raw["argumentHint"]),
+    effort,
     disableModelInvocation: asBoolean(
       raw["disable-model-invocation"] ?? raw["disableModelInvocation"],
     ),

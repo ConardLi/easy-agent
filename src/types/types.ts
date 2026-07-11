@@ -30,6 +30,12 @@ export interface SkillFrontmatter {
   allowedTools: string[];
   /** UI hint for arguments (e.g. `<file-or-dir>`). */
   argumentHint?: string;
+  /**
+   * Stage 34: reasoning-effort level (maps to output_config.effort for
+   * Anthropic). When a skill declares `effort:`, invoking it sets the
+   * session effort. Undefined leaves the session/model default in place.
+   */
+  effort?: "low" | "medium" | "high" | "max";
   /** When true, skill is hidden from the AI listing. User can still /name. */
   disableModelInvocation: boolean;
   /**

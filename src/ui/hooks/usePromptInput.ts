@@ -11,6 +11,10 @@ import { readClipboardImage } from "../utils/screenshotClipboard.js";
 import { parsePastedImagePath, readImageAsBlock } from "../../tools/imageUtils.js";
 import { addPastedImage, imageRefToken } from "../../core/pastedImages.js";
 import type { ImageBlock } from "../../types/message.js";
+import {
+  buildDefaultThinkingConfig,
+  getSessionEffortLevel,
+} from "../../utils/thinking.js";
 
 export interface ModeSuggestion {
   key: string;
@@ -79,6 +83,8 @@ const BUILTIN_COMMANDS: CommandSuggestion[] = [
   { name: "/cost", description: "Show session token usage" },
   { name: "/model", description: "Inspect current model or override it for this session" },
   { name: "/mode", description: "Inspect or switch permission mode (default/plan/auto)" },
+  { name: "/think", description: "Control extended thinking (on/off/<budget>)" },
+  { name: "/effort", description: "Set reasoning effort (low/medium/high/max, Anthropic)" },
   { name: "/tasks", description: "Switch task tracking system (task=persistent V2, todo=session V1)" },
   { name: "/mcp", description: "Inspect / reconnect MCP servers" },
   { name: "/skills", description: "List loaded skills (user + project scope)" },
@@ -110,6 +116,22 @@ const MODE_OPTIONS: { mode: PermissionMode; description: string }[] = [
 const TASK_MODE_OPTIONS: { mode: TaskMode; description: string }[] = [
   { mode: "task", description: "Persistent task graph (Task V2) — default" },
   { mode: "todo", description: "Session-memory todo list (TodoWrite V1)" },
+];
+
+// Stage 34: extended-thinking on/off selector (arrow-navigable like /mode).
+// `/think <budget>` typed directly still works for an explicit token budget.
+const THINK_OPTIONS: { value: string; description: string }[] = [
+  { value: "on", description: "Enable extended thinking (adaptive)" },
+  { value: "off", description: "Disable extended thinking" },
+];
+
+// Stage 34: reasoning-effort selector (Anthropic). `auto` clears the override.
+const EFFORT_OPTIONS: { value: string; description: string }[] = [
+  { value: "low", description: "Quick, minimal reasoning overhead" },
+  { value: "medium", description: "Balanced reasoning" },
+  { value: "high", description: "Comprehensive, deeper reasoning" },
+  { value: "max", description: "Maximum reasoning (Opus 4.6 only)" },
+  { value: "auto", description: "Clear the override (model default)" },
 ];
 
 // Max suggestions shown at once. Must comfortably exceed the built-in count
@@ -208,6 +230,8 @@ export function usePromptInput({
   const [selectedCommandIndex, setSelectedCommandIndex] = useState(-1);
   const [selectedModeIndex, setSelectedModeIndex] = useState(-1);
   const [selectedTaskModeIndex, setSelectedTaskModeIndex] = useState(-1);
+  const [selectedThinkIndex, setSelectedThinkIndex] = useState(-1);
+  const [selectedEffortIndex, setSelectedEffortIndex] = useState(-1);
   const [selectedFileIndex, setSelectedFileIndex] = useState(0);
   const [selectedPermissionIndex, setSelectedPermissionIndex] = useState(0);
 
@@ -746,6 +770,76 @@ export function usePromptInput({
       }
     }
 
+    // Extended-thinking selector: same arrow/Enter/number UX as /mode.
+    if (showThinkSelector) {
+      if (key.escape) {
+        setInputValue("");
+        setSelectedThinkIndex(-1);
+        return;
+      }
+      if (key.upArrow) {
+        setSelectedThinkIndex((prev) => (prev <= 0 ? THINK_OPTIONS.length - 1 : prev - 1));
+        return;
+      }
+      if (key.downArrow) {
+        setSelectedThinkIndex((prev) => (prev >= THINK_OPTIONS.length - 1 ? 0 : prev + 1));
+        return;
+      }
+      if (key.return && selectedThinkIndex >= 0) {
+        const selected = THINK_OPTIONS[selectedThinkIndex];
+        if (selected) {
+          setInputValue("");
+          setSelectedThinkIndex(-1);
+          void onSubmit(`/think ${selected.value}`);
+          return;
+        }
+      }
+      if (input === "1" || input === "2") {
+        const selected = THINK_OPTIONS[Number(input) - 1];
+        if (selected) {
+          setInputValue("");
+          setSelectedThinkIndex(-1);
+          void onSubmit(`/think ${selected.value}`);
+          return;
+        }
+      }
+    }
+
+    // Reasoning-effort selector: arrow/Enter/number UX; 5 options (1-5).
+    if (showEffortSelector) {
+      if (key.escape) {
+        setInputValue("");
+        setSelectedEffortIndex(-1);
+        return;
+      }
+      if (key.upArrow) {
+        setSelectedEffortIndex((prev) => (prev <= 0 ? EFFORT_OPTIONS.length - 1 : prev - 1));
+        return;
+      }
+      if (key.downArrow) {
+        setSelectedEffortIndex((prev) => (prev >= EFFORT_OPTIONS.length - 1 ? 0 : prev + 1));
+        return;
+      }
+      if (key.return && selectedEffortIndex >= 0) {
+        const selected = EFFORT_OPTIONS[selectedEffortIndex];
+        if (selected) {
+          setInputValue("");
+          setSelectedEffortIndex(-1);
+          void onSubmit(`/effort ${selected.value}`);
+          return;
+        }
+      }
+      if (/^[1-5]$/.test(input)) {
+        const selected = EFFORT_OPTIONS[Number(input) - 1];
+        if (selected) {
+          setInputValue("");
+          setSelectedEffortIndex(-1);
+          void onSubmit(`/effort ${selected.value}`);
+          return;
+        }
+      }
+    }
+
     // No palette / selector claimed the key — hand it to the line editor
     // (cursor movement, word/line kills, multi-line, history, submit).
     textInput.handleKey(input, key);
@@ -765,6 +859,24 @@ export function usePromptInput({
     const show = trimmed === "/tasks" || trimmed === "/tasks ";
     if (!show) {
       setSelectedTaskModeIndex(-1);
+    }
+    return show;
+  }, [inputValue]);
+
+  const showThinkSelector = useMemo(() => {
+    const trimmed = inputValue.trim().toLowerCase();
+    const show = trimmed === "/think" || trimmed === "/think ";
+    if (!show) {
+      setSelectedThinkIndex(-1);
+    }
+    return show;
+  }, [inputValue]);
+
+  const showEffortSelector = useMemo(() => {
+    const trimmed = inputValue.trim().toLowerCase();
+    const show = trimmed === "/effort" || trimmed === "/effort ";
+    if (!show) {
+      setSelectedEffortIndex(-1);
     }
     return show;
   }, [inputValue]);
@@ -815,7 +927,12 @@ export function usePromptInput({
     return ranked.map((r) => r.cmd).slice(0, MAX_SUGGESTIONS);
   }, [inputValue, extraCommands]);
 
-  const showCommandSuggestions = filteredCommands.length > 0 && !showModeSelector && !showTaskModeSelector;
+  const showCommandSuggestions =
+    filteredCommands.length > 0 &&
+    !showModeSelector &&
+    !showTaskModeSelector &&
+    !showThinkSelector &&
+    !showEffortSelector;
 
   useEffect(() => {
     if (!hasPermissionPrompt && selectedPermissionIndex !== 0) {
@@ -861,6 +978,30 @@ export function usePromptInput({
     }));
   }, [showTaskModeSelector, taskMode, selectedTaskModeIndex]);
 
+  const thinkSuggestions = useMemo(() => {
+    if (!showThinkSelector) return [];
+    const currentOn = buildDefaultThinkingConfig().type !== "disabled";
+    return THINK_OPTIONS.map((opt, i) => ({
+      key: String(i + 1),
+      mode: opt.value,
+      description: opt.description,
+      isCurrent: (opt.value === "on") === currentOn,
+      isSelected: i === selectedThinkIndex,
+    }));
+  }, [showThinkSelector, selectedThinkIndex]);
+
+  const effortSuggestions = useMemo(() => {
+    if (!showEffortSelector) return [];
+    const current = getSessionEffortLevel();
+    return EFFORT_OPTIONS.map((opt, i) => ({
+      key: String(i + 1),
+      mode: opt.value,
+      description: opt.description,
+      isCurrent: opt.value === "auto" ? current === undefined : opt.value === current,
+      isSelected: i === selectedEffortIndex,
+    }));
+  }, [showEffortSelector, selectedEffortIndex]);
+
   const fileSuggestions: FileSuggestion[] = useMemo(() => {
     if (!showFileSuggestions) {
       if (selectedFileIndex !== 0) setSelectedFileIndex(0);
@@ -878,6 +1019,8 @@ export function usePromptInput({
     commandSuggestions,
     modeSuggestions,
     taskModeSuggestions,
+    thinkSuggestions,
+    effortSuggestions,
     fileSuggestions,
     selectedPermissionIndex,
     queued,

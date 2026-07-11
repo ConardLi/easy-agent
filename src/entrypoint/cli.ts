@@ -323,6 +323,27 @@ Settings keys (stage 25 — in ~/.easy-agent/settings.json or <cwd>/.easy-agent/
     setReducedMotion(
       (await readMergedBooleanSetting(process.cwd(), "prefersReducedMotion").catch(() => undefined)) === true,
     );
+
+    // Stage 34: seed extended-thinking defaults from settings.json.
+    //   - alwaysThinkingEnabled: false → thinking off by default this session
+    //   - effortLevel: default output_config.effort for Anthropic models
+    const { loadSettingSources, getScalarSetting } = await import("../config/sources.js");
+    const { configureThinkingDefaults } = await import("../utils/thinking.js");
+    try {
+      const sources = await loadSettingSources(process.cwd());
+      const alwaysThinkingEnabled = getScalarSetting<boolean>(sources, "alwaysThinkingEnabled", {
+        predicate: (v) => typeof v === "boolean",
+      });
+      const effortLevel = getScalarSetting<string>(sources, "effortLevel", {
+        predicate: (v) => v === "low" || v === "medium" || v === "high" || v === "max",
+      });
+      configureThinkingDefaults({
+        ...(alwaysThinkingEnabled !== undefined ? { alwaysThinkingEnabled } : {}),
+        ...(effortLevel !== undefined ? { effortLevel: effortLevel as "low" | "medium" | "high" | "max" } : {}),
+      });
+    } catch {
+      // Non-fatal — thinking falls back to its adaptive default.
+    }
   }
 
   // Stage 28: headless / print mode forks here — AFTER the shared setup
