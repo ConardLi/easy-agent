@@ -24,11 +24,11 @@ Core goals:
 
 ## Project Status
 
-**Current stage:** Stage 34 — Extended Thinking, next
+**Current stage:** Stage 35 — Plugins and Marketplace, next
 
-The implementation track has completed through Stage 33, including the CLI, streaming communication, tool execution, terminal UI, session orchestration, context management, MCP, skills, sandboxing, sub-agents, background execution, Agent Teams, hooks, output styles, user commands, rendering upgrades, unified configuration, file history, resilience, headless print mode, classifier-driven Auto Mode, multi-provider streaming, the core-tool expansion for Web, MultiEdit, MCP resources, and PowerShell, multimodal image input, and the expanded built-in command set. Stage 34 is the next planned area: Extended Thinking controls and display.
+The implementation track has completed through Stage 34, including the CLI, streaming communication, tool execution, terminal UI, session orchestration, context management, MCP, skills, sandboxing, sub-agents, background execution, Agent Teams, hooks, output styles, user commands, rendering upgrades, unified configuration, file history, resilience, headless print mode, classifier-driven Auto Mode, multi-provider streaming, the core-tool expansion for Web, MultiEdit, MCP resources, and PowerShell, multimodal image input, the expanded built-in command set, and Extended Thinking controls and display. Stage 35 is the next planned area: Plugins and Marketplace.
 
-The single-file `step/` snapshots now cover Stages 1–33, so the completed implementation chapters can be studied from focused standalone files as well as from the main source tree.
+The single-file `step/` snapshots now cover Stages 1–34, so the completed implementation chapters can be studied from focused standalone files as well as from the main source tree.
 
 Easy Agent should currently be understood as a serious open-source rebuild in progress rather than a finished end-user product.
 
@@ -127,7 +127,7 @@ The project follows a 37-phase roadmap designed to recreate the full Claude Code
 | 31 | Core tool expansion: Web, MultiEdit, MCP resources, PowerShell | [`step/step31.js`](./step/step31.js) | ✅ Done |
 | 32 | Multimodal input: images and screenshots | [`step/step32.js`](./step/step32.js) | ✅ Done |
 | 33 | Built-in command completion | [`step/step33.js`](./step/step33.js) | ✅ Done |
-| 34 | Extended Thinking control and display | `planned` | ⏳ Planned |
+| 34 | Extended Thinking control and display | [`step/step34.js`](./step/step34.js) | ✅ Done |
 | 35 | Plugins and marketplace | `planned` | ⏳ Planned |
 | 36 | Packaging, publishing, and documentation | `planned` | ⏳ Planned |
 
@@ -135,9 +135,9 @@ The [`easy-agent/step/`](./step/) directory contains tutorial-friendly milestone
 
 Current implementation notes:
 
-- Stage 32 is complete in source, article track, and the step snapshot series.
 - Stage 33 is complete in source, article track, and the step snapshot series.
-- Stage 34 Extended Thinking is next; it will add request-side thinking controls, budget settings, streaming thinking events, and terminal display affordances.
+- Stage 34 is complete with three-state thinking controls, provider-aware requests and events, safe history replay, effort controls, and folded terminal display.
+- Stage 35 Plugins and Marketplace is next; it will unify the existing extension points into installable, distributable packages.
 
 ## What Easy Agent Is — and Is Not
 
@@ -236,9 +236,9 @@ agent --dump-system-prompt
 
 The next major milestones are:
 
-1. add Extended Thinking controls and UI in Stage 34
-2. continue with Plugins and Marketplace in Stage 35
-3. close packaging, publishing, and documentation work in Stage 36
+1. build Plugins and Marketplace in Stage 35
+2. close packaging, publishing, and documentation work in Stage 36
+3. complete the remaining acceptance and release checks across the implementation track
 
 ## Contribution Policy
 

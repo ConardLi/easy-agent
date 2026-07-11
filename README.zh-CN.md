@@ -24,11 +24,11 @@ Easy Agent 的目标，是成为一个严肃的、可持续演进的、本地 Co
 
 ## 当前状态
 
-**当前阶段：** 阶段 34 —— Extended Thinking，下一阶段
+**当前阶段：** 阶段 35 —— Plugins 与 Marketplace，下一阶段
 
-当前实现主线已经完成到阶段 33，包括 CLI、流式通信、工具执行、终端 UI、会话编排、上下文管理、MCP、Skills、Sandbox、Sub-Agent、后台执行、Agent Teams、Hooks、Output Styles、用户命令、渲染体验升级、统一配置、文件历史、错误韧性、管道模式、AI 分类器 Auto Mode、多 Provider 流式适配，Web、MultiEdit、MCP Resources、PowerShell 等核心工具补全，图片多模态输入，以及更完整的内置命令集。阶段 34 是下一块重点：Extended Thinking 控制与展示。
+当前实现主线已经完成到阶段 34，包括 CLI、流式通信、工具执行、终端 UI、会话编排、上下文管理、MCP、Skills、Sandbox、Sub-Agent、后台执行、Agent Teams、Hooks、Output Styles、用户命令、渲染体验升级、统一配置、文件历史、错误韧性、管道模式、AI 分类器 Auto Mode、多 Provider 流式适配，Web、MultiEdit、MCP Resources、PowerShell 等核心工具补全，图片多模态输入，更完整的内置命令集，以及 Extended Thinking 控制与展示。阶段 35 是下一块重点：Plugins 与 Marketplace。
 
-单文件 `step/` 快照现在已经覆盖阶段 1–33，因此已完成章节既可以从主源码阅读，也可以从聚焦的独立快照文件中对照学习。
+单文件 `step/` 快照现在已经覆盖阶段 1–34，因此已完成章节既可以从主源码阅读，也可以从聚焦的独立快照文件中对照学习。
 
 因此，当前的 Easy Agent 更适合被理解为一个正在稳步推进的开源复刻工程，而不是已经面向终端用户完全交付的成品。
 
@@ -127,7 +127,7 @@ easy-agent/
 | 31 | 核心工具补全：Web、MultiEdit、MCP Resources、PowerShell | [`step/step31.js`](./step/step31.js) | ✅ 已完成 |
 | 32 | 多模态输入：图片与截图 | [`step/step32.js`](./step/step32.js) | ✅ 已完成 |
 | 33 | 内置命令补全 | [`step/step33.js`](./step/step33.js) | ✅ 已完成 |
-| 34 | Extended Thinking 控制与展示 | `planned` | ⏳ 计划中 |
+| 34 | Extended Thinking 控制与展示 | [`step/step34.js`](./step/step34.js) | ✅ 已完成 |
 | 35 | Plugins 与 Marketplace | `planned` | ⏳ 计划中 |
 | 36 | 打包发布与文档 | `planned` | ⏳ 计划中 |
 
@@ -135,9 +135,9 @@ easy-agent/
 
 当前实现进度补充：
 
-- 阶段 32 已在源码、文章主线和 step 快照中完成。
 - 阶段 33 已在源码、文章主线和 step 快照中完成。
-- 阶段 34 Extended Thinking 是下一阶段，它会补齐请求侧 thinking 控制、预算配置、流式 thinking 事件和终端展示。
+- 阶段 34 已完成 thinking 三态控制、多 Provider 请求与事件适配、安全历史回放、effort 控制和终端折叠展示。
+- 阶段 35 Plugins 与 Marketplace 是下一阶段，它会把现有扩展点统一为可安装、可分发的插件包。
 
 ## Easy Agent 是什么，以及它不是什么
 
@@ -236,9 +236,9 @@ agent --dump-system-prompt
 
 接下来最重要的几个里程碑是：
 
-1. 在阶段 34 补齐 Extended Thinking 控制与展示
-2. 继续推进阶段 35 Plugins 与 Marketplace
-3. 在阶段 36 收拢打包发布与文档工作
+1. 推进阶段 35 Plugins 与 Marketplace
+2. 在阶段 36 收拢打包发布与文档工作
+3. 补齐实现主线剩余的验收与发布检查
 
 ## 贡献策略
 
