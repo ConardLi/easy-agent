@@ -26,7 +26,8 @@ export type APIErrorCategory =
   | "rate_limit" // 429 — quota / throttling
   | "server_overload" // 529 — capacity overload
   | "server_error" // 5xx
-  | "auth_error" // 401 / 403 — bad or missing token
+  | "auth_error" // 401 — bad or missing token
+  | "permission_denied" // 403 — valid request rejected by provider / gateway policy
   | "prompt_too_long" // 413, or 400 "prompt is too long"
   | "credit_balance" // billing: balance too low
   | "model_not_found" // 404 — unknown / inaccessible model
@@ -160,7 +161,8 @@ export function classifyAPIError(error: unknown): APIErrorCategory {
   if (error instanceof APIError) {
     const status = error.status;
     if (status === 429) return "rate_limit";
-    if (status === 401 || status === 403) return "auth_error";
+    if (status === 401) return "auth_error";
+    if (status === 403) return "permission_denied";
     if (status === 404) return "model_not_found";
     if (status !== undefined && status >= 500) return "server_error";
     if (status !== undefined && status >= 400) return "invalid_request";
@@ -215,6 +217,11 @@ export function getUserFacingErrorMessage(
   switch (category) {
     case "auth_error":
       return INVALID_API_KEY_MESSAGE;
+    case "permission_denied":
+      // Keep the upstream detail. A generic 403 may be a model entitlement,
+      // gateway policy, CDN/WAF block, or organization restriction; calling
+      // every one of those an invalid API key hides the actionable cause.
+      return `${API_ERROR_MESSAGE_PREFIX}: ${rawMessage}`;
     case "credit_balance":
       return CREDIT_BALANCE_TOO_LOW_MESSAGE;
     case "api_timeout":

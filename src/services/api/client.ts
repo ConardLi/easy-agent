@@ -34,6 +34,7 @@ let clientInstance: Anthropic | null = null;
 export function getAnthropicClient(options?: {
   apiKey?: string;
   baseURL?: string;
+  defaultHeaders?: Record<string, string>;
 }): Anthropic {
   if (clientInstance && !options) {
     return clientInstance;
@@ -42,6 +43,7 @@ export function getAnthropicClient(options?: {
   const client = new Anthropic({
     apiKey: options?.apiKey ?? process.env.ANTHROPIC_AUTH_TOKEN,
     baseURL: options?.baseURL ?? process.env.ANTHROPIC_BASE_URL,
+    ...(options?.defaultHeaders ? { defaultHeaders: options.defaultHeaders } : {}),
   });
 
   if (!options) {
@@ -61,6 +63,33 @@ export function getAnthropicClient(options?: {
 const profileClientCache = new Map<string, Anthropic>();
 
 /**
+ * Custom gateways should see Easy Agent as the caller, rather than inheriting
+ * the Anthropic SDK's `Anthropic/JS ...` user agent. Some compatible gateways
+ * route or block traffic based on that SDK-specific fingerprint even though
+ * they accept the same `/v1/messages` request and `x-api-key` via curl.
+ *
+ * A profile-level `headers.user-agent` value still wins, so gateways with a
+ * stricter contract remain fully configurable.
+ */
+export const CUSTOM_ENDPOINT_USER_AGENT = "easy-agent/0.1.0";
+
+function buildProfileDefaultHeaders(
+  baseURL: string | undefined,
+  headers: Record<string, string> | undefined,
+): Record<string, string> | undefined {
+  const normalized = new Map<string, string>();
+  if (baseURL) normalized.set("user-agent", CUSTOM_ENDPOINT_USER_AGENT);
+  for (const [name, value] of Object.entries(headers ?? {})) {
+    normalized.set(name.toLowerCase(), value);
+  }
+  return normalized.size > 0 ? Object.fromEntries(normalized) : undefined;
+}
+
+function headersCacheKey(headers: Record<string, string> | undefined): string {
+  return JSON.stringify(Object.entries(headers ?? {}).sort(([a], [b]) => a.localeCompare(b)));
+}
+
+/**
  * Normalize a custom Anthropic baseURL for the SDK.
  *
  * The SDK builds request URLs by CONCATENATING `baseURL + "/v1/messages"`
@@ -77,11 +106,13 @@ export function normalizeAnthropicBaseURL(baseURL: string): string {
 export function getAnthropicClientForProfile(profile: {
   baseURL?: string;
   apiKey?: string;
+  headers?: Record<string, string>;
 }): Anthropic {
-  if (!profile.baseURL && !profile.apiKey) {
+  if (!profile.baseURL && !profile.apiKey && !profile.headers) {
     return getAnthropicClient();
   }
   const baseURL = profile.baseURL ? normalizeAnthropicBaseURL(profile.baseURL) : undefined;
+  const defaultHeaders = buildProfileDefaultHeaders(baseURL, profile.headers);
   // A custom endpoint may not require auth (self-hosted / gateway). The SDK
   // throws at construction when neither apiKey nor ANTHROPIC_AUTH_TOKEN is
   // present, so supply a placeholder for a keyless custom endpoint — mirroring
@@ -92,12 +123,13 @@ export function getAnthropicClientForProfile(profile: {
     profile.apiKey ??
     process.env.ANTHROPIC_AUTH_TOKEN ??
     (baseURL ? "not-required" : undefined);
-  const key = `${baseURL ?? ""}|${apiKey ?? ""}`;
+  const key = `${baseURL ?? ""}|${apiKey ?? ""}|${headersCacheKey(defaultHeaders)}`;
   const cached = profileClientCache.get(key);
   if (cached) return cached;
   const client = getAnthropicClient({
     ...(apiKey ? { apiKey } : {}),
     ...(baseURL ? { baseURL } : {}),
+    ...(defaultHeaders ? { defaultHeaders } : {}),
   });
   profileClientCache.set(key, client);
   return client;

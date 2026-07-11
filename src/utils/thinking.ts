@@ -77,6 +77,20 @@ function getCanonicalName(model: string): string {
   return lastSegment;
 }
 
+/** Parse the major/minor pair from names such as `claude-opus-4-7`. */
+function getClaudeVersion(model: string): { major: number; minor: number } | null {
+  const canonical = getCanonicalName(model);
+  const match = canonical.match(/claude-(?:opus|sonnet|haiku)-(\d+)-(\d+)/);
+  if (!match) return null;
+  return { major: Number(match[1]), minor: Number(match[2]) };
+}
+
+function isClaudeVersionAtLeast(model: string, major: number, minor: number): boolean {
+  const version = getClaudeVersion(model);
+  return version !== null &&
+    (version.major > major || (version.major === major && version.minor >= minor));
+}
+
 /**
  * Whether the given model supports extended thinking at all.
  *
@@ -107,8 +121,13 @@ export function modelSupportsThinking(model: string): boolean {
  */
 export function modelSupportsAdaptiveThinking(model: string): boolean {
   const canonical = getCanonicalName(model);
-  // Explicit allowlist
-  if (canonical.includes("opus-4-6") || canonical.includes("sonnet-4-6")) {
+  // Opus/Sonnet 4.6 and newer support adaptive thinking. Use a version
+  // comparison instead of pinning the allowlist to exactly 4.6, otherwise a
+  // newer model such as claude-opus-4-7 incorrectly falls back to budget mode.
+  if (
+    (canonical.includes("opus") || canonical.includes("sonnet")) &&
+    isClaudeVersionAtLeast(model, 4, 6)
+  ) {
     return true;
   }
   // Exclude known legacy variants (older opus/sonnet/haiku)
@@ -149,7 +168,10 @@ export function modelSupportsInterleavedThinking(model: string): boolean {
 export function modelSupportsEffort(model: string): boolean {
   if (process.env.CLAUDE_CODE_ALWAYS_ENABLE_EFFORT) return true;
   const m = model.toLowerCase();
-  if (m.includes("opus-4-6") || m.includes("sonnet-4-6")) return true;
+  if (
+    (m.includes("opus") || m.includes("sonnet")) &&
+    isClaudeVersionAtLeast(model, 4, 6)
+  ) return true;
   if (m.includes("haiku") || m.includes("sonnet") || m.includes("opus")) return false;
   // Unknown: default true (mirrors source's firstParty policy)
   return true;

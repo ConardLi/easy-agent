@@ -565,7 +565,12 @@ async function main(): Promise<void> {
   // ── [11] Anthropic custom-endpoint client (baseURL /v1 + keyless) ─────────
   section("[11] Anthropic baseURL normalization + keyless custom endpoint");
   {
-    const { normalizeAnthropicBaseURL } = await import("../src/services/api/client.js");
+    const {
+      CUSTOM_ENDPOINT_USER_AGENT,
+      getAnthropicClientForProfile,
+      normalizeAnthropicBaseURL,
+      resetClient,
+    } = await import("../src/services/api/client.js");
     assert(
       normalizeAnthropicBaseURL("https://token.mmh1.top/v1") === "https://token.mmh1.top",
       "strips a trailing /v1 (SDK re-adds /v1/messages → no double /v1)",
@@ -578,6 +583,84 @@ async function main(): Promise<void> {
       normalizeAnthropicBaseURL("https://host/v1/") === "https://host",
       "strips trailing slash then /v1",
     );
+
+    // The Anthropic SDK adds `User-Agent: Anthropic/JS <version>`. Some
+    // compatible gateways block that SDK fingerprint while accepting the same
+    // endpoint/model/key with a neutral caller identity. Verify custom
+    // endpoints use Easy Agent's identity and still honor per-profile headers.
+    let capturedHeaders = new Headers();
+    globalThis.fetch = (async (_url: string, init: RequestInit) => {
+      capturedHeaders = new Headers(init.headers);
+      return new Response(
+        JSON.stringify({
+          id: "msg_test",
+          type: "message",
+          role: "assistant",
+          model: "claude-test",
+          content: [{ type: "text", text: "ok" }],
+          stop_reason: "end_turn",
+          stop_sequence: null,
+          usage: { input_tokens: 1, output_tokens: 1 },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }) as typeof fetch;
+    try {
+      resetClient();
+      const client = getAnthropicClientForProfile({
+        baseURL: "https://gateway.test/v1",
+        apiKey: "test-key",
+        headers: { "x-profile-header": "present" },
+      });
+      await client.messages.create({
+        model: "claude-test",
+        max_tokens: 1,
+        messages: [{ role: "user", content: "hi" }],
+      });
+      assert(
+        capturedHeaders.get("user-agent") === CUSTOM_ENDPOINT_USER_AGENT,
+        "custom Anthropic endpoint uses Easy Agent user-agent (avoids SDK-fingerprint WAF blocks)",
+      );
+      assert(
+        capturedHeaders.get("x-profile-header") === "present",
+        "Anthropic profile headers reach the SDK request",
+      );
+
+      const overridden = getAnthropicClientForProfile({
+        baseURL: "https://gateway.test/v1",
+        apiKey: "test-key",
+        headers: { "User-Agent": "gateway-required-agent" },
+      });
+      assert(
+        overridden !== client,
+        "Anthropic client cache separates profiles with different headers",
+      );
+      await overridden.messages.create({
+        model: "claude-test",
+        max_tokens: 1,
+        messages: [{ role: "user", content: "hi" }],
+      });
+      assert(
+        capturedHeaders.get("user-agent") === "gateway-required-agent",
+        "profile user-agent overrides the Easy Agent custom-endpoint default",
+      );
+    } finally {
+      resetClient();
+      globalThis.fetch = originalFetch;
+    }
+  }
+
+  // Stage 34 capability checks must be forward-compatible with newer model
+  // minors instead of treating every post-4.6 Opus/Sonnet as legacy.
+  section("[12] Claude 4.7 adaptive-thinking / effort capability detection");
+  {
+    const { modelSupportsAdaptiveThinking, modelSupportsEffort } = await import(
+      "../src/utils/thinking.js"
+    );
+    assert(modelSupportsAdaptiveThinking("claude-opus-4-7"), "Opus 4.7 supports adaptive thinking");
+    assert(modelSupportsEffort("claude-opus-4-7"), "Opus 4.7 supports effort");
+    assert(modelSupportsAdaptiveThinking("claude-sonnet-4-7"), "Sonnet 4.7 supports adaptive thinking");
+    assert(!modelSupportsAdaptiveThinking("claude-opus-4-5"), "Opus 4.5 remains on budget thinking");
   }
 
   await fs.rm(tmp, { recursive: true, force: true });

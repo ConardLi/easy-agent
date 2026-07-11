@@ -3,7 +3,7 @@
  * Stage 27 verification — error handling & resilience, with NO real LLM calls.
  *
  * Coverage:
- *   [1] Error classification — 429 / 529 / 5xx / 401 / 404 / 413 / timeout /
+ *   [1] Error classification — 429 / 529 / 5xx / 401 / 403 / 404 / 413 / timeout /
  *       connection / prompt-too-long / credit / abort each map correctly
  *   [2] Retryability — transient retried, deterministic not retried, abort never
  *   [3] Backoff — exponential growth + jitter band; Retry-After overrides
@@ -74,7 +74,10 @@ async function main(): Promise<void> {
   );
   assert(classifyAPIError(apiError(503, "bad gateway")) === "server_error", "503 → server_error");
   assert(classifyAPIError(apiError(401, "x-api-key invalid")) === "auth_error", "401 → auth_error");
-  assert(classifyAPIError(apiError(403, "forbidden")) === "auth_error", "403 → auth_error");
+  assert(
+    classifyAPIError(apiError(403, "Your request was blocked.")) === "permission_denied",
+    "403 → permission_denied",
+  );
   assert(classifyAPIError(apiError(404, "no model")) === "model_not_found", "404 → model_not_found");
   assert(
     classifyAPIError(apiError(413, "request too large")) === "prompt_too_long",
@@ -174,6 +177,9 @@ async function main(): Promise<void> {
   assert(is529Error(apiError(500, '{"type":"overloaded_error"}')) === true, "is529Error true for overloaded body");
   assert(is529Error(apiError(429, "x")) === false, "is529Error false for 429");
   assert(getUserFacingErrorMessage(apiError(401, "x-api-key")).includes("API key"), "auth message mentions API key");
+  const forbiddenMessage = getUserFacingErrorMessage(apiError(403, "Your request was blocked."));
+  assert(forbiddenMessage.includes("Your request was blocked."), "403 message preserves upstream block reason");
+  assert(!forbiddenMessage.includes("API key"), "403 message is not mislabeled as an API-key failure");
   assert(getUserFacingErrorMessage(apiError(404, "x"), "claude-foo").includes("claude-foo"), "model_not_found message includes model");
   assert(getUserFacingErrorMessage(apiError(529, "x")).includes("overloaded"), "529 message mentions overloaded");
 
