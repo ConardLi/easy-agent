@@ -1,0 +1,21 @@
+src/scripts/__dbg35.ts
+  s_48b87389f44e09::t_2fff7680a849d3 1-19
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "43a4ea0ac1dc2ef03e1d944f5f1eab1ef9ca1756",
+  "prompts": {},
+  "sessions": {
+    "s_48b87389f44e09": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3a216df3-cabe-4800-87d5-e87ca131928a",
+        "model": "unknown"
+      },
+      "human_author": "lishiqi.conard <lishiqi.conard@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
