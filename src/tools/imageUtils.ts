@@ -77,6 +77,12 @@ export type ReadImageResult =
   | { ok: true; block: ImageBlock; bytes: number; mediaType: string }
   | { ok: false; error: string };
 
+export function formatImageSizeError(bytes: number): string {
+  const mb = (bytes / (1024 * 1024)).toFixed(1);
+  const limit = (MAX_IMAGE_BYTES / (1024 * 1024)).toFixed(2);
+  return `Image too large (${mb} MB > ${limit} MB limit). Resize or compress it before sending.`;
+}
+
 export function imageBufferAsBlock(absPath: string, data: Buffer): ReadImageResult {
   const mediaType = imageMediaType(absPath);
   if (!mediaType) {
@@ -85,11 +91,9 @@ export function imageBufferAsBlock(absPath: string, data: Buffer): ReadImageResu
 
   const bytes = data.byteLength;
   if (bytes > MAX_IMAGE_BYTES) {
-    const mb = (bytes / (1024 * 1024)).toFixed(1);
-    const limit = (MAX_IMAGE_BYTES / (1024 * 1024)).toFixed(2);
     return {
       ok: false,
-      error: `Image too large (${mb} MB > ${limit} MB limit). Resize or compress it before sending.`,
+      error: formatImageSizeError(bytes),
     };
   }
 
@@ -125,11 +129,9 @@ export async function readImageAsBlock(absPath: string): Promise<ReadImageResult
   }
 
   if (bytes > MAX_IMAGE_BYTES) {
-    const mb = (bytes / (1024 * 1024)).toFixed(1);
-    const limit = (MAX_IMAGE_BYTES / (1024 * 1024)).toFixed(2);
     return {
       ok: false,
-      error: `Image too large (${mb} MB > ${limit} MB limit). Resize or compress it before sending.`,
+      error: formatImageSizeError(bytes),
     };
   }
 

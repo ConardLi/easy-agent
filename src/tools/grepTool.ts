@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { Tool, ToolContext, ToolResult } from "./Tool.js";
-import { withValidatedWorkspacePath } from "./pathUtils.js";
+import { withValidatedWorkspacePath, WorkspacePathError } from "./pathUtils.js";
 import { readMergedBooleanSetting } from "../utils/settings.js";
 
 const execFileAsync = promisify(execFile);
@@ -74,6 +74,9 @@ export const grepTool: Tool = {
         }
       );
     } catch (error: unknown) {
+      if (error instanceof WorkspacePathError) {
+        return { content: `Error: ${error.message}`, isError: true };
+      }
       if ((error as { code?: unknown })?.code === 1) {
         return { content: `No matches found for pattern: ${input.pattern}` };
       }

@@ -72,6 +72,17 @@ async function main(): Promise<void> {
   await fs.writeFile(big, Buffer.alloc(MAX_IMAGE_BYTES + 1024));
   const bigRes = await readImageAsBlock(big);
   assert(!bigRes.ok && /too large/i.test((bigRes as { error: string }).error), "oversized image rejected by guard");
+  const bigRead = await fileReadTool.call({ file_path: big }, { cwd: tmp });
+  assert(
+    bigRead.isError === true && /too large/i.test(toolResultText(bigRead.content)),
+    "Read rejects an oversized image before producing an image block",
+  );
+  const bigAttachment = await buildUserMessageContent(`look at @${big}`, tmp);
+  assert(
+    typeof bigAttachment.content === "string" &&
+      bigAttachment.errors.some((error) => /too large/i.test(error)),
+    "@image rejects an oversized image without attaching it",
+  );
 
   // ── [2] Read tool reads an image into an ImageBlock ───────────────────────
   section("[2] Read tool → ImageBlock");
@@ -106,6 +117,7 @@ async function main(): Promise<void> {
   const missing = await buildUserMessageContent("look at @does-not-exist.png", process.cwd());
   assert(typeof missing.content === "string", "missing image → plain string (no crash)");
   assert(missing.errors.length === 1, "missing image surfaces one error");
+  assert(missing.errors[0]?.includes("Image not found:") === true, "missing image keeps its user-facing error text");
 
   // Pasted / clipboard image: `[Image #N]` chip resolves from the in-memory
   // registry (no filesystem path, no allowed-roots check).

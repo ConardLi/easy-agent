@@ -3,8 +3,17 @@
  */
 
 import type { Tool, ToolContext, ToolResult } from "./Tool.js";
-import { readWorkspaceEntry } from "./pathUtils.js";
-import { imageBufferAsBlock, isImagePath } from "./imageUtils.js";
+import {
+  readWorkspaceEntry,
+  WorkspaceFileTooLargeError,
+  WorkspacePathError,
+} from "./pathUtils.js";
+import {
+  formatImageSizeError,
+  imageBufferAsBlock,
+  isImagePath,
+  MAX_IMAGE_BYTES,
+} from "./imageUtils.js";
 
 interface FileReadInput {
   file_path: string;
@@ -55,9 +64,12 @@ export const fileReadTool: Tool = {
 
     const offset = input.offset ?? 1;
     const limit = input.limit;
+    const imagePath = isImagePath(input.file_path);
 
     try {
-      const entry = await readWorkspaceEntry(input.file_path, context.cwd);
+      const entry = await readWorkspaceEntry(input.file_path, context.cwd, {
+        ...(imagePath ? { maxFileBytes: MAX_IMAGE_BYTES } : {}),
+      });
       if (entry.kind === "directory") {
         return { content: `Directory listing for ${input.file_path}:\n${entry.entries.join("\n")}` };
       }
@@ -89,6 +101,12 @@ export const fileReadTool: Tool = {
 
       return { content: `${entry.requestedPath}${rangeInfo}\n${numbered}` };
     } catch (error: unknown) {
+      if (error instanceof WorkspacePathError) {
+        return { content: `Error: ${error.message}`, isError: true };
+      }
+      if (error instanceof WorkspaceFileTooLargeError && imagePath) {
+        return { content: `Error: ${formatImageSizeError(error.actualBytes)}`, isError: true };
+      }
       const err = error as NodeJS.ErrnoException;
       if (err.code === "ENOENT") {
         return { content: `Error: File not found: ${input.file_path}`, isError: true };

@@ -75,6 +75,95 @@ async function main(): Promise<void> {
   setAdditionalAllowedRoots([]);
 
   try {
+    process.stdout.write("Normal file-tool behavior remains compatible\n");
+    const normalFile = path.join(workspace, "normal.txt");
+    await fs.writeFile(normalFile, "alpha\nbeta\n", "utf8");
+    const normalRead = await call(fileReadTool, { file_path: normalFile }, workspace);
+    check(
+      toolResultText(normalRead.content) === `${normalFile} (3 lines)\n1\talpha\n2\tbeta\n3\t`,
+      "Read keeps its line-numbered result format",
+      toolResultText(normalRead.content),
+    );
+    const partialRead = await call(
+      fileReadTool,
+      { file_path: normalFile, offset: 2, limit: 1 },
+      workspace,
+    );
+    check(
+      toolResultText(partialRead.content) === `${normalFile} (lines 2-2 of 3)\n2\tbeta`,
+      "Read keeps offset and limit semantics",
+      toolResultText(partialRead.content),
+    );
+
+    const normalNestedFile = path.join(workspace, "normal", "nested.txt");
+    const normalCreate = await call(
+      fileWriteTool,
+      { file_path: normalNestedFile, content: "created\n" },
+      workspace,
+    );
+    check(
+      toolResultText(normalCreate.content) === `Created file: ${normalNestedFile} (8 chars)`,
+      "Write keeps its create result format",
+      toolResultText(normalCreate.content),
+    );
+    const normalOverwrite = await call(
+      fileWriteTool,
+      { file_path: normalNestedFile, content: "updated\n" },
+      workspace,
+    );
+    check(
+      toolResultText(normalOverwrite.content) === `Updated file: ${normalNestedFile} (8 chars)` &&
+        (await fs.readFile(normalNestedFile, "utf8")) === "updated\n",
+      "Write keeps overwrite behavior and result format",
+      toolResultText(normalOverwrite.content),
+    );
+
+    const normalEdit = await call(
+      fileEditTool,
+      { file_path: normalFile, old_string: "alpha", new_string: "ALPHA" },
+      workspace,
+    );
+    check(
+      normalEdit.isError !== true &&
+        toolResultText(normalEdit.content).startsWith(`Updated file: ${normalFile}\n`) &&
+        (await fs.readFile(normalFile, "utf8")) === "ALPHA\nbeta\n",
+      "Edit keeps its replacement and result semantics",
+      toolResultText(normalEdit.content),
+    );
+    const beforeFailedMultiEdit = await fs.readFile(normalFile, "utf8");
+    const failedMultiEdit = await call(
+      multiEditTool,
+      {
+        file_path: normalFile,
+        edits: [
+          { old_string: "ALPHA", new_string: "first" },
+          { old_string: "missing", new_string: "second" },
+        ],
+      },
+      workspace,
+    );
+    check(
+      failedMultiEdit.isError === true &&
+        (await fs.readFile(normalFile, "utf8")) === beforeFailedMultiEdit,
+      "MultiEdit remains atomic when a later edit fails",
+      toolResultText(failedMultiEdit.content),
+    );
+
+    const normalGrep = await call(grepTool, { path: workspace, pattern: "ALPHA" }, workspace);
+    check(
+      normalGrep.isError !== true && toolResultText(normalGrep.content).includes("ALPHA"),
+      "Grep still searches ordinary workspace files",
+      toolResultText(normalGrep.content),
+    );
+    const normalGlob = await call(globTool, { path: workspace, pattern: "**/*.txt" }, workspace);
+    check(
+      normalGlob.isError !== true &&
+        toolResultText(normalGlob.content).startsWith(`Matched files under ${workspace}:`) &&
+        toolResultText(normalGlob.content).includes("normal.txt"),
+      "Glob still discovers ordinary workspace files",
+      toolResultText(normalGlob.content),
+    );
+
     const outsideFile = path.join(outside, "secret.txt");
     const escapeFile = path.join(workspace, "escape.txt");
     await fs.writeFile(outsideFile, "outside-secret\n", "utf8");
@@ -83,6 +172,11 @@ async function main(): Promise<void> {
     process.stdout.write("File tools reject links that escape an allowed root\n");
     const readEscape = await call(fileReadTool, { file_path: escapeFile }, workspace);
     check(readEscape.isError === true, "Read rejects an escaping file link", toolResultText(readEscape.content));
+    check(
+      toolResultText(readEscape.content).startsWith("Error: Path resolves outside"),
+      "Boundary failures preserve the existing tool error prefix",
+      toolResultText(readEscape.content),
+    );
 
     const writeEscape = await call(
       fileWriteTool,
@@ -204,6 +298,16 @@ async function main(): Promise<void> {
       (await call(fileReadTool, { file_path: internalDirectoryLink }, workspace)).isError !== true,
       "Read accepts an internal directory link",
     );
+    const internalGlob = await call(
+      globTool,
+      { path: internalDirectoryLink, pattern: "**/*.txt" },
+      workspace,
+    );
+    check(
+      toolResultText(internalGlob.content).startsWith(`Matched files under ${internalDirectoryLink}:`),
+      "Glob keeps the requested path in normal result text",
+      toolResultText(internalGlob.content),
+    );
 
     const nestedFile = path.join(workspace, "new", "nested", "file.txt");
     check(
@@ -216,6 +320,14 @@ async function main(): Promise<void> {
       "Write overwrites an existing regular file",
     );
     check((await fs.readFile(nestedFile, "utf8")) === "overwritten\n", "Overwrite replaces the complete file");
+    if (process.platform !== "win32") {
+      await fs.chmod(nestedFile, 0o640);
+      await call(fileWriteTool, { file_path: nestedFile, content: "mode-preserved\n" }, workspace);
+      check(
+        ((await fs.stat(nestedFile)).mode & 0o777) === 0o640,
+        "Overwriting an existing file preserves its mode",
+      );
+    }
 
     setAdditionalAllowedRoots([additional]);
     const additionalFile = path.join(additional, "allowed.txt");
@@ -326,6 +438,25 @@ async function main(): Promise<void> {
     check(
       (await fs.readFile(raceOutside, "utf8")) === "outside-race\n",
       "Rewind does not follow a replacement link outside the workspace",
+    );
+
+    const createdAfterSnapshot = path.join(workspace, "created-after-snapshot.txt");
+    const internalVictim = path.join(workspace, "internal-victim.txt");
+    await fs.writeFile(internalVictim, "keep-internal-victim\n", "utf8");
+    await configureFileHistory(workspace, "boundary-created-replacement");
+    await fileHistoryMakeSnapshot("created-replacement");
+    await fileHistoryTrackEdit(createdAfterSnapshot, "created-replacement");
+    await fs.writeFile(createdAfterSnapshot, "new-file\n", "utf8");
+    await fs.unlink(createdAfterSnapshot);
+    await createFileSymlink(internalVictim, createdAfterSnapshot);
+    await fileHistoryRewind("created-replacement");
+    check(
+      (await fs.readFile(internalVictim, "utf8")) === "keep-internal-victim\n",
+      "Rewind never deletes the target of a replacement link",
+    );
+    check(
+      await fs.lstat(createdAfterSnapshot).then(() => false, () => true),
+      "Rewind removes the replacement link when restoring a missing path",
     );
 
     const historySource = path.join(workspace, "history-source.txt");

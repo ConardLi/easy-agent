@@ -1,5 +1,9 @@
 import type { Tool, ToolContext, ToolResult } from "./Tool.js";
-import { resolveSafePath, updateWorkspaceTextFile } from "./pathUtils.js";
+import {
+  resolveSafePath,
+  updateWorkspaceTextFile,
+  WorkspacePathError,
+} from "./pathUtils.js";
 import {
   applyEditToContent,
   buildEditPreview,
@@ -66,6 +70,9 @@ export const fileEditTool: Tool = {
           content: `Error: ${error.message} in ${resolveSafePath(input.file_path, context.cwd)}`,
           isError: true,
         };
+      }
+      if (error instanceof WorkspacePathError) {
+        return { content: `Error: ${error.message}`, isError: true };
       }
       return {
         content: `Error editing file: ${error instanceof Error ? error.message : String(error)}`,

@@ -1,5 +1,5 @@
 import type { Tool, ToolContext, ToolResult } from "./Tool.js";
-import { writeWorkspaceFile } from "./pathUtils.js";
+import { WorkspacePathError, writeWorkspaceFile } from "./pathUtils.js";
 
 interface FileWriteInput {
   file_path: string;
@@ -34,6 +34,9 @@ export const fileWriteTool: Tool = {
         content: `${result.existed ? "Updated" : "Created"} file: ${result.requestedPath} (${input.content.length} chars)`,
       };
     } catch (error: unknown) {
+      if (error instanceof WorkspacePathError) {
+        return { content: `Error: ${error.message}`, isError: true };
+      }
       return {
         content: `Error writing file: ${error instanceof Error ? error.message : String(error)}`,
         isError: true,

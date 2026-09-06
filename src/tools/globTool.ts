@@ -1,7 +1,11 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { Tool, ToolContext, ToolResult } from "./Tool.js";
-import { withValidatedWorkspacePath } from "./pathUtils.js";
+import {
+  resolveSafePath,
+  withValidatedWorkspacePath,
+  WorkspacePathError,
+} from "./pathUtils.js";
 import { readMergedBooleanSetting } from "../utils/settings.js";
 
 const execFileAsync = promisify(execFile);
@@ -39,6 +43,7 @@ export const globTool: Tool = {
     }
 
     const respectGitignore = (await readMergedBooleanSetting(context.cwd, "respectGitignore").catch(() => undefined)) !== false;
+    const displayBasePath = resolveSafePath(input.path ?? ".", context.cwd);
 
     try {
       return await withValidatedWorkspacePath(
@@ -54,7 +59,7 @@ export const globTool: Tool = {
             });
             const output = stdout.trim();
             return {
-              content: output ? `Matched files under ${basePath}:\n${output}` : `No files matched ${input.pattern}`,
+              content: output ? `Matched files under ${displayBasePath}:\n${output}` : `No files matched ${input.pattern}`,
             };
           }
 
@@ -63,11 +68,14 @@ export const globTool: Tool = {
           });
           const output = stdout.trim();
           return {
-            content: output ? `Matched files under ${basePath}:\n${output}` : `No files matched ${input.pattern}`,
+            content: output ? `Matched files under ${displayBasePath}:\n${output}` : `No files matched ${input.pattern}`,
           };
         },
       );
     } catch (error: unknown) {
+      if (error instanceof WorkspacePathError) {
+        return { content: `Error: ${error.message}`, isError: true };
+      }
       return {
         content: `Error running glob search: ${error instanceof Error ? error.message : String(error)}`,
         isError: true,

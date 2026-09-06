@@ -1,5 +1,9 @@
 import type { Tool, ToolContext, ToolResult } from "./Tool.js";
-import { resolveSafePath, updateWorkspaceTextFile } from "./pathUtils.js";
+import {
+  resolveSafePath,
+  updateWorkspaceTextFile,
+  WorkspacePathError,
+} from "./pathUtils.js";
 import {
   applyEditsToContent,
   EditError,
@@ -91,6 +95,9 @@ export const multiEditTool: Tool = {
           content: `Error: ${error.message} (no changes written to ${resolveSafePath(input.file_path, context.cwd)})`,
           isError: true,
         };
+      }
+      if (error instanceof WorkspacePathError) {
+        return { content: `Error: ${error.message}`, isError: true };
       }
       return {
         content: `Error editing file: ${error instanceof Error ? error.message : String(error)}`,

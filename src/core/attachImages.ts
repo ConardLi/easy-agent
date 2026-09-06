@@ -9,8 +9,18 @@
  */
 
 import type { ContentBlock } from "../types/message.js";
-import { imageBufferAsBlock, isImagePath } from "../tools/imageUtils.js";
-import { readWorkspaceFile } from "../tools/pathUtils.js";
+import {
+  formatImageSizeError,
+  imageBufferAsBlock,
+  isImagePath,
+  MAX_IMAGE_BYTES,
+} from "../tools/imageUtils.js";
+import {
+  readWorkspaceFile,
+  resolveSafePath,
+  WorkspaceFileTooLargeError,
+  WorkspacePathError,
+} from "../tools/pathUtils.js";
 import { IMAGE_REF_RE, consumePastedImage } from "./pastedImages.js";
 
 export interface BuiltUserContent {
@@ -66,7 +76,7 @@ export async function buildUserMessageContent(
 
   for (const ref of candidates) {
     try {
-      const file = await readWorkspaceFile(ref, cwd);
+      const file = await readWorkspaceFile(ref, cwd, { maxFileBytes: MAX_IMAGE_BYTES });
       const img = imageBufferAsBlock(file.requestedPath, file.data);
       if (img.ok) {
         blocks.push(img.block);
@@ -75,7 +85,17 @@ export async function buildUserMessageContent(
         errors.push(`${ref}: ${img.error}`);
       }
     } catch (error: unknown) {
-      errors.push(`${ref}: ${error instanceof Error ? error.message : String(error)}`);
+      let message: string;
+      if (error instanceof WorkspaceFileTooLargeError) {
+        message = formatImageSizeError(error.actualBytes);
+      } else if (error instanceof WorkspacePathError) {
+        message = error.message;
+      } else if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
+        message = `Image not found: ${resolveSafePath(ref, cwd)}`;
+      } else {
+        message = `Cannot read image: ${error instanceof Error ? error.message : String(error)}`;
+      }
+      errors.push(`${ref}: ${message}`);
     }
   }
 

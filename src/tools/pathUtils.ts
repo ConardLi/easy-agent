@@ -16,6 +16,18 @@ export class WorkspacePathError extends Error {
   }
 }
 
+export class WorkspaceFileTooLargeError extends Error {
+  readonly code = "EFBIG";
+
+  constructor(
+    readonly actualBytes: number,
+    readonly maxBytes: number,
+  ) {
+    super(`File is too large to read (${actualBytes} bytes > ${maxBytes} byte limit)`);
+    this.name = "WorkspaceFileTooLargeError";
+  }
+}
+
 export interface WorkspacePathResolution {
   requestedPath: string;
   resolvedPath: string;
@@ -44,6 +56,10 @@ export interface WorkspaceWriteResult {
   requestedPath: string;
   resolvedPath: string;
   existed: boolean;
+}
+
+export interface WorkspaceReadOptions {
+  maxFileBytes?: number;
 }
 
 interface CanonicalizedPath {
@@ -263,7 +279,33 @@ export async function withValidatedWorkspacePath<T>(
   }
 }
 
-export async function readWorkspaceEntry(filePath: string, cwd: string): Promise<WorkspaceEntry> {
+export async function withValidatedWorkspaceFile<T>(
+  filePath: string,
+  cwd: string,
+  operation: (
+    handle: FileHandle,
+    resolution: WorkspacePathResolution,
+    stats: Stats,
+  ) => Promise<T>,
+): Promise<T> {
+  const lease = await acquireReadLease(filePath, cwd);
+  try {
+    if (!lease.stats.isFile() || !lease.handle) {
+      throw new WorkspacePathError(`Only regular files can be read: ${filePath}`);
+    }
+    const result = await operation(lease.handle, lease.resolution, lease.stats);
+    await verifyLease(lease);
+    return result;
+  } finally {
+    await lease.handle?.close().catch(() => {});
+  }
+}
+
+export async function readWorkspaceEntry(
+  filePath: string,
+  cwd: string,
+  options: WorkspaceReadOptions = {},
+): Promise<WorkspaceEntry> {
   const lease = await acquireReadLease(filePath, cwd);
   try {
     if (lease.stats.isDirectory()) {
@@ -279,6 +321,12 @@ export async function readWorkspaceEntry(filePath: string, cwd: string): Promise
     }
     if (!lease.stats.isFile()) {
       throw new WorkspacePathError(`Only regular files and directories can be read: ${filePath}`);
+    }
+    if (
+      options.maxFileBytes !== undefined &&
+      lease.stats.size > options.maxFileBytes
+    ) {
+      throw new WorkspaceFileTooLargeError(lease.stats.size, options.maxFileBytes);
     }
     if (!lease.handle) {
       throw new WorkspacePathError(`Could not acquire a stable file handle: ${filePath}`);
@@ -299,8 +347,9 @@ export async function readWorkspaceEntry(filePath: string, cwd: string): Promise
 export async function readWorkspaceFile(
   filePath: string,
   cwd: string,
+  options: WorkspaceReadOptions = {},
 ): Promise<Extract<WorkspaceEntry, { kind: "file" }>> {
-  const entry = await readWorkspaceEntry(filePath, cwd);
+  const entry = await readWorkspaceEntry(filePath, cwd, options);
   if (entry.kind !== "file") {
     const error = new Error(`Path is a directory: ${entry.requestedPath}`) as NodeJS.ErrnoException;
     error.code = "EISDIR";
@@ -367,6 +416,32 @@ async function replaceFileContents(handle: FileHandle, data: Buffer): Promise<vo
   }
 }
 
+async function replaceFileContentsFromHandle(
+  targetHandle: FileHandle,
+  sourceHandle: FileHandle,
+): Promise<void> {
+  await targetHandle.truncate(0);
+  const buffer = Buffer.allocUnsafe(64 * 1024);
+  let offset = 0;
+  for (;;) {
+    const { bytesRead } = await sourceHandle.read(buffer, 0, buffer.length, offset);
+    if (bytesRead === 0) return;
+
+    let written = 0;
+    while (written < bytesRead) {
+      const result = await targetHandle.write(
+        buffer,
+        written,
+        bytesRead - written,
+        offset + written,
+      );
+      if (result.bytesWritten === 0) throw new Error("File write made no progress");
+      written += result.bytesWritten;
+    }
+    offset += bytesRead;
+  }
+}
+
 export async function writeWorkspaceFile(
   filePath: string,
   cwd: string,
@@ -377,6 +452,26 @@ export async function writeWorkspaceFile(
   try {
     const data = typeof content === "string" ? Buffer.from(content, "utf8") : content;
     await replaceFileContents(lease.handle!, data);
+    if (options.mode !== undefined) await lease.handle!.chmod(options.mode);
+    return {
+      requestedPath: lease.resolution.requestedPath,
+      resolvedPath: lease.resolution.resolvedPath,
+      existed,
+    };
+  } finally {
+    await lease.handle!.close().catch(() => {});
+  }
+}
+
+export async function writeWorkspaceFileFromHandle(
+  filePath: string,
+  cwd: string,
+  sourceHandle: FileHandle,
+  options: { mode?: number } = {},
+): Promise<WorkspaceWriteResult> {
+  const { lease, existed } = await openWorkspaceFileForWrite(filePath, cwd);
+  try {
+    await replaceFileContentsFromHandle(lease.handle!, sourceHandle);
     if (options.mode !== undefined) await lease.handle!.chmod(options.mode);
     return {
       requestedPath: lease.resolution.requestedPath,
@@ -418,17 +513,34 @@ export async function updateWorkspaceTextFile<T>(
 }
 
 export async function removeWorkspaceFile(filePath: string, cwd: string): Promise<boolean> {
-  const resolution = await resolveWorkspacePathDetails(filePath, cwd, true);
-  if (!resolution.exists) return false;
-  const lease = await acquireReadLease(filePath, cwd);
+  const requestedPath = resolveSafePath(filePath, cwd);
+  const parentPath = path.dirname(requestedPath);
+  const parentLease = await acquireReadLease(parentPath, cwd);
   try {
-    if (!lease.stats.isFile()) {
+    if (!parentLease.stats.isDirectory()) {
+      throw new WorkspacePathError(`Parent path is not a directory: ${parentPath}`);
+    }
+
+    const deletionPath = path.join(
+      parentLease.resolution.resolvedPath,
+      path.basename(requestedPath),
+    );
+    let entryStats: Stats;
+    try {
+      entryStats = await fs.lstat(deletionPath);
+    } catch (error) {
+      if (isErrno(error, "ENOENT")) return false;
+      throw error;
+    }
+    if (!entryStats.isFile() && !entryStats.isSymbolicLink()) {
       throw new WorkspacePathError(`Only regular files can be removed: ${filePath}`);
     }
-    await verifyLease(lease);
-    await fs.unlink(lease.resolution.resolvedPath);
+
+    await verifyLease(parentLease);
+    await fs.unlink(deletionPath);
+    await verifyLease(parentLease);
     return true;
   } finally {
-    await lease.handle?.close().catch(() => {});
+    await parentLease.handle?.close().catch(() => {});
   }
 }
