@@ -69,6 +69,7 @@ const TESTS: TestDefinition[] = [
   { id: "bash-heartbeat", group: "ui", file: "src/scripts/smoke-bash-heartbeat.tsx" },
   { id: "live-group", group: "ui", file: "src/scripts/smoke-live-group.tsx" },
   { id: "tool-tags", group: "ui", file: "src/scripts/smoke-tool-tags.tsx" },
+  { id: "tool-card-format", group: "ui", file: "src/scripts/test-tool-card-format.ts" },
   { id: "transcript-wheel", group: "ui", file: "src/scripts/smoke-transcript-wheel.tsx" },
   { id: "status-line", group: "ui", file: "src/scripts/smoke-statusline.tsx" },
   { id: "command", group: "ui", file: "src/scripts/smoke-command.tsx" },

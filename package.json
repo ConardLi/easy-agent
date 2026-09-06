@@ -68,6 +68,7 @@
     "test:bash-heartbeat": "tsx src/scripts/smoke-bash-heartbeat.tsx",
     "test:live-group": "tsx src/scripts/smoke-live-group.tsx",
     "test:tool-tags": "tsx src/scripts/smoke-tool-tags.tsx",
+    "test:tool-card-format": "node --import tsx src/scripts/test-tool-card-format.ts",
     "test:transcript-wheel": "tsx src/scripts/smoke-transcript-wheel.tsx",
     "test:stage24-statusline": "tsx src/scripts/smoke-statusline.tsx",
     "test:stage24-command": "tsx src/scripts/smoke-command.tsx",
