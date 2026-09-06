@@ -1,6 +1,5 @@
-import * as fs from "node:fs/promises";
 import type { Tool, ToolContext, ToolResult } from "./Tool.js";
-import { resolveWorkspacePath } from "./pathUtils.js";
+import { resolveSafePath, updateWorkspaceTextFile } from "./pathUtils.js";
 import {
   applyEditsToContent,
   EditError,
@@ -77,39 +76,22 @@ export const multiEditTool: Tool = {
       };
     }
 
-    let resolvedPath: string;
     try {
-      resolvedPath = resolveWorkspacePath(input.file_path, context.cwd);
-    } catch (error: unknown) {
+      const result = await updateWorkspaceTextFile(input.file_path, context.cwd, (original) => {
+        const edit = applyEditsToContent(original, input.edits);
+        return { content: edit.content, value: edit.totalReplacements };
+      });
+
       return {
-        content: error instanceof Error ? `Error: ${error.message}` : `Error: ${String(error)}`,
-        isError: true,
+        content: `Updated file: ${result.requestedPath} — applied ${input.edits.length} edit(s), ${result.value} replacement(s)`,
       };
-    }
-
-    try {
-      const original = await fs.readFile(resolvedPath, "utf-8");
-
-      let updated: string;
-      let totalReplacements: number;
-      try {
-        const result = applyEditsToContent(original, input.edits);
-        updated = result.content;
-        totalReplacements = result.totalReplacements;
-      } catch (error) {
-        if (error instanceof EditError) {
-          // Atomic: nothing written when any edit fails.
-          return { content: `Error: ${error.message} (no changes written to ${resolvedPath})`, isError: true };
-        }
-        throw error;
+    } catch (error: unknown) {
+      if (error instanceof EditError) {
+        return {
+          content: `Error: ${error.message} (no changes written to ${resolveSafePath(input.file_path, context.cwd)})`,
+          isError: true,
+        };
       }
-
-      await fs.writeFile(resolvedPath, updated, "utf-8");
-
-      return {
-        content: `Updated file: ${resolvedPath} — applied ${input.edits.length} edit(s), ${totalReplacements} replacement(s)`,
-      };
-    } catch (error: unknown) {
       return {
         content: `Error editing file: ${error instanceof Error ? error.message : String(error)}`,
         isError: true,

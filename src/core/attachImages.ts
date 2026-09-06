@@ -9,8 +9,8 @@
  */
 
 import type { ContentBlock } from "../types/message.js";
-import { isImagePath, readImageAsBlock } from "../tools/imageUtils.js";
-import { resolveWorkspacePath } from "../tools/pathUtils.js";
+import { imageBufferAsBlock, isImagePath } from "../tools/imageUtils.js";
+import { readWorkspaceFile } from "../tools/pathUtils.js";
 import { IMAGE_REF_RE, consumePastedImage } from "./pastedImages.js";
 
 export interface BuiltUserContent {
@@ -66,8 +66,8 @@ export async function buildUserMessageContent(
 
   for (const ref of candidates) {
     try {
-      const abs = resolveWorkspacePath(ref, cwd);
-      const img = await readImageAsBlock(abs);
+      const file = await readWorkspaceFile(ref, cwd);
+      const img = imageBufferAsBlock(file.requestedPath, file.data);
       if (img.ok) {
         blocks.push(img.block);
         attached.push({ ref, bytes: img.bytes, mediaType: img.mediaType });

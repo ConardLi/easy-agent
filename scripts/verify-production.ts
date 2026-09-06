@@ -27,6 +27,7 @@ const TESTS: TestDefinition[] = [
   { id: "provider-stream", group: "core", file: "src/scripts/test-providerstream-characterization.ts" },
   { id: "session-notices", group: "core", file: "src/scripts/test-useagentsession-notices.ts" },
   { id: "tools", group: "core", file: "src/scripts/test-tools.ts" },
+  { id: "path-boundary", group: "core", file: "src/scripts/test-path-boundary.ts" },
   { id: "bash-readonly", group: "core", file: "src/scripts/test-bash-readonly.ts" },
   { id: "tasks", group: "core", file: "src/scripts/test-tasks.ts" },
   { id: "tool-search", group: "core", file: "src/scripts/test-toolsearch.ts" },

@@ -1,7 +1,5 @@
-import * as fs from "node:fs/promises";
-import * as path from "node:path";
 import type { Tool, ToolContext, ToolResult } from "./Tool.js";
-import { resolveWorkspacePath } from "./pathUtils.js";
+import { writeWorkspaceFile } from "./pathUtils.js";
 
 interface FileWriteInput {
   file_path: string;
@@ -29,29 +27,11 @@ export const fileWriteTool: Tool = {
       return { content: "Error: content must be a string", isError: true };
     }
 
-    let resolvedPath: string;
     try {
-      resolvedPath = resolveWorkspacePath(input.file_path, context.cwd);
-    } catch (error: unknown) {
-      return {
-        content: error instanceof Error ? `Error: ${error.message}` : `Error: ${String(error)}`,
-        isError: true,
-      };
-    }
-
-    try {
-      let existed = true;
-      try {
-        await fs.access(resolvedPath);
-      } catch {
-        existed = false;
-      }
-
-      await fs.mkdir(path.dirname(resolvedPath), { recursive: true });
-      await fs.writeFile(resolvedPath, input.content, "utf-8");
+      const result = await writeWorkspaceFile(input.file_path, context.cwd, input.content);
 
       return {
-        content: `${existed ? "Updated" : "Created"} file: ${resolvedPath} (${input.content.length} chars)`,
+        content: `${result.existed ? "Updated" : "Created"} file: ${result.requestedPath} (${input.content.length} chars)`,
       };
     } catch (error: unknown) {
       return {
