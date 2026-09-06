@@ -230,6 +230,11 @@ function webSearchStat(result: string): string | undefined {
   return `${n} result${n === 1 ? "" : "s"}`;
 }
 
+/** Skill result → "loaded" once the instruction payload has been returned. */
+function skillStat(result: string): string | undefined {
+  return result.startsWith("Loaded skill ") ? "loaded" : undefined;
+}
+
 /** ListMcpResources result → "N resources". */
 function mcpListStat(result: string): string | undefined {
   if (result.includes("No MCP resources")) return "0 resources";
@@ -313,6 +318,12 @@ export function summarizeTool(
     case "WebSearch": {
       const q = asString(inp.query);
       return { label: "WebSearch", target: q ? `"${q}"` : undefined, stat: result ? webSearchStat(result) : undefined };
+    }
+    case "Skill": {
+      const skill = asString(inp.skill);
+      const args = asString(inp.args);
+      const target = skill ? (args ? `${skill} ${args}` : skill) : undefined;
+      return { label: "Skill", target, stat: result ? skillStat(result) : undefined };
     }
     case "ListMcpResources":
       return { label: "ListMcpResources", target: asString(inp.server) ?? "all servers", stat: result ? mcpListStat(result) : undefined };
