@@ -1,4 +1,6 @@
 import { execFile } from "node:child_process";
+import { readdir } from "node:fs/promises";
+import * as path from "node:path";
 import { promisify } from "node:util";
 import type { Tool, ToolContext, ToolResult } from "./Tool.js";
 import {
@@ -22,6 +24,27 @@ async function hasCommand(command: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+function matchesGlob(candidate: string, pattern: string): boolean {
+  const normalizedCandidate = candidate.split(path.sep).join("/");
+  const normalizedPattern = pattern.split("\\").join("/");
+  if (path.posix.matchesGlob(normalizedCandidate, normalizedPattern)) return true;
+
+  const withoutLeadingDots = normalizedCandidate
+    .split("/")
+    .map((segment) => segment.startsWith(".") ? segment.slice(1) : segment)
+    .join("/");
+  return path.posix.matchesGlob(withoutLeadingDots, normalizedPattern);
+}
+
+async function findFilesWithNode(basePath: string, pattern: string): Promise<string[]> {
+  const entries = await readdir(basePath, { recursive: true, withFileTypes: true });
+  return entries
+    .filter((entry) => entry.isFile() || entry.isSymbolicLink())
+    .map((entry) => path.join(entry.parentPath, entry.name))
+    .filter((filePath) => matchesGlob(path.relative(basePath, filePath), pattern))
+    .sort((left, right) => left.localeCompare(right));
 }
 
 export const globTool: Tool = {
@@ -63,10 +86,7 @@ export const globTool: Tool = {
             };
           }
 
-          const { stdout } = await execFileAsync("find", [basePath, "-path", `*${input.pattern.replace(/\*\*/g, "*")}`], {
-            maxBuffer: 1024 * 1024,
-          });
-          const output = stdout.trim();
+          const output = (await findFilesWithNode(basePath, input.pattern)).join("\n");
           return {
             content: output ? `Matched files under ${displayBasePath}:\n${output}` : `No files matched ${input.pattern}`,
           };

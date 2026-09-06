@@ -155,11 +155,15 @@ async function main(): Promise<void> {
       "Grep still searches ordinary workspace files",
       toolResultText(normalGrep.content),
     );
+    const hiddenDirectory = path.join(workspace, ".hidden");
+    await fs.mkdir(hiddenDirectory);
+    await fs.writeFile(path.join(hiddenDirectory, "visible-to-glob.txt"), "hidden\n", "utf8");
     const normalGlob = await call(globTool, { path: workspace, pattern: "**/*.txt" }, workspace);
     check(
       normalGlob.isError !== true &&
         toolResultText(normalGlob.content).startsWith(`Matched files under ${workspace}:`) &&
-        toolResultText(normalGlob.content).includes("normal.txt"),
+        toolResultText(normalGlob.content).includes("normal.txt") &&
+        toolResultText(normalGlob.content).includes("visible-to-glob.txt"),
       "Glob still discovers ordinary workspace files",
       toolResultText(normalGlob.content),
     );
