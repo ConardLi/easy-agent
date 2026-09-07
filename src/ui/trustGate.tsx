@@ -5,11 +5,12 @@
  * standalone Ink root and waits for the user's decision. Trusting persists the
  * decision and continues; declining returns false so the entrypoint can exit.
  *
- * Non-interactive invocations (no TTY) never prompt — they simply run
- * untrusted, which means project/local hooks and statusLine commands are not
- * executed (enforced in their loaders via the trusted source set).
+ * Non-interactive trust policy is resolved by the CLI before project settings
+ * are applied or execution-capable extensions are initialized.
  */
 
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
 import { isProjectTrusted, trustProject } from "../config/globalState.js";
 import { loadSettingSources } from "../config/sources.js";
 
@@ -21,6 +22,30 @@ export async function detectRisks(cwd: string): Promise<string[]> {
     if (src.source !== "project" && src.source !== "local") continue;
     const raw = src.raw;
     if (!raw) continue;
+    if (
+      raw["env"] &&
+      typeof raw["env"] === "object" &&
+      Object.keys(raw["env"] as Record<string, unknown>).length > 0
+    ) {
+      risks.add("environment variables");
+    }
+    if (
+      raw["models"] &&
+      typeof raw["models"] === "object" &&
+      Object.values(raw["models"] as Record<string, unknown>).some((profile) => {
+        if (!profile || typeof profile !== "object" || Array.isArray(profile)) return false;
+        const value = profile as Record<string, unknown>;
+        return ["protocol", "baseURL", "apiKey", "headers"].some(
+          (key) => value[key] !== undefined,
+        );
+      })
+    ) {
+      risks.add("model provider endpoints or credentials");
+    }
+    if (raw["apiKeyHelper"]) risks.add("an API key helper command");
+    if (Array.isArray(raw["additionalDirectories"]) && raw["additionalDirectories"].length > 0) {
+      risks.add("additional filesystem roots");
+    }
     if (raw["hooks"] && typeof raw["hooks"] === "object") risks.add("lifecycle hooks (run shell commands)");
     if (raw["statusLine"]) risks.add("a custom status line command");
     if (raw["mcpServers"] && typeof raw["mcpServers"] === "object") risks.add("MCP servers");
@@ -33,11 +58,16 @@ export async function detectRisks(cwd: string): Promise<string[]> {
     ) {
       risks.add("project plugins (may include hooks or MCP servers)");
     }
-    if (raw["mode"] === "auto") risks.add('permission mode "auto" (ignored until trusted)');
     const allow = raw["allow"];
     if (Array.isArray(allow) && allow.some((r) => typeof r === "string" && r.startsWith("Bash("))) {
       risks.add("Bash allow-rules");
     }
+  }
+  try {
+    await fs.access(path.join(cwd, ".env"));
+    risks.add("a project .env file");
+  } catch {
+    // Missing or unreadable files add no trust-dialog risk item.
   }
   return [...risks];
 }

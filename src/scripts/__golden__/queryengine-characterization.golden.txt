@@ -183,6 +183,7 @@ command[info]:
   | ✓ MCP: none configured
   | <SANDBOX_STATUS>
   | ✓ Settings files valid
+  | ✓ Project configuration: trusted
   | ✓ Plugins: 0 active, no load errors
 <<< handled=true
 

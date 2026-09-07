@@ -53,8 +53,8 @@ async function main(): Promise<void> {
 
   process.env.MP_TEST_KEY = "sk-from-env-123";
 
-  // Project-scope settings: one good profile using ${ENV}, one with an inline
-  // literal apiKey (must be stripped because project scope is untrusted).
+  // Project-scope settings: provider routing and credentials remain inactive
+  // until the workspace is trusted.
   await fs.writeFile(
     path.join(projDir, ".easy-agent", "settings.json"),
     JSON.stringify(
@@ -80,18 +80,28 @@ async function main(): Promise<void> {
   );
 
   const { loadProfiles, resolveProfile } = await import("../src/services/api/providers/profile.js");
+  const { resetGlobalStateCache, trustProjectForSession } = await import("../src/config/globalState.js");
 
+  resetGlobalStateCache();
+  const untrusted = await loadProfiles(projDir);
+  assert(untrusted.defaultModel === undefined, "untrusted project defaultModel is inactive");
+  assert(untrusted.profiles.gpt5 === undefined, "untrusted project provider profile is inactive");
+  assert(
+    untrusted.warnings.some((w) => w.includes("gpt5") && w.includes("ignored until")),
+    "untrusted provider fields emit a trust warning",
+  );
+
+  await trustProjectForSession(projDir);
   const loaded = await loadProfiles(projDir);
-  assert(loaded.defaultModel === "gpt5", "defaultModel read from project settings");
   assert(loaded.profiles.gpt5?.apiKey === "sk-from-env-123", "${ENV} apiKey interpolated");
   assert(loaded.profiles.gpt5?.protocol === "openai-chat", "protocol parsed");
   assert(
-    loaded.profiles.leaky?.apiKey === undefined,
-    "inline literal apiKey from project scope is stripped",
+    loaded.profiles.leaky?.apiKey === "sk-inline-should-be-ignored",
+    "trusted project inline apiKey is loaded",
   );
   assert(
-    loaded.warnings.some((w) => w.includes("leaky") && w.includes("apiKey")),
-    "warning emitted for stripped inline secret",
+    loaded.provenance.gpt5?.apiKey === "project",
+    "profile field provenance records its source without the credential value",
   );
 
   const synthetic = await resolveProfile("claude-sonnet-4-20250514", projDir);

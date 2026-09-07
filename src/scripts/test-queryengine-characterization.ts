@@ -33,6 +33,10 @@ import {
   getSessionPaths,
 } from "../session/storage.js";
 import { getTaskMode, setTaskMode } from "../state/taskModeStore.js";
+import {
+  resetGlobalStateCache,
+  trustProjectForSession,
+} from "../config/globalState.js";
 
 const GOLDEN_PATH = path.join(
   import.meta.dirname,
@@ -235,11 +239,13 @@ async function buildRecording(): Promise<string> {
   await mkdir(isolatedHome, { recursive: true });
   process.env.HOME = isolatedHome;
   process.env.USERPROFILE = isolatedHome;
+  resetGlobalStateCache();
   registerPathReplacement(tmpRoot, "<TMP>");
   registerPathReplacement(os.tmpdir(), "<TMPDIR>");
 
   const isolatedCwd = path.join(tmpRoot, "project");
   await mkdir(isolatedCwd, { recursive: true });
+  await trustProjectForSession(isolatedCwd);
   registerPathReplacement(isolatedCwd, "<CWD>");
 
   async function section(label: string, fn: () => Promise<string[]>): Promise<void> {
@@ -431,6 +437,7 @@ async function buildRecording(): Promise<string> {
   // config --------------------------------------------------------------------
   await section("config", async () => {
     const cfgCwd = await mkdtemp(path.join(tmpRoot, "cfg-"));
+    await trustProjectForSession(cfgCwd);
     registerPathReplacement(cfgCwd, "<CFGCWD>");
     const e = makeEngine(cfgCwd);
     return [

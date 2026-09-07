@@ -2,11 +2,10 @@
  * First-run trust prompt.
  *
  * Shown the first time the agent is started in a directory the user hasn't
- * trusted yet. Project-scoped settings can configure hooks, statusLine
- * commands, MCP servers and Bash allow-rules — all of which can execute code —
- * so we ask for explicit consent before honoring any of them. Declining exits
- * the CLI; trusting persists the decision (in the machine-level State store,
- * never inside the project) and continues.
+ * trusted yet. Project-scoped settings can change provider routing,
+ * environment variables, filesystem access, and command execution. Declining
+ * exits the CLI; trusting persists the decision in machine-level state and
+ * continues.
  */
 
 import React from "react";
@@ -67,9 +66,9 @@ export function TrustDialog({ cwd, risks, onDecision }: TrustDialogProps): React
       </Box>
       <Box marginTop={1}>
         <Text>
-          This folder may contain project settings (hooks, status line, MCP
-          servers, Bash rules) that can run commands on your machine. Only
-          continue if you trust its source.
+          This folder may contain settings that change environment variables,
+          provider endpoints, credentials, filesystem access, or commands on
+          your machine. Only continue if you trust its source.
         </Text>
       </Box>
       {risks.length > 0 ? (

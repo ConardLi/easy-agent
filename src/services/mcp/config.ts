@@ -22,7 +22,11 @@ import type {
 } from "../../types/mcp.js";
 import * as path from "node:path";
 import { logWarn } from "../../utils/log.js";
-import { loadSettingSources, type SettingSource } from "../../config/sources.js";
+import {
+  loadSettingSources,
+  loadTrustedSettingSources,
+  type SettingSource,
+} from "../../config/sources.js";
 import { isProjectTrusted } from "../../config/globalState.js";
 import { readJsonSettingsFile } from "../../utils/settings.js";
 
@@ -225,7 +229,10 @@ async function loadProjectMcpJson(
  * so a single malformed entry can't take the whole CLI down).
  */
 export async function loadMcpConfigs(cwd: string): Promise<McpConfigLoadResult> {
-  const sources = await loadSettingSources(cwd);
+  const [allSources, sources] = await Promise.all([
+    loadSettingSources(cwd),
+    loadTrustedSettingSources(cwd),
+  ]);
 
   const errors: string[] = [];
   const servers: Record<string, ScopedMcpServerConfig> = {};
@@ -238,6 +245,10 @@ export async function loadMcpConfigs(cwd: string): Promise<McpConfigLoadResult> 
     if (!src.raw) continue;
     if (src.raw["enableAllProjectMcpServers"] === true) enableAll = true;
     enabled.push(...asStringArray(src.raw["enabledMcpjsonServers"]));
+    disabled.push(...asStringArray(src.raw["disabledMcpjsonServers"]));
+  }
+  for (const src of allSources) {
+    if (!src.raw) continue;
     disabled.push(...asStringArray(src.raw["disabledMcpjsonServers"]));
   }
 

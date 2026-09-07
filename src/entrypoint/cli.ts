@@ -2,9 +2,6 @@
 // Must stay first: gates the Node version and enables source maps before any
 // other module body runs. See preflight.ts for why the ordering matters.
 import "./preflight.js";
-import { loadEnv } from "../utils/loadEnv.js";
-loadEnv();
-import { buildSystemPrompt, renderSystemPrompt } from "../context/systemPrompt.js";
 import type { PermissionMode } from "../permissions/permissions.js";
 import { VERSION } from "../version.js";
 
@@ -58,6 +55,8 @@ Options:
                               Without it, -p denies such calls by default.
   --settings <path>           Load an external settings.json as the flag layer
                               (inline --model / --permission-mode still win)
+  --trust-project-config      Trust project/local settings and .env for this
+                              invocation without persisting the decision
   --agent-teams               Enable Agent Teams (TeamCreate / TeamDelete /
                               SendMessage tools). Equivalent
                               to setting EASY_AGENT_TEAMS=1.
@@ -195,6 +194,53 @@ Settings keys (in ~/.easy-agent/settings.json or <cwd>/.easy-agent/settings.json
   if (model) flagSettings.model = model;
   if (permissionMode) flagSettings.mode = permissionMode;
   setFlagSettings(flagSettings);
+
+  // Resolve workspace trust before loading project-controlled environment or
+  // trust-sensitive settings. Non-interactive invocations use the persisted
+  // trust decision unless the caller explicitly opts in for this process.
+  const cwd = process.cwd();
+  const trustProjectConfig = process.argv.includes("--trust-project-config");
+  if (trustProjectConfig) {
+    const { trustProjectForSession } = await import("../config/globalState.js");
+    await trustProjectForSession(cwd);
+  }
+
+  const isNonInteractiveMode = isPrintMode || dumpSystemPrompt || !process.stdin.isTTY;
+  if (!trustProjectConfig && !isNonInteractiveMode) {
+    const { ensureTrusted } = await import("../ui/trustGate.js");
+    const trusted = await ensureTrusted(cwd);
+    if (!trusted) {
+      console.log("Not trusted — exiting. Re-run and choose to trust this folder to continue.");
+      process.exit(0);
+    }
+  }
+
+  const { isProjectTrusted } = await import("../config/globalState.js");
+  const projectTrusted = await isProjectTrusted(cwd);
+  const { loadEnv } = await import("../utils/loadEnv.js");
+  const environmentReport = await loadEnv(cwd);
+
+  if (!projectTrusted) {
+    const { detectRisks } = await import("../ui/trustGate.js");
+    const risks = await detectRisks(cwd);
+    if (risks.length > 0) {
+      console.warn(
+        `[easy-agent] Project configuration ignored in this untrusted workspace: ${risks.join(", ")}. ` +
+          "Use --trust-project-config to allow it for this invocation.",
+      );
+    }
+  }
+
+  const protectedOverrides = Object.values(
+    environmentReport.protectedCredentialOverrides,
+  ).reduce((total, count) => total + (count ?? 0), 0);
+  if (protectedOverrides > 0) {
+    console.warn(
+      `[easy-agent] Ignored ${protectedOverrides} project credential environment override(s); ` +
+        "credentials inherited from the parent process take precedence.",
+    );
+  }
+
   const resumeIndex = process.argv.indexOf("--resume");
   const resumeValue = resumeIndex !== -1 ? process.argv[resumeIndex + 1] : undefined;
   const resumeSessionId = resumeIndex !== -1 && resumeValue && !resumeValue.startsWith("--") ? resumeValue : null;
@@ -271,25 +317,11 @@ Settings keys (in ~/.easy-agent/settings.json or <cwd>/.easy-agent/settings.json
   }
 
   if (dumpSystemPrompt) {
-    const cwd = process.cwd();
+    const { buildSystemPrompt, renderSystemPrompt } = await import("../context/systemPrompt.js");
     const systemParts = await buildSystemPrompt({ cwd });
     const system = renderSystemPrompt(systemParts);
     console.log(system);
     process.exit(0);
-  }
-
-  // Trust gate (stage 25): before bringing up the REPL, make sure the user
-  // trusts this folder. Declining exits; non-interactive sessions run
-  // untrusted (project/local hooks + statusLine are then suppressed).
-  // Stage 28: print mode is non-interactive by definition — never prompt for
-  // trust (it would block a piped/CI invocation on a TTY answer).
-  if (process.stdin.isTTY && !isPrintMode) {
-    const { ensureTrusted } = await import("../ui/trustGate.js");
-    const trusted = await ensureTrusted(process.cwd());
-    if (!trusted) {
-      console.log("Not trusted — exiting. Re-run and choose to trust this folder to continue.");
-      process.exit(0);
-    }
   }
 
   // Stage 25 Tier 1 config — resolve trust-sensitive, execution-affecting
@@ -347,10 +379,10 @@ Settings keys (in ~/.easy-agent/settings.json or <cwd>/.easy-agent/settings.json
     // Stage 34: seed extended-thinking defaults from settings.json.
     //   - alwaysThinkingEnabled: false → thinking off by default this session
     //   - effortLevel: default output_config.effort for Anthropic models
-    const { loadSettingSources, getScalarSetting } = await import("../config/sources.js");
+    const { loadTrustedSettingSources, getScalarSetting } = await import("../config/sources.js");
     const { configureThinkingDefaults } = await import("../utils/thinking.js");
     try {
-      const sources = await loadSettingSources(process.cwd());
+      const sources = await loadTrustedSettingSources(process.cwd());
       const alwaysThinkingEnabled = getScalarSetting<boolean>(sources, "alwaysThinkingEnabled", {
         predicate: (v) => typeof v === "boolean",
       });

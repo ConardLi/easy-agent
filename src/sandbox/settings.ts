@@ -14,7 +14,7 @@
  * so callers don't need to repeat default-checking.
  */
 
-import { loadSettingSources } from "../config/sources.js";
+import { loadTrustedSettingSources } from "../config/sources.js";
 import type {
   SandboxFilesystemSettings,
   SandboxNetworkSettings,
@@ -146,7 +146,7 @@ export function resolveSandboxSettings(
 export async function loadSandboxSettings(
   cwd: string,
 ): Promise<ResolvedSandboxSettings> {
-  const sources = await loadSettingSources(cwd);
+  const sources = await loadTrustedSettingSources(cwd);
   const list = sources.map((src) =>
     src.raw ? pickSandbox((src.raw as RawRootSettings).sandbox) : {},
   );

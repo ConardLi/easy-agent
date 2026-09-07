@@ -38,6 +38,10 @@ import { getMcpRegistry, getMcpRegistryEntry, clearMcpRegistry } from "../servic
 import { _resetMcpClientForTesting } from "../services/mcp/client.js";
 import { registerMcpTools, findToolByName, getAllTools } from "../tools/index.js";
 import type { ToolContext } from "../tools/Tool.js";
+import {
+  resetGlobalStateCache,
+  trustProjectForSession,
+} from "../config/globalState.js";
 
 const ctx: ToolContext = { cwd: process.cwd() };
 
@@ -54,6 +58,7 @@ async function resetMcpStateForTest(): Promise<string> {
   // Repoint HOME so loadMcpConfigs' user-scope read finds nothing.
   const fakeHome = await fs.mkdtemp(path.join(os.tmpdir(), "easy-agent-mcp-home-"));
   process.env.HOME = fakeHome;
+  resetGlobalStateCache();
   return fakeHome;
 }
 
@@ -109,6 +114,7 @@ async function testConfigValidation() {
       },
     }),
   );
+  await trustProjectForSession(tmp);
   const result = await loadMcpConfigs(tmp);
   const good = result.servers["good-stdio"];
   if (good && good.type !== "http" && good.type !== "sse" && good.command === "echo") pass("good-stdio validated");
@@ -215,6 +221,7 @@ async function testEndToEnd(): Promise<void> {
       },
     }),
   );
+  await trustProjectForSession(tmpCwd);
 
   const result = await bootstrapMcp(tmpCwd);
   if (result.connections.length === 2) pass(`bootstrap returned ${result.connections.length} connections`);
@@ -299,6 +306,7 @@ async function testNonBlockingBootstrap(): Promise<void> {
       mcpServers: { inline: { command: "node", args: [serverPath] } },
     }),
   );
+  await trustProjectForSession(tmpCwd);
 
   // Don't await — kick off bootstrap in background, exactly like cli.ts does.
   const bootstrapPromise = bootstrapMcp(tmpCwd);
@@ -415,6 +423,7 @@ async function testHttpTransport(): Promise<void> {
       },
     }),
   );
+  await trustProjectForSession(tmpCwd);
 
   const result = await bootstrapMcp(tmpCwd);
   const ok = result.connections.find((c) => c.name === "remote-ok");
@@ -454,6 +463,7 @@ async function testHttpTransport(): Promise<void> {
       },
     }),
   );
+  await trustProjectForSession(tmpCwd);
   const badResult = await bootstrapMcp(tmpCwd);
   const bad = badResult.connections.find((c) => c.name === "remote-bad");
   if (bad?.type === "failed") pass(`401 → connection marked failed (${bad.error.slice(0, 80)}…)`);
