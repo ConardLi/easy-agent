@@ -77,6 +77,37 @@ export type ReadImageResult =
   | { ok: true; block: ImageBlock; bytes: number; mediaType: string }
   | { ok: false; error: string };
 
+export function formatImageSizeError(bytes: number): string {
+  const mb = (bytes / (1024 * 1024)).toFixed(1);
+  const limit = (MAX_IMAGE_BYTES / (1024 * 1024)).toFixed(2);
+  return `Image too large (${mb} MB > ${limit} MB limit). Resize or compress it before sending.`;
+}
+
+export function imageBufferAsBlock(absPath: string, data: Buffer): ReadImageResult {
+  const mediaType = imageMediaType(absPath);
+  if (!mediaType) {
+    return { ok: false, error: `Unsupported image type: ${path.extname(absPath) || "(none)"}` };
+  }
+
+  const bytes = data.byteLength;
+  if (bytes > MAX_IMAGE_BYTES) {
+    return {
+      ok: false,
+      error: formatImageSizeError(bytes),
+    };
+  }
+
+  return {
+    ok: true,
+    bytes,
+    mediaType,
+    block: {
+      type: "image",
+      source: { type: "base64", media_type: mediaType, data: data.toString("base64") },
+    },
+  };
+}
+
 /**
  * Read an image file into a base64 `ImageBlock`, enforcing the size guard.
  * The caller is expected to have already resolved/validated the path.
@@ -98,19 +129,12 @@ export async function readImageAsBlock(absPath: string): Promise<ReadImageResult
   }
 
   if (bytes > MAX_IMAGE_BYTES) {
-    const mb = (bytes / (1024 * 1024)).toFixed(1);
-    const limit = (MAX_IMAGE_BYTES / (1024 * 1024)).toFixed(2);
     return {
       ok: false,
-      error: `Image too large (${mb} MB > ${limit} MB limit). Resize or compress it before sending.`,
+      error: formatImageSizeError(bytes),
     };
   }
 
-  const data = await fs.readFile(absPath, { encoding: "base64" });
-  return {
-    ok: true,
-    bytes,
-    mediaType,
-    block: { type: "image", source: { type: "base64", media_type: mediaType, data } },
-  };
+  const data = await fs.readFile(absPath);
+  return imageBufferAsBlock(absPath, data);
 }

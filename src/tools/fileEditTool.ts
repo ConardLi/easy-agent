@@ -1,6 +1,9 @@
-import * as fs from "node:fs/promises";
 import type { Tool, ToolContext, ToolResult } from "./Tool.js";
-import { resolveWorkspacePath } from "./pathUtils.js";
+import {
+  resolveSafePath,
+  updateWorkspaceTextFile,
+  WorkspacePathError,
+} from "./pathUtils.js";
 import {
   applyEditToContent,
   buildEditPreview,
@@ -44,46 +47,33 @@ export const fileEditTool: Tool = {
       return { content: "Error: file_path, old_string, and new_string are required", isError: true };
     }
 
-    let resolvedPath: string;
     try {
-      resolvedPath = resolveWorkspacePath(input.file_path, context.cwd);
-    } catch (error: unknown) {
-      return {
-        content: error instanceof Error ? `Error: ${error.message}` : `Error: ${String(error)}`,
-        isError: true,
-      };
-    }
-
-    try {
-      const original = await fs.readFile(resolvedPath, "utf-8");
-
-      let updated: string;
-      let replacements: number;
-      try {
-        const result = applyEditToContent(original, {
+      const result = await updateWorkspaceTextFile(input.file_path, context.cwd, (original) => {
+        const edit = applyEditToContent(original, {
           old_string: input.old_string,
           new_string: input.new_string,
           replace_all: input.replace_all === true,
         });
-        updated = result.content;
-        replacements = result.replacements;
-      } catch (error) {
-        if (error instanceof EditError) {
-          return { content: `Error: ${error.message} in ${resolvedPath}`, isError: true };
-        }
-        throw error;
-      }
+        return { content: edit.content, value: edit.replacements };
+      });
 
-      await fs.writeFile(resolvedPath, updated, "utf-8");
-
-      const countNote = replacements > 1 ? ` (${replacements} occurrences)` : "";
+      const countNote = result.value > 1 ? ` (${result.value} occurrences)` : "";
       return {
-        content: `Updated file: ${resolvedPath}${countNote}\n${buildEditPreview(
+        content: `Updated file: ${result.requestedPath}${countNote}\n${buildEditPreview(
           normalizeQuotes(input.old_string),
           normalizeQuotes(input.new_string),
         )}`,
       };
     } catch (error: unknown) {
+      if (error instanceof EditError) {
+        return {
+          content: `Error: ${error.message} in ${resolveSafePath(input.file_path, context.cwd)}`,
+          isError: true,
+        };
+      }
+      if (error instanceof WorkspacePathError) {
+        return { content: `Error: ${error.message}`, isError: true };
+      }
       return {
         content: `Error editing file: ${error instanceof Error ? error.message : String(error)}`,
         isError: true,

@@ -27,21 +27,28 @@
  */
 
 import { createHash } from "node:crypto";
-import { Stats } from "node:fs";
+import { constants, type Stats } from "node:fs";
 import {
-  chmod,
-  copyFile,
+  type FileHandle,
   mkdir,
+  open,
   readdir,
   readFile,
   rm,
   stat,
-  unlink,
 } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative } from "node:path";
 import { diffLines } from "diff";
 import { getEasyAgentHome } from "../utils/paths.js";
 import { readMergedBooleanSetting, readMergedNumberSetting } from "../utils/settings.js";
+import {
+  readWorkspaceFile,
+  removeWorkspaceFile,
+  resolveWorkspacePathForWrite,
+  withValidatedWorkspaceFile,
+  withValidatedWorkspacePath,
+  writeWorkspaceFileFromHandle,
+} from "../tools/pathUtils.js";
 import {
   DEFAULT_CLEANUP_PERIOD_DAYS,
   recordFileHistorySnapshot,
@@ -219,7 +226,13 @@ export async function fileHistoryTrackEdit(
 ): Promise<void> {
   if (!enabled) return;
 
-  const trackingPath = maybeShortenFilePath(filePath);
+  let checkedPath: string;
+  try {
+    checkedPath = (await resolveWorkspacePathForWrite(filePath, cwd)).requestedPath;
+  } catch {
+    return;
+  }
+  const trackingPath = maybeShortenFilePath(checkedPath);
 
   // Ensure there's a snapshot to attach to. In normal operation makeSnapshot
   // fires at turn start, but track-before-snapshot must not silently drop the
@@ -241,7 +254,7 @@ export async function fileHistoryTrackEdit(
 
   let backup: FileHistoryBackup;
   try {
-    backup = await createBackup(filePath, 1);
+    backup = await createBackup(checkedPath, 1);
   } catch {
     return;
   }
@@ -275,7 +288,14 @@ export async function fileHistoryMakeSnapshot(messageId: string): Promise<void> 
 
         let fileStats: Stats | undefined;
         try {
-          fileStats = await stat(filePath);
+          const resolution = await resolveWorkspacePathForWrite(filePath, cwd);
+          if (resolution.exists) {
+            fileStats = await withValidatedWorkspacePath(
+              filePath,
+              cwd,
+              async (_resolvedPath, stats) => stats,
+            );
+          }
         } catch (e) {
           if (!isENOENT(e)) throw e;
         }
@@ -409,10 +429,10 @@ async function applySnapshot(target: FileHistorySnapshot): Promise<string[]> {
       if (backupFileName === undefined) continue;
 
       if (backupFileName === null) {
-        // File did not exist at the target version; delete it if present.
         try {
-          await unlink(filePath);
-          filesChanged.push(filePath);
+          if (await removeWorkspaceFile(filePath, cwd)) {
+            filesChanged.push(filePath);
+          }
         } catch (e) {
           if (!isENOENT(e)) throw e;
         }
@@ -453,44 +473,99 @@ async function createBackup(
   const backupFileName = getBackupFileName(filePath, version);
   const backupPath = resolveBackupPath(backupFileName);
 
-  let srcStats: Stats;
   try {
-    srcStats = await stat(filePath);
+    await withValidatedWorkspaceFile(
+      filePath,
+      cwd,
+      async (sourceHandle, _resolution, sourceStats) => {
+        await writeBackupFile(backupPath, sourceHandle, sourceStats.mode);
+      },
+    );
   } catch (e) {
     if (isENOENT(e)) return { backupFileName: null, version, backupTime };
     throw e;
   }
-
-  try {
-    await copyFile(filePath, backupPath);
-  } catch (e) {
-    if (!isENOENT(e)) throw e;
-    await mkdir(dirname(backupPath), { recursive: true });
-    await copyFile(filePath, backupPath);
-  }
-  await chmod(backupPath, srcStats.mode);
 
   return { backupFileName, version, backupTime };
 }
 
 async function restoreBackup(filePath: string, backupFileName: string): Promise<void> {
   const backupPath = resolveBackupPath(backupFileName);
-  let backupStats: Stats;
   try {
-    backupStats = await stat(backupPath);
+    await withBackupFile(backupPath, async (backupHandle, backupStats) => {
+      await writeWorkspaceFileFromHandle(filePath, cwd, backupHandle, {
+        mode: backupStats.mode,
+      });
+    });
   } catch (e) {
     if (isENOENT(e)) return;
     throw e;
   }
+}
 
-  try {
-    await copyFile(backupPath, filePath);
-  } catch (e) {
-    if (!isENOENT(e)) throw e;
-    await mkdir(dirname(filePath), { recursive: true });
-    await copyFile(backupPath, filePath);
+async function copyHandleContents(sourceHandle: FileHandle, targetHandle: FileHandle): Promise<void> {
+  await targetHandle.truncate(0);
+  const buffer = Buffer.allocUnsafe(64 * 1024);
+  let offset = 0;
+  for (;;) {
+    const { bytesRead } = await sourceHandle.read(buffer, 0, buffer.length, offset);
+    if (bytesRead === 0) return;
+
+    let written = 0;
+    while (written < bytesRead) {
+      const result = await targetHandle.write(
+        buffer,
+        written,
+        bytesRead - written,
+        offset + written,
+      );
+      if (result.bytesWritten === 0) throw new Error("Backup write made no progress");
+      written += result.bytesWritten;
+    }
+    offset += bytesRead;
   }
-  await chmod(filePath, backupStats.mode);
+}
+
+async function writeBackupFile(
+  filePath: string,
+  sourceHandle: FileHandle,
+  mode: number,
+): Promise<void> {
+  await mkdir(dirname(filePath), { recursive: true });
+  const handle = await open(
+    filePath,
+    constants.O_WRONLY | constants.O_CREAT | (constants.O_NOFOLLOW ?? 0),
+    mode,
+  );
+  try {
+    const stats = await handle.stat();
+    if (!stats.isFile()) throw new Error(`Backup path is not a regular file: ${filePath}`);
+    await copyHandleContents(sourceHandle, handle);
+    await handle.chmod(mode);
+  } finally {
+    await handle.close().catch(() => {});
+  }
+}
+
+async function withBackupFile<T>(
+  filePath: string,
+  operation: (handle: FileHandle, stats: Stats) => Promise<T>,
+): Promise<T> {
+  const handle = await open(filePath, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+  try {
+    const stats = await handle.stat();
+    if (!stats.isFile()) throw new Error(`Backup path is not a regular file: ${filePath}`);
+    return await operation(handle, stats);
+  } finally {
+    await handle.close().catch(() => {});
+  }
+}
+
+async function readBackupFile(filePath: string): Promise<{ data: Buffer; stats: Stats }> {
+  return withBackupFile(filePath, async (handle, stats) => ({
+    data: await handle.readFile(),
+    stats,
+  }));
 }
 
 /**
@@ -520,38 +595,78 @@ export async function checkOriginFileChanged(
   let originalStats: Stats | null = originalStatsHint ?? null;
   if (!originalStats) {
     try {
-      originalStats = await stat(originalFile);
+      originalStats = await withValidatedWorkspacePath(
+        originalFile,
+        cwd,
+        async (_resolvedPath, stats) => stats,
+      );
     } catch (e) {
       if (!isENOENT(e)) return true;
     }
   }
+
   let backupStats: Stats | null = null;
   try {
-    backupStats = await stat(backupPath);
+    backupStats = await withBackupFile(backupPath, async (_handle, stats) => stats);
   } catch (e) {
     if (!isENOENT(e)) return true;
   }
 
-  // One exists, one missing → changed.
   if ((originalStats === null) !== (backupStats === null)) return true;
-  // Both missing → unchanged.
   if (originalStats === null || backupStats === null) return false;
-  // Cheap stat comparison first.
   if (originalStats.mode !== backupStats.mode || originalStats.size !== backupStats.size) {
     return true;
   }
-  // If original is older than the backup, content can't have diverged.
   if (originalStats.mtimeMs < backupStats.mtimeMs) return false;
 
   try {
-    const [a, b] = await Promise.all([
-      readFile(originalFile, "utf-8"),
-      readFile(backupPath, "utf-8"),
-    ]);
-    return a !== b;
+    return await withValidatedWorkspaceFile(
+      originalFile,
+      cwd,
+      async (originalHandle, _resolution, currentOriginalStats) =>
+        withBackupFile(backupPath, async (backupHandle, currentBackupStats) => {
+          if (
+            currentOriginalStats.mode !== currentBackupStats.mode ||
+            currentOriginalStats.size !== currentBackupStats.size
+          ) {
+            return true;
+          }
+          return !(await fileHandlesEqual(
+            originalHandle,
+            backupHandle,
+            currentOriginalStats.size,
+          ));
+        }),
+    );
   } catch {
     return true;
   }
+}
+
+async function fileHandlesEqual(
+  left: FileHandle,
+  right: FileHandle,
+  size: number,
+): Promise<boolean> {
+  const leftBuffer = Buffer.allocUnsafe(64 * 1024);
+  const rightBuffer = Buffer.allocUnsafe(64 * 1024);
+  let offset = 0;
+  while (offset < size) {
+    const length = Math.min(leftBuffer.length, size - offset);
+    const [leftRead, rightRead] = await Promise.all([
+      left.read(leftBuffer, 0, length, offset),
+      right.read(rightBuffer, 0, length, offset),
+    ]);
+    if (leftRead.bytesRead !== rightRead.bytesRead) return false;
+    if (!leftBuffer.subarray(0, leftRead.bytesRead).equals(
+      rightBuffer.subarray(0, rightRead.bytesRead),
+    )) {
+      return false;
+    }
+    if (leftRead.bytesRead === 0) return offset === size;
+    offset += leftRead.bytesRead;
+  }
+  return true;
 }
 
 async function computeDiffStatsForFile(
@@ -563,7 +678,10 @@ async function computeDiffStatsForFile(
   try {
     const backupPath = backupFileName ? resolveBackupPath(backupFileName) : undefined;
     const [originalContent, backupContent] = await Promise.all([
-      readFileOrNull(originalFile),
+      readWorkspaceFile(originalFile, cwd).then(
+        (file) => file.data.toString("utf8"),
+        () => null,
+      ),
       backupPath ? readFileOrNull(backupPath) : Promise.resolve(null),
     ]);
     if (originalContent === null && backupContent === null) {
@@ -593,7 +711,10 @@ async function readFileOrNull(path: string): Promise<string | null> {
 /** Store tracked files relative to cwd when possible (smaller transcript). */
 function maybeShortenFilePath(filePath: string): string {
   if (!isAbsolute(filePath)) return filePath;
-  if (filePath.startsWith(cwd)) return relative(cwd, filePath);
+  const relativePath = relative(cwd, filePath);
+  if (relativePath === "" || (!relativePath.startsWith("..") && !isAbsolute(relativePath))) {
+    return relativePath;
+  }
   return filePath;
 }
 

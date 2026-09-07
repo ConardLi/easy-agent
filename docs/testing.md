@@ -18,7 +18,7 @@ Each offline test process receives a temporary `HOME`, `USERPROFILE`, XDG direct
 | Area | Included checks | Execution |
 | --- | --- | --- |
 | Core flow | CLI and Headless protocols, QueryEngine commands, provider stream adapters, tools, ToolSearch, MCP, Skills, tasks, and agents | `core` |
-| Permissions | Allow/deny behavior, structured Bash read-only analysis, Auto Mode configuration, Plan Mode paths, and sandbox policy | `core` |
+| Permissions | Allow/deny behavior, structured Bash read-only analysis, realpath and symbolic-link boundaries, Auto Mode configuration, Plan Mode paths, and sandbox policy | `core` |
 | Storage and configuration | Configuration precedence and source shapes, session JSONL and restore shape, file history, and retention | `core`, `extensions` |
 | Extensions | Worktrees, agent teams, hooks, commands, web and multimodal tools, plugins, and resilience | `extensions` |
 | UI | Ink rendering, input, transcript, permission prompts, progress, status line, and plugin management | `ui` |
@@ -55,6 +55,12 @@ Run the Bash read-only security regression suite directly while changing command
 
 ```bash
 npm run test:bash-readonly
+```
+
+Run the workspace path boundary suite after changing file tools, allowed roots, file history, or path handling:
+
+```bash
+npm run test:path-boundary
 ```
 
 ## Platform and external checks

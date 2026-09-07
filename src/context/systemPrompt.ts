@@ -37,7 +37,7 @@ export interface BuildSystemPromptOptions {
 // Identity framing — always present, regardless of output style.
 const IDENTITY_SECTIONS = [
   "You are Easy Agent, a terminal-native local coding assistant running inside the user's workspace.",
-  "Treat the current working directory as the primary workspace boundary. The Easy Agent system directory at ~/.easy-agent is also available for memory and session storage; do not assume other outside paths are available.",
+  "Treat the current working directory and explicitly configured additional directories as the file-tool boundary. Easy Agent exposes its plans directory when a plan file is required; memory, sessions, and other internal state are managed through dedicated runtime features.",
 ];
 
 // Coding instructions — dropped when an output style sets

@@ -2,10 +2,18 @@
  * FileReadTool — Read file contents with optional line range.
  */
 
-import * as fs from "node:fs/promises";
 import type { Tool, ToolContext, ToolResult } from "./Tool.js";
-import { resolveWorkspacePath } from "./pathUtils.js";
-import { isImagePath, readImageAsBlock } from "./imageUtils.js";
+import {
+  readWorkspaceEntry,
+  WorkspaceFileTooLargeError,
+  WorkspacePathError,
+} from "./pathUtils.js";
+import {
+  formatImageSizeError,
+  imageBufferAsBlock,
+  isImagePath,
+  MAX_IMAGE_BYTES,
+} from "./imageUtils.js";
 
 interface FileReadInput {
   file_path: string;
@@ -54,31 +62,20 @@ export const fileReadTool: Tool = {
       return { content: "Error: file_path is required", isError: true };
     }
 
-    let resolvedPath: string;
-    try {
-      resolvedPath = resolveWorkspacePath(input.file_path, context.cwd);
-    } catch (error: unknown) {
-      return {
-        content: error instanceof Error ? `Error: ${error.message}` : `Error: ${String(error)}`,
-        isError: true,
-      };
-    }
-
     const offset = input.offset ?? 1;
     const limit = input.limit;
+    const imagePath = isImagePath(input.file_path);
 
     try {
-      const stat = await fs.stat(resolvedPath);
-      if (stat.isDirectory()) {
-        const entries = await fs.readdir(resolvedPath);
-        return { content: `Directory listing for ${input.file_path}:\n${entries.join("\n")}` };
+      const entry = await readWorkspaceEntry(input.file_path, context.cwd, {
+        ...(imagePath ? { maxFileBytes: MAX_IMAGE_BYTES } : {}),
+      });
+      if (entry.kind === "directory") {
+        return { content: `Directory listing for ${input.file_path}:\n${entry.entries.join("\n")}` };
       }
 
-      // Images come back as a real image block so the model can see them,
-      // prefixed with a short text note for context. Non-image binaries fall
-      // through to the UTF-8 text path below.
-      if (isImagePath(resolvedPath)) {
-        const img = await readImageAsBlock(resolvedPath);
+      if (isImagePath(entry.requestedPath)) {
+        const img = imageBufferAsBlock(entry.requestedPath, entry.data);
         if (!img.ok) {
           return { content: `Error: ${img.error}`, isError: true };
         }
@@ -90,7 +87,7 @@ export const fileReadTool: Tool = {
         };
       }
 
-      const raw = await fs.readFile(resolvedPath, "utf-8");
+      const raw = entry.data.toString("utf8");
       const allLines = raw.split("\n");
       const startIdx = Math.max(0, offset - 1);
       const endIdx = limit ? startIdx + limit : allLines.length;
@@ -102,8 +99,14 @@ export const fileReadTool: Tool = {
           ? ` (lines ${startIdx + 1}-${startIdx + numLines} of ${allLines.length})`
           : ` (${allLines.length} lines)`;
 
-      return { content: `${resolvedPath}${rangeInfo}\n${numbered}` };
+      return { content: `${entry.requestedPath}${rangeInfo}\n${numbered}` };
     } catch (error: unknown) {
+      if (error instanceof WorkspacePathError) {
+        return { content: `Error: ${error.message}`, isError: true };
+      }
+      if (error instanceof WorkspaceFileTooLargeError && imagePath) {
+        return { content: `Error: ${formatImageSizeError(error.actualBytes)}`, isError: true };
+      }
       const err = error as NodeJS.ErrnoException;
       if (err.code === "ENOENT") {
         return { content: `Error: File not found: ${input.file_path}`, isError: true };
