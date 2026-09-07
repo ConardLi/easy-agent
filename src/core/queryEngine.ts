@@ -993,9 +993,12 @@ export class QueryEngine {
         }
 
         if (nextModel === "list") {
-          const { profiles, defaultModel, warnings } = await loadProfiles(this.toolContext.cwd).catch(
-            () => ({ profiles: emptyProfiles, defaultModel: undefined as string | undefined, warnings: [] as string[] }),
-          );
+          const loadedProfiles = await loadProfiles(this.toolContext.cwd).catch(() => null);
+          const profiles = loadedProfiles?.profiles ?? emptyProfiles;
+          const defaultModel = loadedProfiles?.defaultModel;
+          const warnings = loadedProfiles?.warnings ?? [];
+          const provenance = loadedProfiles?.provenance ?? {};
+          const { redactUrlForDisplay } = await import("../config/redaction.js");
           const ids = Object.keys(profiles);
           const lines: string[] = ["Model profiles"];
           if (ids.length === 0) {
@@ -1004,7 +1007,12 @@ export class QueryEngine {
             for (const id of ids) {
               const p = profiles[id]!;
               const marker = id === this.getActiveModel() ? " (active)" : defaultModel === id ? " (default)" : "";
-              lines.push(`  ${id}${marker} · ${p.protocol} · ${p.model}${p.baseURL ? ` · ${p.baseURL}` : ""}`);
+              const sources = [...new Set(Object.values(provenance[id] ?? {}))];
+              const source = sources.length > 0 ? ` · source ${sources.join("+")}` : "";
+              lines.push(
+                `  ${id}${marker} · ${p.protocol} · ${p.model}` +
+                  `${p.baseURL ? ` · ${redactUrlForDisplay(p.baseURL)}` : ""}${source}`,
+              );
             }
           }
           for (const w of warnings) lines.push(`  ⚠ ${w}`);

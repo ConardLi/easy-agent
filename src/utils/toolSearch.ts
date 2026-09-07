@@ -23,6 +23,7 @@
 import type { MessageParam } from "@anthropic-ai/sdk/resources/messages.js";
 import { toolToApiParam, type ApiToolParam, type Tool } from "../tools/Tool.js";
 import type { ContentBlock, ToolReferenceBlock } from "../types/message.js";
+import { redactUrlForDisplay } from "../config/redaction.js";
 import { debugLog } from "./log.js";
 import { getContextWindowForModel } from "./tokens.js";
 import { areExperimentalBetasDisabled } from "./experimentalBetas.js";
@@ -285,7 +286,9 @@ export function isToolSearchEnabled(
     !getToolSearchEnvValue() &&
     !isFirstPartyAnthropicBaseUrl(env.baseURL)
   ) {
-    log(false, "non_first_party_base_url", { baseURL: env.baseURL });
+    log(false, "non_first_party_base_url", {
+      baseURL: env.baseURL ? redactUrlForDisplay(env.baseURL) : undefined,
+    });
     return false;
   }
 

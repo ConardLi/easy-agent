@@ -29,6 +29,9 @@ import {
   loadSandboxSettings,
 } from "../../../sandbox/index.js";
 import { loadSettingsDiagnostics } from "../../../utils/settings.js";
+import { getEnvironmentLoadReport } from "../../../config/environment.js";
+import { isProjectTrusted } from "../../../config/globalState.js";
+import { redactUrlForDisplay } from "../../../config/redaction.js";
 import {
   getActivePluginErrors,
   getActivePlugins,
@@ -211,7 +214,7 @@ export async function* handleDoctorCommand(
 
   // Endpoint + reachability
   const baseURL = process.env.ANTHROPIC_BASE_URL || "https://api.anthropic.com";
-  lines.push(`  Endpoint: ${baseURL}`);
+  lines.push(`  Endpoint: ${redactUrlForDisplay(baseURL)}`);
   const reach = await probeEndpoint(baseURL);
   if (reach.ok) lines.push(`${ICON.ok} Endpoint reachable (HTTP ${reach.status})`);
   else lines.push(`${ICON.warn} Endpoint not reachable: ${reach.error}`);
@@ -257,6 +260,21 @@ export async function* handleDoctorCommand(
   } else {
     lines.push(`${ICON.fail} Settings problems:`);
     for (const e of settingsErrors) lines.push(`    - ${e}`);
+  }
+
+  const workspaceTrusted = await isProjectTrusted(cwd);
+  const environmentReport = getEnvironmentLoadReport();
+  lines.push(
+    `${workspaceTrusted ? ICON.ok : ICON.warn} Project configuration: ` +
+      `${workspaceTrusted ? "trusted" : "untrusted; sensitive project settings are ignored"}`,
+  );
+  if (environmentReport) {
+    const bySource = new Map<string, number>();
+    for (const source of Object.values(environmentReport.effectiveSources)) {
+      bySource.set(source, (bySource.get(source) ?? 0) + 1);
+    }
+    const summary = [...bySource.entries()].map(([source, count]) => `${source}:${count}`).join(", ");
+    lines.push(`${ICON.ok} Environment configuration sources: ${summary || "parent process only"}`);
   }
 
   // Plugin loader/reload failures are structured and persistent for the active

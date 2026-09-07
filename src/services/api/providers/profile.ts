@@ -24,16 +24,16 @@
  * stack never learns a profile is non-Anthropic — it keeps speaking the
  * normalized StreamEvent contract.
  *
- * Security: `apiKey` is privilege-sensitive. An inline literal key declared in a
- * project/local settings file (which a hostile repo could commit) is IGNORED;
- * only `${ENV}` interpolation, or a key from a trusted scope (user/policy), is
- * honored. This mirrors how `mode: auto` is gated in the settings layer.
+ * Provider selection, endpoints, credentials, and headers from project/local
+ * settings are ignored until workspace trust has been established.
  */
 
 import {
   loadSettingSources,
   isTrustedScopeForSensitiveKeys,
+  type SettingSource,
 } from "../../../config/sources.js";
+import { isProjectTrusted } from "../../../config/globalState.js";
 
 export type ModelProtocol =
   | "anthropic"
@@ -78,16 +78,14 @@ function interpolateEnv(value: string): string {
   return value.replace(/\$\{([A-Z0-9_]+)\}/gi, (_, name) => process.env[name] ?? "");
 }
 
-/** True when the string references at least one `${ENV}` placeholder. */
-function usesEnvInterpolation(value: string): boolean {
-  return /\$\{[A-Z0-9_]+\}/i.test(value);
-}
-
 export interface LoadedProfiles {
   profiles: Record<string, ModelProfile>;
   defaultModel?: string;
   /** Non-fatal notices (dropped inline secrets, malformed entries). */
   warnings: string[];
+  /** Effective source for each merged profile field. Contains no values. */
+  provenance: Record<string, Partial<Record<keyof RawProfile, SettingSource>>>;
+  defaultModelSource?: SettingSource;
 }
 
 /**
@@ -97,12 +95,15 @@ export interface LoadedProfiles {
 export async function loadProfiles(cwd: string = process.cwd()): Promise<LoadedProfiles> {
   const sources = await loadSettingSources(cwd);
   const merged: Record<string, RawProfile> = {};
+  const provenance: LoadedProfiles["provenance"] = {};
   const warnings: string[] = [];
   let defaultModel: string | undefined;
+  let defaultModelSource: SettingSource | undefined;
+  const workspaceTrusted = await isProjectTrusted(cwd);
 
   for (const src of sources) {
     if (!src.raw) continue;
-    const trusted = isTrustedScopeForSensitiveKeys(src.source);
+    const trusted = isTrustedScopeForSensitiveKeys(src.source) || workspaceTrusted;
 
     const models = src.raw.models;
     if (models && typeof models === "object" && !Array.isArray(models)) {
@@ -110,26 +111,26 @@ export async function loadProfiles(cwd: string = process.cwd()): Promise<LoadedP
         if (!value || typeof value !== "object" || Array.isArray(value)) continue;
         const raw: RawProfile = { ...(value as RawProfile) };
 
-        // Drop inline literal API keys from project/local scopes — only
-        // ${ENV} interpolation (or a trusted scope) may supply credentials.
-        if (
-          !trusted &&
-          typeof raw.apiKey === "string" &&
-          raw.apiKey.trim().length > 0 &&
-          !usesEnvInterpolation(raw.apiKey)
-        ) {
+        if (!trusted) {
           warnings.push(
-            `models.${id}.apiKey: inline secret from "${src.source}" scope ignored — use \${ENV} or a user/policy settings file`,
+            `models.${id}: profile from "${src.source}" scope ignored until the workspace is trusted`,
           );
-          delete raw.apiKey;
+          continue;
         }
 
         merged[id] = { ...merged[id], ...raw };
+        const fieldSources = (provenance[id] ??= {});
+        for (const key of Object.keys(raw) as (keyof RawProfile)[]) {
+          fieldSources[key] = src.source;
+        }
       }
     }
 
     const dm = src.raw.defaultModel;
-    if (typeof dm === "string" && dm.trim().length > 0) defaultModel = dm.trim();
+    if (trusted && typeof dm === "string" && dm.trim().length > 0) {
+      defaultModel = dm.trim();
+      defaultModelSource = src.source;
+    }
   }
 
   const profiles: Record<string, ModelProfile> = {};
@@ -138,7 +139,13 @@ export async function loadProfiles(cwd: string = process.cwd()): Promise<LoadedP
     if (built) profiles[id] = built;
   }
 
-  return { profiles, defaultModel, warnings };
+  return {
+    profiles,
+    defaultModel,
+    warnings,
+    provenance,
+    ...(defaultModelSource ? { defaultModelSource } : {}),
+  };
 }
 
 function buildProfile(

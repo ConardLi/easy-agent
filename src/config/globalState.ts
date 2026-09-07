@@ -160,3 +160,8 @@ export async function trustProject(cwd: string): Promise<void> {
     draft.projects[key] = { ...draft.projects[key], trusted: true };
   });
 }
+
+/** Trust this working directory for the current process without persisting it. */
+export async function trustProjectForSession(cwd: string): Promise<void> {
+  sessionTrusted.add(await getProjectKey(cwd));
+}
