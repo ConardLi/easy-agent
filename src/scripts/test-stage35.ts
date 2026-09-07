@@ -587,12 +587,13 @@ async function main(): Promise<void> {
   );
   resetGlobalStateCache();
   res = await runtime.refreshActivePlugins(projectCwd, { applyMcp: false });
-  assert(res.plugins.length === 1, "project-enabled plugin still loads its prompt components");
+  assert(res.plugins.length === 0, "UNTRUSTED: project-enabled plugin is not activated");
   assert(Object.keys(runtime.getActivePluginHooks()).length === 0, "UNTRUSTED: plugin hooks NOT applied");
 
   await trustProject(projectCwd);
   resetGlobalStateCache();
   res = await runtime.refreshActivePlugins(projectCwd, { applyMcp: false });
+  assert(res.plugins.length === 1, "TRUSTED: project-enabled plugin is activated");
   assert((runtime.getActivePluginHooks().PreToolUse?.length ?? 0) === 1, "TRUSTED: plugin hooks applied");
 
   // [8b] deterministic manifest-name conflict
