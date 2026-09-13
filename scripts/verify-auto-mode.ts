@@ -11,7 +11,7 @@
  */
 
 import { loadEnv } from "../src/utils/loadEnv.js";
-loadEnv();
+await loadEnv(process.cwd(), { allowProject: true });
 
 import type { MessageParam } from "@anthropic-ai/sdk/resources/messages.js";
 import { checkPermission, type PermissionSettings } from "../src/permissions/permissions.js";

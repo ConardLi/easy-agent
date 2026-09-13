@@ -14,12 +14,12 @@
  * scope therefore turns OFF something a lower scope turned on — the same
  * last-write-wins rule every scalar setting uses.
  *
- * SECURITY: this module only records intent. Whether a project/local-enabled
- * plugin's EXECUTABLE components (hooks / MCP) actually run is gated by folder
- * trust at apply time (runtime.ts) — mirroring how hooks/statusLine are gated.
+ * Project and local enablement only contributes to effective state after the
+ * workspace is trusted. Scope-specific mutations still edit the requested
+ * settings file so the saved intent becomes active once trust is established.
  */
 
-import { loadSettingSources } from "../config/sources.js";
+import { loadSettingSources, loadTrustedSettingSources } from "../config/sources.js";
 import {
   updateLocalSettings,
   updateProjectSettings,
@@ -40,14 +40,13 @@ function asEnabledMap(raw: unknown): Record<string, boolean> {
 }
 
 /**
- * Merge `enabledPlugins` across every settings source (later wins per key) and
- * return the set of plugin ids whose effective value is `true`. Scope-specific
- * source. Also returns which SOURCE decided each id, for diagnostics.
+ * Merge `enabledPlugins` across effective trusted sources and return the ids
+ * whose effective value is `true`, plus the deciding source for diagnostics.
  */
 export async function getEnabledPluginState(
   cwd: string,
 ): Promise<{ enabled: Set<string>; bySource: Map<string, string> }> {
-  const sources = await loadSettingSources(cwd);
+  const sources = await loadTrustedSettingSources(cwd);
   const merged: Record<string, boolean> = {};
   const bySource = new Map<string, string>();
   for (const src of sources) {

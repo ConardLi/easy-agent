@@ -18,6 +18,7 @@ import { bashTool } from "../tools/bashTool.js";
 import { toolResultText } from "../tools/Tool.js";
 import { isSandboxRuntimeReady } from "../sandbox/index.js";
 import { getProjectEasyAgentDir } from "../utils/paths.js";
+import { trustProjectForSession } from "../config/globalState.js";
 
 if (!isSandboxRuntimeReady()) {
   console.log("[skip] sandbox-exec not ready");
@@ -44,6 +45,8 @@ function expect(label: string, condition: unknown, evidence?: string): void {
 }
 
 async function main(): Promise<void> {
+  await trustProjectForSession(work);
+
   console.log(`\n[1] BashTool runs an allowed command (sandbox engaged)`);
   const ok = await bashTool.call(
     { command: "echo hello-from-sandbox" },

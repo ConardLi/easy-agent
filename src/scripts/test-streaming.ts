@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 import { loadEnv } from "../utils/loadEnv.js";
-loadEnv();
+await loadEnv(process.cwd(), { allowProject: true });
 /**
  * Phase 1 verification script — Test LLM API streaming communication.
  *

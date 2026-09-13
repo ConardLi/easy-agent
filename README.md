@@ -130,6 +130,8 @@ Easy Agent also supports named Anthropic, OpenAI-compatible, Gemini, and local p
 
 Select a profile with `eagent --model gpt` or `/model gpt` inside the REPL.
 
+Project and local settings, including `.env`, are applied only after workspace trust. Interactive sessions prompt on first use. Headless commands ignore untrusted project configuration; after reviewing it, pass `--trust-project-config` to allow it for that invocation. Project environment values cannot replace credentials inherited from the parent process. See [Configuration trust and credentials](./docs/configuration-security.md) for precedence and migration details.
+
 | Environment variable | Purpose |
 |---|---|
 | `ANTHROPIC_AUTH_TOKEN` | Anthropic API token or compatible gateway token |
@@ -151,6 +153,7 @@ eagent --auto                  # classifier-assisted permission mode
 eagent --resume                # resume the latest session
 eagent --resume <session-id>   # resume a specific session
 eagent -p "summarize this repo"                 # headless text output
+eagent --trust-project-config -p "summarize this repo" # allow reviewed project config once
 eagent -p "list the tools" --output-format json # machine-readable output
 git diff | eagent -p "review this patch"         # combine stdin and a prompt
 ```

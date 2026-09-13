@@ -40,6 +40,7 @@ import {
   loadTrustedSettingSources,
   resetSettingsCache,
 } from "../config/sources.js";
+import { isInheritedCredentialProtected } from "../config/environment.js";
 
 export interface SettingsFileResult<T = unknown> {
   /** Parsed JSON object, or null if missing / unreadable / invalid. */
@@ -229,16 +230,14 @@ export async function readStatusLineConfig(
 }
 
 /**
- * Read a single top-level string setting, merging user + project scopes
- * with PROJECT winning (project overrides user — same precedence as the
- * MCP / permissions loaders). Returns undefined when the key is absent or
- * not a string in both scopes.
+ * Read a top-level string setting from effective trusted sources. Project and
+ * local values participate only after workspace trust; later sources win.
  */
 export async function readMergedStringSetting(
   cwd: string,
   key: string,
 ): Promise<string | undefined> {
-  const sources = await loadSettingSources(cwd);
+  const sources = await loadTrustedSettingSources(cwd);
   let result: string | undefined;
   for (const src of sources) {
     const value = src.raw?.[key];
@@ -248,15 +247,14 @@ export async function readMergedStringSetting(
 }
 
 /**
- * Read a single top-level numeric setting, merging all sources with the later
- * source winning. Returns undefined when absent / non-numeric everywhere.
- * Used by `cleanupPeriodDays`.
+ * Read a top-level numeric setting from effective trusted sources. Later
+ * sources win. Returns undefined when no eligible source contains a number.
  */
 export async function readMergedNumberSetting(
   cwd: string,
   key: string,
 ): Promise<number | undefined> {
-  const sources = await loadSettingSources(cwd);
+  const sources = await loadTrustedSettingSources(cwd);
   let result: number | undefined;
   for (const src of sources) {
     const value = src.raw?.[key];
@@ -266,16 +264,14 @@ export async function readMergedNumberSetting(
 }
 
 /**
- * Read a single top-level boolean setting, merging all sources with the later
- * source winning. Returns undefined when absent / non-boolean everywhere, so
- * callers can apply their own default. Used by `respectGitignore`,
- * `syntaxHighlightingDisabled`, `prefersReducedMotion`.
+ * Read a top-level boolean setting from effective trusted sources. Later
+ * sources win; callers apply their own default when the key is absent.
  */
 export async function readMergedBooleanSetting(
   cwd: string,
   key: string,
 ): Promise<boolean | undefined> {
-  const sources = await loadSettingSources(cwd);
+  const sources = await loadTrustedSettingSources(cwd);
   let result: boolean | undefined;
   for (const src of sources) {
     const value = src.raw?.[key];
@@ -327,6 +323,12 @@ export async function readMergedEnv(cwd: string): Promise<Record<string, string>
     if (!env || typeof env !== "object" || Array.isArray(env)) continue;
     for (const [key, value] of Object.entries(env as Record<string, unknown>)) {
       if (value === undefined || value === null) continue;
+      if (
+        (src.source === "project" || src.source === "local") &&
+        isInheritedCredentialProtected(key)
+      ) {
+        continue;
+      }
       out[key] = typeof value === "string" ? value : String(value);
     }
   }

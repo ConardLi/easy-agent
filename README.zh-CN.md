@@ -130,6 +130,8 @@ Easy Agent 也支持具名的 Anthropic、OpenAI 兼容、Gemini 和本地模型
 
 通过 `eagent --model gpt` 启动，或在 REPL 中执行 `/model gpt` 选择 Profile。
 
+项目配置、本地配置和 `.env` 只有在工作区受信任后才会生效。交互模式首次进入项目时会询问信任；Headless 不会弹出确认，并会忽略未受信任的项目配置。检查配置后，可以用 `--trust-project-config` 让它们只对本次运行生效。项目配置和 `.env` 中的环境变量不能覆盖父进程已经传入的凭据。完整的优先级和迁移方式见[配置安全说明](./docs/configuration-security.md)。
+
 | 环境变量 | 用途 |
 |---|---|
 | `ANTHROPIC_AUTH_TOKEN` | Anthropic API Token 或兼容网关 Token |
@@ -151,6 +153,7 @@ eagent --auto                  # 分类器辅助的权限模式
 eagent --resume                # 恢复最近一次会话
 eagent --resume <session-id>   # 恢复指定会话
 eagent -p "总结这个仓库"                         # Headless 文本输出
+eagent --trust-project-config -p "总结这个仓库"  # 本次运行启用已检查的项目配置
 eagent -p "列出可用工具" --output-format json   # 机器可读输出
 git diff | eagent -p "审查这个补丁"              # 合并 stdin 与 Prompt
 ```

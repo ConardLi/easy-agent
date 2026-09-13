@@ -7,6 +7,8 @@
  */
 
 import { loadSettingSources, type SettingSource } from "../../../config/sources.js";
+import { isProjectTrusted } from "../../../config/globalState.js";
+import { redactSettingValue } from "../../../config/redaction.js";
 import {
   updateUserSettings,
   updateProjectSettings,
@@ -25,21 +27,23 @@ export async function* handleConfigCommand(
   ctx: CommandContext,
   args: string[],
 ): AsyncGenerator<QueryEngineEvent, { handled: boolean }> {
-  const SENSITIVE_KEYS = new Set(["mode"]);
+  const ALWAYS_RESTRICTED_KEYS = new Set(["mode", "autoMode"]);
   const cwd = ctx.cwd;
   const sub = (args[0] ?? "list").toLowerCase();
+  const workspaceTrusted = await isProjectTrusted(cwd);
 
   // Compute the effective value + provenance for a key across sources.
   const resolveKey = (
     sources: { source: SettingSource; raw: Record<string, unknown> | null }[],
     key: string,
   ): { value: unknown; from: string } | null => {
-    const sensitive = SENSITIVE_KEYS.has(key);
+    const alwaysRestricted = ALWAYS_RESTRICTED_KEYS.has(key);
     const defs = sources.filter(
       (s) =>
         s.raw &&
         s.raw[key] !== undefined &&
-        (!sensitive || (s.source !== "project" && s.source !== "local")),
+        ((s.source !== "project" && s.source !== "local") ||
+          (workspaceTrusted && !alwaysRestricted)),
     );
     if (defs.length === 0) return null;
     const allArrays = defs.every((s) => Array.isArray(s.raw![key]));
@@ -60,8 +64,10 @@ export async function* handleConfigCommand(
     return { value: last.raw![key], from: last.source };
   };
 
-  const fmt = (v: unknown): string =>
-    typeof v === "string" ? v : JSON.stringify(v);
+  const fmt = (key: string, value: unknown): string => {
+    const safe = redactSettingValue(key, value);
+    return typeof safe === "string" ? safe : JSON.stringify(safe);
+  };
 
   if (sub === "list") {
     const sources = await loadSettingSources(cwd);
@@ -71,10 +77,15 @@ export async function* handleConfigCommand(
     if (keys.size === 0) {
       lines.push("", "No settings configured. Use /config set <key> <value> to add one.");
     } else {
+      let displayed = 0;
       for (const key of [...keys].sort()) {
         const r = resolveKey(sources, key);
         if (!r) continue;
-        lines.push(`  ${key} = ${fmt(r.value)}   [${r.from}]`);
+        lines.push(`  ${key} = ${fmt(key, r.value)}   [${r.from}]`);
+        displayed++;
+      }
+      if (displayed === 0) {
+        lines.push("", "No effective settings configured for this workspace.");
       }
     }
     lines.push(
@@ -98,7 +109,7 @@ export async function* handleConfigCommand(
       yield { type: "command", kind: "info", message: `${key} is not set.` };
       return { handled: true };
     }
-    yield { type: "command", kind: "info", message: `${key} = ${fmt(r.value)}   [${r.from}]` };
+    yield { type: "command", kind: "info", message: `${key} = ${fmt(key, r.value)}   [${r.from}]` };
     return { handled: true };
   }
 
@@ -149,7 +160,7 @@ export async function* handleConfigCommand(
       kind: "info",
       message: [
         "Setting updated",
-        `- ${key} = ${fmt(value)}`,
+        `- ${key} = ${fmt(key, value)}`,
         `- Scope: ${scope}`,
         "- Applied to this session; permission changes take effect on the next tool call.",
       ].join("\n"),

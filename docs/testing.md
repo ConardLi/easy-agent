@@ -19,7 +19,7 @@ Each offline test process receives a temporary `HOME`, `USERPROFILE`, XDG direct
 | --- | --- | --- |
 | Core flow | CLI and Headless protocols, QueryEngine commands, provider stream adapters, tools, ToolSearch, MCP, Skills, tasks, and agents | `core` |
 | Permissions | Allow/deny behavior, structured Bash read-only analysis, realpath and symbolic-link boundaries, Auto Mode configuration, Plan Mode paths, and sandbox policy | `core` |
-| Storage and configuration | Configuration precedence and source shapes, session JSONL and restore shape, file history, and retention | `core`, `extensions` |
+| Storage and configuration | Configuration precedence and source shapes, workspace trust, credential inheritance, headless routing, session JSONL and restore shape, file history, and retention | `core`, `extensions` |
 | Extensions | Worktrees, agent teams, hooks, commands, web and multimodal tools, plugins, and resilience | `extensions` |
 | UI | Ink rendering, input, transcript, permission prompts, progress, status line, and plugin management | `ui` |
 | Release | Package metadata, bundle, tarball contents, isolated installation, installer behavior, and old Node failure path | `verify:release` |
@@ -61,6 +61,12 @@ Run the workspace path boundary suite after changing file tools, allowed roots, 
 
 ```bash
 npm run test:path-boundary
+```
+
+Run the configuration trust suite after changing settings precedence, environment loading, providers, MCP, plugins, sandbox settings, or headless startup:
+
+```bash
+npm run test:config-trust
 ```
 
 ## Platform and external checks

@@ -7,6 +7,7 @@ import {
 } from "../tools/bashReadOnlyAnalysis.js";
 import { getPlanFilePath } from "../context/plans.js";
 import { loadSettingSources, isTrustedScopeForSensitiveKeys } from "../config/sources.js";
+import { isProjectTrusted } from "../config/globalState.js";
 import {
   loadSandboxSettings,
   shouldUseSandbox,
@@ -189,6 +190,7 @@ function normalizeMode(value: unknown): PermissionMode | undefined {
  */
 export async function loadPermissionSettings(cwd: string): Promise<PermissionSettings> {
   const sources = await loadSettingSources(cwd);
+  const workspaceTrusted = await isProjectTrusted(cwd);
 
   const allow: string[] = [...DEFAULT_PERMISSION_SETTINGS.allow];
   const deny: string[] = [...DEFAULT_PERMISSION_SETTINGS.deny];
@@ -197,7 +199,8 @@ export async function loadPermissionSettings(cwd: string): Promise<PermissionSet
   for (const src of sources) {
     if (!src.raw) continue;
     const raw = src.raw as RawSettings;
-    allow.push(...normalizeRuleList(raw.allow));
+    const projectScoped = src.source === "project" || src.source === "local";
+    if (!projectScoped || workspaceTrusted) allow.push(...normalizeRuleList(raw.allow));
     deny.push(...normalizeRuleList(raw.deny));
     if (!isTrustedScopeForSensitiveKeys(src.source)) continue;
     // Explicit `mode` wins within a source; `autoMode: true` is a convenience

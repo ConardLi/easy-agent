@@ -19,6 +19,7 @@ import {
   APIConnectionTimeoutError,
   APIError,
 } from "@anthropic-ai/sdk";
+import { redactUrlForDisplay } from "../../config/redaction.js";
 
 // ─── Categories ────────────────────────────────────────────────────
 
@@ -237,7 +238,7 @@ export function getUserFacingErrorMessage(
     case "model_not_found":
       return `${API_ERROR_MESSAGE_PREFIX}: The model${model ? ` "${model}"` : ""} was not found or is not accessible. Use /model to pick a different one.`;
     case "connection_error":
-      return `${API_ERROR_MESSAGE_PREFIX}: Could not reach the API (network error). Check your connection${process.env.ANTHROPIC_BASE_URL ? ` and ANTHROPIC_BASE_URL (${process.env.ANTHROPIC_BASE_URL})` : ""}.`;
+      return `${API_ERROR_MESSAGE_PREFIX}: Could not reach the API (network error). Check your connection${process.env.ANTHROPIC_BASE_URL ? ` and ANTHROPIC_BASE_URL (${redactUrlForDisplay(process.env.ANTHROPIC_BASE_URL)})` : ""}.`;
     case "aborted":
       return rawMessage;
     default:

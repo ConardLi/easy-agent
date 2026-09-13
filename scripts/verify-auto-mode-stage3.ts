@@ -9,7 +9,7 @@
  */
 
 import { loadEnv } from "../src/utils/loadEnv.js";
-loadEnv();
+await loadEnv(process.cwd(), { allowProject: true });
 
 import { checkPermission, type PermissionSettings } from "../src/permissions/permissions.js";
 import { findToolByName } from "../src/tools/index.js";

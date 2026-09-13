@@ -176,9 +176,8 @@ export async function loadSettingSources(cwd: string): Promise<LoadedSource[]> {
 
 /**
  * Like {@link loadSettingSources}, but drops the project + local sources when
- * the cwd is NOT trusted. Loaders that EXECUTE config-defined shell commands
- * (hooks, statusLine) use this so an untrusted repository's settings can't run
- * arbitrary commands before the user has trusted it.
+ * the cwd is not trusted. Runtime consumers use this for settings that can
+ * change execution, provider selection, environment, or resource boundaries.
  */
 export async function loadTrustedSettingSources(cwd: string): Promise<LoadedSource[]> {
   const all = await loadSettingSources(cwd);

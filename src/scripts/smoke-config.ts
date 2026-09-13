@@ -69,6 +69,7 @@ async function main(): Promise<void> {
   const userFile = paths.getUserSettingsPath();
   const projFile = paths.getProjectSettingsPath(proj);
   const localFile = paths.getLocalSettingsPath(proj);
+  await state.trustProjectForSession(proj);
 
   // ─── [1] precedence ────────────────────────────────────────────────────
   section("[1] Multi-source precedence (user < project < local < flag)");
@@ -190,6 +191,7 @@ async function main(): Promise<void> {
   // ─── [7] schema validation (P1) ──────────────────────────────────────────
   section("[7] Zod field-level validation — bad fields dropped, unknown kept");
   const vproj = await fs.mkdtemp(path.join(os.tmpdir(), "ea-cfg-vproj-"));
+  await state.trustProjectForSession(vproj);
   await writeJson(userFile, { model: "fallback-model" });
   await writeJson(paths.getProjectSettingsPath(vproj), {
     model: 123, // invalid type → field dropped
@@ -230,6 +232,7 @@ async function main(): Promise<void> {
   // ─── [8] cache invalidation (P1) ─────────────────────────────────────────
   section("[8] Read cache — invalidates on file change / write / flag");
   const cproj = await fs.mkdtemp(path.join(os.tmpdir(), "ea-cfg-cproj-"));
+  await state.trustProjectForSession(cproj);
   const cFile = paths.getProjectSettingsPath(cproj);
   await writeJson(cFile, { model: "cache-v1" });
   assert((await settings.readMergedStringSetting(cproj, "model")) === "cache-v1", "first read populates cache");
@@ -295,6 +298,7 @@ async function main(): Promise<void> {
   section("[9d] Tier 1: cleanupPeriodDays retention");
   const storage = await import("../session/storage.js");
   const t4 = await fs.mkdtemp(path.join(os.tmpdir(), "ea-cfg-t4-"));
+  await state.trustProjectForSession(t4);
   const sp = await storage.getSessionPaths(t4, "x");
   await fs.mkdir(sp.projectDir, { recursive: true });
   const oldFile = path.join(sp.projectDir, "old.jsonl");

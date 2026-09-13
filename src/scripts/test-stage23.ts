@@ -52,6 +52,7 @@ import {
 } from "../commands/userCommands/registry.js";
 import { bootstrapUserCommands } from "../commands/userCommands/bootstrap.js";
 import { updateUserSettings, readMergedStringSetting } from "../utils/settings.js";
+import { trustProjectForSession } from "../config/globalState.js";
 
 // ─── Test plumbing ──────────────────────────────────────────────────
 
@@ -402,6 +403,7 @@ async function main(): Promise<void> {
       path.join(cwd, ".easy-agent", "settings.json"),
       JSON.stringify({ outputStyle: "Learning" }, null, 2),
     );
+    await trustProjectForSession(cwd);
     const mergedProj = await readMergedStringSetting(cwd, "outputStyle");
     assert(mergedProj === "Learning", "project outputStyle overrides user outputStyle");
   });
