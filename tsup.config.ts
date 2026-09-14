@@ -6,13 +6,13 @@ const pkg = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), 
 };
 
 /**
- * Ship one self-contained ESM file.
+ * Ship one ESM application bundle. Runtime packages that own platform helper
+ * assets stay external so Node can resolve those assets from their installed
+ * package directory.
  *
- * The published package declares no runtime `dependencies` — everything is
- * inlined here. That is only safe because the tree passes the three checks in
- * DEVELOPMENT-PLAN §36.0: no path introspection (`import.meta.url` /
- * `__dirname`) in `src/`, no native `.node` modules on the runtime path, and no
- * external runtime assets (`yoga-layout` inlines its wasm as base64 JS).
+ * Application dependencies without runtime assets remain bundled. The sandbox
+ * runtime stays external because it resolves signed platform helpers, seccomp
+ * filters, and proxy assets relative to its package directory.
  *
  * Intentional trade-offs, not oversights:
  *   - `minify: false` — for a project whose source is the product, a readable
@@ -29,6 +29,7 @@ export default defineConfig({
   platform: "node",
   target: "node22",
   bundle: true,
+  external: ["@anthropic-ai/sandbox-runtime"],
   splitting: false,
   sourcemap: true,
   minify: false,

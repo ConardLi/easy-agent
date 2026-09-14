@@ -8,6 +8,8 @@ export {
   isPlatformSupported,
   isSandboxRuntimeReady,
   getSandboxUnavailableReason,
+  getSandboxCapability,
+  resolveSandboxCapability,
   _resetAvailabilityCache,
 } from "./availability.js";
 
@@ -15,14 +17,18 @@ export {
   loadSandboxSettings,
   resolveSandboxSettings,
   DEFAULT_RESOLVED_SANDBOX_SETTINGS,
+  parseSandboxSettings,
+  SandboxConfigurationError,
   type ResolvedSandboxSettings,
 } from "./settings.js";
 
 export {
   shouldUseSandbox,
+  decideSandboxExecution,
   containsExcludedCommand,
   matchesExcludedPattern,
   type ShouldUseSandboxInput,
+  type SandboxExecutionDecision,
 } from "./shouldUseSandbox.js";
 
 export { splitCommand } from "./splitCommand.js";
@@ -32,9 +38,15 @@ export {
   type PermissionRules,
 } from "./buildProfile.js";
 
-export { compileMacosProfile } from "./macosProfile.js";
-
-export { wrapWithSandbox, type WrapWithSandboxResult } from "./wrapWithSandbox.js";
+export {
+  annotateSandboxFailure,
+  cleanupSandboxCommand,
+  resetSandboxRuntime,
+  toSandboxRuntimeConfig,
+  wrapWithSandbox,
+  SandboxInitializationError,
+  type SandboxedCommand,
+} from "./runtime.js";
 
 export {
   annotateStderrWithSandboxFailures,
@@ -43,4 +55,9 @@ export {
   hasSandboxViolationTag,
 } from "./violations.js";
 
-export type { SandboxSettings, SandboxProfile } from "./types.js";
+export type {
+  SandboxSettings,
+  SandboxProfile,
+  SandboxCapability,
+  SandboxBackend,
+} from "./types.js";

@@ -1,12 +1,14 @@
 import { spawn } from "node:child_process";
 import type { Tool, ToolContext, ToolResult } from "./Tool.js";
 import {
-  annotateStderrWithSandboxFailures,
+  annotateSandboxFailure,
   buildSandboxProfile,
+  cleanupSandboxCommand,
+  decideSandboxExecution,
   loadSandboxSettings,
-  shouldUseSandbox,
   wrapWithSandbox,
   type ResolvedSandboxSettings,
+  type SandboxedCommand,
 } from "../sandbox/index.js";
 import {
   appendBashProgress,
@@ -43,8 +45,7 @@ interface BashInput {
  * Build the SandboxProfile to feed to wrapWithSandbox(). We re-load
  * sandbox settings + permission rules on every call so that the user
  * approving a permission rule mid-session takes effect on the next
- * Bash command — no restart required (matches source code's
- * settingsChangeDetector + refreshConfig pattern).
+ * Bash command — no restart required.
  */
 async function buildProfileForCwd(
   cwd: string,
@@ -94,39 +95,34 @@ export const bashTool: Tool = {
 
     const timeoutMs = typeof input.timeout === "number" ? input.timeout : DEFAULT_TIMEOUT_MS;
 
-    // Decide sandbox wrapping. We swallow load errors and proceed with
-    // sandboxing OFF — settings.json being unparseable shouldn't block
-    // command execution; the permission system already surfaces those
-    // errors loudly elsewhere.
-    let sandboxSettings: ResolvedSandboxSettings | null = null;
+    let sandboxSettings: ResolvedSandboxSettings;
     try {
       sandboxSettings = await loadSandboxSettings(context.cwd);
-    } catch {
-      sandboxSettings = null;
+    } catch (error) {
+      return {
+        content:
+          `Sandbox configuration error: ${error instanceof Error ? error.message : String(error)}\n` +
+          "Command was not executed.",
+        isError: true,
+      };
     }
 
-    const willSandbox = sandboxSettings
-      ? shouldUseSandbox(
-          {
-            command: input.command,
-            dangerouslyDisableSandbox: input.dangerouslyDisableSandbox,
-          },
-          sandboxSettings,
-        )
-      : false;
+    const sandboxDecision = decideSandboxExecution(
+      {
+        command: input.command,
+        dangerouslyDisableSandbox: input.dangerouslyDisableSandbox,
+      },
+      sandboxSettings,
+    );
 
-    let executedCommand = input.command;
-    if (willSandbox && sandboxSettings) {
-      const profile = await buildProfileForCwd(context.cwd, sandboxSettings);
-      const wrap = wrapWithSandbox(input.command, profile);
-      executedCommand = wrap.wrappedCommand;
+    if (sandboxDecision.mode === "blocked") {
+      return {
+        content:
+          `Sandbox is required but unavailable: ${sandboxDecision.reason}\n` +
+          "Command was not executed. Install the required sandbox dependencies or set sandbox.failClosed to false explicitly.",
+        isError: true,
+      };
     }
-
-    // Live progress: publish stdout/stderr chunks keyed by this call's
-    // tool_use id so the UI can show the command's tail while it runs. Only
-    // active when an interactive frontend supplied a toolUseId.
-    const progressId = context.toolUseId;
-    if (progressId) startBashProgress(progressId, timeoutMs);
 
     // Inject the merged `env` setting (trusted sources only) on top of the
     // process environment. Lets users/projects export vars (PATH additions,
@@ -140,15 +136,72 @@ export const bashTool: Tool = {
       settingsEnv = {};
     }
 
+    const shell = process.env.SHELL || "bash";
+    let executable = shell;
+    let args = ["-lc", input.command];
+    let spawnEnv: NodeJS.ProcessEnv = { ...process.env, ...settingsEnv };
+    let sandboxCommand: SandboxedCommand | undefined;
+    let sandboxLabel = "disabled";
+
+    if (sandboxDecision.mode === "sandbox") {
+      try {
+        const profile = await buildProfileForCwd(context.cwd, sandboxSettings);
+        const wrapped = await wrapWithSandbox({
+          command: input.command,
+          cwd: context.cwd,
+          profile,
+          shell,
+          abortSignal: context.abortSignal,
+          commandId: context.toolUseId,
+        });
+        const [wrappedExecutable, ...wrappedArgs] = wrapped.argv;
+        if (!wrappedExecutable) throw new Error("sandbox runtime returned an empty command");
+        executable = wrappedExecutable;
+        args = wrappedArgs;
+        spawnEnv = { ...wrapped.env, ...settingsEnv };
+        sandboxCommand = wrapped;
+        sandboxLabel = `enabled (${wrapped.backend})`;
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        if (sandboxSettings.failClosed) {
+          return {
+            content: `Sandbox preparation failed: ${reason}\nCommand was not executed.`,
+            isError: true,
+          };
+        }
+        sandboxLabel = `unavailable (${reason})`;
+      }
+    } else if (sandboxDecision.mode === "fallback") {
+      sandboxLabel = `unavailable (${sandboxDecision.reason})`;
+    } else if (sandboxDecision.mode === "bypass") {
+      sandboxLabel = `disabled (${sandboxDecision.reason})`;
+    }
+
+    if (context.abortSignal?.aborted) {
+      if (sandboxCommand) cleanupSandboxCommand(sandboxCommand);
+      return { content: "Command aborted", isError: true };
+    }
+
+    // Publish output only after command preparation succeeds. This prevents a
+    // failed fail-closed setup from leaving a stale running indicator.
+    const progressId = context.toolUseId;
+    if (progressId) startBashProgress(progressId, timeoutMs);
+
     return await new Promise<ToolResult>((resolve) => {
-      const child = spawn(process.env.SHELL || "bash", ["-lc", executedCommand], {
+      const child = spawn(executable, args, {
         cwd: context.cwd,
-        env: { ...process.env, ...settingsEnv },
+        env: spawnEnv,
       });
 
       let stdout = "";
       let stderr = "";
       let settled = false;
+      let sandboxCleaned = false;
+      const cleanupSandbox = () => {
+        if (!sandboxCommand || sandboxCleaned) return;
+        sandboxCleaned = true;
+        cleanupSandboxCommand(sandboxCommand);
+      };
 
       const finish = (result: ToolResult) => {
         if (settled) return;
@@ -182,6 +235,7 @@ export const bashTool: Tool = {
       });
       child.on("error", (error) => {
         clearTimeout(timeoutId);
+        cleanupSandbox();
         finish({ content: `Failed to start command: ${error.message}`, isError: true });
       });
       child.on("close", (code) => {
@@ -192,14 +246,19 @@ export const bashTool: Tool = {
         // when the failure smells like a sandbox denial. The model uses
         // this signal to decide whether to retry, ask for permission,
         // or back off. The UI strips the tag before rendering.
-        const annotatedStderr = willSandbox
-          ? annotateStderrWithSandboxFailures(stderr, code)
-          : stderr;
+        let annotatedStderr = stderr;
+        try {
+          if (sandboxCommand) {
+            annotatedStderr = annotateSandboxFailure(sandboxCommand.commandId, stderr, code);
+          }
+        } finally {
+          cleanupSandbox();
+        }
 
         const output = [
           `Command: ${input.command}`,
           `Read-only: ${readOnlyAnalysis.isReadOnly}`,
-          `Sandbox: ${willSandbox ? "enabled" : "disabled"}`,
+          `Sandbox: ${sandboxLabel}`,
           `Exit code: ${code ?? -1}`,
           stdout ? `\nSTDOUT:\n${truncateOutput(stdout)}` : "",
           annotatedStderr ? `\nSTDERR:\n${truncateOutput(annotatedStderr)}` : "",

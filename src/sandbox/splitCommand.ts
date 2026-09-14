@@ -1,29 +1,4 @@
-/**
- * Lightweight bash compound-command splitter.
- *
- * Why we need this: the auto-allow path checks each subcommand of
- * `echo a && rm -rf /` against deny rules. If we matched only the head
- * of the full command string, `Bash(rm:*)` would not catch the second
- * subcommand and the deny rule would silently fail. See the SECURITY
- * comment in source code's `bashPermissions.ts:1295`.
- *
- * Compared to source code's `splitCommand_DEPRECATED` (which uses
- * `shell-quote` to do real parsing including redirects, heredocs, and
- * parameter substitution), our version is intentionally minimal:
- *
- *   - We split on the four standard logical operators: `&&`, `||`,
- *     `;`, `|` and the `&` background operator.
- *   - We respect single + double quotes — `echo "a && b"` is one
- *     subcommand, not three.
- *   - We do NOT understand subshells `(...)`, command substitution
- *     `$(...)`, heredocs `<<EOF`, or escapes inside double quotes.
- *
- * For the easy-agent threat model this is enough: even if a model
- * crafts an exotic command that tricks the splitter, the worst case
- * is "we run one extra deny-check" or "we miss a deny rule on a
- * cleverly-quoted subcommand" — and the sandbox itself still
- * enforces the kernel-level filesystem/network restrictions.
- */
+/** Split top-level shell command lists while preserving quoted operators. */
 
 const OPERATORS = new Set(["&&", "||", ";", "|", "&"]);
 

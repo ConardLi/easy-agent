@@ -46,7 +46,7 @@
     "test:toolsearch:live": "node --import tsx src/scripts/test-toolsearch-live.ts",
     "test:mcp": "tsx src/scripts/test-mcp.ts",
     "test:skills": "tsx src/scripts/test-skills.ts",
-    "test:sandbox": "tsx src/scripts/test-sandbox.ts",
+    "test:sandbox": "node --import tsx src/scripts/test-sandbox.ts",
     "test:agents": "tsx src/scripts/test-agents.ts",
     "test:stage20": "tsx src/scripts/test-stage20.ts",
     "test:stage21": "tsx src/scripts/test-stage21.ts",
@@ -92,8 +92,8 @@
     "verify:plugin": "tsx src/scripts/verify-plugin-compat.ts",
     "test:filehistory": "tsx src/scripts/smoke-filehistory.ts",
     "test:resilience": "tsx src/scripts/smoke-resilience.ts",
-    "smoke:sandbox": "tsx src/scripts/smoke-sandbox.ts",
-    "smoke:bash-sandbox": "tsx src/scripts/smoke-bash-sandbox.ts"
+    "smoke:sandbox": "node --import tsx src/scripts/smoke-sandbox.ts",
+    "smoke:bash-sandbox": "node --import tsx src/scripts/smoke-bash-sandbox.ts"
   },
   "keywords": [
     "agent",
@@ -105,7 +105,9 @@
     "terminal"
   ],
   "license": "MIT",
-  "dependencies": {},
+  "dependencies": {
+    "@anthropic-ai/sandbox-runtime": "0.0.76"
+  },
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.102.0",
     "@modelcontextprotocol/sdk": "^1.29.0",

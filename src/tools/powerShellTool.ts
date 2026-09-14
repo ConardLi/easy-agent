@@ -1,16 +1,12 @@
 import { spawn } from "node:child_process";
 import type { Tool, ToolContext, ToolResult } from "./Tool.js";
 import { readMergedEnv } from "../utils/settings.js";
+import { decideSandboxExecution, loadSandboxSettings } from "../sandbox/index.js";
 
 /**
- * PowerShell — execute a PowerShell command on Windows.
- *
- * Reference: claude-code-source-code/src/tools/PowerShellTool/. It mirrors
- * Bash but for the Windows shell. This tool registers ONLY on Windows
- * (isEnabled gates on process.platform), so non-Windows tool lists never see
- * it. The macOS sandbox does not apply here (Windows sandboxing is out of
- * scope, consistent with the project's macOS-only sandbox), which the
- * description and prompt make explicit.
+ * PowerShell registers only on Windows. Windows process isolation is not yet
+ * available through Easy Agent, so an enabled fail-closed sandbox policy
+ * blocks execution instead of claiming that the command is protected.
  */
 interface PowerShellInput {
   command: string;
@@ -34,7 +30,7 @@ export const powerShellTool: Tool = {
   name: "PowerShell",
   searchHint: "execute Windows PowerShell commands",
   description:
-    "Execute a PowerShell command on Windows and return stdout/stderr. Use this instead of Bash on Windows. Note: not sandboxed.",
+    "Execute a PowerShell command on Windows and return stdout/stderr. Use this instead of Bash on Windows.",
   inputSchema: {
     type: "object" as const,
     properties: {
@@ -49,6 +45,30 @@ export const powerShellTool: Tool = {
       return { content: "Error: command is required", isError: true };
     }
     const timeoutMs = typeof input.timeout === "number" ? input.timeout : DEFAULT_TIMEOUT_MS;
+
+    let sandboxLabel = "disabled";
+    try {
+      const sandboxSettings = await loadSandboxSettings(context.cwd);
+      const sandboxDecision = decideSandboxExecution({ command: input.command }, sandboxSettings);
+      if (sandboxDecision.mode === "blocked") {
+        return {
+          content:
+            `Sandbox is required but unavailable: ${sandboxDecision.reason}\n` +
+            "PowerShell was not executed. Set sandbox.failClosed to false explicitly to use normal permission checks on Windows.",
+          isError: true,
+        };
+      }
+      if (sandboxDecision.mode === "fallback") {
+        sandboxLabel = `unavailable (${sandboxDecision.reason})`;
+      }
+    } catch (error) {
+      return {
+        content:
+          `Sandbox configuration error: ${error instanceof Error ? error.message : String(error)}\n` +
+          "PowerShell was not executed.",
+        isError: true,
+      };
+    }
 
     let settingsEnv: Record<string, string> = {};
     try {
@@ -101,6 +121,7 @@ export const powerShellTool: Tool = {
         context.abortSignal?.removeEventListener("abort", onAbort);
         const output = [
           `Command: ${input.command}`,
+          `Sandbox: ${sandboxLabel}`,
           `Exit code: ${code ?? -1}`,
           stdout ? `\nSTDOUT:\n${truncateOutput(stdout)}` : "",
           stderr ? `\nSTDERR:\n${truncateOutput(stderr)}` : "",

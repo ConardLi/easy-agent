@@ -125,6 +125,10 @@ Settings keys (in ~/.easy-agent/settings.json or <cwd>/.easy-agent/settings.json
   enableAllProjectMcpServers: true   Auto-approve every server in <cwd>/.mcp.json (trusted folder)
   enabledMcpjsonServers: ["name"]    Approve specific .mcp.json servers
   disabledMcpjsonServers: ["name"]   Reject specific .mcp.json servers
+  sandbox.enabled: true              Enable OS shell isolation on macOS/Linux
+  sandbox.failClosed: true           Block shell execution when isolation is unavailable (default)
+  sandbox.filesystem: {...}          Configure allowWrite/denyWrite/allowRead/denyRead
+  sandbox.network: {...}             Configure allowedDomains/deniedDomains and local IPC
 
   /compact                    Compact conversation context
   /exit, /quit, /bye          Exit the REPL
@@ -298,22 +302,30 @@ Settings keys (in ~/.easy-agent/settings.json or <cwd>/.easy-agent/settings.json
     console.error(`[easy-agent] plugins bootstrap failed: ${(error as Error).message}`);
   });
 
-  // Sandbox availability: if the user opted in via settings.json but
-  // the host can't run sandbox-exec, surface the reason loudly. Silent
-  // fall-back is a security footgun — users assume protection that
-  // isn't there. Mirrors source code's `getSandboxUnavailableReason`.
+  // Resolve the effective sandbox capability before the first Bash command so
+  // an unavailable security boundary is visible at startup.
   try {
-    const { loadSandboxSettings, getSandboxUnavailableReason } = await import(
+    const { loadSandboxSettings, getSandboxCapability, getSandboxUnavailableReason } = await import(
       "../sandbox/index.js"
     );
     const sandboxSettings = await loadSandboxSettings(process.cwd());
+    const capability = getSandboxCapability();
     const reason = getSandboxUnavailableReason(sandboxSettings.enabled);
     if (reason) {
-      console.warn(`[easy-agent] ⚠ ${reason} Bash commands will run unsandboxed.`);
+      console.warn(
+        `[easy-agent] ⚠ Sandbox unavailable: ${reason}. ` +
+          (sandboxSettings.failClosed
+            ? "Shell commands that require the sandbox will be blocked."
+            : "Shell commands will require normal permission checks and may run unsandboxed."),
+      );
+    } else if (sandboxSettings.enabled && capability.warnings.length > 0) {
+      console.warn(`[easy-agent] ⚠ Sandbox warnings: ${capability.warnings.join("; ")}`);
     }
-  } catch {
-    // Settings parse errors are surfaced by the permission loader; we
-    // don't double-report here.
+  } catch (error) {
+    console.warn(
+      `[easy-agent] ⚠ ${error instanceof Error ? error.message : String(error)} ` +
+        "Shell commands will be blocked until the sandbox configuration is valid.",
+    );
   }
 
   if (dumpSystemPrompt) {
