@@ -40,7 +40,7 @@ The checked-in characterization fixtures are:
 | `core` | `npm run verify:production:core` | Yes |
 | `extensions` | `npm run verify:production:extensions` | Yes |
 | `ui` | `npm run verify:production:ui` | Yes |
-| `platform` | `npm run verify:production:platform` | macOS CI |
+| `platform` | `npm run verify:production:platform` | macOS and Linux CI |
 | `live` | `npm run verify:production:live` | No |
 
 List every test selected by a group without running it:
@@ -76,6 +76,8 @@ Platform tests exercise the actual host sandbox and therefore run separately fro
 ```bash
 npm run verify:production:platform
 ```
+
+Linux host tests require `bubblewrap` and `socat`. The suite verifies real read/write restrictions, allowed and denied network destinations, fail-closed configuration errors, output, and exit-code preservation.
 
 Live tests require valid provider credentials and may consume API quota. They run only when requested explicitly:
 
