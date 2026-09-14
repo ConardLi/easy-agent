@@ -77,7 +77,7 @@ Platform tests exercise the actual host sandbox and therefore run separately fro
 npm run verify:production:platform
 ```
 
-Linux host tests require `bubblewrap` and `socat`. The suite verifies real read/write restrictions, allowed and denied network destinations, fail-closed configuration errors, output, and exit-code preservation.
+Linux host tests require `bubblewrap`, `socat`, and `rg`. The suite verifies real read/write restrictions, allowed and denied network destinations, fail-closed configuration errors, output, and exit-code preservation.
 
 Live tests require valid provider credentials and may consume API quota. They run only when requested explicitly:
 

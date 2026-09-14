@@ -46,13 +46,13 @@ Unknown sandbox keys and values with the wrong type are rejected. Easy Agent doe
 | Platform | Backend | Requirements | Behavior |
 | --- | --- | --- | --- |
 | macOS | Seatbelt (`sandbox-exec`) | `sandbox-exec` and `rg` available | Filesystem, process tree, Unix socket, and proxy-based network restrictions |
-| Linux / WSL2 | bubblewrap | `bubblewrap`, `socat`, supported kernel namespaces | Filesystem, process tree, seccomp Unix-socket policy, and proxy-based network restrictions |
+| Linux / WSL2 | bubblewrap | `bubblewrap`, `socat`, `rg`, supported kernel namespaces | Filesystem, process tree, seccomp Unix-socket policy, and proxy-based network restrictions |
 | Windows | Not integrated in Easy Agent | — | `/doctor` reports the limitation; enabled `failClosed` policy blocks PowerShell |
 
 On Ubuntu or Debian, install Linux dependencies with:
 
 ```bash
-sudo apt-get install bubblewrap socat
+sudo apt-get install bubblewrap socat ripgrep
 ```
 
 Windows process isolation requires a separate provisioning and lifecycle design for the PowerShell tool. Until that integration is complete, Easy Agent does not report Windows shell commands as sandboxed.
