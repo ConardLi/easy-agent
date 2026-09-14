@@ -77,8 +77,8 @@ const TESTS: TestDefinition[] = [
   { id: "command", group: "ui", file: "src/scripts/smoke-command.tsx" },
   { id: "plugin-manager", group: "ui", file: "src/scripts/test-stage35-ui.tsx" },
 
-  { id: "sandbox-host", group: "platform", file: "src/scripts/smoke-sandbox.ts", platforms: ["darwin"] },
-  { id: "bash-sandbox-host", group: "platform", file: "src/scripts/smoke-bash-sandbox.ts", platforms: ["darwin"] },
+  { id: "sandbox-host", group: "platform", file: "src/scripts/smoke-sandbox.ts", platforms: ["darwin", "linux"] },
+  { id: "bash-sandbox-host", group: "platform", file: "src/scripts/smoke-bash-sandbox.ts", platforms: ["darwin", "linux"] },
 
   { id: "anthropic-stream", group: "live", file: "src/scripts/test-streaming.ts" },
   { id: "tool-search-live", group: "live", file: "src/scripts/test-toolsearch-live.ts" },

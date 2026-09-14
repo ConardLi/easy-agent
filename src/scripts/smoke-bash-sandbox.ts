@@ -1,27 +1,17 @@
 #!/usr/bin/env tsx
-/**
- * End-to-end integration check: exercise BashTool with the sandbox
- * actually engaged. We write a temporary settings.json that flips
- * sandbox.enabled, then invoke bashTool.call() — the same code path
- * the live agent uses. Confirms:
- *   - sandbox wrapping kicks in
- *   - violation tag is appended on policy hit
- *   - regular commands still succeed
- *
- * Skips on non-macOS hosts.
- */
+/** End-to-end BashTool integration checks against the host sandbox backend. */
 
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { bashTool } from "../tools/bashTool.js";
 import { toolResultText } from "../tools/Tool.js";
-import { isSandboxRuntimeReady } from "../sandbox/index.js";
+import { isSandboxRuntimeReady, resetSandboxRuntime } from "../sandbox/index.js";
 import { getProjectEasyAgentDir } from "../utils/paths.js";
 import { trustProjectForSession } from "../config/globalState.js";
 
 if (!isSandboxRuntimeReady()) {
-  console.log("[skip] sandbox-exec not ready");
+  console.log(`[skip] sandbox runtime is not ready on ${process.platform}`);
   process.exit(0);
 }
 
@@ -77,7 +67,27 @@ async function main(): Promise<void> {
   expect("no /dev/null permission violation", !devnullText.includes("Operation not permitted"), devnullText);
   expect("stdout reached the echo after the redirect", devnullText.includes("done"));
 
-  console.log(`\n[3] dangerouslyDisableSandbox + allowUnsandboxedCommands → bypass`);
+  console.log(`\n[3] invalid sandbox settings fail closed`);
+  fs.writeFileSync(
+    path.join(easyDir, "settings.json"),
+    JSON.stringify({ sandbox: { enabled: true, unsupportedSetting: true } }, null, 2),
+  );
+  const invalidCanary = path.join(work, "invalid-config-ran.txt");
+  const invalid = await bashTool.call(
+    { command: `echo ran > '${invalidCanary}'` },
+    { cwd: work },
+  );
+  const invalidText = toolResultText(invalid.content);
+  expect("invalid configuration returns an error", invalid.isError === true, invalidText);
+  expect("invalid configuration names the unsupported key", invalidText.includes("unsupportedSetting"), invalidText);
+  expect("command was not executed", !fs.existsSync(invalidCanary));
+
+  fs.writeFileSync(
+    path.join(easyDir, "settings.json"),
+    JSON.stringify({ sandbox: { enabled: true } }, null, 2),
+  );
+
+  console.log(`\n[4] dangerouslyDisableSandbox + allowUnsandboxedCommands → bypass`);
   const escaped = await bashTool.call(
     { command: "echo escape", dangerouslyDisableSandbox: true },
     { cwd: work },
@@ -104,7 +114,8 @@ main()
     console.error(err);
     process.exit(1);
   })
-  .finally(() => {
+  .finally(async () => {
+    await resetSandboxRuntime().catch(() => {});
     try {
       fs.rmSync(work, { recursive: true, force: true });
     } catch {}

@@ -57,3 +57,16 @@ jobs:
           package-manager-cache: false
       - run: npm ci
       - run: npm run verify:production:platform
+
+  sandbox-host-linux:
+    name: Host sandbox integration (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          package-manager-cache: false
+      - run: sudo apt-get update && sudo apt-get install -y bubblewrap socat
+      - run: npm ci
+      - run: npm run verify:production:platform
