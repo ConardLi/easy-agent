@@ -68,5 +68,7 @@ jobs:
           node-version: "22"
           package-manager-cache: false
       - run: sudo apt-get update && sudo apt-get install -y bubblewrap socat ripgrep
+      - name: Enable unprivileged user namespaces for the sandbox test
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - run: npm ci
       - run: npm run verify:production:platform

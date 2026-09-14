@@ -55,6 +55,12 @@ On Ubuntu or Debian, install Linux dependencies with:
 sudo apt-get install bubblewrap socat ripgrep
 ```
 
+Ubuntu 24.04 and newer may restrict unprivileged user namespaces through AppArmor. Easy Agent probes the user, PID, and network namespaces required by bubblewrap and reports a failed capability check in `/doctor`. Configure an AppArmor profile that grants `userns` to bubblewrap before enabling the sandbox. On a disposable CI runner, the restriction can be disabled for the job with:
+
+```bash
+sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+```
+
 Windows process isolation requires a separate provisioning and lifecycle design for the PowerShell tool. Until that integration is complete, Easy Agent does not report Windows shell commands as sandboxed.
 
 ## Migration

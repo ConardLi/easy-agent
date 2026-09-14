@@ -1,5 +1,8 @@
+import { spawnSync } from "node:child_process";
 import { SandboxManager, type SandboxDependencyCheck } from "@anthropic-ai/sandbox-runtime";
 import type { SandboxBackend, SandboxCapability } from "./types.js";
+
+let cachedCapability: SandboxCapability | undefined;
 
 function backendForPlatform(platform: NodeJS.Platform): SandboxBackend | null {
   if (platform === "darwin") return "seatbelt";
@@ -30,19 +33,48 @@ export function resolveSandboxCapability(
 }
 
 export function getSandboxCapability(): SandboxCapability {
+  if (cachedCapability) return cachedCapability;
   const platform = process.platform;
   const runtimeSupported = SandboxManager.isSupportedPlatform();
   if (backendForPlatform(platform) === null || !runtimeSupported) {
-    return resolveSandboxCapability(platform, runtimeSupported, { errors: [], warnings: [] });
+    cachedCapability = resolveSandboxCapability(platform, runtimeSupported, { errors: [], warnings: [] });
+    return cachedCapability;
   }
   try {
-    return resolveSandboxCapability(platform, runtimeSupported, SandboxManager.checkDependencies());
+    const dependencies = SandboxManager.checkDependencies();
+    if (platform === "linux" && dependencies.errors.length === 0) {
+      const namespaceError = probeLinuxNamespaces();
+      if (namespaceError) dependencies.errors.push(namespaceError);
+    }
+    cachedCapability = resolveSandboxCapability(platform, runtimeSupported, dependencies);
   } catch (error) {
-    return resolveSandboxCapability(platform, runtimeSupported, {
+    cachedCapability = resolveSandboxCapability(platform, runtimeSupported, {
       errors: [`dependency check failed: ${error instanceof Error ? error.message : String(error)}`],
       warnings: [],
     });
   }
+  return cachedCapability;
+}
+
+function probeLinuxNamespaces(): string | undefined {
+  const result = spawnSync(
+    "bwrap",
+    [
+      "--new-session",
+      "--die-with-parent",
+      "--unshare-net",
+      "--ro-bind", "/", "/",
+      "--dev", "/dev",
+      "--unshare-pid",
+      "--unshare-user",
+      "--proc", "/proc",
+      "--", "/bin/true",
+    ],
+    { encoding: "utf8", timeout: 5_000 },
+  );
+  if (!result.error && result.status === 0) return undefined;
+  const detail = result.error?.message ?? result.stderr.trim() ?? `exit ${result.status ?? "unknown"}`;
+  return `bubblewrap cannot create the required user, PID, and network namespaces: ${detail}`;
 }
 
 export function isPlatformSupported(): boolean {
@@ -60,5 +92,6 @@ export function isSandboxRuntimeReady(): boolean {
   return getSandboxCapability().available;
 }
 
-/** Compatibility no-op: dependency detection is owned and cached by the runtime. */
-export function _resetAvailabilityCache(): void {}
+export function _resetAvailabilityCache(): void {
+  cachedCapability = undefined;
+}
