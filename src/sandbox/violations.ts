@@ -3,11 +3,16 @@
 const SANDBOX_VIOLATION_INDICATORS = [
   "Operation not permitted",
   "operation not permitted",
+  "Permission denied",
+  "permission denied",
+  "Read-only file system",
+  "read-only file system",
   "sandbox-exec:",
   "deny file-write",
   "deny network-outbound",
   "EPERM",
   "EACCES",
+  "EROFS",
 ];
 
 const VIOLATION_TAG_RE = /<sandbox_violations>[\s\S]*?<\/sandbox_violations>/g;

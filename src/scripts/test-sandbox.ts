@@ -159,6 +159,8 @@ async function main(): Promise<void> {
   section("[5] violation annotation");
   const annotated = annotateStderrWithSandboxFailures("Operation not permitted", 1);
   assert(hasSandboxViolationTag(annotated), "sandbox denial gets a machine-readable tag");
+  const linuxAnnotated = annotateStderrWithSandboxFailures("Read-only file system", 1);
+  assert(hasSandboxViolationTag(linuxAnnotated), "Linux read-only denial gets a machine-readable tag");
   assert(!hasSandboxViolationTag(removeSandboxViolationTags(annotated)), "UI removal strips the tag");
 
   console.log("");
