@@ -183,7 +183,7 @@ command[info]:
   | ✓ MCP: none configured
   | <SANDBOX_STATUS>
   | ✓ Settings files valid
-  | ✓ Local data permissions: private (directories 0700, files 0600)
+  | <LOCAL_DATA_PERMISSIONS>
   | ✓ Project configuration: trusted
   | ✓ Plugins: 0 active, no load errors
 <<< handled=true
