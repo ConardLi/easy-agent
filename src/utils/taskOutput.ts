@@ -35,9 +35,13 @@
  *     parent's Read can find it).
  */
 
-import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { getProjectsRoot } from "./paths.js";
+import {
+  appendPrivateFile,
+  createPrivateFileIfMissing,
+  ensurePrivateDirectory,
+} from "./privateData.js";
 
 /** Make a sessionId safe to use as a single directory segment. */
 function encodeSessionDir(sessionId: string): string {
@@ -76,11 +80,10 @@ export async function ensureTaskOutputFile(
   agentId: string,
 ): Promise<string> {
   const filePath = getTaskOutputPath(sessionId, agentId);
-  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  await ensurePrivateDirectory(path.dirname(filePath));
   // O_CREAT | O_WRONLY behaviour without truncation — a leftover from
   // a previous run with the same agentId stays put.
-  const handle = await fs.open(filePath, "a");
-  await handle.close();
+  await createPrivateFileIfMissing(filePath);
   return filePath;
 }
 
@@ -118,7 +121,7 @@ export async function appendTaskOutput(
     ...event,
   };
   try {
-    await fs.appendFile(filePath, JSON.stringify(record) + "\n");
+    await appendPrivateFile(filePath, JSON.stringify(record) + "\n");
   } catch {
     // Intentional — see file header.
   }

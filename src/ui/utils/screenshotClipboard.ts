@@ -18,6 +18,7 @@ import * as path from "node:path";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
+const PRIVATE_IMAGE_MODE = 0o600;
 
 export type ClipboardImageResult =
   | { ok: true; path: string }
@@ -36,6 +37,10 @@ async function hasBytes(file: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+async function protectTempImage(file: string): Promise<void> {
+  if (process.platform !== "win32") await fs.chmod(file, PRIVATE_IMAGE_MODE);
 }
 
 /**
@@ -60,7 +65,10 @@ async function readMacViaOsascript(out: string): Promise<ClipboardImageResult> {
   const args = lines.flatMap((line) => ["-e", line]);
   try {
     const { stdout } = await execFileAsync("osascript", args);
-    if (stdout.includes("ok") && (await hasBytes(out))) return { ok: true, path: out };
+    if (stdout.includes("ok") && (await hasBytes(out))) {
+      await protectTempImage(out);
+      return { ok: true, path: out };
+    }
     return { ok: false, error: "No image on the clipboard (copy an image or take a screenshot first)." };
   } catch {
     return { ok: false, error: "Could not read the clipboard via osascript." };
@@ -71,7 +79,10 @@ async function readMac(out: string): Promise<ClipboardImageResult> {
   // Fast path: pngpaste if it happens to be installed.
   try {
     await execFileAsync("pngpaste", [out]);
-    if (await hasBytes(out)) return { ok: true, path: out };
+    if (await hasBytes(out)) {
+      await protectTempImage(out);
+      return { ok: true, path: out };
+    }
   } catch {
     // not installed, or nothing on the clipboard — fall back to osascript.
   }
@@ -91,7 +102,8 @@ async function readLinux(out: string): Promise<ClipboardImageResult> {
       });
       const buf = stdout as unknown as Buffer;
       if (buf && buf.length > 0) {
-        await fs.writeFile(out, buf);
+        await fs.writeFile(out, buf, { mode: PRIVATE_IMAGE_MODE });
+        await protectTempImage(out);
         return { ok: true, path: out };
       }
     } catch {
@@ -111,7 +123,10 @@ async function readWindows(out: string): Promise<ClipboardImageResult> {
     `if($img -ne $null){$img.Save('${out.replace(/\\/g, "\\\\")}');Write-Output 'ok'}else{Write-Output 'none'}`;
   try {
     const { stdout } = await execFileAsync("powershell", ["-NoProfile", "-Command", script]);
-    if (stdout.includes("ok") && (await hasBytes(out))) return { ok: true, path: out };
+    if (stdout.includes("ok") && (await hasBytes(out))) {
+      await protectTempImage(out);
+      return { ok: true, path: out };
+    }
     return { ok: false, error: "No image found on the clipboard." };
   } catch {
     return { ok: false, error: "Failed to read the clipboard via PowerShell." };

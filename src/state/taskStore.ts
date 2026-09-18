@@ -23,12 +23,17 @@
  * serialized across the process. Per-task updates use per-file locks.
  */
 
-import { mkdir, readdir, readFile, unlink, writeFile } from "node:fs/promises";
+import { readdir, readFile, unlink } from "node:fs/promises";
 import * as path from "node:path";
 import lockfile from "proper-lockfile";
 import type { Task, TaskStatus } from "../types/task.js";
 import { TASK_STATUSES } from "../types/task.js";
 import { getTasksRoot } from "../utils/paths.js";
+import {
+  createPrivateFileIfMissing,
+  ensurePrivateDirectory,
+  writePrivateFile,
+} from "../utils/privateData.js";
 
 const HIGH_WATER_MARK_FILE = ".highwatermark";
 const LOCK_FILE = ".lock";
@@ -76,7 +81,7 @@ export function getTaskPath(taskListId: string, taskId: string): string {
 }
 
 async function ensureTasksDir(taskListId: string): Promise<void> {
-  await mkdir(getTasksDir(taskListId), { recursive: true });
+  await ensurePrivateDirectory(getTasksDir(taskListId));
 }
 
 /**
@@ -90,11 +95,7 @@ async function ensureTasksDir(taskListId: string): Promise<void> {
 async function ensureTaskListLockFile(taskListId: string): Promise<string> {
   await ensureTasksDir(taskListId);
   const lockPath = path.join(getTasksDir(taskListId), LOCK_FILE);
-  try {
-    await writeFile(lockPath, "", { flag: "wx" });
-  } catch {
-    // Already exists — fine.
-  }
+  await createPrivateFileIfMissing(lockPath);
   return lockPath;
 }
 
@@ -115,7 +116,7 @@ async function readHighWaterMark(taskListId: string): Promise<number> {
 }
 
 async function writeHighWaterMark(taskListId: string, value: number): Promise<void> {
-  await writeFile(getHighWaterMarkPath(taskListId), String(value));
+  await writePrivateFile(getHighWaterMarkPath(taskListId), String(value));
 }
 
 async function findHighestTaskIdFromFiles(taskListId: string): Promise<number> {
@@ -217,7 +218,7 @@ export async function createTask(
     const highest = await findHighestTaskId(taskListId);
     const id = String(highest + 1);
     const task: Task = { id, ...data };
-    await writeFile(getTaskPath(taskListId, id), JSON.stringify(task, null, 2));
+    await writePrivateFile(getTaskPath(taskListId, id), JSON.stringify(task, null, 2));
     notifyTasksUpdated(taskListId);
     return id;
   } finally {
@@ -260,7 +261,7 @@ async function updateTaskUnsafe(
   const existing = await getTask(taskListId, taskId);
   if (!existing) return null;
   const updated: Task = { ...existing, ...updates, id: taskId };
-  await writeFile(getTaskPath(taskListId, taskId), JSON.stringify(updated, null, 2));
+  await writePrivateFile(getTaskPath(taskListId, taskId), JSON.stringify(updated, null, 2));
   notifyTasksUpdated(taskListId);
   return updated;
 }

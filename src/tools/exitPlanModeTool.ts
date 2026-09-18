@@ -10,9 +10,8 @@
  * is written to disk and the tool result is labeled "edited by user".
  */
 
-import * as fs from "node:fs/promises";
 import type { Tool, ToolContext, ToolResult } from "./Tool.js";
-import { readPlan, getPlanFilePath, ensurePlansDirectory } from "../context/plans.js";
+import { readPlan, getPlanFilePath, writePlan } from "../context/plans.js";
 
 interface AllowedPrompt {
   tool: string;
@@ -82,8 +81,7 @@ export const exitPlanModeTool: Tool = {
     // If user edited the plan, write it to disk
     let planWasEdited = false;
     if (inputPlan !== undefined) {
-      await ensurePlansDirectory();
-      await fs.writeFile(planPath, inputPlan, "utf-8");
+      await writePlan(inputPlan);
       planWasEdited = true;
     }
 

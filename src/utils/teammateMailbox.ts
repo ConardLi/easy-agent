@@ -45,10 +45,15 @@
  *     write-one, mark-all-read.
  */
 
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import lockfile from "proper-lockfile";
 import { getTeamDir, sanitizeName } from "./teamHelpers.js";
+import {
+  createPrivateFileIfMissing,
+  ensurePrivateDirectory,
+  writePrivateFile,
+} from "./privateData.js";
 
 /** One inbox entry, persisted as-is inside the JSON-array file. */
 export interface TeammateMessage {
@@ -97,13 +102,8 @@ async function ensureInboxFile(
   teamName: string,
 ): Promise<string> {
   const inboxPath = getInboxPath(agentName, teamName);
-  await mkdir(join(getTeamDir(teamName), "inboxes"), { recursive: true });
-  try {
-    await writeFile(inboxPath, "[]", { encoding: "utf-8", flag: "wx" });
-  } catch (error: unknown) {
-    const code = (error as NodeJS.ErrnoException | undefined)?.code;
-    if (code !== "EEXIST") throw error;
-  }
+  await ensurePrivateDirectory(join(getTeamDir(teamName), "inboxes"));
+  await createPrivateFileIfMissing(inboxPath, "[]");
   return inboxPath;
 }
 
@@ -143,7 +143,7 @@ export async function writeToMailbox(
     release = await lockfile.lock(inboxPath, LOCK_OPTIONS);
     const messages = await readMailbox(recipientName, teamName);
     messages.push({ ...message, read: false });
-    await writeFile(inboxPath, JSON.stringify(messages, null, 2), "utf-8");
+    await writePrivateFile(inboxPath, JSON.stringify(messages, null, 2));
   } finally {
     if (release) {
       try {
@@ -182,7 +182,7 @@ export async function markMessagesAsRead(
       }
     }
     if (changed) {
-      await writeFile(inboxPath, JSON.stringify(messages, null, 2), "utf-8");
+      await writePrivateFile(inboxPath, JSON.stringify(messages, null, 2));
     }
   } catch (error: unknown) {
     const code = (error as NodeJS.ErrnoException | undefined)?.code;
@@ -228,7 +228,7 @@ export async function drainUnreadMessages(
       }
     }
     if (changed) {
-      await writeFile(inboxPath, JSON.stringify(messages, null, 2), "utf-8");
+      await writePrivateFile(inboxPath, JSON.stringify(messages, null, 2));
     }
     return unread;
   } catch (error: unknown) {

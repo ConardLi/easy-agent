@@ -35,18 +35,24 @@ import {
   type KnownMarketplace,
   type KnownMarketplacesFile,
 } from "./schemas.js";
+import {
+  createPrivateFileIfMissing,
+  ensurePrivateDirectory,
+  PRIVATE_FILE_MODE,
+} from "../utils/privateData.js";
 
 // ─── low-level atomic IO ──────────────────────────────────────────────
 
 async function ensurePluginsRoot(): Promise<void> {
-  await fs.mkdir(getPluginsRoot(), { recursive: true });
+  await ensurePrivateDirectory(getPluginsRoot());
 }
 
 async function atomicWriteJson(filePath: string, value: unknown): Promise<void> {
-  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  await ensurePrivateDirectory(path.dirname(filePath));
   const tmp = `${filePath}.${process.pid}.${Date.now()}.tmp`;
-  const handle = await fs.open(tmp, "w");
+  const handle = await fs.open(tmp, "w", PRIVATE_FILE_MODE);
   try {
+    if (process.platform !== "win32") await handle.chmod(PRIVATE_FILE_MODE);
     await handle.writeFile(JSON.stringify(value, null, 2) + "\n", "utf-8");
     await handle.sync();
   } finally {
@@ -107,11 +113,7 @@ export async function loadPluginStateDiagnostics(): Promise<string[]> {
 export async function withPluginStateLock<T>(fn: () => Promise<T>): Promise<T> {
   await ensurePluginsRoot();
   const sentinel = path.join(getPluginsRoot(), ".lock");
-  try {
-    await fs.writeFile(sentinel, "", { flag: "wx" });
-  } catch {
-    // Already exists — fine.
-  }
+  await createPrivateFileIfMissing(sentinel);
   const release = await lockfile.lock(sentinel, {
     retries: { retries: 10, factor: 1.5, minTimeout: 20, maxTimeout: 400 },
     stale: 20_000,
@@ -132,11 +134,7 @@ export async function withPluginStateLock<T>(fn: () => Promise<T>): Promise<T> {
 export async function withPluginOperationLock<T>(fn: () => Promise<T>): Promise<T> {
   await ensurePluginsRoot();
   const sentinel = path.join(getPluginsRoot(), ".operation.lock");
-  try {
-    await fs.writeFile(sentinel, "", { flag: "wx" });
-  } catch {
-    // Already exists — fine.
-  }
+  await createPrivateFileIfMissing(sentinel);
   const release = await lockfile.lock(sentinel, {
     retries: { retries: 30, factor: 1.3, minTimeout: 50, maxTimeout: 1_000 },
     stale: 300_000,

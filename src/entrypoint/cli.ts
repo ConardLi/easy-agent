@@ -136,6 +136,16 @@ Settings keys (in ~/.easy-agent/settings.json or <cwd>/.easy-agent/settings.json
     process.exit(0);
   }
 
+  const { hardenPrivateDataStorage } = await import("../utils/privateData.js");
+  const privateDataReport = await hardenPrivateDataStorage({ projectCwd: process.cwd() });
+  if (privateDataReport.issues.length > 0) {
+    const first = privateDataReport.issues[0]!;
+    console.warn(
+      `[easy-agent] ⚠ Could not fully protect local data: ${first.path}: ${first.message}. ` +
+        "Run /doctor for details.",
+    );
+  }
+
   const modelIndex = process.argv.indexOf("--model");
   const model = modelIndex !== -1 ? process.argv[modelIndex + 1] : undefined;
   const dumpSystemPrompt = process.argv.includes("--dump-system-prompt");
