@@ -143,15 +143,13 @@ export function buildSandboxProfile(params: {
   const allowedDomains = new Set<string>(settings.network.allowedDomains);
   const deniedDomains = new Set<string>(settings.network.deniedDomains);
 
-  // 4. The unified abstraction: derive sandbox config from permission
-  //    rules. Each rule contributes to BOTH the permission system
-  //    (already loaded elsewhere) AND the sandbox profile (here).
+  // Filesystem permission rules contribute to the OS boundary. Network rules
+  // remain explicit sandbox settings so a WebFetch approval cannot
+  // accidentally turn Bash networking into a restrictive allowlist.
   for (const rule of permissions.allow) {
     const parsed = parseRule(rule);
     if (!parsed) continue;
-    if (parsed.toolName === "WebFetch" && parsed.ruleContent.startsWith("domain:")) {
-      allowedDomains.add(parsed.ruleContent.slice("domain:".length));
-    } else if (parsed.toolName === "Edit" || parsed.toolName === "Write") {
+    if (parsed.toolName === "Edit" || parsed.toolName === "Write") {
       const p = canonicalize(stripGlobSuffix(resolveRulePath(parsed.ruleContent, cwd)));
       allowWrite.add(p);
     } else if (parsed.toolName === "Read") {
@@ -163,9 +161,7 @@ export function buildSandboxProfile(params: {
   for (const rule of permissions.deny) {
     const parsed = parseRule(rule);
     if (!parsed) continue;
-    if (parsed.toolName === "WebFetch" && parsed.ruleContent.startsWith("domain:")) {
-      deniedDomains.add(parsed.ruleContent.slice("domain:".length));
-    } else if (parsed.toolName === "Edit" || parsed.toolName === "Write") {
+    if (parsed.toolName === "Edit" || parsed.toolName === "Write") {
       const p = canonicalize(stripGlobSuffix(resolveRulePath(parsed.ruleContent, cwd)));
       denyWrite.add(p);
     } else if (parsed.toolName === "Read") {

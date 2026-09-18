@@ -236,11 +236,15 @@ export async function* handleDoctorCommand(
   // Sandbox
   let sandboxEnabled = false;
   let sandboxFailClosed = true;
+  let sandboxAllowedDomains = 0;
+  let sandboxDeniedDomains = 0;
   let sandboxConfigurationError: string | undefined;
   try {
     const sandboxSettings = await loadSandboxSettings(cwd);
     sandboxEnabled = sandboxSettings.enabled;
     sandboxFailClosed = sandboxSettings.failClosed;
+    sandboxAllowedDomains = sandboxSettings.network.allowedDomains.length;
+    sandboxDeniedDomains = sandboxSettings.network.deniedDomains.length;
   } catch (error) {
     sandboxConfigurationError = error instanceof Error ? error.message : String(error);
   }
@@ -262,6 +266,13 @@ export async function* handleDoctorCommand(
       `${ICON.ok} Sandbox: ${sandboxCapability.backend} available` +
         `${sandboxEnabled ? ` (enabled, failClosed=${sandboxFailClosed})` : " (disabled in settings)"}`,
     );
+    if (sandboxEnabled) {
+      lines.push(
+        sandboxAllowedDomains > 0
+          ? `    Network: strict allowlist (${sandboxAllowedDomains} allowed, ${sandboxDeniedDomains} denied)`
+          : `    Network: public destinations allowed through proxy (${sandboxDeniedDomains} denied)`,
+      );
+    }
     for (const warning of sandboxCapability.warnings) lines.push(`    - ${warning}`);
   } else {
     const reason = getSandboxUnavailableReason(true) ?? "required dependencies are unavailable";

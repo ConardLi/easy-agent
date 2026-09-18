@@ -128,7 +128,7 @@ Settings keys (in ~/.easy-agent/settings.json or <cwd>/.easy-agent/settings.json
   sandbox.enabled: true              Enable OS shell isolation on macOS/Linux
   sandbox.failClosed: true           Block shell execution when isolation is unavailable (default)
   sandbox.filesystem: {...}          Configure allowWrite/denyWrite/allowRead/denyRead
-  sandbox.network: {...}             Configure allowedDomains/deniedDomains and local IPC
+  sandbox.network: {...}             Optional domain policy and local IPC settings
 
   /compact                    Compact conversation context
   /exit, /quit, /bye          Exit the REPL

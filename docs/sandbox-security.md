@@ -19,13 +19,6 @@ Sandbox settings follow the normal trusted settings precedence. Project and loca
       "denyWrite": ["./generated/protected"],
       "denyRead": ["~/.ssh", "~/.aws"],
       "allowRead": []
-    },
-    "network": {
-      "allowedDomains": ["registry.npmjs.org", "*.github.com"],
-      "deniedDomains": ["gist.github.com"],
-      "allowUnixSockets": [],
-      "allowAllUnixSockets": false,
-      "allowLocalBinding": false
     }
   }
 }
@@ -35,7 +28,20 @@ Sandbox settings follow the normal trusted settings precedence. Project and loca
 
 Filesystem writes use an allow-only policy. The working directory and the Easy Agent temporary directory are writable, explicit `denyWrite` entries take precedence, and runtime configuration, extension definitions, `.env`, `.mcp.json`, and project instructions are protected from modification. Reads are allowed unless denied; `allowRead` can reopen an allowed area within a broader denied path, while a more specific deny remains blocked.
 
-Network access uses an allow-only proxy. An empty `allowedDomains` list blocks outbound network access. Entries support exact hosts, wildcard subdomains, and optional ports. `deniedDomains` is evaluated first. A non-empty allowlist never enables unrestricted networking.
+Public network access works without a domain allowlist. Shell commands use the sandbox proxy, which continues to block loopback, link-local, cloud metadata, and other protected addresses. Built-in WebSearch and WebFetch tools have their own permission path and are unaffected by Bash network settings.
+
+Domain rules are optional. A non-empty `allowedDomains` list enables strict allowlist mode; `deniedDomains` is evaluated first. An empty allowlist keeps normal public network access available. Use `deniedDomains: ["*"]` to block all outbound destinations explicitly.
+
+```json
+{
+  "sandbox": {
+    "network": {
+      "allowedDomains": ["registry.npmjs.org", "*.github.com"],
+      "deniedDomains": ["gist.github.com"]
+    }
+  }
+}
+```
 
 `dangerouslyDisableSandbox` works only when `allowUnsandboxedCommands` is true. `excludedCommands` can bypass isolation only for a single command; compound commands and command substitutions remain sandboxed.
 
@@ -65,11 +71,11 @@ Windows process isolation requires a separate provisioning and lifecycle design 
 
 ## Migration
 
-- `network.allowedDomains` now enforces the listed destinations instead of enabling all outbound traffic.
+- Bash networking no longer requires an allowlist. Configuring a non-empty `network.allowedDomains` list opts into strict domain filtering.
 - `filesystem.denyRead` and `filesystem.allowRead` now affect the child process.
 - An enabled sandbox now blocks by default when unavailable. Use `failClosed: false` only as an explicit temporary compatibility setting.
 - Remove unknown sandbox fields or correct their types before running shell commands.
-- Linux installations must provide `bubblewrap` and `socat` before enabling the sandbox.
+- Linux installations must provide `bubblewrap`, `socat`, and `rg` before enabling the sandbox.
 
 ## Verification
 

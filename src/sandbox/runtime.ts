@@ -27,6 +27,10 @@ let initialization: Promise<void> | null = null;
 let activeConfigSignature = "";
 let leaseTail = Promise.resolve();
 
+// Called only after explicit deny/allow rules. The runtime's resolved-address
+// guard still rejects loopback, link-local, metadata, and other protected IPs.
+const allowUnlistedPublicDestination = async (): Promise<boolean> => true;
+
 async function acquireRuntimeLease(): Promise<() => void> {
   const previous = leaseTail;
   let releaseNext!: () => void;
@@ -57,14 +61,18 @@ export function toSandboxRuntimeConfig(profile: SandboxProfile): SandboxRuntimeC
       allowUnixSockets: profile.network.allowUnixSockets,
       allowAllUnixSockets: profile.network.allowAllUnixSockets,
       allowLocalBinding: profile.network.allowLocalBinding,
-      strictAllowlist: true,
+      strictAllowlist: profile.network.allowedDomains.length > 0,
     },
   };
 }
 
 async function initialize(config: SandboxRuntimeConfig, signature: string): Promise<void> {
   try {
-    await SandboxManager.initialize(config, undefined, process.platform === "darwin");
+    await SandboxManager.initialize(
+      config,
+      allowUnlistedPublicDestination,
+      process.platform === "darwin",
+    );
     initialized = true;
     activeConfigSignature = signature;
   } catch (error) {

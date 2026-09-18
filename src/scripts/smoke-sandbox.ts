@@ -135,6 +135,13 @@ async function main(): Promise<void> {
     encoding: "utf8",
   });
   expect("network test endpoint is reachable", preflight.status === 0, preflight.stderr);
+  const defaultNetwork = await runSandboxed(
+    testRoot,
+    `curl --noproxy '' --max-time 5 --silent --show-error --fail '${url}'`,
+    settings(),
+  );
+  expect("public network works without an allowlist", defaultNetwork.code === 0, defaultNetwork.stderr);
+  expect("default network response is returned", defaultNetwork.stdout.includes("Example Domain"));
   const networkSettings = settings({}, { allowedDomains: [domain] });
   const proxyProbe = await runSandboxed(
     testRoot,
@@ -149,6 +156,12 @@ async function main(): Promise<void> {
   );
   expect("allowlisted destination succeeds", allowedNetwork.code === 0, allowedNetwork.stderr);
   expect("allowlisted response is returned", allowedNetwork.stdout.includes("Example Domain"));
+  const unmatchedNetwork = await runSandboxed(
+    testRoot,
+    `curl --noproxy '' --max-time 5 --silent --show-error --fail '${url}'`,
+    settings({}, { allowedDomains: ["api.invalid.example"] }),
+  );
+  expect("configured allowlist blocks unmatched destinations", unmatchedNetwork.code !== 0, unmatchedNetwork.stderr);
   const deniedNetwork = await runSandboxed(
     testRoot,
     `curl --noproxy '' --max-time 5 --silent --show-error --fail '${url}'`,

@@ -144,8 +144,8 @@ async function main(): Promise<void> {
       deny: ["WebFetch(domain:blocked.example)", "Read(/secrets/**)"],
     },
   });
-  assert(profile.network.allowedDomains.includes("github.com"), "WebFetch allow contributes a domain");
-  assert(profile.network.deniedDomains.includes("blocked.example"), "WebFetch deny contributes a domain");
+  assertEqual(profile.network.allowedDomains, ["api.example.com"], "Bash uses its explicit domain allowlist");
+  assertEqual(profile.network.deniedDomains, ["evil.example.com"], "Bash uses its explicit domain denylist");
   assert(profile.filesystem.denyRead.includes(path.resolve("/secrets")), "Read deny contributes a path");
   assert(profile.filesystem.denyWrite.includes(path.join(cwd, ".env")), ".env cannot be rewritten");
   assert(profile.filesystem.denyWrite.includes(path.join(cwd, ".mcp.json")), ".mcp.json cannot be rewritten");
@@ -154,7 +154,15 @@ async function main(): Promise<void> {
   assertEqual(runtime.network.allowedDomains, profile.network.allowedDomains, "runtime receives exact domain allowlist");
   assertEqual(runtime.network.deniedDomains, profile.network.deniedDomains, "runtime receives exact domain denylist");
   assertEqual(runtime.filesystem.denyRead, profile.filesystem.denyRead, "runtime receives denyRead");
-  assertEqual(runtime.network.strictAllowlist, true, "unmatched network destinations are denied");
+  assertEqual(runtime.network.strictAllowlist, true, "a configured allowlist denies unmatched destinations");
+
+  const defaultProfile = buildSandboxProfile({
+    cwd,
+    settings: makeSettings(),
+    permissions: { allow: [], deny: [] },
+  });
+  const defaultRuntime = toSandboxRuntimeConfig(defaultProfile);
+  assertEqual(defaultRuntime.network.strictAllowlist, false, "network access does not require a domain allowlist");
 
   section("[5] violation annotation");
   const annotated = annotateStderrWithSandboxFailures("Operation not permitted", 1);
