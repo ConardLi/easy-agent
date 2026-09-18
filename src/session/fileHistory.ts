@@ -30,7 +30,6 @@ import { createHash } from "node:crypto";
 import { constants, type Stats } from "node:fs";
 import {
   type FileHandle,
-  mkdir,
   open,
   readdir,
   readFile,
@@ -40,6 +39,7 @@ import {
 import { dirname, isAbsolute, join, relative } from "node:path";
 import { diffLines } from "diff";
 import { getEasyAgentHome } from "../utils/paths.js";
+import { ensurePrivateDirectory } from "../utils/privateData.js";
 import { readMergedBooleanSetting, readMergedNumberSetting } from "../utils/settings.js";
 import {
   readWorkspaceFile,
@@ -531,7 +531,7 @@ async function writeBackupFile(
   sourceHandle: FileHandle,
   mode: number,
 ): Promise<void> {
-  await mkdir(dirname(filePath), { recursive: true });
+  await ensurePrivateDirectory(dirname(filePath));
   const handle = await open(
     filePath,
     constants.O_WRONLY | constants.O_CREAT | (constants.O_NOFOLLOW ?? 0),

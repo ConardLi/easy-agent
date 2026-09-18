@@ -41,6 +41,7 @@ import {
   resetSettingsCache,
 } from "../config/sources.js";
 import { isInheritedCredentialProtected } from "../config/environment.js";
+import { writePrivateFile } from "./privateData.js";
 
 export interface SettingsFileResult<T = unknown> {
   /** Parsed JSON object, or null if missing / unreadable / invalid. */
@@ -104,7 +105,7 @@ export async function readJsonSettingsFile<T = unknown>(
 export async function updateUserSettings(
   patch: Record<string, unknown>,
 ): Promise<void> {
-  await writeSettingsPatch(getUserSettingsPath(), patch);
+  await writeSettingsPatch(getUserSettingsPath(), patch, "private-home");
 }
 
 /**
@@ -117,7 +118,7 @@ export async function updateProjectSettings(
   cwd: string,
   patch: Record<string, unknown>,
 ): Promise<void> {
-  await writeSettingsPatch(getProjectSettingsPath(cwd), patch);
+  await writeSettingsPatch(getProjectSettingsPath(cwd), patch, "shared-project");
 }
 
 /**
@@ -129,7 +130,7 @@ export async function updateLocalSettings(
   cwd: string,
   patch: Record<string, unknown>,
 ): Promise<void> {
-  await writeSettingsPatch(getLocalSettingsPath(cwd), patch);
+  await writeSettingsPatch(getLocalSettingsPath(cwd), patch, "private-project");
   await ensureLocalSettingsGitignored(cwd);
 }
 
@@ -142,6 +143,7 @@ export async function updateLocalSettings(
 async function writeSettingsPatch(
   filePath: string,
   patch: Record<string, unknown>,
+  storage: "private-home" | "private-project" | "shared-project",
 ): Promise<void> {
   const { raw } = await readJsonSettingsFile<Record<string, unknown>>(filePath);
   const merged: Record<string, unknown> = { ...(raw ?? {}) };
@@ -149,8 +151,15 @@ async function writeSettingsPatch(
     if (value === undefined) delete merged[key];
     else merged[key] = value;
   }
-  await fs.mkdir(path.dirname(filePath), { recursive: true });
-  await fs.writeFile(filePath, JSON.stringify(merged, null, 2) + "\n", "utf-8");
+  const content = JSON.stringify(merged, null, 2) + "\n";
+  if (storage === "shared-project") {
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
+    await fs.writeFile(filePath, content, "utf-8");
+  } else {
+    await writePrivateFile(filePath, content, {
+      secureParent: storage === "private-home",
+    });
+  }
   // Bust the merged-read cache so the freshly written value is visible to the
   // next `loadSettingSources` call (e.g. `/config set` → live reload), even if
   // the filesystem's mtime resolution is too coarse to register the change.

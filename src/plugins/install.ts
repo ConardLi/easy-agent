@@ -40,6 +40,7 @@ import {
   upsertInstalledPlugin,
   withPluginOperationLock,
 } from "./state.js";
+import { ensurePrivateDirectory } from "../utils/privateData.js";
 import { setPluginEnabled } from "./enable.js";
 import type { InstalledPluginRecord, PluginScope } from "./schemas.js";
 import type { LoadedPlugin } from "./loadedTypes.js";
@@ -326,7 +327,7 @@ async function installPluginUnlocked(
           `plugin validation failed: ${finalLoaded.errors.map((e) => e.message).join("; ")}`,
         );
       }
-      await fs.mkdir(getPluginDataDir(pluginId), { recursive: true });
+      await ensurePrivateDirectory(getPluginDataDir(pluginId));
 
       const now = new Date().toISOString();
       const installations = upsertInstallationScope(

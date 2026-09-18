@@ -32,6 +32,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { getEasyAgentHome, getStatePath } from "../utils/paths.js";
 import { findGitRoot } from "../utils/worktree.js";
+import { ensurePrivateDirectory, writePrivateFile } from "../utils/privateData.js";
 
 interface ProjectState {
   trusted?: boolean;
@@ -115,9 +116,9 @@ export async function saveGlobalState(
   update(draft);
 
   const filePath = getStatePath();
-  await fs.mkdir(getEasyAgentHome(), { recursive: true });
+  await ensurePrivateDirectory(getEasyAgentHome());
   const tmpPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
-  await fs.writeFile(tmpPath, JSON.stringify(draft, null, 2) + "\n", "utf-8");
+  await writePrivateFile(tmpPath, JSON.stringify(draft, null, 2) + "\n");
   await fs.rename(tmpPath, filePath);
   cache = draft;
 }

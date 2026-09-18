@@ -112,6 +112,11 @@ function normalize(text: string): string {
   });
   // The host sandbox capability is exercised by the separate platform group.
   out = out.replace(/[✓⚠✗] Sandbox:[^\n]*/g, "<SANDBOX_STATUS>");
+  // POSIX reports concrete modes while Windows reports inherited profile ACLs.
+  out = out.replace(
+    /[✓⚠✗] Local data permissions:[^\n]*/g,
+    "<LOCAL_DATA_PERMISSIONS>",
+  );
   // Empty command-output rows are formatted as `"  | "` for readability in
   // memory, but the golden should not carry invisible trailing whitespace.
   return out.split("\n").map((line) => line.trimEnd()).join("\n");

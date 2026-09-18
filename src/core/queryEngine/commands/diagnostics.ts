@@ -38,6 +38,10 @@ import {
   getActivePlugins,
 } from "../../../plugins/runtime.js";
 import { loadPluginStateDiagnostics } from "../../../plugins/state.js";
+import {
+  getLastPrivateDataSecurityReport,
+  inspectPrivateDataSecurity,
+} from "../../../utils/privateData.js";
 import type { QueryEngineEvent } from "../types.js";
 import type { CommandContext } from "./context.js";
 
@@ -289,6 +293,29 @@ export async function* handleDoctorCommand(
   } else {
     lines.push(`${ICON.fail} Settings problems:`);
     for (const e of settingsErrors) lines.push(`    - ${e}`);
+  }
+
+  const privateData = await inspectPrivateDataSecurity(cwd);
+  const startupPrivateData = getLastPrivateDataSecurityReport();
+  const privateDataIssues = [
+    ...privateData.issues,
+    ...(startupPrivateData?.issues ?? []),
+  ].filter(
+    (issue, index, all) =>
+      all.findIndex((candidate) => candidate.path === issue.path && candidate.message === issue.message) === index,
+  );
+  if (!privateData.supported) {
+    lines.push(
+      `${ICON.warn} Local data permissions: Windows uses inherited user-profile ACLs; POSIX 0600/0700 modes are unavailable`,
+    );
+  } else if (privateDataIssues.length === 0) {
+    lines.push(`${ICON.ok} Local data permissions: private (directories 0700, files 0600)`);
+  } else {
+    lines.push(`${ICON.warn} Local data permissions: ${privateDataIssues.length} issue(s)`);
+    for (const issue of privateDataIssues.slice(0, 8)) {
+      lines.push(`    - ${issue.path}: ${issue.message}`);
+    }
+    lines.push(`    Re-run eagent after correcting ownership or filesystem permissions.`);
   }
 
   const workspaceTrusted = await isProjectTrusted(cwd);

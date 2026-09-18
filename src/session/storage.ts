@@ -6,6 +6,11 @@ import type { MessageParam } from "@anthropic-ai/sdk/resources/messages.js";
 import type { Usage } from "../types/message.js";
 import { getProjectPathInfo } from "../context/memory/memdir.js";
 import { getEasyAgentHome } from "../utils/paths.js";
+import {
+  appendPrivateFile,
+  ensurePrivateDirectory,
+  writePrivateFile,
+} from "../utils/privateData.js";
 
 const MAX_SESSIONS = 20;
 
@@ -290,7 +295,7 @@ export async function getSessionPaths(cwd: string, sessionId: string): Promise<S
 }
 
 async function ensureSessionDir(paths: SessionPaths): Promise<void> {
-  await fs.mkdir(paths.projectDir, { recursive: true });
+  await ensurePrivateDirectory(paths.projectDir);
 }
 
 export async function initSessionStorage(metadata: SessionMetadata): Promise<SessionPaths> {
@@ -308,8 +313,8 @@ export async function initSessionStorage(metadata: SessionMetadata): Promise<Ses
     model: metadata.model,
   };
 
-  await fs.writeFile(paths.transcriptPath, `${JSON.stringify(metaEntry)}\n`, { flag: "a" });
-  await fs.writeFile(paths.latestPath, `${metadata.sessionId}\n`, "utf-8");
+  await appendPrivateFile(paths.transcriptPath, `${JSON.stringify(metaEntry)}\n`);
+  await writePrivateFile(paths.latestPath, `${metadata.sessionId}\n`);
   return paths;
 }
 
@@ -336,8 +341,8 @@ export async function appendTranscriptEntry(cwd: string, sessionId: string, entr
   if (!persistenceEnabled) return;
   const paths = await getSessionPaths(cwd, sessionId);
   await ensureSessionDir(paths);
-  await fs.appendFile(paths.transcriptPath, `${JSON.stringify(entry)}\n`, "utf-8");
-  await fs.writeFile(paths.latestPath, `${sessionId}\n`, "utf-8");
+  await appendPrivateFile(paths.transcriptPath, `${JSON.stringify(entry)}\n`);
+  await writePrivateFile(paths.latestPath, `${sessionId}\n`);
 }
 
 async function readTranscriptEntries(filePath: string): Promise<TranscriptEntry[]> {
@@ -443,7 +448,7 @@ export async function appendCompactionSnapshot(
       message: msg,
     }));
   }
-  await fs.appendFile(paths.transcriptPath, lines.join("\n") + "\n", "utf-8");
+  await appendPrivateFile(paths.transcriptPath, lines.join("\n") + "\n");
 }
 
 /**

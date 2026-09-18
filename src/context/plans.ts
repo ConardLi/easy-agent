@@ -10,6 +10,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as crypto from "node:crypto";
 import { getPlansRoot } from "../utils/paths.js";
+import { ensurePrivateDirectory, writePrivateFile } from "../utils/privateData.js";
 
 let cachedSlug: string | null = null;
 
@@ -37,13 +38,13 @@ export function getPlanFilePath(): string {
 }
 
 export async function ensurePlansDirectory(): Promise<void> {
-  await fs.mkdir(getPlansRoot(), { recursive: true });
+  await ensurePrivateDirectory(getPlansRoot());
 }
 
 export async function writePlan(content: string): Promise<string> {
   await ensurePlansDirectory();
   const filePath = getPlanFilePath();
-  await fs.writeFile(filePath, content, "utf-8");
+  await writePrivateFile(filePath, content);
   return filePath;
 }
 

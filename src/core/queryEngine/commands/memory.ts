@@ -20,6 +20,7 @@ import {
   MEMORY_ENTRYPOINT,
 } from "../../../context/memory/memdir.js";
 import { getGlobalAgentMdPath } from "../../../utils/paths.js";
+import { createPrivateFileIfMissing } from "../../../utils/privateData.js";
 import type { QueryEngineEvent } from "../types.js";
 import type { CommandContext } from "./context.js";
 
@@ -131,12 +132,16 @@ export async function* handleMemoryCommand(
     // on a real path. Mirrors source's writeFile({ flag: 'wx' }) priming.
     if (!target.exists) {
       try {
-        await mkdir(dirnamePath(target.path), { recursive: true });
-        await writeFile(target.path, "", { encoding: "utf-8", flag: "wx" }).catch(
-          (e: unknown) => {
-            if ((e as NodeJS.ErrnoException)?.code !== "EEXIST") throw e;
-          },
-        );
+        if (target.path === getGlobalAgentMdPath()) {
+          await createPrivateFileIfMissing(target.path);
+        } else {
+          await mkdir(dirnamePath(target.path), { recursive: true });
+          await writeFile(target.path, "", { encoding: "utf-8", flag: "wx" }).catch(
+            (e: unknown) => {
+              if ((e as NodeJS.ErrnoException)?.code !== "EEXIST") throw e;
+            },
+          );
+        }
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
         yield { type: "command", kind: "error", message: `Cannot create ${target.path}: ${msg}` };

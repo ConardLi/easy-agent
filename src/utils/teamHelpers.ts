@@ -26,10 +26,14 @@
  *     `cleanupTeamDirectories` from TeamDelete instead).
  */
 
-import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { readdir, readFile, rm } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { getTeamsRoot } from "./paths.js";
+import {
+  writePrivateFile,
+  writePrivateFileSync,
+} from "./privateData.js";
 
 /**
  * Snapshot of one team member. A "member" includes the team lead
@@ -160,8 +164,7 @@ export async function readTeamFileAsync(
 
 /** Sync write — primarily for member-list mutations from sync contexts. */
 export function writeTeamFile(teamName: string, file: TeamFile): void {
-  mkdirSync(getTeamDir(teamName), { recursive: true });
-  writeFileSync(getTeamFilePath(teamName), JSON.stringify(file, null, 2));
+  writePrivateFileSync(getTeamFilePath(teamName), JSON.stringify(file, null, 2));
 }
 
 /** Async write — preferred path from tool handlers. */
@@ -169,8 +172,7 @@ export async function writeTeamFileAsync(
   teamName: string,
   file: TeamFile,
 ): Promise<void> {
-  await mkdir(getTeamDir(teamName), { recursive: true });
-  await writeFile(getTeamFilePath(teamName), JSON.stringify(file, null, 2));
+  await writePrivateFile(getTeamFilePath(teamName), JSON.stringify(file, null, 2));
 }
 
 // ─── member-list mutations ──────────────────────────────────────────

@@ -4,6 +4,7 @@ import * as path from "node:path";
 import type { MemoryEntry, MemoryFrontmatter, MemoryType } from "./memoryTypes.js";
 import { isMemoryType } from "./memoryTypes.js";
 import { getProjectsRoot } from "../../utils/paths.js";
+import { ensurePrivateDirectory, writePrivateFile } from "../../utils/privateData.js";
 
 export const MEMORY_ENTRYPOINT = "MEMORY.md";
 export const MAX_ENTRYPOINT_LINES = 200;
@@ -81,12 +82,12 @@ export async function getProjectMemoryDir(cwd: string): Promise<string> {
 
 export async function ensureMemoryDirExists(cwd: string): Promise<string> {
   const memoryDir = await getProjectMemoryDir(cwd);
-  await fs.mkdir(memoryDir, { recursive: true });
+  await ensurePrivateDirectory(memoryDir);
   const entrypoint = path.join(memoryDir, MEMORY_ENTRYPOINT);
   try {
     await fs.access(entrypoint);
   } catch {
-    await fs.writeFile(entrypoint, "# Project Memory\n\n", "utf-8");
+    await writePrivateFile(entrypoint, "# Project Memory\n\n");
   }
   return memoryDir;
 }
@@ -257,7 +258,7 @@ async function rewriteEntrypoint(memoryDir: string, entries: MemoryEntry[]): Pro
   const bodyLines = ["# Project Memory", "", ...[...unique.values()]];
   const truncated = truncateEntrypoint(bodyLines.join("\n"));
   const finalText = [truncated.content, truncated.warning].filter(Boolean).join("\n\n") + "\n";
-  await fs.writeFile(entrypointPath, finalText, "utf-8");
+  await writePrivateFile(entrypointPath, finalText);
 }
 
 async function findExistingMemoryFile(cwd: string, name: string, description: string): Promise<string | null> {
@@ -300,7 +301,7 @@ export async function writeProjectMemory(input: {
     "",
   ].join("\n");
 
-  await fs.writeFile(filePath, body, "utf-8");
+  await writePrivateFile(filePath, body);
   const docs = await listMemoryFiles(input.cwd);
   await rewriteEntrypoint(memoryDir, docs.map((doc) => ({
     fileName: doc.fileName,
