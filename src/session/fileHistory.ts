@@ -40,6 +40,7 @@ import { dirname, isAbsolute, join, relative } from "node:path";
 import { diffLines } from "diff";
 import { getEasyAgentHome } from "../utils/paths.js";
 import { ensurePrivateDirectory } from "../utils/privateData.js";
+import { atomicWriteFileFromHandle } from "../utils/atomicFile.js";
 import { readMergedBooleanSetting, readMergedNumberSetting } from "../utils/settings.js";
 import {
   readWorkspaceFile,
@@ -263,7 +264,7 @@ export async function fileHistoryTrackEdit(
   mostRecent.trackedFileBackups[trackingPath] = backup;
 
   // Persist the updated snapshot so /rewind survives --resume.
-  void recordFileHistorySnapshot(cwd, sessionId, mostRecent).catch(() => {});
+  await recordFileHistorySnapshot(cwd, sessionId, mostRecent).catch(() => {});
 }
 
 // ─── phase 2: make a turn snapshot ────────────────────────────────────────
@@ -337,7 +338,7 @@ export async function fileHistoryMakeSnapshot(messageId: string): Promise<void> 
   state.snapshotSequence += 1;
 
   // Persist the new snapshot so /rewind survives --resume.
-  void recordFileHistorySnapshot(cwd, sessionId, newSnapshot).catch(() => {});
+  await recordFileHistorySnapshot(cwd, sessionId, newSnapshot).catch(() => {});
 }
 
 // ─── phase 3: rewind / diff ───────────────────────────────────────────────
@@ -503,48 +504,13 @@ async function restoreBackup(filePath: string, backupFileName: string): Promise<
   }
 }
 
-async function copyHandleContents(sourceHandle: FileHandle, targetHandle: FileHandle): Promise<void> {
-  await targetHandle.truncate(0);
-  const buffer = Buffer.allocUnsafe(64 * 1024);
-  let offset = 0;
-  for (;;) {
-    const { bytesRead } = await sourceHandle.read(buffer, 0, buffer.length, offset);
-    if (bytesRead === 0) return;
-
-    let written = 0;
-    while (written < bytesRead) {
-      const result = await targetHandle.write(
-        buffer,
-        written,
-        bytesRead - written,
-        offset + written,
-      );
-      if (result.bytesWritten === 0) throw new Error("Backup write made no progress");
-      written += result.bytesWritten;
-    }
-    offset += bytesRead;
-  }
-}
-
 async function writeBackupFile(
   filePath: string,
   sourceHandle: FileHandle,
   mode: number,
 ): Promise<void> {
   await ensurePrivateDirectory(dirname(filePath));
-  const handle = await open(
-    filePath,
-    constants.O_WRONLY | constants.O_CREAT | (constants.O_NOFOLLOW ?? 0),
-    mode,
-  );
-  try {
-    const stats = await handle.stat();
-    if (!stats.isFile()) throw new Error(`Backup path is not a regular file: ${filePath}`);
-    await copyHandleContents(sourceHandle, handle);
-    await handle.chmod(mode);
-  } finally {
-    await handle.close().catch(() => {});
-  }
+  await atomicWriteFileFromHandle(filePath, sourceHandle, { mode });
 }
 
 async function withBackupFile<T>(

@@ -37,6 +37,7 @@ import {
 import {
   appendTaskOutput,
   previewToolResult,
+  type TaskOutputEvent,
 } from "../utils/taskOutput.js";
 import {
   hasWorktreeChanges,
@@ -126,6 +127,10 @@ export async function runAsyncAgentLifecycle(
     ...(entry.description ? { description: entry.description } : {}),
     prompt: params.prompt,
   });
+  let pendingOutput = Promise.resolve();
+  const queueOutput = (event: TaskOutputEvent): void => {
+    pendingOutput = pendingOutput.then(() => appendTaskOutput(entry.outputFile, event));
+  };
 
   try {
     const result = await runChildAgent({
@@ -176,7 +181,7 @@ export async function runAsyncAgentLifecycle(
         // Read tool) and the in-memory store (for any future UI).
         switch (event.type) {
           case "tool_use_start":
-            void appendTaskOutput(entry.outputFile, {
+            queueOutput({
               type: "tool_use",
               toolName: event.toolName,
             });
@@ -187,7 +192,7 @@ export async function runAsyncAgentLifecycle(
           case "tool_use_done": {
             const cur = entry.toolUseCount;
             const next = cur + 1;
-            void appendTaskOutput(entry.outputFile, {
+            queueOutput({
               type: "tool_result",
               toolName: event.toolName,
               isError: event.isError === true,
@@ -202,7 +207,7 @@ export async function runAsyncAgentLifecycle(
             break;
           }
           case "text":
-            void appendTaskOutput(entry.outputFile, {
+            queueOutput({
               type: "text",
               text: event.text,
             });
@@ -214,7 +219,7 @@ export async function runAsyncAgentLifecycle(
               u.output_tokens +
               (u.cache_creation_input_tokens ?? 0) +
               (u.cache_read_input_tokens ?? 0);
-            void appendTaskOutput(entry.outputFile, {
+            queueOutput({
               type: "turn_usage",
               inputTokens: u.input_tokens,
               outputTokens: u.output_tokens,
@@ -235,6 +240,7 @@ export async function runAsyncAgentLifecycle(
       },
     });
 
+    await pendingOutput;
     const worktreeFinal = await cleanupWorktreeIfNeeded(params.worktreeInfo);
 
     const durationMs = Date.now() - startTime;
@@ -273,6 +279,8 @@ export async function runAsyncAgentLifecycle(
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     const durationMs = Date.now() - startTime;
+
+    await pendingOutput;
 
     // Cleanup worktree even on failure — but with the same dirty-check
     // so we never delete in-progress edits.

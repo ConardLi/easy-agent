@@ -10,6 +10,11 @@ import {
   getStreamDebugLogPath,
   getUserSettingsPath,
 } from "./paths.js";
+import {
+  atomicWriteFile,
+  atomicWriteFileSync,
+  syncDirectory,
+} from "./atomicFile.js";
 
 export const PRIVATE_DIRECTORY_MODE = 0o700;
 export const PRIVATE_FILE_MODE = 0o600;
@@ -85,32 +90,18 @@ export async function writePrivateFile(
   } else {
     await ensurePrivateDirectory(path.dirname(filePath));
   }
-  const handle = await fsp.open(
-    filePath,
-    fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_TRUNC | NO_FOLLOW,
-    PRIVATE_FILE_MODE,
-  );
-  try {
-    await secureOpenedFile(handle, filePath);
-    await handle.writeFile(data);
-  } finally {
-    await handle.close().catch(() => {});
-  }
+  await atomicWriteFile(filePath, data, {
+    mode: PRIVATE_FILE_MODE,
+    preserveMode: false,
+  });
 }
 
 export function writePrivateFileSync(filePath: string, data: string | Uint8Array): void {
   ensurePrivateDirectorySync(path.dirname(filePath));
-  const fd = fs.openSync(
-    filePath,
-    fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_TRUNC | NO_FOLLOW,
-    PRIVATE_FILE_MODE,
-  );
-  try {
-    secureOpenedFileSync(fd, filePath);
-    fs.writeFileSync(fd, data);
-  } finally {
-    fs.closeSync(fd);
-  }
+  atomicWriteFileSync(filePath, data, {
+    mode: PRIVATE_FILE_MODE,
+    preserveMode: false,
+  });
 }
 
 export async function appendPrivateFile(
@@ -126,6 +117,7 @@ export async function appendPrivateFile(
   try {
     await secureOpenedFile(handle, filePath);
     await handle.writeFile(data);
+    await handle.sync();
   } finally {
     await handle.close().catch(() => {});
   }
@@ -141,6 +133,7 @@ export function appendPrivateFileSync(filePath: string, data: string | Uint8Arra
   try {
     secureOpenedFileSync(fd, filePath);
     fs.writeFileSync(fd, data);
+    fs.fsyncSync(fd);
   } finally {
     fs.closeSync(fd);
   }
@@ -171,9 +164,11 @@ export async function createPrivateFileIfMissing(
   try {
     await secureOpenedFile(handle, filePath);
     if (data) await handle.writeFile(data);
+    await handle.sync();
   } finally {
     await handle.close().catch(() => {});
   }
+  await syncDirectory(path.dirname(filePath));
   return true;
 }
 

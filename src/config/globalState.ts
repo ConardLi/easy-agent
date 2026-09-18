@@ -33,6 +33,11 @@ import * as path from "node:path";
 import { getEasyAgentHome, getStatePath } from "../utils/paths.js";
 import { findGitRoot } from "../utils/worktree.js";
 import { ensurePrivateDirectory, writePrivateFile } from "../utils/privateData.js";
+import {
+  parsePersistedJson,
+  PersistentDataError,
+  withFileLock,
+} from "../utils/atomicFile.js";
 
 interface ProjectState {
   trusted?: boolean;
@@ -56,6 +61,7 @@ function emptyState(): GlobalState {
 // (every trust check), so we parse once and reuse. Mutating writers update
 // the cache in place so subsequent reads see their changes without re-reading.
 let cache: GlobalState | null = null;
+let stateDiagnostic: string | null = null;
 
 // Home-directory trust is intentionally NOT persisted — running the agent in
 // $HOME is common and we don't want to permanently trust the entire home tree.
@@ -65,6 +71,7 @@ const sessionTrusted = new Set<string>();
 /** Reset the in-memory cache. Test-only seam. */
 export function resetGlobalStateCache(): void {
   cache = null;
+  stateDiagnostic = null;
   sessionTrusted.clear();
 }
 
@@ -81,22 +88,38 @@ export async function getProjectKey(cwd: string): Promise<string> {
   return normalizeKey(gitRoot ?? cwd);
 }
 
-export async function getGlobalState(): Promise<GlobalState> {
-  if (cache) return cache;
+async function readGlobalStateFromDisk(): Promise<GlobalState> {
   try {
     const text = await fs.readFile(getStatePath(), "utf-8");
-    const parsed = JSON.parse(text) as Partial<GlobalState>;
-    cache = {
+    const parsed = parsePersistedJson<Partial<GlobalState>>(getStatePath(), text);
+    return {
       version: typeof parsed.version === "number" ? parsed.version : CURRENT_VERSION,
       prefs: parsed.prefs && typeof parsed.prefs === "object" ? parsed.prefs : {},
       projects:
         parsed.projects && typeof parsed.projects === "object" ? parsed.projects : {},
     };
-  } catch {
-    // Missing or unparseable → start from empty state (fail-soft).
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return emptyState();
+    if (error instanceof PersistentDataError) throw error;
+    throw new PersistentDataError(getStatePath(), error instanceof Error ? error.message : String(error));
+  }
+}
+
+export async function getGlobalState(): Promise<GlobalState> {
+  if (cache) return cache;
+  try {
+    cache = await readGlobalStateFromDisk();
+    stateDiagnostic = null;
+  } catch (error) {
+    if (!(error instanceof PersistentDataError)) throw error;
+    stateDiagnostic = error.message;
     cache = emptyState();
   }
   return cache;
+}
+
+export function getGlobalStateDiagnostics(): string[] {
+  return stateDiagnostic ? [stateDiagnostic] : [];
 }
 
 /**
@@ -107,20 +130,26 @@ export async function getGlobalState(): Promise<GlobalState> {
 export async function saveGlobalState(
   update: (draft: GlobalState) => void,
 ): Promise<void> {
-  const current = await getGlobalState();
-  const draft: GlobalState = {
-    version: CURRENT_VERSION,
-    prefs: { ...current.prefs },
-    projects: { ...current.projects },
-  };
-  update(draft);
-
   const filePath = getStatePath();
   await ensurePrivateDirectory(getEasyAgentHome());
-  const tmpPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
-  await writePrivateFile(tmpPath, JSON.stringify(draft, null, 2) + "\n");
-  await fs.rename(tmpPath, filePath);
-  cache = draft;
+  await withFileLock(filePath, async () => {
+    let current: GlobalState;
+    try {
+      current = await readGlobalStateFromDisk();
+      stateDiagnostic = null;
+    } catch (error) {
+      if (error instanceof PersistentDataError) stateDiagnostic = error.message;
+      throw error;
+    }
+    const draft: GlobalState = {
+      version: CURRENT_VERSION,
+      prefs: { ...current.prefs },
+      projects: { ...current.projects },
+    };
+    update(draft);
+    await writePrivateFile(filePath, JSON.stringify(draft, null, 2) + "\n");
+    cache = draft;
+  });
 }
 
 function isHomeDir(key: string): boolean {

@@ -42,6 +42,8 @@ try {
     await fs.writeFile(filePath, `legacy:${path.basename(filePath)}\n`, { mode: 0o644 });
     if (process.platform !== "win32") await fs.chmod(filePath, 0o644);
   }
+  await fs.writeFile(legacyFiles[0]!, "{}\n", { mode: 0o644 });
+  await fs.writeFile(legacyFiles[1]!, '{"version":1,"prefs":{},"projects":{}}\n', { mode: 0o644 });
   if (process.platform !== "win32") await fs.chmod(easyHome, 0o755);
 
   const backup = path.join(easyHome, "file-history", "legacy-session", "script-backup");

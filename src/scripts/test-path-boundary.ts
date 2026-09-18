@@ -387,19 +387,25 @@ async function main(): Promise<void> {
     );
 
     if (process.platform !== "win32") {
-      process.stdout.write("Open file descriptors contain path replacement races\n");
+      process.stdout.write("Path identity checks contain replacement races\n");
       const updateRaceFile = path.join(workspace, "update-race.txt");
       const updateRaceOutside = path.join(outside, "update-race-target.txt");
       await fs.writeFile(updateRaceFile, "inside-before-race\n", "utf8");
       await fs.writeFile(updateRaceOutside, "outside-before-race\n", "utf8");
-      await updateWorkspaceTextFile(updateRaceFile, workspace, () => {
-        fsSync.unlinkSync(updateRaceFile);
-        fsSync.symlinkSync(updateRaceOutside, updateRaceFile);
-        return { content: "descriptor-only-update\n", value: undefined };
-      });
+      let updateRaceRejected = false;
+      try {
+        await updateWorkspaceTextFile(updateRaceFile, workspace, () => {
+          fsSync.unlinkSync(updateRaceFile);
+          fsSync.symlinkSync(updateRaceOutside, updateRaceFile);
+          return { content: "replacement-update\n", value: undefined };
+        });
+      } catch {
+        updateRaceRejected = true;
+      }
+      check(updateRaceRejected, "An edit rejects a path replaced while the update is prepared");
       check(
         (await fs.readFile(updateRaceOutside, "utf8")) === "outside-before-race\n",
-        "An edit writes only to the validated descriptor after path replacement",
+        "A rejected edit leaves the replacement target unchanged",
       );
 
       const readRaceFile = path.join(workspace, "read-race.txt");

@@ -38,8 +38,9 @@ import {
 import {
   createPrivateFileIfMissing,
   ensurePrivateDirectory,
-  PRIVATE_FILE_MODE,
+  writePrivateFile,
 } from "../utils/privateData.js";
+import { parsePersistedJson, PersistentDataError } from "../utils/atomicFile.js";
 
 // ─── low-level atomic IO ──────────────────────────────────────────────
 
@@ -49,16 +50,7 @@ async function ensurePluginsRoot(): Promise<void> {
 
 async function atomicWriteJson(filePath: string, value: unknown): Promise<void> {
   await ensurePrivateDirectory(path.dirname(filePath));
-  const tmp = `${filePath}.${process.pid}.${Date.now()}.tmp`;
-  const handle = await fs.open(tmp, "w", PRIVATE_FILE_MODE);
-  try {
-    if (process.platform !== "win32") await handle.chmod(PRIVATE_FILE_MODE);
-    await handle.writeFile(JSON.stringify(value, null, 2) + "\n", "utf-8");
-    await handle.sync();
-  } finally {
-    await handle.close();
-  }
-  await fs.rename(tmp, filePath);
+  await writePrivateFile(filePath, JSON.stringify(value, null, 2) + "\n");
 }
 
 async function readJsonSoft<T>(filePath: string): Promise<T | null> {
@@ -153,6 +145,29 @@ function emptyMarketplaces(): KnownMarketplacesFile {
   return { version: PLUGIN_STATE_VERSION, marketplaces: {} };
 }
 
+async function readKnownMarketplacesStrict(): Promise<KnownMarketplacesFile> {
+  const filePath = getKnownMarketplacesPath();
+  let text: string;
+  try {
+    text = await fs.readFile(filePath, "utf-8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return emptyMarketplaces();
+    throw error;
+  }
+  const parsed = parsePersistedJson<KnownMarketplacesFile>(filePath, text);
+  if (
+    !parsed ||
+    typeof parsed !== "object" ||
+    parsed.version !== PLUGIN_STATE_VERSION ||
+    !parsed.marketplaces ||
+    typeof parsed.marketplaces !== "object" ||
+    Array.isArray(parsed.marketplaces)
+  ) {
+    throw new PersistentDataError(filePath, "marketplace state does not match the expected schema");
+  }
+  return { version: PLUGIN_STATE_VERSION, marketplaces: parsed.marketplaces };
+}
+
 export async function readKnownMarketplaces(): Promise<KnownMarketplacesFile> {
   const parsed = await readJsonSoft<KnownMarketplacesFile>(getKnownMarketplacesPath());
   if (!parsed || parsed.version !== PLUGIN_STATE_VERSION || typeof parsed.marketplaces !== "object") {
@@ -169,7 +184,7 @@ export async function updateKnownMarketplaces(
   update: (draft: KnownMarketplacesFile) => void,
 ): Promise<KnownMarketplacesFile> {
   return withPluginStateLock(async () => {
-    const current = await readKnownMarketplaces();
+    const current = await readKnownMarketplacesStrict();
     const draft: KnownMarketplacesFile = {
       version: PLUGIN_STATE_VERSION,
       marketplaces: { ...current.marketplaces },
@@ -193,6 +208,29 @@ function emptyInstalled(): InstalledPluginsFile {
   return { version: PLUGIN_STATE_VERSION, plugins: {} };
 }
 
+async function readInstalledPluginsStrict(): Promise<InstalledPluginsFile> {
+  const filePath = getInstalledPluginsPath();
+  let text: string;
+  try {
+    text = await fs.readFile(filePath, "utf-8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return emptyInstalled();
+    throw error;
+  }
+  const parsed = parsePersistedJson<InstalledPluginsFile>(filePath, text);
+  if (
+    !parsed ||
+    typeof parsed !== "object" ||
+    parsed.version !== PLUGIN_STATE_VERSION ||
+    !parsed.plugins ||
+    typeof parsed.plugins !== "object" ||
+    Array.isArray(parsed.plugins)
+  ) {
+    throw new PersistentDataError(filePath, "installed-plugin state does not match the expected schema");
+  }
+  return { version: PLUGIN_STATE_VERSION, plugins: parsed.plugins };
+}
+
 export async function readInstalledPlugins(): Promise<InstalledPluginsFile> {
   const parsed = await readJsonSoft<InstalledPluginsFile>(getInstalledPluginsPath());
   if (!parsed || parsed.version !== PLUGIN_STATE_VERSION || typeof parsed.plugins !== "object") {
@@ -205,7 +243,7 @@ export async function updateInstalledPlugins(
   update: (draft: InstalledPluginsFile) => void,
 ): Promise<InstalledPluginsFile> {
   return withPluginStateLock(async () => {
-    const current = await readInstalledPlugins();
+    const current = await readInstalledPluginsStrict();
     const draft: InstalledPluginsFile = {
       version: PLUGIN_STATE_VERSION,
       plugins: { ...current.plugins },
