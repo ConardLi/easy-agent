@@ -1,41 +1,18 @@
-/**
- * Sandbox-violation feedback link.
- *
- * macOS sandbox-exec writes denial events to syslog (visible via
- * `log show --predicate 'sender == "Sandbox"'`), NOT to the spawned
- * process's stderr. So we cannot extract violations from stderr the
- * way source code's `@anthropic-ai/sandbox-runtime` does (it taps the
- * `log stream` API directly).
- *
- * Easy-agent's tutorial-grade implementation does the simplest thing
- * that still gives the model a recoverable signal:
- *
- *   1. After the sandboxed process exits, we scan stderr for the
- *      classic deny indicators (EPERM, EACCES, "Operation not
- *      permitted", "sandbox-exec:"), and if we see any of them, we
- *      ATTRIBUTE the failure to the sandbox.
- *
- *   2. We append a `<sandbox_violations>...</sandbox_violations>`
- *      block to stderr. The model sees it and knows "this wasn't a
- *      command bug, this was the sandbox enforcing policy" — it can
- *      decide to ask for permission, change approach, or give up.
- *
- *   3. The UI strips the tag before showing stderr to the human, so
- *      they see clean output.
- *
- * If the user wants the rich production behavior (full violation
- * list with paths/domains), they'd need to subscribe to `log stream`
- * — explicitly out of scope for stage 18 (see DEVELOPMENT-PLAN 18.6).
- */
+/** Fallback violation detection for platforms or commands without a runtime event. */
 
 const SANDBOX_VIOLATION_INDICATORS = [
   "Operation not permitted",
   "operation not permitted",
+  "Permission denied",
+  "permission denied",
+  "Read-only file system",
+  "read-only file system",
   "sandbox-exec:",
   "deny file-write",
   "deny network-outbound",
   "EPERM",
   "EACCES",
+  "EROFS",
 ];
 
 const VIOLATION_TAG_RE = /<sandbox_violations>[\s\S]*?<\/sandbox_violations>/g;

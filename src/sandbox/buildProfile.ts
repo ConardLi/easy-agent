@@ -1,31 +1,11 @@
-/**
- * Compose a SandboxProfile from three input sources:
- *
- *   1. Resolved sandbox settings  (sandbox.filesystem.*, sandbox.network.*)
- *   2. Permission rules           (Edit(/path), WebFetch(domain:host), ...)
- *   3. Hardcoded defaults         (cwd + tmpdir writable; system + .easy-agent
- *                                  internals denied)
- *
- * Why mixing (1) and (2) matters — this is the "unified abstraction"
- * design point from source code:
- *
- *   When the user writes `WebFetch(domain:github.com)` in their
- *   permissions.allow list, we want both effects in one place:
- *     - WebFetch tool gets github.com as a permitted host
- *     - The sandbox network whitelist also gets github.com, so a
- *       sandboxed `curl github.com` works
- *   No double-config. The same goes for `Edit(/path)` rules adding
- *   to the writable filesystem allowlist.
- *
- * Reference: `claude-code-source-code/src/utils/sandbox/sandbox-adapter.ts`
- *   in `convertToSandboxRuntimeConfig()`.
- */
+/** Build the effective OS sandbox profile from settings, permission rules, and mandatory paths. */
 
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import {
   getEasyAgentPath,
+  getLocalSettingsPath,
   getProjectEasyAgentDir,
   getProjectSettingsPath,
   getUserSettingsPath,
@@ -73,7 +53,7 @@ function parseRule(rule: string): ParsedRule | null {
   return { toolName, ruleContent };
 }
 
-/** Strip a trailing glob suffix so sandbox-exec gets a path prefix. */
+/** Strip a trailing glob suffix so OS backends receive a path prefix. */
 function stripGlobSuffix(p: string): string {
   return p.replace(/[\\/]?\*+$/g, "").replace(/[\\/]$/, "") || p;
 }
@@ -98,14 +78,17 @@ function resolveRulePath(value: string, cwd: string): string {
  * exfiltrate by editing its own runtime config and waiting for the
  * next session.
  *
- * Mirrors source code's settingsPaths + .claude/skills/.claude/commands
- * forced-deny block in `convertToSandboxRuntimeConfig` (lines 230–256).
  */
 function getCriticalDenyPaths(cwd: string): string[] {
   const denies = [
     getUserSettingsPath(),
     getProjectSettingsPath(cwd),
+    getLocalSettingsPath(cwd),
+    path.join(cwd, ".mcp.json"),
+    path.join(cwd, ".env"),
     path.join(getProjectEasyAgentDir(cwd), "skills"),
+    path.join(getProjectEasyAgentDir(cwd), "agents"),
+    path.join(getProjectEasyAgentDir(cwd), "commands"),
     getEasyAgentPath("skills"),
     path.join(cwd, "AGENT.md"),
     getEasyAgentPath("AGENT.md"),
@@ -160,15 +143,13 @@ export function buildSandboxProfile(params: {
   const allowedDomains = new Set<string>(settings.network.allowedDomains);
   const deniedDomains = new Set<string>(settings.network.deniedDomains);
 
-  // 4. The unified abstraction: derive sandbox config from permission
-  //    rules. Each rule contributes to BOTH the permission system
-  //    (already loaded elsewhere) AND the sandbox profile (here).
+  // Filesystem permission rules contribute to the OS boundary. Network rules
+  // remain explicit sandbox settings so a WebFetch approval cannot
+  // accidentally turn Bash networking into a restrictive allowlist.
   for (const rule of permissions.allow) {
     const parsed = parseRule(rule);
     if (!parsed) continue;
-    if (parsed.toolName === "WebFetch" && parsed.ruleContent.startsWith("domain:")) {
-      allowedDomains.add(parsed.ruleContent.slice("domain:".length));
-    } else if (parsed.toolName === "Edit" || parsed.toolName === "Write") {
+    if (parsed.toolName === "Edit" || parsed.toolName === "Write") {
       const p = canonicalize(stripGlobSuffix(resolveRulePath(parsed.ruleContent, cwd)));
       allowWrite.add(p);
     } else if (parsed.toolName === "Read") {
@@ -180,9 +161,7 @@ export function buildSandboxProfile(params: {
   for (const rule of permissions.deny) {
     const parsed = parseRule(rule);
     if (!parsed) continue;
-    if (parsed.toolName === "WebFetch" && parsed.ruleContent.startsWith("domain:")) {
-      deniedDomains.add(parsed.ruleContent.slice("domain:".length));
-    } else if (parsed.toolName === "Edit" || parsed.toolName === "Write") {
+    if (parsed.toolName === "Edit" || parsed.toolName === "Write") {
       const p = canonicalize(stripGlobSuffix(resolveRulePath(parsed.ruleContent, cwd)));
       denyWrite.add(p);
     } else if (parsed.toolName === "Read") {
@@ -201,6 +180,9 @@ export function buildSandboxProfile(params: {
     network: {
       allowedDomains: Array.from(allowedDomains),
       deniedDomains: Array.from(deniedDomains),
+      allowUnixSockets: settings.network.allowUnixSockets,
+      allowAllUnixSockets: settings.network.allowAllUnixSockets,
+      allowLocalBinding: settings.network.allowLocalBinding,
     },
   };
 }

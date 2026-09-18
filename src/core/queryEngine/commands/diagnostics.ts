@@ -25,6 +25,7 @@ import {
 import {
   isPlatformSupported as isSandboxPlatformSupported,
   isSandboxRuntimeReady,
+  getSandboxCapability,
   getSandboxUnavailableReason,
   loadSandboxSettings,
 } from "../../../sandbox/index.js";
@@ -234,23 +235,51 @@ export async function* handleDoctorCommand(
 
   // Sandbox
   let sandboxEnabled = false;
+  let sandboxFailClosed = true;
+  let sandboxAllowedDomains = 0;
+  let sandboxDeniedDomains = 0;
+  let sandboxConfigurationError: string | undefined;
   try {
-    sandboxEnabled = (await loadSandboxSettings(cwd)).enabled === true;
-  } catch {
-    // treat as disabled
+    const sandboxSettings = await loadSandboxSettings(cwd);
+    sandboxEnabled = sandboxSettings.enabled;
+    sandboxFailClosed = sandboxSettings.failClosed;
+    sandboxAllowedDomains = sandboxSettings.network.allowedDomains.length;
+    sandboxDeniedDomains = sandboxSettings.network.deniedDomains.length;
+  } catch (error) {
+    sandboxConfigurationError = error instanceof Error ? error.message : String(error);
   }
-  if (!isSandboxPlatformSupported()) {
+  const sandboxCapability = getSandboxCapability();
+  if (sandboxConfigurationError) {
+    lines.push(`${ICON.fail} Sandbox: invalid configuration; shell execution is blocked`);
+    lines.push(`    ${sandboxConfigurationError.replace(/\n/g, "\n    ")}`);
+  } else if (!isSandboxPlatformSupported()) {
     lines.push(
       `${sandboxEnabled ? ICON.warn : ICON.ok} Sandbox: not supported on ${process.platform}` +
-        (sandboxEnabled ? " (sandbox.enabled has no effect here)" : ""),
+        (sandboxEnabled
+          ? sandboxFailClosed
+            ? " (shell execution is blocked by failClosed)"
+            : " (normal permission checks remain active)"
+          : ""),
     );
   } else if (isSandboxRuntimeReady()) {
     lines.push(
-      `${ICON.ok} Sandbox: sandbox-exec available${sandboxEnabled ? " (enabled)" : " (disabled in settings)"}`,
+      `${ICON.ok} Sandbox: ${sandboxCapability.backend} available` +
+        `${sandboxEnabled ? ` (enabled, failClosed=${sandboxFailClosed})` : " (disabled in settings)"}`,
     );
+    if (sandboxEnabled) {
+      lines.push(
+        sandboxAllowedDomains > 0
+          ? `    Network: strict allowlist (${sandboxAllowedDomains} allowed, ${sandboxDeniedDomains} denied)`
+          : `    Network: public destinations allowed through proxy (${sandboxDeniedDomains} denied)`,
+      );
+    }
+    for (const warning of sandboxCapability.warnings) lines.push(`    - ${warning}`);
   } else {
-    const reason = getSandboxUnavailableReason(true) ?? "sandbox-exec not found";
-    lines.push(`${sandboxEnabled ? ICON.fail : ICON.warn} Sandbox: ${reason}`);
+    const reason = getSandboxUnavailableReason(true) ?? "required dependencies are unavailable";
+    lines.push(
+      `${sandboxEnabled && sandboxFailClosed ? ICON.fail : ICON.warn} Sandbox: ${reason}` +
+        (sandboxEnabled && sandboxFailClosed ? " (shell execution is blocked)" : ""),
+    );
   }
 
   // Settings validity

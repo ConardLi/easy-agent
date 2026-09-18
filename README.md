@@ -176,7 +176,7 @@ Run `eagent --help` for every startup option. Useful REPL commands include:
 
 - File and code tools: Read, Write, Edit, MultiEdit, Glob, Grep, Bash, and PowerShell
 - Web and external tools: WebFetch, WebSearch, MCP tools, and MCP resources
-- Safe execution: allow/ask/deny rules, Plan Mode, Auto Mode, project trust, hooks, and shell sandboxing where supported
+- Safe execution: allow/ask/deny rules, Plan Mode, Auto Mode, project trust, hooks, and [fail-closed shell sandboxing](./docs/sandbox-security.md) on macOS and Linux
 - Long-running work: TodoWrite, persistent task graphs, sub-agents, background runs, Git worktree isolation, and Agent Teams
 - Context and continuity: session persistence, resume, compaction, token budgets, project memory, file checkpoints, and rewind
 - Extensibility: skills, custom agents, slash commands, output styles, hooks, MCP servers, plugins, and static marketplaces
@@ -224,7 +224,7 @@ Tools and permission enforcement
 Provider API and streaming adapters
 ```
 
-Packaging is the delivery layer around those five runtime layers. The published npm package is a readable ESM bundle with a source map and no runtime dependency tree.
+Packaging is the delivery layer around those five runtime layers. The published npm package contains a readable ESM application bundle and source map. Its version-pinned sandbox runtime dependency supplies the platform helpers used for process isolation.
 
 The implementation and tutorial snapshot series are complete through Stage 35. Stage 36 packages the CLI for distribution and completes the public documentation.
 

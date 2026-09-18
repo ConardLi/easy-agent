@@ -1,30 +1,18 @@
-/**
- * Gate that decides whether a given Bash invocation should be wrapped
- * in sandbox-exec. Mirrors source code's `shouldUseSandbox.ts`.
- *
- * Inputs that flip the decision:
- *
- *   1. Master switch: `sandbox.enabled` in settings + platform supports
- *      sandbox-exec (only macOS in easy-agent).
- *
- *   2. Per-call escape: the model passed `dangerouslyDisableSandbox: true`
- *      AND the user allows that via `sandbox.allowUnsandboxedCommands`
- *      (default true). If the user policy denies model escapes, the flag
- *      is silently ignored and the command is sandboxed anyway.
- *
- *   3. UX escape hatch: `sandbox.excludedCommands` patterns. If the
- *      command (or any subcommand) starts with one of these prefixes,
- *      we skip the sandbox. NOT a security boundary — it's for commands
- *      like `docker:*` and `make:*` that need raw FS access.
- */
+/** Resolve whether a shell command is sandboxed, explicitly bypassed, or blocked. */
 
-import { isSandboxRuntimeReady } from "./availability.js";
+import { getSandboxCapability } from "./availability.js";
 import type { ResolvedSandboxSettings } from "./settings.js";
+import type { SandboxCapability } from "./types.js";
 import { splitCommand } from "./splitCommand.js";
 
 export interface ShouldUseSandboxInput {
   command: string;
   dangerouslyDisableSandbox?: boolean;
+}
+
+export interface SandboxExecutionDecision {
+  mode: "disabled" | "sandbox" | "bypass" | "blocked" | "fallback";
+  reason?: string;
 }
 
 export function matchesExcludedPattern(
@@ -54,42 +42,40 @@ export function containsExcludedCommand(
   excluded: string[],
 ): boolean {
   if (excluded.length === 0) return false;
-  // Compound commands escape exclusion only if EVERY subcommand
-  // is itself excluded — otherwise a malicious head like
-  // `docker ps && curl evil.com` would skip sandbox even though
-  // curl should be sandboxed. (Source code's logic is per-subcommand
-  // OR — they treat excludedCommands as "any subcommand matches"
-  // because excludedCommands is UX, not security; we follow that.)
-  let subcommands: string[];
-  try {
-    subcommands = splitCommand(command);
-  } catch {
-    subcommands = [command.trim()];
+  // Exclusions may bypass an OS boundary, so only a single command is
+  // eligible. Compound syntax and substitutions remain sandboxed even when
+  // each visible command prefix appears in the exclusion list.
+  if (splitCommand(command).length !== 1 || /[`\n\r<>]|\$\(|\(|\)/.test(command)) {
+    return false;
   }
-  if (subcommands.length === 0) subcommands = [command.trim()];
-  for (const sub of subcommands) {
-    for (const pattern of excluded) {
-      if (matchesExcludedPattern(sub, pattern)) return true;
-    }
-  }
-  return false;
+  return excluded.some((pattern) => matchesExcludedPattern(command.trim(), pattern));
 }
 
 export function shouldUseSandbox(
   input: ShouldUseSandboxInput,
   settings: ResolvedSandboxSettings,
 ): boolean {
-  if (!settings.enabled) return false;
-  if (!isSandboxRuntimeReady()) return false;
+  return decideSandboxExecution(input, settings).mode === "sandbox";
+}
+
+export function decideSandboxExecution(
+  input: ShouldUseSandboxInput,
+  settings: ResolvedSandboxSettings,
+  capability: SandboxCapability = getSandboxCapability(),
+): SandboxExecutionDecision {
+  if (!settings.enabled || !input.command) return { mode: "disabled" };
   if (
     input.dangerouslyDisableSandbox === true &&
     settings.allowUnsandboxedCommands
   ) {
-    return false;
+    return { mode: "bypass", reason: "explicit per-command bypass" };
   }
-  if (!input.command) return false;
   if (containsExcludedCommand(input.command, settings.excludedCommands)) {
-    return false;
+    return { mode: "bypass", reason: "command is excluded by user policy" };
   }
-  return true;
+  if (!capability.available) {
+    const reason = capability.errors.join("; ") || `sandbox unavailable on ${capability.platform}`;
+    return { mode: settings.failClosed ? "blocked" : "fallback", reason };
+  }
+  return { mode: "sandbox" };
 }

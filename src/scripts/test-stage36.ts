@@ -117,7 +117,11 @@ assert(
     JSON.stringify({ eagent: "dist/eagent.js", "easy-agent": "dist/eagent.js" }),
   "only eagent and easy-agent are registered",
 );
-assert(Object.keys(packageJson.dependencies ?? {}).length === 0, "runtime dependencies are empty");
+assert(
+  JSON.stringify(packageJson.dependencies ?? {}) ===
+    JSON.stringify({ "@anthropic-ai/sandbox-runtime": "0.0.76" }),
+  "runtime dependencies are explicit and version-pinned",
+);
 assert(packageJson.engines?.node === ">=22", "Node engine is >=22");
 assert(Boolean(packageJson.repository), "repository metadata exists");
 assert(Boolean(packageJson.homepage), "homepage metadata exists");
@@ -229,8 +233,14 @@ try {
 
     const installedPackage = path.join(installPrefix, "lib", "node_modules", "eagent");
     const nestedDependencies = path.join(installedPackage, "node_modules");
-    const hasNestedDependencies = await fs.access(nestedDependencies).then(() => true, () => false);
-    assert(!hasNestedDependencies, "installed package has no nested dependency tree");
+    const sandboxRuntimePackage = path.join(
+      nestedDependencies,
+      "@anthropic-ai",
+      "sandbox-runtime",
+      "package.json",
+    );
+    const sandboxRuntimeInstalled = await fs.access(sandboxRuntimePackage).then(() => true, () => false);
+    assert(sandboxRuntimeInstalled, "installed package includes the sandbox runtime dependency");
   }
 
   section("[4] installer contract");

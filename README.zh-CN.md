@@ -176,7 +176,7 @@ git diff | eagent -p "审查这个补丁"              # 合并 stdin 与 Prompt
 
 - 文件与代码工具：Read、Write、Edit、MultiEdit、Glob、Grep、Bash、PowerShell
 - Web 与外部工具：WebFetch、WebSearch、MCP Tools、MCP Resources
-- 安全执行：Allow/Ask/Deny、Plan Mode、Auto Mode、项目可信判断、Hooks 和受支持平台上的 Shell Sandbox
+- 安全执行：Allow/Ask/Deny、Plan Mode、Auto Mode、项目可信判断、Hooks，以及 macOS 和 Linux 上[默认失败关闭的 Shell Sandbox](./docs/sandbox-security.md)
 - 长任务：TodoWrite、持久化任务图、Sub-Agent、后台运行、Git Worktree 隔离、Agent Teams
 - 上下文与连续性：会话持久化、Resume、Compaction、Token 预算、项目记忆、文件检查点和 Rewind
 - 扩展能力：Skills、自定义 Agents、Slash Commands、Output Styles、Hooks、MCP Servers、Plugins 和静态 Marketplace
@@ -224,7 +224,7 @@ Agentic Loop（推理 → 工具 → 观察）
 Provider API 与流式适配
 ```
 
-打包发布是包裹这五层的交付层。npm 包发布为可读的 ESM 单文件 bundle 和 sourcemap，不携带运行时依赖树。
+打包发布是包裹这五层的交付层。npm 包包含可读的 ESM 应用 bundle 和 sourcemap，并通过锁定版本的沙箱运行时依赖提供各平台所需的隔离组件。
 
 实现主线和教程快照已完成到阶段 35；阶段 36 负责把 CLI 打包分发，并补齐面向用户的公共文档。
 

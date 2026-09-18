@@ -1,20 +1,4 @@
-/**
- * Load + merge sandbox settings from user (~/.easy-agent/settings.json)
- * and project (<cwd>/.easy-agent/settings.json) scopes.
- *
- * Project overrides user (matches the existing permissions/MCP loaders
- * — see `src/permissions/permissions.ts:loadPermissionSettings`).
- *
- * Defaults:
- *   - enabled: false                      → opt-in feature
- *   - autoAllowBashIfSandboxed: true      → matches source code
- *   - allowUnsandboxedCommands: true      → matches source code
- *
- * Returns a fully-populated SandboxSettings — every field has a value,
- * so callers don't need to repeat default-checking.
- */
-
-import { loadTrustedSettingSources } from "../config/sources.js";
+import { loadTrustedSettingSources, type LoadedSource } from "../config/sources.js";
 import type {
   SandboxFilesystemSettings,
   SandboxNetworkSettings,
@@ -25,69 +9,164 @@ interface RawRootSettings {
   sandbox?: unknown;
 }
 
-function asStringArray(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return value
-    .filter((item): item is string => typeof item === "string")
-    .map((item) => item.trim())
-    .filter(Boolean);
+const SANDBOX_KEYS = new Set([
+  "enabled",
+  "failClosed",
+  "autoAllowBashIfSandboxed",
+  "allowUnsandboxedCommands",
+  "excludedCommands",
+  "filesystem",
+  "network",
+]);
+const FILESYSTEM_KEYS = new Set(["allowWrite", "denyWrite", "allowRead", "denyRead"]);
+const NETWORK_KEYS = new Set([
+  "allowedDomains",
+  "deniedDomains",
+  "allowUnixSockets",
+  "allowAllUnixSockets",
+  "allowLocalBinding",
+]);
+
+export class SandboxConfigurationError extends Error {
+  constructor(public readonly problems: string[]) {
+    super(`Invalid sandbox configuration:\n${problems.map((problem) => `- ${problem}`).join("\n")}`);
+    this.name = "SandboxConfigurationError";
+  }
 }
 
-function pickFilesystem(value: unknown): SandboxFilesystemSettings {
-  if (!value || typeof value !== "object") return {};
-  const fs = value as Record<string, unknown>;
+function readBoolean(
+  raw: Record<string, unknown>,
+  key: string,
+  label: string,
+  problems: string[],
+): boolean | undefined {
+  const value = raw[key];
+  if (value === undefined) return undefined;
+  if (typeof value === "boolean") return value;
+  problems.push(`${label}.${key} must be a boolean`);
+  return undefined;
+}
+
+function readStringArray(
+  raw: Record<string, unknown>,
+  key: string,
+  label: string,
+  problems: string[],
+): string[] | undefined {
+  const value = raw[key];
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) {
+    problems.push(`${label}.${key} must be an array of non-empty strings`);
+    return undefined;
+  }
+  const normalized: string[] = [];
+  value.forEach((item, index) => {
+    if (typeof item !== "string" || item.trim().length === 0) {
+      problems.push(`${label}.${key}[${index}] must be a non-empty string`);
+      return;
+    }
+    normalized.push(item.trim());
+  });
+  return normalized;
+}
+
+function reportUnknownKeys(
+  raw: Record<string, unknown>,
+  supported: Set<string>,
+  label: string,
+  problems: string[],
+): void {
+  for (const key of Object.keys(raw)) {
+    if (!supported.has(key)) problems.push(`${label}.${key} is not supported by this version`);
+  }
+}
+
+function readObject(
+  value: unknown,
+  label: string,
+  problems: string[],
+): Record<string, unknown> | undefined {
+  if (value === undefined) return undefined;
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    problems.push(`${label} must be an object`);
+    return undefined;
+  }
+  return value as Record<string, unknown>;
+}
+
+function pickFilesystem(
+  value: unknown,
+  label: string,
+  problems: string[],
+): SandboxFilesystemSettings | undefined {
+  const raw = readObject(value, label, problems);
+  if (!raw) return undefined;
+  reportUnknownKeys(raw, FILESYSTEM_KEYS, label, problems);
   return {
-    allowWrite: asStringArray(fs.allowWrite),
-    denyWrite: asStringArray(fs.denyWrite),
-    allowRead: asStringArray(fs.allowRead),
-    denyRead: asStringArray(fs.denyRead),
+    allowWrite: readStringArray(raw, "allowWrite", label, problems),
+    denyWrite: readStringArray(raw, "denyWrite", label, problems),
+    allowRead: readStringArray(raw, "allowRead", label, problems),
+    denyRead: readStringArray(raw, "denyRead", label, problems),
   };
 }
 
-function pickNetwork(value: unknown): SandboxNetworkSettings {
-  if (!value || typeof value !== "object") return {};
-  const net = value as Record<string, unknown>;
+function pickNetwork(
+  value: unknown,
+  label: string,
+  problems: string[],
+): SandboxNetworkSettings | undefined {
+  const raw = readObject(value, label, problems);
+  if (!raw) return undefined;
+  reportUnknownKeys(raw, NETWORK_KEYS, label, problems);
   return {
-    allowedDomains: asStringArray(net.allowedDomains),
-    deniedDomains: asStringArray(net.deniedDomains),
+    allowedDomains: readStringArray(raw, "allowedDomains", label, problems),
+    deniedDomains: readStringArray(raw, "deniedDomains", label, problems),
+    allowUnixSockets: readStringArray(raw, "allowUnixSockets", label, problems),
+    allowAllUnixSockets: readBoolean(raw, "allowAllUnixSockets", label, problems),
+    allowLocalBinding: readBoolean(raw, "allowLocalBinding", label, problems),
   };
 }
 
-function pickSandbox(value: unknown): SandboxSettings {
-  if (!value || typeof value !== "object") return {};
-  const raw = value as Record<string, unknown>;
+function parseSandboxValue(
+  value: unknown,
+  label: string,
+  problems: string[],
+): SandboxSettings {
+  if (value === undefined) return {};
+  const raw = readObject(value, label, problems);
+  if (!raw) return {};
+  reportUnknownKeys(raw, SANDBOX_KEYS, label, problems);
   return {
-    enabled: typeof raw.enabled === "boolean" ? raw.enabled : undefined,
-    autoAllowBashIfSandboxed:
-      typeof raw.autoAllowBashIfSandboxed === "boolean"
-        ? raw.autoAllowBashIfSandboxed
-        : undefined,
-    allowUnsandboxedCommands:
-      typeof raw.allowUnsandboxedCommands === "boolean"
-        ? raw.allowUnsandboxedCommands
-        : undefined,
-    excludedCommands: asStringArray(raw.excludedCommands),
-    filesystem: pickFilesystem(raw.filesystem),
-    network: pickNetwork(raw.network),
+    enabled: readBoolean(raw, "enabled", label, problems),
+    failClosed: readBoolean(raw, "failClosed", label, problems),
+    autoAllowBashIfSandboxed: readBoolean(raw, "autoAllowBashIfSandboxed", label, problems),
+    allowUnsandboxedCommands: readBoolean(raw, "allowUnsandboxedCommands", label, problems),
+    excludedCommands: readStringArray(raw, "excludedCommands", label, problems),
+    filesystem: pickFilesystem(raw.filesystem, `${label}.filesystem`, problems),
+    network: pickNetwork(raw.network, `${label}.network`, problems),
   };
+}
+
+export function parseSandboxSettings(value: unknown, label = "sandbox"): SandboxSettings {
+  const problems: string[] = [];
+  const parsed = parseSandboxValue(value, label, problems);
+  if (problems.length > 0) throw new SandboxConfigurationError(problems);
+  return parsed;
+}
+
+function pickSandbox(source: LoadedSource, problems: string[]): SandboxSettings {
+  const root = source.raw as RawRootSettings | null;
+  if (!root || root.sandbox === undefined) return {};
+  return parseSandboxValue(root.sandbox, `${source.path ?? source.source}: sandbox`, problems);
 }
 
 function mergeStringArrays(...lists: (string[] | undefined)[]): string[] {
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const list of lists) {
-    for (const item of list ?? []) {
-      if (!seen.has(item)) {
-        seen.add(item);
-        out.push(item);
-      }
-    }
-  }
-  return out;
+  return Array.from(new Set(lists.flatMap((list) => list ?? [])));
 }
 
 export interface ResolvedSandboxSettings {
   enabled: boolean;
+  failClosed: boolean;
   autoAllowBashIfSandboxed: boolean;
   allowUnsandboxedCommands: boolean;
   excludedCommands: string[];
@@ -97,41 +176,47 @@ export interface ResolvedSandboxSettings {
 
 export const DEFAULT_RESOLVED_SANDBOX_SETTINGS: ResolvedSandboxSettings = {
   enabled: false,
+  failClosed: true,
   autoAllowBashIfSandboxed: true,
   allowUnsandboxedCommands: true,
   excludedCommands: [],
   filesystem: { allowWrite: [], denyWrite: [], allowRead: [], denyRead: [] },
-  network: { allowedDomains: [], deniedDomains: [] },
+  network: {
+    allowedDomains: [],
+    deniedDomains: [],
+    allowUnixSockets: [],
+    allowAllUnixSockets: false,
+    allowLocalBinding: false,
+  },
 };
 
-/**
- * Fold an ordered list of per-source sandbox settings (low → high priority)
- * into a fully-populated resolved object. Scalar fields take the last defined
- * value (later source wins); array fields merge + de-duplicate across sources.
- */
 export function resolveSandboxList(list: SandboxSettings[]): ResolvedSandboxSettings {
-  const lastDefined = <T>(pick: (s: SandboxSettings) => T | undefined, fallback: T): T => {
+  const lastDefined = <T>(pick: (settings: SandboxSettings) => T | undefined, fallback: T): T => {
     let result: T | undefined;
-    for (const s of list) {
-      const v = pick(s);
-      if (v !== undefined) result = v;
+    for (const settings of list) {
+      const value = pick(settings);
+      if (value !== undefined) result = value;
     }
     return result ?? fallback;
   };
   return {
-    enabled: lastDefined((s) => s.enabled, false),
-    autoAllowBashIfSandboxed: lastDefined((s) => s.autoAllowBashIfSandboxed, true),
-    allowUnsandboxedCommands: lastDefined((s) => s.allowUnsandboxedCommands, true),
-    excludedCommands: mergeStringArrays(...list.map((s) => s.excludedCommands)),
+    enabled: lastDefined((settings) => settings.enabled, false),
+    failClosed: lastDefined((settings) => settings.failClosed, true),
+    autoAllowBashIfSandboxed: lastDefined((settings) => settings.autoAllowBashIfSandboxed, true),
+    allowUnsandboxedCommands: lastDefined((settings) => settings.allowUnsandboxedCommands, true),
+    excludedCommands: mergeStringArrays(...list.map((settings) => settings.excludedCommands)),
     filesystem: {
-      allowWrite: mergeStringArrays(...list.map((s) => s.filesystem?.allowWrite)),
-      denyWrite: mergeStringArrays(...list.map((s) => s.filesystem?.denyWrite)),
-      allowRead: mergeStringArrays(...list.map((s) => s.filesystem?.allowRead)),
-      denyRead: mergeStringArrays(...list.map((s) => s.filesystem?.denyRead)),
+      allowWrite: mergeStringArrays(...list.map((settings) => settings.filesystem?.allowWrite)),
+      denyWrite: mergeStringArrays(...list.map((settings) => settings.filesystem?.denyWrite)),
+      allowRead: mergeStringArrays(...list.map((settings) => settings.filesystem?.allowRead)),
+      denyRead: mergeStringArrays(...list.map((settings) => settings.filesystem?.denyRead)),
     },
     network: {
-      allowedDomains: mergeStringArrays(...list.map((s) => s.network?.allowedDomains)),
-      deniedDomains: mergeStringArrays(...list.map((s) => s.network?.deniedDomains)),
+      allowedDomains: mergeStringArrays(...list.map((settings) => settings.network?.allowedDomains)),
+      deniedDomains: mergeStringArrays(...list.map((settings) => settings.network?.deniedDomains)),
+      allowUnixSockets: mergeStringArrays(...list.map((settings) => settings.network?.allowUnixSockets)),
+      allowAllUnixSockets: lastDefined((settings) => settings.network?.allowAllUnixSockets, false),
+      allowLocalBinding: lastDefined((settings) => settings.network?.allowLocalBinding, false),
     },
   };
 }
@@ -143,12 +228,12 @@ export function resolveSandboxSettings(
   return resolveSandboxList([user, project]);
 }
 
-export async function loadSandboxSettings(
-  cwd: string,
-): Promise<ResolvedSandboxSettings> {
+export async function loadSandboxSettings(cwd: string): Promise<ResolvedSandboxSettings> {
   const sources = await loadTrustedSettingSources(cwd);
-  const list = sources.map((src) =>
-    src.raw ? pickSandbox((src.raw as RawRootSettings).sandbox) : {},
+  const problems = sources.flatMap((source) =>
+    source.parseError ? [`${source.path ?? source.source}: ${source.parseError}`] : [],
   );
+  const list = sources.map((source) => pickSandbox(source, problems));
+  if (problems.length > 0) throw new SandboxConfigurationError(problems);
   return resolveSandboxList(list);
 }
