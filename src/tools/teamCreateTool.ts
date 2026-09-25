@@ -21,9 +21,8 @@
  *   - No analytics event.
  *   - No `parseUserSpecifiedModel` resolution; we record the lead's
  *     current model name as-is.
- *   - No shared-tasks-dir reset (source's `Team = Project = TaskList`
- *     coupling). Stage 15's task store is per-session already; we keep
- *     the same `getTaskListId(sessionId)` semantics inside teammates.
+ *   - Shared tasks use a team-specific namespace. Ordinary task lists
+ *     keep their existing session scope.
  *
  * Gating: this tool's `isEnabled()` returns false unless
  * `isAgentTeamsEnabled()` (the feature flag) is true. When teams are
@@ -36,11 +35,13 @@ import {
   formatAgentId,
   getTeamFilePath,
   readTeamFile,
+  resumeTeamFile,
   sanitizeName,
   TEAM_LEAD_NAME,
   writeTeamFileAsync,
   type TeamFile,
 } from "../utils/teamHelpers.js";
+import { releaseMemberTasks } from "../state/taskStore.js";
 import {
   getActiveTeam,
   setActiveTeam,
@@ -49,7 +50,10 @@ import {
 interface TeamCreateInput {
   team_name: string;
   description?: string;
+  resume?: boolean;
 }
+
+let createInFlight = false;
 
 function readInput(raw: Record<string, unknown>): TeamCreateInput {
   const team_name =
@@ -61,6 +65,7 @@ function readInput(raw: Record<string, unknown>): TeamCreateInput {
   return {
     team_name,
     ...(description ? { description } : {}),
+    ...(raw["resume"] === true ? { resume: true } : {}),
   };
 }
 
@@ -86,6 +91,10 @@ export const teamCreateTool: Tool = {
         description:
           "Optional 1-2 sentence summary of what the team is for. Stored in team.json for future reference; not injected into the model's context.",
       },
+      resume: {
+        type: "boolean",
+        description: "Recover an existing team after its lead process stopped. Active members from the previous process are marked stale and their claimed tasks return to pending.",
+      },
     },
     required: ["team_name"],
     additionalProperties: false,
@@ -93,101 +102,136 @@ export const teamCreateTool: Tool = {
 
   async call(
     input: Record<string, unknown>,
-    _context: ToolContext,
+    context: ToolContext,
   ): Promise<ToolResult> {
-    const { team_name, description } = readInput(input);
-    if (!team_name) {
-      return {
-        content:
-          "Error: 'team_name' is required and must be a non-empty string.",
-        isError: true,
-      };
+    if (context.teammateIdentity || context.taskScope === "session") {
+      return { content: "Error: only the main session can create or resume a team.", isError: true };
     }
+    if (createInFlight) return { content: "Error: another TeamCreate call is in progress.", isError: true };
+    createInFlight = true;
+    try {
+      const { team_name, description, resume } = readInput(input);
+      if (!team_name) {
+        return {
+          content:
+            "Error: 'team_name' is required and must be a non-empty string.",
+          isError: true,
+        };
+      }
 
-    // Source-aligned single-team-per-process gate.
-    // The in-process check is fast; the on-disk check catches the case
-    // where a previous run crashed without TeamDelete'ing — the user
-    // would otherwise be silently re-using a stale team file with
-    // unread inbox messages from another lifetime.
-    const active = getActiveTeam();
-    if (active) {
-      return {
-        content:
-          `Error: this session is already leading team "${active.teamName}". ` +
-          `Call TeamDelete first to disband it, or pick a different conversation to start a new team.`,
-        isError: true,
+      // Source-aligned single-team-per-process gate.
+      // The in-process check is fast; the on-disk check catches the case
+      // where a previous run crashed without TeamDelete'ing — the user
+      // would otherwise be silently re-using a stale team file with
+      // unread inbox messages from another lifetime.
+      const active = getActiveTeam();
+      if (active) {
+        return {
+          content:
+            `Error: this session is already leading team "${active.teamName}". ` +
+            `Call TeamDelete first to disband it, or pick a different conversation to start a new team.`,
+          isError: true,
+        };
+      }
+
+      const sanitized = sanitizeName(team_name);
+      if (!sanitized) {
+        return {
+          content: `Error: 'team_name' sanitizes to an empty string. Use letters / digits / hyphens.`,
+          isError: true,
+        };
+      }
+
+      // Refuse if a same-named team already exists on disk — surfaces the
+      // crashed-previous-session case to the user explicitly rather than
+      // silently re-leading someone else's leftover team.
+      const existing = readTeamFile(team_name);
+      if (existing) {
+        if (resume) {
+          try {
+            const recovered = await resumeTeamFile(team_name, (memberName) => releaseMemberTasks(team_name, memberName));
+            setActiveTeam({
+              teamName: team_name,
+              leadAgentId: recovered.file.leadAgentId,
+              teamFilePath: getTeamFilePath(team_name),
+              createdAt: recovered.file.createdAt,
+            });
+            return { content: `Team "${team_name}" resumed. ${recovered.staleMembers.length} previous teammate(s) marked stale; their in-progress tasks are pending again.` };
+          } catch (error) {
+            return { content: `Error: ${error instanceof Error ? error.message : String(error)}`, isError: true };
+          }
+        }
+        return {
+          content:
+            `Error: team "${team_name}" already exists on disk (${getTeamFilePath(team_name)}). ` +
+            `Use TeamCreate with resume: true after the previous lead has stopped, or delete the old team explicitly.`,
+          isError: true,
+        };
+      }
+      if (resume) return { content: `Error: team "${team_name}" does not exist on disk.`, isError: true };
+
+      const leadAgentId = formatAgentId(TEAM_LEAD_NAME, team_name);
+      const createdAt = Date.now();
+      const teamFile: TeamFile = {
+        name: team_name,
+        ...(description ? { description } : {}),
+        createdAt,
+        leadAgentId,
+        status: "active",
+        leadPid: process.pid,
+        leadHeartbeatAt: createdAt,
+        members: [
+          {
+            agentId: leadAgentId,
+            name: TEAM_LEAD_NAME,
+            agentType: "team-lead",
+            joinedAt: createdAt,
+            isActive: true,
+            status: "running",
+            hostPid: process.pid,
+            heartbeatAt: createdAt,
+          },
+        ],
       };
-    }
 
-    const sanitized = sanitizeName(team_name);
-    if (!sanitized) {
+      const teamFilePath = getTeamFilePath(team_name);
+      try {
+        await writeTeamFileAsync(team_name, teamFile);
+      } catch (error) {
+        return { content: `Error: ${error instanceof Error ? error.message : String(error)}`, isError: true };
+      }
+      setActiveTeam({
+        teamName: team_name,
+        leadAgentId,
+        teamFilePath,
+        createdAt,
+      });
+
+      const lines = [
+        `Team "${team_name}" created. You are the lead (${leadAgentId}).`,
+        description ? `description: ${description}` : "",
+        `team_file: ${teamFilePath}`,
+        "",
+        "Next steps you can take:",
+        `  1. Spawn a named teammate:`,
+        `       Agent({ subagent_type: "<agent-type>", name: "<short-name>", team_name: "${team_name}", run_in_background: true, prompt: "...", description: "..." })`,
+        `  2. Message a running teammate:`,
+        `       SendMessage({ to: "<short-name>", summary: "...", message: "..." })`,
+        `  3. Coordinate shared tasks with TaskCreate, TaskList and TaskUpdate.`,
+        `  4. When the team's work is done:`,
+        `       TeamDelete()`,
+        "",
+        `Reminder: only ONE team can be active at a time. Teammates cannot themselves call TeamCreate / TeamDelete or spawn sub-teams.`,
+      ]
+        .filter(Boolean)
+        .join("\n");
+
       return {
-        content: `Error: 'team_name' sanitizes to an empty string. Use letters / digits / hyphens.`,
-        isError: true,
+        content: lines,
       };
+    } finally {
+      createInFlight = false;
     }
-
-    // Refuse if a same-named team already exists on disk — surfaces the
-    // crashed-previous-session case to the user explicitly rather than
-    // silently re-leading someone else's leftover team.
-    const existing = readTeamFile(team_name);
-    if (existing) {
-      return {
-        content:
-          `Error: team "${team_name}" already exists on disk (${getTeamFilePath(team_name)}). ` +
-          `Pick a different name, or run TeamDelete to remove the previous one first.`,
-        isError: true,
-      };
-    }
-
-    const leadAgentId = formatAgentId(TEAM_LEAD_NAME, team_name);
-    const createdAt = Date.now();
-    const teamFile: TeamFile = {
-      name: team_name,
-      ...(description ? { description } : {}),
-      createdAt,
-      leadAgentId,
-      members: [
-        {
-          agentId: leadAgentId,
-          name: TEAM_LEAD_NAME,
-          agentType: "team-lead",
-          joinedAt: createdAt,
-          isActive: true,
-        },
-      ],
-    };
-
-    const teamFilePath = getTeamFilePath(team_name);
-    await writeTeamFileAsync(team_name, teamFile);
-    setActiveTeam({
-      teamName: team_name,
-      leadAgentId,
-      teamFilePath,
-      createdAt,
-    });
-
-    const lines = [
-      `Team "${team_name}" created. You are the lead (${leadAgentId}).`,
-      description ? `description: ${description}` : "",
-      `team_file: ${teamFilePath}`,
-      "",
-      "Next steps you can take:",
-      `  1. Spawn a named teammate:`,
-      `       Agent({ subagent_type: "<agent-type>", name: "<short-name>", team_name: "${team_name}", run_in_background: true, prompt: "...", description: "..." })`,
-      `  2. Message a running teammate:`,
-      `       SendMessage({ to: "<short-name>", summary: "...", message: "..." })`,
-      `  3. When the team's work is done:`,
-      `       TeamDelete()`,
-      "",
-      `Reminder: only ONE team can be active at a time. Teammates cannot themselves call TeamCreate / TeamDelete or spawn sub-teams.`,
-    ]
-      .filter(Boolean)
-      .join("\n");
-
-    return {
-      content: lines,
-    };
   },
 
   isReadOnly(): boolean {

@@ -35,6 +35,7 @@ import {
   writePrivateFileSync,
 } from "./privateData.js";
 import {
+  ConcurrentFileModificationError,
   parsePersistedJson,
   PersistentDataError,
   withFileLock,
@@ -51,7 +52,7 @@ import {
  * teaching version needs to coordinate sends + cleanup.
  */
 export interface TeamMember {
-  /** Deterministic id: `<name>@<teamName>` (e.g. "backend@my-team"). */
+  /** Unique id for this member run. The lead keeps `<name>@<teamName>`. */
   agentId: string;
   /** Human-friendly handle used by SendMessage as the `to` value. */
   name: string;
@@ -68,6 +69,10 @@ export interface TeamMember {
    * and by SendMessage to warn the model that the recipient is offline.
    */
   isActive: boolean;
+  status?: "running" | "stopping" | "aborting" | "completed" | "failed" | "aborted" | "stale";
+  runId?: string;
+  hostPid?: number;
+  heartbeatAt?: number;
   /**
    * Path to the teammate's `.output` JSONL transcript. Populated for
    * non-lead members; the lead writes to the main session transcript
@@ -99,6 +104,10 @@ export interface TeamFile {
   /** agentId of the team lead — also the first entry in `members`. */
   leadAgentId: string;
   members: TeamMember[];
+  version?: number;
+  status?: "active" | "shutting_down";
+  leadPid?: number;
+  leadHeartbeatAt?: number;
 }
 
 /**
@@ -124,7 +133,7 @@ export function sanitizeName(name: string): string {
   return name.replace(/[^a-zA-Z0-9]/g, "-").toLowerCase();
 }
 
-/** Format a deterministic agent id from a member name + team name. */
+/** Format the stable name-and-team portion of an agent id. */
 export function formatAgentId(name: string, teamName: string): string {
   return `${name}@${teamName}`;
 }
@@ -159,6 +168,9 @@ function parseTeamFile(filePath: string, content: string): TeamFile {
     !Array.isArray(record.members)
   ) {
     throw new PersistentDataError(filePath, "team record does not match the expected schema");
+  }
+  if (record.version !== undefined && (!Number.isSafeInteger(record.version) || (record.version as number) < 0)) {
+    throw new PersistentDataError(filePath, "team version must be a non-negative integer");
   }
   return record as unknown as TeamFile;
 }
@@ -196,7 +208,9 @@ export async function readTeamFileAsync(teamName: string): Promise<TeamFile | nu
 export function writeTeamFile(teamName: string, file: TeamFile): void {
   const filePath = getTeamFilePath(teamName);
   withFileLockSync(filePath, () => {
-    writePrivateFileSync(filePath, JSON.stringify(file, null, 2));
+    const current = readTeamFileUnlocked(teamName);
+    if (current && current.version !== file.version) throw new ConcurrentFileModificationError(filePath);
+    writePrivateFileSync(filePath, JSON.stringify({ ...file, version: (current?.version ?? 0) + 1 }, null, 2));
   });
 }
 
@@ -206,7 +220,9 @@ export async function writeTeamFileAsync(
 ): Promise<void> {
   const filePath = getTeamFilePath(teamName);
   await withFileLock(filePath, async () => {
-    await writePrivateFile(filePath, JSON.stringify(file, null, 2));
+    const current = await readTeamFileAsyncUnlocked(teamName);
+    if (current && current.version !== file.version) throw new ConcurrentFileModificationError(filePath);
+    await writePrivateFile(filePath, JSON.stringify({ ...file, version: (current?.version ?? 0) + 1 }, null, 2));
   });
 }
 
@@ -219,23 +235,28 @@ async function mutateTeamFile(
     const file = await readTeamFileAsyncUnlocked(teamName);
     if (!file) return null;
     const next = update(file);
-    if (next !== file) await writePrivateFile(filePath, JSON.stringify(next, null, 2));
-    return next;
+    if (next === file) return file;
+    const versioned = { ...next, version: (file.version ?? 0) + 1 };
+    await writePrivateFile(filePath, JSON.stringify(versioned, null, 2));
+    return versioned;
   });
 }
 
 /**
- * Append a member to the team. Idempotent on `name` collision —
- * a same-named member is replaced (covers the "respawn a teammate
- * that crashed" case rather than silently keeping two entries).
+ * Append a member to the team. A running member cannot be replaced.
  */
 export async function addTeamMember(
   teamName: string,
   member: TeamMember,
 ): Promise<TeamFile | null> {
   return mutateTeamFile(teamName, (file) => {
+    if (file.status === "shutting_down") throw new Error(`Team "${teamName}" is shutting down`);
+    const mailboxCollision = file.members.find((candidate) => candidate.name !== member.name && sanitizeName(candidate.name) === sanitizeName(member.name));
+    if (mailboxCollision) throw new Error(`Teammate "${member.name}" shares an inbox path with "${mailboxCollision.name}"`);
+    const existing = file.members.find((candidate) => candidate.name === member.name);
+    if (existing?.isActive) throw new Error(`Teammate "${member.name}" is already active`);
     const filtered = file.members.filter((existing) => existing.name !== member.name);
-    filtered.push(member);
+    filtered.push({ ...member, status: member.status ?? (member.isActive ? "running" : "completed") });
     return { ...file, members: filtered };
   });
 }
@@ -249,17 +270,132 @@ export async function setMemberActive(
   teamName: string,
   memberName: string,
   isActive: boolean,
+  expectedRunId?: string,
 ): Promise<TeamFile | null> {
   return mutateTeamFile(teamName, (file) => {
     let changed = false;
     const members = file.members.map((member) => {
+      if (expectedRunId && member.runId !== expectedRunId) return member;
       if (member.name === memberName && member.isActive !== isActive) {
         changed = true;
-        return { ...member, isActive };
+        return { ...member, isActive, status: isActive ? "running" as const : "completed" as const };
       }
       return member;
     });
     return changed ? { ...file, members } : file;
+  });
+}
+
+export async function setMemberStatus(
+  teamName: string,
+  memberName: string,
+  expectedRunId: string,
+  status: NonNullable<TeamMember["status"]>,
+): Promise<TeamFile | null> {
+  return mutateTeamFile(teamName, (file) => {
+    const members = file.members.map((member) => {
+      if (member.name !== memberName || member.runId !== expectedRunId) return member;
+      if (member.status === status) return member;
+      if (!member.isActive) return member;
+      return { ...member, status, isActive: status === "running" || status === "stopping" || status === "aborting" };
+    });
+    return members.some((member, index) => member !== file.members[index]) ? { ...file, members } : file;
+  });
+}
+
+export function isProcessAlive(pid: number | undefined): boolean {
+  if (!pid || !Number.isSafeInteger(pid)) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
+export async function touchTeamHeartbeat(teamName: string): Promise<void> {
+  const now = Date.now();
+  await mutateTeamFile(teamName, (file) => {
+    if (file.leadPid !== process.pid || file.status === "shutting_down") return file;
+    return {
+      ...file,
+      leadHeartbeatAt: now,
+      members: file.members.map((member) => member.isActive && member.hostPid === process.pid
+        ? { ...member, heartbeatAt: now }
+        : member),
+    };
+  });
+}
+
+export async function resumeTeamFile(
+  teamName: string,
+  releaseTasks: (memberName: string) => Promise<unknown>,
+): Promise<{ file: TeamFile; staleMembers: string[] }> {
+  const filePath = getTeamFilePath(teamName);
+  return withFileLock(filePath, async () => {
+    const file = await readTeamFileAsyncUnlocked(teamName);
+    if (!file) throw new Error(`Team "${teamName}" does not exist`);
+    if (file.name !== teamName) throw new Error(`Team name "${teamName}" resolves to the existing team "${file.name}"`);
+    if (file.status === "shutting_down") throw new Error(`Team "${teamName}" is shutting down`);
+    if (isProcessAlive(file.leadPid)) {
+      throw new Error(`Team "${teamName}" still has a live lead process`);
+    }
+    const staleMembers = file.members.filter((member) => member.name !== TEAM_LEAD_NAME && (member.isActive || member.status === "stale")).map((member) => member.name);
+    for (const memberName of staleMembers) await releaseTasks(memberName);
+    const now = Date.now();
+    const next: TeamFile = {
+      ...file,
+      version: (file.version ?? 0) + 1,
+      status: "active",
+      leadPid: process.pid,
+      leadHeartbeatAt: now,
+      members: file.members.map((member) => member.name === TEAM_LEAD_NAME
+        ? { ...member, hostPid: process.pid, heartbeatAt: now, status: "running", isActive: true }
+        : member.isActive ? { ...member, status: "stale", isActive: false } : member),
+    };
+    await writePrivateFile(filePath, JSON.stringify(next, null, 2));
+    return { file: next, staleMembers };
+  });
+}
+
+export async function finalizeTeamMember(
+  teamName: string,
+  memberName: string,
+  runId: string,
+  status: "completed" | "failed" | "aborted",
+  releaseTasks: () => Promise<unknown>,
+): Promise<boolean> {
+  const filePath = getTeamFilePath(teamName);
+  return withFileLock(filePath, async () => {
+    const file = await readTeamFileAsyncUnlocked(teamName);
+    const member = file?.members.find((candidate) => candidate.name === memberName);
+    if (!file || !member || member.runId !== runId || !member.isActive) return false;
+    await releaseTasks();
+    const next: TeamFile = {
+      ...file,
+      version: (file.version ?? 0) + 1,
+      members: file.members.map((candidate) => candidate === member
+        ? { ...candidate, status, isActive: false }
+        : candidate),
+    };
+    await writePrivateFile(filePath, JSON.stringify(next, null, 2));
+    return true;
+  });
+}
+
+export async function prepareTeamDelete(teamName: string, forceStale: boolean): Promise<{ file: TeamFile; staleMembers: string[] }> {
+  const filePath = getTeamFilePath(teamName);
+  return withFileLock(filePath, async () => {
+    const file = await readTeamFileAsyncUnlocked(teamName);
+    if (!file) throw new Error(`Team "${teamName}" does not exist`);
+    if (file.name !== teamName) throw new Error(`Team name "${teamName}" resolves to the existing team "${file.name}"`);
+    const active = file.members.filter((member) => member.name !== TEAM_LEAD_NAME && member.isActive);
+    const live = active.filter((member) => isProcessAlive(member.hostPid));
+    if (live.length > 0) throw new Error(`Active teammates: ${live.map((member) => member.name).join(", ")}`);
+    if (active.length > 0 && !forceStale) throw new Error(`Stale teammates: ${active.map((member) => member.name).join(", ")}. Retry with forceStale: true after reviewing their work.`);
+    const next: TeamFile = { ...file, version: (file.version ?? 0) + 1, status: "shutting_down" };
+    await writePrivateFile(filePath, JSON.stringify(next, null, 2));
+    return { file: next, staleMembers: active.map((member) => member.name) };
   });
 }
 
@@ -286,11 +422,7 @@ export async function removeTeamMember(
  * member list to iterate.
  */
 export async function cleanupTeamDirectory(teamName: string): Promise<void> {
-  try {
-    await rm(getTeamDir(teamName), { recursive: true, force: true });
-  } catch {
-    // Best-effort.
-  }
+  await rm(getTeamDir(teamName), { recursive: true, force: true });
 }
 
 /**

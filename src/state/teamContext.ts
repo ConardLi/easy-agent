@@ -18,6 +18,8 @@
  *   shape we use for asyncAgentStore / todoStore / etc.
  */
 
+import { touchTeamHeartbeat } from "../utils/teamHelpers.js";
+
 export interface TeamContext {
   /** Same as TeamFile.name — the canonical team name. */
   teamName: string;
@@ -30,6 +32,7 @@ export interface TeamContext {
 }
 
 let current: TeamContext | null = null;
+let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 
 type Listener = (ctx: TeamContext | null) => void;
 const listeners = new Set<Listener>();
@@ -57,13 +60,20 @@ export function setActiveTeam(ctx: TeamContext): void {
       `Already in team "${current.teamName}". Run TeamDelete before creating a new team.`,
     );
   }
+  if (heartbeatTimer) clearInterval(heartbeatTimer);
   current = ctx;
+  heartbeatTimer = setInterval(() => {
+    if (current?.teamName === ctx.teamName) void touchTeamHeartbeat(ctx.teamName).catch(() => {});
+  }, 30_000);
+  heartbeatTimer.unref();
   notify();
 }
 
 /** Clear the active team. Called by TeamDelete and by /clear. */
 export function clearActiveTeam(): void {
   if (current === null) return;
+  if (heartbeatTimer) clearInterval(heartbeatTimer);
+  heartbeatTimer = null;
   current = null;
   notify();
 }

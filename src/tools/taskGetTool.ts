@@ -6,8 +6,8 @@
  * TaskGet to see the description + full context before editing.
  */
 
-import { getTask, getTaskListId } from "../state/taskStore.js";
-import { isTaskModeEnabled } from "../state/taskModeStore.js";
+import { getTask } from "../state/taskStore.js";
+import { isTaskGraphEnabled, resolveTaskScope, validateTaskActor } from "./taskScope.js";
 import type { Tool, ToolContext, ToolResult } from "./Tool.js";
 
 const TOOL_NAME = "TaskGet";
@@ -29,10 +29,12 @@ export const taskGetTool: Tool = {
   },
 
   async call(input: Record<string, unknown>, context: ToolContext): Promise<ToolResult> {
+    const actorError = await validateTaskActor(context);
+    if (actorError) return { content: `Error: ${actorError}`, isError: true };
     const taskId = typeof input.taskId === "string" ? input.taskId.trim() : "";
     if (!taskId) return { content: "Error: `taskId` is required.", isError: true };
 
-    const taskListId = getTaskListId(context.sessionId ?? "default");
+    const taskListId = resolveTaskScope(context).listId;
     const task = await getTask(taskListId, taskId);
     if (!task) return { content: "Task not found" };
 
@@ -42,6 +44,7 @@ export const taskGetTool: Tool = {
       `Description: ${task.description}`,
     ];
     if (task.activeForm) lines.push(`ActiveForm: ${task.activeForm}`);
+    if (task.owner) lines.push(`Owner: ${task.owner}`);
     if (task.blockedBy.length > 0) {
       lines.push(`Blocked by: ${task.blockedBy.map((id) => `#${id}`).join(", ")}`);
     }
@@ -57,6 +60,6 @@ export const taskGetTool: Tool = {
   },
 
   isEnabled() {
-    return isTaskModeEnabled();
+    return isTaskGraphEnabled();
   },
 };

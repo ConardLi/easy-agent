@@ -75,12 +75,12 @@ export function formatTeamSystemReminder(): string {
   } else {
     for (const t of activeTeammates) {
       memberLines.push(
-        `- ${t.name} [active] — agent_type=${t.agentType ?? "general-purpose"}`,
+        `- ${t.name} [active${t.status && t.status !== "running" ? `: ${t.status}` : ""}] — agent_type=${t.agentType ?? "general-purpose"}`,
       );
     }
     for (const t of idleTeammates) {
       memberLines.push(
-        `- ${t.name} [idle] — finished its task; SendMessage will queue but won't wake them up until they're respawned`,
+        `- ${t.name} [${t.status === "stale" ? "stale" : "idle"}] — ${t.status === "stale" ? "previous process stopped; review and reassign its work" : "messages stay queued until this teammate is started again"}`,
       );
     }
   }
@@ -95,8 +95,10 @@ export function formatTeamSystemReminder(): string {
     "Workflow rules:",
     "- Spawn teammates with `Agent({ name, team_name, run_in_background: true, ... })`. They run in the background and the lead's loop keeps going — same anti-polling discipline as a regular background sub-agent (no sleep, no Read on the output_file, wait for the `<task-notification>`).",
     "- Coordinate with `SendMessage({ to: \"<name>\", summary, message })`. Use `to: \"*\"` to broadcast to every active teammate (not yourself).",
-    "- A teammate sees mailbox messages at the start of their next spawn; SendMessage to an already-finished (`[idle]`) teammate sits in their inbox until you respawn them with another `Agent({ name: \"<same-name>\", ... })` call.",
-    "- Run `TeamDelete()` when the team's mission is done. It refuses while any teammate is still `[active]` — wait for the relevant `<task-notification>` first.",
+    "- TaskCreate, TaskList, TaskGet and TaskUpdate use one shared team task list. Claim a pending task with `TaskUpdate({ taskId, status: \"in_progress\" })`; only its owner can release or complete it.",
+    "- Running teammates receive mailbox messages before their next model call. Messages to finished teammates remain queued until they are started again.",
+    "- Ask a teammate to stop after its current tool batch with `SendMessage({ to: \"<name>\", type: \"shutdown_request\", message: \"...\" })`. Use `abort_request` to cancel immediately.",
+    "- Run `TeamDelete()` when the team is done. It refuses while teammates are active. After a process crash, recover with `TeamCreate({ team_name, resume: true })` or review stale work and use `TeamDelete({ team_name, forceStale: true })`.",
     "- Only ONE team can be active at a time; you cannot nest teams or spawn sub-teams from inside a teammate.",
     "</system-reminder>",
   ].join("\n");

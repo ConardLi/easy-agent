@@ -1,8 +1,7 @@
 /**
  * TaskUpdate — modify a task in the persistent task graph.
  *
- * Mirrors `claude-code-source-code/src/tools/TaskUpdateTool`, stripped
- * of multi-agent (mailbox, agent-name autofill, verification nudge).
+ * Updates session tasks or the active team's shared task list.
  *
  * Supports:
  *   - field edits: subject / description / activeForm
@@ -20,10 +19,10 @@ import {
   blockTask,
   deleteTask,
   getTask,
-  getTaskListId,
   updateTask,
+  updateTeamTask,
 } from "../state/taskStore.js";
-import { isTaskModeEnabled } from "../state/taskModeStore.js";
+import { isTaskGraphEnabled, resolveTaskScope, validateTaskActor, withActiveTaskActor } from "./taskScope.js";
 import type { Task, TaskStatus } from "../types/task.js";
 import { TASK_STATUSES } from "../types/task.js";
 import type { Tool, ToolContext, ToolResult } from "./Tool.js";
@@ -106,90 +105,114 @@ export const taskUpdateTool: Tool = {
   },
 
   async call(input: Record<string, unknown>, context: ToolContext): Promise<ToolResult> {
-    const taskId = pickString(input, "taskId")?.trim();
-    if (!taskId) return { content: "Error: `taskId` is required.", isError: true };
+    const actorError = await validateTaskActor(context);
+    if (actorError) return { content: `Error: ${actorError}`, isError: true };
+    try {
+      return await withActiveTaskActor(context, async () => {
+        const taskId = pickString(input, "taskId")?.trim();
+        if (!taskId) return { content: "Error: `taskId` is required.", isError: true };
 
-    const taskListId = getTaskListId(context.sessionId ?? "default");
-    const existing = await getTask(taskListId, taskId);
-    if (!existing) return { content: `Task #${taskId} not found`, isError: true };
+        const scope = resolveTaskScope(context);
+        const taskListId = scope.listId;
+        const existing = await getTask(taskListId, taskId);
+        if (!existing) return { content: `Task #${taskId} not found`, isError: true };
 
-    // Short-circuit status="deleted": run the cascading delete and
-    // return immediately. Any other updates in the same call are
-    // ignored — deleting a task means the edits are moot anyway.
-    const rawStatus = pickString(input, "status");
-    if (rawStatus !== undefined && !UPDATE_STATUSES.has(rawStatus)) {
-      return { content: `Error: invalid status '${rawStatus}'.`, isError: true };
-    }
-    const statusValue = rawStatus as UpdateStatus | undefined;
+        // Short-circuit status="deleted": run the cascading delete and
+        // return immediately. Any other updates in the same call are
+        // ignored — deleting a task means the edits are moot anyway.
+        const rawStatus = pickString(input, "status");
+        if (rawStatus !== undefined && !UPDATE_STATUSES.has(rawStatus)) {
+          return { content: `Error: invalid status '${rawStatus}'.`, isError: true };
+        }
+        const statusValue = rawStatus as UpdateStatus | undefined;
 
-    if (statusValue === "deleted") {
-      const ok = await deleteTask(taskListId, taskId);
-      return ok
-        ? { content: `Task #${taskId} deleted.` }
-        : { content: `Failed to delete task #${taskId}.`, isError: true };
-    }
+        if (statusValue === "deleted") {
+          let ok: boolean;
+          try {
+            ok = await deleteTask(taskListId, taskId, scope.actor);
+          } catch (error) {
+            return { content: `Error: ${error instanceof Error ? error.message : String(error)}`, isError: true };
+          }
+          return ok
+            ? { content: `Task #${taskId} deleted.` }
+            : { content: `Failed to delete task #${taskId}.`, isError: true };
+        }
 
-    const updates: Partial<Omit<Task, "id">> = {};
-    const updatedFields: string[] = [];
+        const updates: Partial<Omit<Task, "id">> = {};
+        const updatedFields: string[] = [];
 
-    const subject = pickString(input, "subject");
-    if (subject !== undefined && subject !== existing.subject) {
-      updates.subject = subject;
-      updatedFields.push("subject");
-    }
-    const description = pickString(input, "description");
-    if (description !== undefined && description !== existing.description) {
-      updates.description = description;
-      updatedFields.push("description");
-    }
-    const activeForm = pickString(input, "activeForm");
-    if (activeForm !== undefined && activeForm !== existing.activeForm) {
-      updates.activeForm = activeForm;
-      updatedFields.push("activeForm");
-    }
-    if (statusValue !== undefined && statusValue !== existing.status) {
-      updates.status = statusValue;
-      updatedFields.push("status");
-    }
-    if (input.metadata && typeof input.metadata === "object" && !Array.isArray(input.metadata)) {
-      updates.metadata = mergeMetadata(existing.metadata, input.metadata as Record<string, unknown>);
-      updatedFields.push("metadata");
-    }
+        const subject = pickString(input, "subject");
+        if (subject !== undefined && subject !== existing.subject) {
+          updates.subject = subject;
+          updatedFields.push("subject");
+        }
+        const description = pickString(input, "description");
+        if (description !== undefined && description !== existing.description) {
+          updates.description = description;
+          updatedFields.push("description");
+        }
+        const activeForm = pickString(input, "activeForm");
+        if (activeForm !== undefined && activeForm !== existing.activeForm) {
+          updates.activeForm = activeForm;
+          updatedFields.push("activeForm");
+        }
+        if (statusValue !== undefined && statusValue !== existing.status) {
+          updates.status = statusValue;
+          updatedFields.push("status");
+        }
+        if (input.metadata && typeof input.metadata === "object" && !Array.isArray(input.metadata)) {
+          updates.metadata = mergeMetadata(existing.metadata, input.metadata as Record<string, unknown>);
+          updatedFields.push("metadata");
+        }
 
-    if (Object.keys(updates).length > 0) {
-      await updateTask(taskListId, taskId, updates);
-    }
+        if (scope.actor && statusValue !== undefined) updates.status = statusValue;
+        if (Object.keys(updates).length > 0) {
+          try {
+            if (scope.actor) await updateTeamTask(taskListId, taskId, scope.actor, updates);
+            else await updateTask(taskListId, taskId, updates);
+          } catch (error) {
+            return { content: `Error: ${error instanceof Error ? error.message : String(error)}`, isError: true };
+          }
+        }
 
-    // Dependency wires run AFTER the main update so both sides of each
-    // block/blockedBy pair see the freshest state. blockTask maintains
-    // both directions so the graph stays consistent even if the model
-    // only names one side.
-    const addBlocks = pickStringArray(input, "addBlocks");
-    if (addBlocks && addBlocks.length > 0) {
-      let changed = false;
-      for (const downstreamId of addBlocks) {
-        if (existing.blocks.includes(downstreamId)) continue;
-        const ok = await blockTask(taskListId, taskId, downstreamId);
-        if (ok) changed = true;
-      }
-      if (changed) updatedFields.push("blocks");
-    }
+        // Dependency wires run AFTER the main update so both sides of each
+        // block/blockedBy pair see the freshest state. blockTask maintains
+        // both directions so the graph stays consistent even if the model
+        // only names one side.
+        try {
+          const addBlocks = pickStringArray(input, "addBlocks");
+          if (addBlocks && addBlocks.length > 0) {
+            let changed = false;
+            for (const downstreamId of addBlocks) {
+              if (existing.blocks.includes(downstreamId)) continue;
+              const ok = await blockTask(taskListId, taskId, downstreamId, scope.actor);
+              if (ok) changed = true;
+            }
+            if (changed) updatedFields.push("blocks");
+          }
 
-    const addBlockedBy = pickStringArray(input, "addBlockedBy");
-    if (addBlockedBy && addBlockedBy.length > 0) {
-      let changed = false;
-      for (const upstreamId of addBlockedBy) {
-        if (existing.blockedBy.includes(upstreamId)) continue;
-        const ok = await blockTask(taskListId, upstreamId, taskId);
-        if (ok) changed = true;
-      }
-      if (changed) updatedFields.push("blockedBy");
-    }
+          const addBlockedBy = pickStringArray(input, "addBlockedBy");
+          if (addBlockedBy && addBlockedBy.length > 0) {
+            let changed = false;
+            for (const upstreamId of addBlockedBy) {
+              if (existing.blockedBy.includes(upstreamId)) continue;
+              const ok = await blockTask(taskListId, upstreamId, taskId, scope.actor);
+              if (ok) changed = true;
+            }
+            if (changed) updatedFields.push("blockedBy");
+          }
+        } catch (error) {
+          return { content: `Error: ${error instanceof Error ? error.message : String(error)}`, isError: true };
+        }
 
-    if (updatedFields.length === 0) {
-      return { content: `Task #${taskId} unchanged.` };
+        if (updatedFields.length === 0) {
+          return { content: `Task #${taskId} unchanged.` };
+        }
+        return { content: `Updated task #${taskId}: ${updatedFields.join(", ")}` };
+      });
+    } catch (error) {
+      return { content: `Error: ${error instanceof Error ? error.message : String(error)}`, isError: true };
     }
-    return { content: `Updated task #${taskId}: ${updatedFields.join(", ")}` };
   },
 
   isReadOnly() {
@@ -197,6 +220,6 @@ export const taskUpdateTool: Tool = {
   },
 
   isEnabled() {
-    return isTaskModeEnabled();
+    return isTaskGraphEnabled();
   },
 };

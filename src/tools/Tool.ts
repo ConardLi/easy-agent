@@ -116,11 +116,8 @@ export interface ToolContext {
   availableTools?: readonly Tool[];
 
   /**
-   * Stage 21 — Agent Teams identity. Populated by AgentTool when this
-   * sub-agent was launched as a named teammate. Tools that need to know
-   * "am I running as a teammate, and if so what's my handle?" read this
-   * (currently just SendMessage to fill the `from` field). The lead's
-   * own tool calls leave this undefined.
+   * Identity of a named teammate run. Used for message routing and
+   * shared-task ownership. The lead's tool calls leave this undefined.
    *
    * Typed at the call site (in SendMessage) rather than imported from
    * the team helpers module here, to avoid pulling teammate types into
@@ -130,7 +127,10 @@ export interface ToolContext {
     agentId: string;
     agentName: string;
     teamName: string;
+    runId?: string;
   };
+  /** Plain sub-agents keep session-scoped tasks even while the lead has a team. */
+  taskScope?: "session" | "team";
 }
 
 // ─── Tool Result ───────────────────────────────────────────────────

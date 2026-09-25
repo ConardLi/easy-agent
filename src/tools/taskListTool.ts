@@ -10,8 +10,8 @@
  *   - after completing a task, to see what just became unblocked
  */
 
-import { getTaskListId, listTasks } from "../state/taskStore.js";
-import { isTaskModeEnabled } from "../state/taskModeStore.js";
+import { listTasks } from "../state/taskStore.js";
+import { isTaskGraphEnabled, resolveTaskScope, validateTaskActor } from "./taskScope.js";
 import type { Tool, ToolContext, ToolResult } from "./Tool.js";
 
 const TOOL_NAME = "TaskList";
@@ -31,7 +31,9 @@ export const taskListTool: Tool = {
   },
 
   async call(_input: Record<string, unknown>, context: ToolContext): Promise<ToolResult> {
-    const taskListId = getTaskListId(context.sessionId ?? "default");
+    const actorError = await validateTaskActor(context);
+    if (actorError) return { content: `Error: ${actorError}`, isError: true };
+    const taskListId = resolveTaskScope(context).listId;
     const allTasks = await listTasks(taskListId);
     if (allTasks.length === 0) {
       return { content: "No tasks found" };
@@ -49,7 +51,7 @@ export const taskListTool: Tool = {
         const blocked = openBlockers.length > 0
           ? ` [blocked by ${openBlockers.map((id) => `#${id}`).join(", ")}]`
           : "";
-        return `#${task.id} [${task.status}] ${task.subject}${blocked}`;
+        return `#${task.id} [${task.status}] ${task.subject}${task.owner ? ` [owner: ${task.owner}]` : ""}${blocked}`;
       });
 
     return { content: lines.join("\n") };
@@ -60,6 +62,6 @@ export const taskListTool: Tool = {
   },
 
   isEnabled() {
-    return isTaskModeEnabled();
+    return isTaskGraphEnabled();
   },
 };

@@ -236,14 +236,14 @@ async function main(): Promise<void> {
       "addTeamMember added 'backend'",
     );
 
-    // Idempotent on name collision — replace, don't double-add.
-    await addTeamMember(teamName, { ...teammate, agentType: "Explore" });
-    const refetched = await readTeamFileAsync(teamName);
-    assert(refetched?.members.length === 2, "duplicate add by same name replaces, not duplicates");
-    assert(
-      refetched?.members.find((m) => m.name === "backend")?.agentType === "Explore",
-      "duplicate add by same name updates fields",
-    );
+    let duplicateRejected = false;
+    try {
+      await addTeamMember(teamName, { ...teammate, agentType: "Explore" });
+    } catch {
+      duplicateRejected = true;
+    }
+    assert(duplicateRejected, "active teammate cannot be replaced by a duplicate launch");
+    assert((await readTeamFileAsync(teamName))?.members.length === 2, "duplicate launch leaves member list unchanged");
 
     await setMemberActive(teamName, "backend", false);
     const idled = await readTeamFileAsync(teamName);
@@ -251,6 +251,9 @@ async function main(): Promise<void> {
       idled?.members.find((m) => m.name === "backend")?.isActive === false,
       "setMemberActive flips the flag",
     );
+
+    await addTeamMember(teamName, { ...teammate, agentType: "Explore" });
+    assert((await readTeamFileAsync(teamName))?.members.find((m) => m.name === "backend")?.agentType === "Explore", "completed teammate can be started again");
 
     await removeTeamMember(teamName, "backend");
     const removed = await readTeamFileAsync(teamName);

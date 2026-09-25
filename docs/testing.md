@@ -106,3 +106,7 @@ npm run verify:plugin -- /path/to/plugin
 ## Adding coverage
 
 Add deterministic tests to the appropriate group in `scripts/verify-production.ts`. A test included in the offline gate must not read the real user profile, load the repository `.env`, call a public endpoint, require an interactive terminal, or mutate host state. Put host-dependent checks in `platform` and credentialed network checks in `live`.
+
+## Agent Teams lifecycle
+
+Run `npm run test:team-lifecycle` to check concurrent team writes, shared task ownership, control messages and crash recovery. This test is included in `npm run verify:production`.
