@@ -48,6 +48,7 @@ import {
   enqueuePendingNotification,
   formatTaskNotification,
   pendingNotificationCount,
+  peekPendingNotifications,
   subscribePendingNotifications,
 } from "../state/notificationStore.js";
 import {
@@ -113,6 +114,26 @@ async function initGitRepo(dir: string): Promise<void> {
     ["commit", "-q", "-m", "init"],
     { cwd: dir, env: { ...process.env, GIT_COMMITTER_NAME: "Test", GIT_COMMITTER_EMAIL: "t@e" } },
   );
+}
+
+async function waitForAgentNotification(agentId: string): Promise<void> {
+  const matches = () => peekPendingNotifications().some(
+    (notification) => notification.text.includes(`<task_id>${agentId}</task_id>`),
+  );
+  if (matches()) return;
+
+  await new Promise<void>((resolve, reject) => {
+    const unsubscribe = subscribePendingNotifications(() => {
+      if (!matches()) return;
+      clearTimeout(timeout);
+      unsubscribe();
+      resolve();
+    });
+    const timeout = setTimeout(() => {
+      unsubscribe();
+      reject(new Error(`Background agent ${agentId} did not finish after cancellation`));
+    }, 10_000);
+  });
 }
 
 /**
@@ -485,6 +506,8 @@ async function main(): Promise<void> {
 
   await withTempDir(async (repoDir) => {
     await initGitRepo(repoDir);
+    clearAllAsyncAgents();
+    clearPendingNotifications();
     // The registry needs to be primed so `findAgent('Explore')` resolves
     // — the production CLI does this via bootstrapAgents() at startup.
     setAgents(getBuiltInAgents());
@@ -541,6 +564,7 @@ async function main(): Promise<void> {
       // Kill the background agent so we don't leak the LLM call.
       const all = getAllAsyncAgents();
       for (const e of all) killAsyncAgent(e.agentId);
+      await Promise.all(all.map((e) => waitForAgentNotification(e.agentId)));
       clearAllAsyncAgents();
 
       // Best-effort cleanup of the leftover worktree (the lifecycle
@@ -615,6 +639,7 @@ async function main(): Promise<void> {
 
       // Kill it so the background lifecycle doesn't try to call the LLM.
       killAsyncAgent(all[0]!.agentId);
+      await waitForAgentNotification(all[0]!.agentId);
       clearAllAsyncAgents();
       clearPendingNotifications();
     } finally {

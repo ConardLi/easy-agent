@@ -21,9 +21,9 @@
  * progress poller (TaskOutput.startPolling → onProgress every 1s).
  */
 
-// Keep only the tail in memory — the model gets the full output from the
-// tool's own accumulation; the store exists purely to feed the live preview.
+// Keep only a bounded tail for the live preview.
 const MAX_TAIL_LINES = 40;
+const MAX_TAIL_CHARS = 8_000;
 const NOTIFY_INTERVAL_MS = 100;
 const TICK_INTERVAL_MS = 1000;
 
@@ -120,7 +120,8 @@ export function appendBashProgress(toolUseId: string, chunk: string): void {
   const cur = store.get(toolUseId);
   if (!cur) return;
   const combined = cur.output + chunk;
-  const lines = combined.split("\n");
+  const bounded = combined.length > MAX_TAIL_CHARS ? combined.slice(-MAX_TAIL_CHARS) : combined;
+  const lines = bounded.split("\n");
   const tail = lines.slice(-MAX_TAIL_LINES);
   const next: BashProgress = {
     ...cur,

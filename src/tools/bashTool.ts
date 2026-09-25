@@ -1,4 +1,3 @@
-import { spawn } from "node:child_process";
 import type { Tool, ToolContext, ToolResult } from "./Tool.js";
 import {
   annotateSandboxFailure,
@@ -19,6 +18,7 @@ import { readMergedEnv } from "../utils/settings.js";
 import {
   analyzeBashCommand,
 } from "./bashReadOnlyAnalysis.js";
+import { formatCapturedOutput, runControlledProcess } from "../utils/controlledProcess.js";
 
 export {
   analyzeBashCommand,
@@ -32,6 +32,7 @@ export {
 interface BashInput {
   command: string;
   timeout?: number;
+  idleTimeout?: number;
   /**
    * Per-call escape: if true AND the user's policy allows model escapes
    * (`sandbox.allowUnsandboxedCommands`), this command runs OUTSIDE the
@@ -62,12 +63,7 @@ async function buildProfileForCwd(
 }
 
 const DEFAULT_TIMEOUT_MS = 120_000;
-const MAX_OUTPUT_CHARS = 30_000;
-
-function truncateOutput(value: string): string {
-  if (value.length <= MAX_OUTPUT_CHARS) return value;
-  return `${value.slice(0, MAX_OUTPUT_CHARS)}\n...[truncated ${value.length - MAX_OUTPUT_CHARS} chars]`;
-}
+const MAX_OUTPUT_BYTES = 30_000;
 
 export const bashTool: Tool = {
   name: "Bash",
@@ -78,6 +74,7 @@ export const bashTool: Tool = {
     properties: {
       command: { type: "string", description: "Shell command to execute" },
       timeout: { type: "number", description: "Timeout in milliseconds (default 120000)" },
+      idleTimeout: { type: "number", description: "Stop after this many milliseconds without output (default: command timeout)" },
       dangerouslyDisableSandbox: {
         type: "boolean",
         description:
@@ -94,6 +91,10 @@ export const bashTool: Tool = {
     const readOnlyAnalysis = analyzeBashCommand(input.command);
 
     const timeoutMs = typeof input.timeout === "number" ? input.timeout : DEFAULT_TIMEOUT_MS;
+    const idleTimeoutMs = typeof input.idleTimeout === "number" ? input.idleTimeout : timeoutMs;
+    if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0 || !Number.isSafeInteger(idleTimeoutMs) || idleTimeoutMs <= 0) {
+      return { content: "Error: timeout and idleTimeout must be positive integer milliseconds", isError: true };
+    }
 
     let sandboxSettings: ResolvedSandboxSettings;
     try {
@@ -187,86 +188,39 @@ export const bashTool: Tool = {
     const progressId = context.toolUseId;
     if (progressId) startBashProgress(progressId, timeoutMs);
 
-    return await new Promise<ToolResult>((resolve) => {
-      const child = spawn(executable, args, {
-        cwd: context.cwd,
-        env: spawnEnv,
+    try {
+      const run = await runControlledProcess({
+        executable, args, cwd: context.cwd, env: spawnEnv,
+        signal: context.abortSignal, timeoutMs, idleTimeoutMs,
+        maxOutputBytes: MAX_OUTPUT_BYTES,
+        onStdout: progressId ? (chunk) => appendBashProgress(progressId, chunk) : undefined,
+        onStderr: progressId ? (chunk) => appendBashProgress(progressId, chunk) : undefined,
       });
+      if (run.reason === "aborted") return { content: "Command aborted", isError: true };
+      if (run.reason === "timeout") return { content: `Command timed out after ${timeoutMs}ms`, isError: true };
+      if (run.reason === "idle_timeout") return { content: `Command idle for ${idleTimeoutMs}ms`, isError: true };
+      if (run.spawnError) return { content: `Failed to start command: ${run.spawnError.message}`, isError: true };
 
-      let stdout = "";
-      let stderr = "";
-      let settled = false;
-      let sandboxCleaned = false;
-      const cleanupSandbox = () => {
-        if (!sandboxCommand || sandboxCleaned) return;
-        sandboxCleaned = true;
-        cleanupSandboxCommand(sandboxCommand);
-      };
-
-      const finish = (result: ToolResult) => {
-        if (settled) return;
-        settled = true;
-        if (progressId) completeBashProgress(progressId);
-        resolve(result);
-      };
-
-      const timeoutId = setTimeout(() => {
-        child.kill("SIGTERM");
-        finish({ content: `Command timed out after ${timeoutMs}ms`, isError: true });
-      }, timeoutMs);
-
-      const onAbort = () => {
-        child.kill("SIGTERM");
-        clearTimeout(timeoutId);
-        finish({ content: "Command aborted", isError: true });
-      };
-
-      context.abortSignal?.addEventListener("abort", onAbort, { once: true });
-
-      child.stdout.on("data", (chunk: Buffer | string) => {
-        const text = chunk.toString();
-        stdout += text;
-        if (progressId) appendBashProgress(progressId, text);
-      });
-      child.stderr.on("data", (chunk: Buffer | string) => {
-        const text = chunk.toString();
-        stderr += text;
-        if (progressId) appendBashProgress(progressId, text);
-      });
-      child.on("error", (error) => {
-        clearTimeout(timeoutId);
-        cleanupSandbox();
-        finish({ content: `Failed to start command: ${error.message}`, isError: true });
-      });
-      child.on("close", (code) => {
-        clearTimeout(timeoutId);
-        context.abortSignal?.removeEventListener("abort", onAbort);
-
-        // Tag stderr with <sandbox_violations>...</sandbox_violations>
-        // when the failure smells like a sandbox denial. The model uses
-        // this signal to decide whether to retry, ask for permission,
-        // or back off. The UI strips the tag before rendering.
-        let annotatedStderr = stderr;
-        try {
-          if (sandboxCommand) {
-            annotatedStderr = annotateSandboxFailure(sandboxCommand.commandId, stderr, code);
-          }
-        } finally {
-          cleanupSandbox();
-        }
-
-        const output = [
-          `Command: ${input.command}`,
-          `Read-only: ${readOnlyAnalysis.isReadOnly}`,
-          `Sandbox: ${sandboxLabel}`,
-          `Exit code: ${code ?? -1}`,
-          stdout ? `\nSTDOUT:\n${truncateOutput(stdout)}` : "",
-          annotatedStderr ? `\nSTDERR:\n${truncateOutput(annotatedStderr)}` : "",
-        ].filter(Boolean).join("\n");
-
-        finish({ content: output, isError: (code ?? 1) !== 0 });
-      });
-    });
+      // Tag sandbox denials for the model while retaining bounded stderr.
+      const annotatedStderr = sandboxCommand
+        ? annotateSandboxFailure(sandboxCommand.commandId, run.stderr, run.exitCode)
+        : run.stderr;
+      const output = [
+        `Command: ${input.command}`,
+        `Read-only: ${readOnlyAnalysis.isReadOnly}`,
+        `Sandbox: ${sandboxLabel}`,
+        `Exit code: ${run.exitCode ?? -1}`,
+        run.signal ? `Signal: ${run.signal}` : "",
+        run.stdout ? `\nSTDOUT:\n${formatCapturedOutput(run.stdout, run.stdoutOmittedBytes)}` : "",
+        annotatedStderr ? `\nSTDERR:\n${formatCapturedOutput(annotatedStderr, run.stderrOmittedBytes)}` : "",
+      ].filter(Boolean).join("\n");
+      return { content: output, isError: (run.exitCode ?? 1) !== 0 };
+    } catch (error) {
+      return { content: `Failed to run command: ${error instanceof Error ? error.message : String(error)}`, isError: true };
+    } finally {
+      if (progressId) completeBashProgress(progressId);
+      if (sandboxCommand) cleanupSandboxCommand(sandboxCommand);
+    }
   },
   isReadOnly(): boolean {
     return false;

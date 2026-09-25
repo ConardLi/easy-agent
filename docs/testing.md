@@ -69,6 +69,12 @@ Run the persistence suite after changing settings, runtime state, tasks, teams, 
 npm run test:persistence
 ```
 
+Run the subprocess suite after changing Bash, PowerShell, hooks, the status line, or process cleanup:
+
+```bash
+npm run test:controlled-process
+```
+
 Run the configuration trust suite after changing settings precedence, environment loading, providers, MCP, plugins, sandbox settings, or headless startup:
 
 ```bash
