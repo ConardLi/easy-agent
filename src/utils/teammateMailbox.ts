@@ -30,9 +30,8 @@
  *     writer waits, then sees the first writer's append and appends
  *     after it.
  *   - Readers are unsynchronized (atomic read of a JSON array file).
- *     Mid-write corruption is impossible because writers always rewrite
- *     the FULL file atomically via fs.writeFile (write + rename under
- *     the hood); a reader catches either the pre- or post-write content.
+ *     Writers replace the full file through the shared durable atomic-write
+ *     primitive, so a reader sees either the pre- or post-write document.
  *
  * What we explicitly skip vs source (the source file is 1200 lines):
  *   - Structured protocol messages (shutdown_request / plan_approval /
@@ -54,6 +53,10 @@ import {
   ensurePrivateDirectory,
   writePrivateFile,
 } from "./privateData.js";
+import {
+  parsePersistedJson,
+  PersistentDataError,
+} from "./atomicFile.js";
 
 /** One inbox entry, persisted as-is inside the JSON-array file. */
 export interface TeammateMessage {
@@ -109,20 +112,23 @@ async function ensureInboxFile(
 
 /**
  * Read every message currently in an inbox. Returns [] if the inbox
- * file doesn't exist yet (a teammate that has never received a message).
- * Never throws — corrupt JSON is treated as "no messages" so a bad
- * write somewhere upstream can't bring down the recipient's loop.
+ * file doesn't exist yet. Invalid data is preserved and reported.
  */
 export async function readMailbox(
   agentName: string,
   teamName: string,
 ): Promise<TeammateMessage[]> {
+  const filePath = getInboxPath(agentName, teamName);
   try {
-    const content = await readFile(getInboxPath(agentName, teamName), "utf-8");
-    const parsed = JSON.parse(content);
-    return Array.isArray(parsed) ? (parsed as TeammateMessage[]) : [];
-  } catch {
-    return [];
+    const content = await readFile(filePath, "utf-8");
+    const parsed = parsePersistedJson<unknown>(filePath, content);
+    if (!Array.isArray(parsed)) {
+      throw new PersistentDataError(filePath, "mailbox must contain a JSON array");
+    }
+    return parsed as TeammateMessage[];
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw error;
   }
 }
 

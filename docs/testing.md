@@ -63,6 +63,12 @@ Run the workspace path boundary suite after changing file tools, allowed roots, 
 npm run test:path-boundary
 ```
 
+Run the persistence suite after changing settings, runtime state, tasks, teams, sessions, or atomic file writes:
+
+```bash
+npm run test:persistence
+```
+
 Run the configuration trust suite after changing settings precedence, environment loading, providers, MCP, plugins, sandbox settings, or headless startup:
 
 ```bash

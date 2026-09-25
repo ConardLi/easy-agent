@@ -4,6 +4,7 @@ import {
   updateWorkspaceTextFile,
   WorkspacePathError,
 } from "./pathUtils.js";
+import { ConcurrentFileModificationError } from "../utils/atomicFile.js";
 import {
   applyEditToContent,
   buildEditPreview,
@@ -72,6 +73,9 @@ export const fileEditTool: Tool = {
         };
       }
       if (error instanceof WorkspacePathError) {
+        return { content: `Error: ${error.message}`, isError: true };
+      }
+      if (error instanceof ConcurrentFileModificationError) {
         return { content: `Error: ${error.message}`, isError: true };
       }
       return {

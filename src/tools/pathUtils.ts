@@ -1,9 +1,16 @@
 import { constants, type Stats } from "node:fs";
+import { createHash } from "node:crypto";
 import * as fs from "node:fs/promises";
 import type { FileHandle } from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { getPlansRoot } from "../utils/paths.js";
+import {
+  atomicWriteFile,
+  atomicWriteFileFromHandle,
+  ConcurrentFileModificationError,
+  withFileLock,
+} from "../utils/atomicFile.js";
 
 let additionalAllowedRoots: string[] = [];
 
@@ -366,80 +373,20 @@ async function ensureWorkspaceParent(filePath: string, cwd: string): Promise<voi
   await resolveWorkspacePathDetails(parent, cwd, false);
 }
 
-async function openWorkspaceFileForWrite(
+function contentDigest(content: Uint8Array): string {
+  return createHash("sha256").update(content).digest("hex");
+}
+
+async function prepareWorkspaceWrite(
   filePath: string,
   cwd: string,
-): Promise<{ lease: WorkspacePathLease; existed: boolean }> {
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    let resolution = await resolveWorkspacePathDetails(filePath, cwd, true);
-    if (!resolution.exists) {
-      await ensureWorkspaceParent(filePath, cwd);
-      resolution = await resolveWorkspacePathDetails(filePath, cwd, true);
-    }
-
-    const existed = resolution.exists;
-    const flags = existed
-      ? constants.O_WRONLY | NOFOLLOW_FLAG
-      : constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | NOFOLLOW_FLAG;
-
-    let handle: FileHandle;
-    try {
-      handle = await fs.open(resolution.resolvedPath, flags, 0o666);
-    } catch (error) {
-      if (!existed && isErrno(error, "EEXIST") && attempt === 0) continue;
-      throw error;
-    }
-
-    const stats = await handle.stat();
-    const lease: WorkspacePathLease = { resolution, stats, handle };
-    try {
-      await verifyLease(lease);
-      if (!stats.isFile()) {
-        throw new WorkspacePathError(`Only regular files can be written: ${filePath}`);
-      }
-      return { lease, existed };
-    } catch (error) {
-      await handle.close().catch(() => {});
-      throw error;
-    }
+): Promise<WorkspacePathResolution> {
+  let resolution = await resolveWorkspacePathDetails(filePath, cwd, true);
+  if (!resolution.exists) {
+    await ensureWorkspaceParent(filePath, cwd);
+    resolution = await resolveWorkspacePathDetails(filePath, cwd, true);
   }
-  throw new WorkspacePathError(`Path changed repeatedly while opening it: ${filePath}`);
-}
-
-async function replaceFileContents(handle: FileHandle, data: Buffer): Promise<void> {
-  await handle.truncate(0);
-  let offset = 0;
-  while (offset < data.length) {
-    const { bytesWritten } = await handle.write(data, offset, data.length - offset, offset);
-    if (bytesWritten === 0) throw new Error("File write made no progress");
-    offset += bytesWritten;
-  }
-}
-
-async function replaceFileContentsFromHandle(
-  targetHandle: FileHandle,
-  sourceHandle: FileHandle,
-): Promise<void> {
-  await targetHandle.truncate(0);
-  const buffer = Buffer.allocUnsafe(64 * 1024);
-  let offset = 0;
-  for (;;) {
-    const { bytesRead } = await sourceHandle.read(buffer, 0, buffer.length, offset);
-    if (bytesRead === 0) return;
-
-    let written = 0;
-    while (written < bytesRead) {
-      const result = await targetHandle.write(
-        buffer,
-        written,
-        bytesRead - written,
-        offset + written,
-      );
-      if (result.bytesWritten === 0) throw new Error("File write made no progress");
-      written += result.bytesWritten;
-    }
-    offset += bytesRead;
-  }
+  return resolution;
 }
 
 export async function writeWorkspaceFile(
@@ -448,19 +395,21 @@ export async function writeWorkspaceFile(
   content: string | Buffer,
   options: { mode?: number } = {},
 ): Promise<WorkspaceWriteResult> {
-  const { lease, existed } = await openWorkspaceFileForWrite(filePath, cwd);
-  try {
+  const initial = await prepareWorkspaceWrite(filePath, cwd);
+  return withFileLock(initial.resolvedPath, async () => {
+    const resolution = await prepareWorkspaceWrite(filePath, cwd);
+    const existed = resolution.exists;
     const data = typeof content === "string" ? Buffer.from(content, "utf8") : content;
-    await replaceFileContents(lease.handle!, data);
-    if (options.mode !== undefined) await lease.handle!.chmod(options.mode);
+    await atomicWriteFile(resolution.resolvedPath, data, {
+      ...(options.mode !== undefined ? { mode: options.mode } : {}),
+    });
+    await resolveWorkspacePathDetails(filePath, cwd, false);
     return {
-      requestedPath: lease.resolution.requestedPath,
-      resolvedPath: lease.resolution.resolvedPath,
+      requestedPath: resolution.requestedPath,
+      resolvedPath: resolution.resolvedPath,
       existed,
     };
-  } finally {
-    await lease.handle!.close().catch(() => {});
-  }
+  });
 }
 
 export async function writeWorkspaceFileFromHandle(
@@ -469,47 +418,50 @@ export async function writeWorkspaceFileFromHandle(
   sourceHandle: FileHandle,
   options: { mode?: number } = {},
 ): Promise<WorkspaceWriteResult> {
-  const { lease, existed } = await openWorkspaceFileForWrite(filePath, cwd);
-  try {
-    await replaceFileContentsFromHandle(lease.handle!, sourceHandle);
-    if (options.mode !== undefined) await lease.handle!.chmod(options.mode);
+  const initial = await prepareWorkspaceWrite(filePath, cwd);
+  return withFileLock(initial.resolvedPath, async () => {
+    const resolution = await prepareWorkspaceWrite(filePath, cwd);
+    const existed = resolution.exists;
+    await atomicWriteFileFromHandle(resolution.resolvedPath, sourceHandle, {
+      ...(options.mode !== undefined ? { mode: options.mode } : {}),
+    });
+    await resolveWorkspacePathDetails(filePath, cwd, false);
     return {
-      requestedPath: lease.resolution.requestedPath,
-      resolvedPath: lease.resolution.resolvedPath,
+      requestedPath: resolution.requestedPath,
+      resolvedPath: resolution.resolvedPath,
       existed,
     };
-  } finally {
-    await lease.handle!.close().catch(() => {});
-  }
+  });
 }
 
 export async function updateWorkspaceTextFile<T>(
   filePath: string,
   cwd: string,
-  update: (original: string) => { content: string; value: T },
+  update: (
+    original: string,
+  ) => { content: string; value: T } | Promise<{ content: string; value: T }>,
 ): Promise<WorkspaceWriteResult & { value: T }> {
-  const resolution = await resolveWorkspacePathDetails(filePath, cwd, false);
-  const handle = await fs.open(resolution.resolvedPath, constants.O_RDWR | NOFOLLOW_FLAG);
-  const stats = await handle.stat();
-  const lease: WorkspacePathLease = { resolution, stats, handle };
-
-  try {
-    await verifyLease(lease);
-    if (!stats.isFile()) {
-      throw new WorkspacePathError(`Only regular files can be edited: ${filePath}`);
-    }
-    const original = (await handle.readFile()).toString("utf8");
-    const next = update(original);
-    await replaceFileContents(handle, Buffer.from(next.content, "utf8"));
+  const initial = await resolveWorkspacePathDetails(filePath, cwd, false);
+  return withFileLock(initial.resolvedPath, async () => {
+    const entry = await readWorkspaceFile(filePath, cwd);
+    const originalDigest = contentDigest(entry.data);
+    const next = await update(entry.data.toString("utf8"));
+    await atomicWriteFile(entry.resolvedPath, Buffer.from(next.content, "utf8"), {
+      beforeCommit: async () => {
+        const current = await readWorkspaceFile(filePath, cwd);
+        if (contentDigest(current.data) !== originalDigest) {
+          throw new ConcurrentFileModificationError(entry.requestedPath);
+        }
+      },
+    });
+    await resolveWorkspacePathDetails(filePath, cwd, false);
     return {
-      requestedPath: resolution.requestedPath,
-      resolvedPath: resolution.resolvedPath,
+      requestedPath: entry.requestedPath,
+      resolvedPath: entry.resolvedPath,
       existed: true,
       value: next.value,
     };
-  } finally {
-    await handle.close().catch(() => {});
-  }
+  });
 }
 
 export async function removeWorkspaceFile(filePath: string, cwd: string): Promise<boolean> {

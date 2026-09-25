@@ -34,6 +34,12 @@ import {
   writePrivateFile,
   writePrivateFileSync,
 } from "./privateData.js";
+import {
+  parsePersistedJson,
+  PersistentDataError,
+  withFileLock,
+  withFileLockSync,
+} from "./atomicFile.js";
 
 /**
  * Snapshot of one team member. A "member" includes the team lead
@@ -140,54 +146,83 @@ export function getTeamFilePath(teamName: string): string {
 // doesn't have those today, but we mirror the API surface so future
 // readers cross-referencing source aren't surprised.
 
-/** Sync read — returns null on ENOENT, swallows other parse errors as null. */
-export function readTeamFile(teamName: string): TeamFile | null {
-  try {
-    const content = readFileSync(getTeamFilePath(teamName), "utf-8");
-    return JSON.parse(content) as TeamFile;
-  } catch {
-    return null;
+function parseTeamFile(filePath: string, content: string): TeamFile {
+  const parsed = parsePersistedJson<unknown>(filePath, content);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new PersistentDataError(filePath, "team record must be an object");
   }
+  const record = parsed as Record<string, unknown>;
+  if (
+    typeof record.name !== "string" ||
+    typeof record.createdAt !== "number" ||
+    typeof record.leadAgentId !== "string" ||
+    !Array.isArray(record.members)
+  ) {
+    throw new PersistentDataError(filePath, "team record does not match the expected schema");
+  }
+  return record as unknown as TeamFile;
+}
+
+function readTeamFileUnlocked(teamName: string): TeamFile | null {
+  const filePath = getTeamFilePath(teamName);
+  try {
+    return parseTeamFile(filePath, readFileSync(filePath, "utf-8"));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+async function readTeamFileAsyncUnlocked(teamName: string): Promise<TeamFile | null> {
+  const filePath = getTeamFilePath(teamName);
+  try {
+    return parseTeamFile(filePath, await readFile(filePath, "utf-8"));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+/** Sync read — missing files return null; invalid data is reported. */
+export function readTeamFile(teamName: string): TeamFile | null {
+  return readTeamFileUnlocked(teamName);
 }
 
 /** Async read — same semantics as readTeamFile. */
-export async function readTeamFileAsync(
-  teamName: string,
-): Promise<TeamFile | null> {
-  try {
-    const content = await readFile(getTeamFilePath(teamName), "utf-8");
-    return JSON.parse(content) as TeamFile;
-  } catch {
-    return null;
-  }
+export async function readTeamFileAsync(teamName: string): Promise<TeamFile | null> {
+  return readTeamFileAsyncUnlocked(teamName);
 }
 
-/** Sync write — primarily for member-list mutations from sync contexts. */
 export function writeTeamFile(teamName: string, file: TeamFile): void {
-  writePrivateFileSync(getTeamFilePath(teamName), JSON.stringify(file, null, 2));
+  const filePath = getTeamFilePath(teamName);
+  withFileLockSync(filePath, () => {
+    writePrivateFileSync(filePath, JSON.stringify(file, null, 2));
+  });
 }
 
-/** Async write — preferred path from tool handlers. */
 export async function writeTeamFileAsync(
   teamName: string,
   file: TeamFile,
 ): Promise<void> {
-  await writePrivateFile(getTeamFilePath(teamName), JSON.stringify(file, null, 2));
+  const filePath = getTeamFilePath(teamName);
+  await withFileLock(filePath, async () => {
+    await writePrivateFile(filePath, JSON.stringify(file, null, 2));
+  });
 }
 
-// ─── member-list mutations ──────────────────────────────────────────
-//
-// These three helpers (add / setActive / remove) are the only mutation
-// vocabulary the rest of the codebase needs. Each one reads-then-writes
-// the TeamFile in a single op — there's no per-file lock here because:
-//
-//   1. The only writers are the team lead's process (Easy Agent is
-//      single-process — no tmux teammates), and
-//   2. The lead's writes happen serially inside one event loop turn
-//      (AgentTool launches a teammate → registers them; nothing
-//      concurrent races us).
-//
-// Source uses async file writes with no lock here for the same reason.
+async function mutateTeamFile(
+  teamName: string,
+  update: (file: TeamFile) => TeamFile,
+): Promise<TeamFile | null> {
+  const filePath = getTeamFilePath(teamName);
+  return withFileLock(filePath, async () => {
+    const file = await readTeamFileAsyncUnlocked(teamName);
+    if (!file) return null;
+    const next = update(file);
+    if (next !== file) await writePrivateFile(filePath, JSON.stringify(next, null, 2));
+    return next;
+  });
+}
 
 /**
  * Append a member to the team. Idempotent on `name` collision —
@@ -198,13 +233,11 @@ export async function addTeamMember(
   teamName: string,
   member: TeamMember,
 ): Promise<TeamFile | null> {
-  const file = await readTeamFileAsync(teamName);
-  if (!file) return null;
-  const filtered = file.members.filter((m) => m.name !== member.name);
-  filtered.push(member);
-  const next: TeamFile = { ...file, members: filtered };
-  await writeTeamFileAsync(teamName, next);
-  return next;
+  return mutateTeamFile(teamName, (file) => {
+    const filtered = file.members.filter((existing) => existing.name !== member.name);
+    filtered.push(member);
+    return { ...file, members: filtered };
+  });
 }
 
 /**
@@ -217,22 +250,17 @@ export async function setMemberActive(
   memberName: string,
   isActive: boolean,
 ): Promise<TeamFile | null> {
-  const file = await readTeamFileAsync(teamName);
-  if (!file) return null;
-  let changed = false;
-  const next: TeamFile = {
-    ...file,
-    members: file.members.map((m) => {
-      if (m.name === memberName && m.isActive !== isActive) {
+  return mutateTeamFile(teamName, (file) => {
+    let changed = false;
+    const members = file.members.map((member) => {
+      if (member.name === memberName && member.isActive !== isActive) {
         changed = true;
-        return { ...m, isActive };
+        return { ...member, isActive };
       }
-      return m;
-    }),
-  };
-  if (!changed) return file;
-  await writeTeamFileAsync(teamName, next);
-  return next;
+      return member;
+    });
+    return changed ? { ...file, members } : file;
+  });
 }
 
 /** Remove a member by name (no-op if not present). */
@@ -240,13 +268,10 @@ export async function removeTeamMember(
   teamName: string,
   memberName: string,
 ): Promise<TeamFile | null> {
-  const file = await readTeamFileAsync(teamName);
-  if (!file) return null;
-  const filtered = file.members.filter((m) => m.name !== memberName);
-  if (filtered.length === file.members.length) return file;
-  const next: TeamFile = { ...file, members: filtered };
-  await writeTeamFileAsync(teamName, next);
-  return next;
+  return mutateTeamFile(teamName, (file) => {
+    const members = file.members.filter((member) => member.name !== memberName);
+    return members.length === file.members.length ? file : { ...file, members };
+  });
 }
 
 // ─── cleanup ────────────────────────────────────────────────────────

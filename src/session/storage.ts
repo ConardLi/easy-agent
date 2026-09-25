@@ -11,6 +11,10 @@ import {
   ensurePrivateDirectory,
   writePrivateFile,
 } from "../utils/privateData.js";
+import {
+  PersistentDataError,
+  withFileLock,
+} from "../utils/atomicFile.js";
 
 const MAX_SESSIONS = 20;
 
@@ -313,7 +317,9 @@ export async function initSessionStorage(metadata: SessionMetadata): Promise<Ses
     model: metadata.model,
   };
 
-  await appendPrivateFile(paths.transcriptPath, `${JSON.stringify(metaEntry)}\n`);
+  await withFileLock(paths.transcriptPath, () =>
+    appendPrivateFile(paths.transcriptPath, `${JSON.stringify(metaEntry)}\n`),
+  );
   await writePrivateFile(paths.latestPath, `${metadata.sessionId}\n`);
   return paths;
 }
@@ -341,18 +347,28 @@ export async function appendTranscriptEntry(cwd: string, sessionId: string, entr
   if (!persistenceEnabled) return;
   const paths = await getSessionPaths(cwd, sessionId);
   await ensureSessionDir(paths);
-  await appendPrivateFile(paths.transcriptPath, `${JSON.stringify(entry)}\n`);
+  await withFileLock(paths.transcriptPath, () =>
+    appendPrivateFile(paths.transcriptPath, `${JSON.stringify(entry)}\n`),
+  );
   await writePrivateFile(paths.latestPath, `${sessionId}\n`);
 }
 
 async function readTranscriptEntries(filePath: string): Promise<TranscriptEntry[]> {
-  const raw = await fs.readFile(filePath, "utf-8");
-  return raw
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map(parseJsonLine)
-    .filter((entry): entry is TranscriptEntry => entry !== null);
+  return withFileLock(filePath, async () => {
+    const raw = await fs.readFile(filePath, "utf-8");
+    const entries: TranscriptEntry[] = [];
+    const lines = raw.split(/\r?\n/);
+    for (let index = 0; index < lines.length; index += 1) {
+      const line = lines[index]!.trim();
+      if (!line) continue;
+      const entry = parseJsonLine(line);
+      if (!entry) {
+        throw new PersistentDataError(filePath, `invalid transcript record at line ${index + 1}`);
+      }
+      entries.push(entry);
+    }
+    return entries;
+  });
 }
 
 export async function getLatestSessionId(cwd: string): Promise<string | null> {
@@ -448,7 +464,9 @@ export async function appendCompactionSnapshot(
       message: msg,
     }));
   }
-  await appendPrivateFile(paths.transcriptPath, lines.join("\n") + "\n");
+  await withFileLock(paths.transcriptPath, () =>
+    appendPrivateFile(paths.transcriptPath, lines.join("\n") + "\n"),
+  );
 }
 
 /**

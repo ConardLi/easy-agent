@@ -18,14 +18,13 @@
  *   - human-editable state (user can delete/move a single .json)
  *   - per-task locks so independent updates don't serialize
  *
- * `proper-lockfile` is used for list-level critical sections
- * (createTask, resetTaskList) to ensure id allocation and reset are
- * serialized across the process. Per-task updates use per-file locks.
+ * List-level locks serialize graph changes, id allocation, deletion and
+ * reset across processes. Per-task locks preserve independent field updates
+ * and coordinate them with list-wide mutations.
  */
 
 import { readdir, readFile, unlink } from "node:fs/promises";
 import * as path from "node:path";
-import lockfile from "proper-lockfile";
 import type { Task, TaskStatus } from "../types/task.js";
 import { TASK_STATUSES } from "../types/task.js";
 import { getTasksRoot } from "../utils/paths.js";
@@ -34,20 +33,14 @@ import {
   ensurePrivateDirectory,
   writePrivateFile,
 } from "../utils/privateData.js";
+import {
+  parsePersistedJson,
+  PersistentDataError,
+  withFileLock,
+} from "../utils/atomicFile.js";
 
 const HIGH_WATER_MARK_FILE = ".highwatermark";
 const LOCK_FILE = ".lock";
-
-// Retry budget matches the source: ~2.6s worst-case wait so concurrent
-// callers queue rather than error out. Single-agent rarely contends, but
-// a stray orphan process (e.g. a crashed earlier run) should still work.
-const LOCK_OPTIONS = {
-  retries: {
-    retries: 30,
-    minTimeout: 5,
-    maxTimeout: 100,
-  },
-};
 
 // ─── Path helpers ──────────────────────────────────────────────────
 
@@ -87,16 +80,26 @@ async function ensureTasksDir(taskListId: string): Promise<void> {
 /**
  * Ensure the list-level lock file exists.
  *
- * `proper-lockfile` refuses to lock a path that doesn't exist, so we
- * touch an empty sentinel file first. The `wx` flag makes the creation
- * idempotent across concurrent callers — the second writer's EEXIST is
- * benign and swallowed.
+ * The sentinel also makes the lock visible in the on-disk layout. Its `wx`
+ * creation is idempotent across concurrent callers.
  */
 async function ensureTaskListLockFile(taskListId: string): Promise<string> {
   await ensureTasksDir(taskListId);
   const lockPath = path.join(getTasksDir(taskListId), LOCK_FILE);
   await createPrivateFileIfMissing(lockPath);
   return lockPath;
+}
+
+async function withTaskListLock<T>(taskListId: string, operation: () => Promise<T>): Promise<T> {
+  return withFileLock(await ensureTaskListLockFile(taskListId), operation);
+}
+
+async function withTaskFileLock<T>(
+  taskListId: string,
+  taskId: string,
+  operation: () => Promise<T>,
+): Promise<T> {
+  return withFileLock(getTaskPath(taskListId, taskId), operation);
 }
 
 // ─── High water mark ───────────────────────────────────────────────
@@ -106,12 +109,16 @@ function getHighWaterMarkPath(taskListId: string): string {
 }
 
 async function readHighWaterMark(taskListId: string): Promise<number> {
+  const filePath = getHighWaterMarkPath(taskListId);
   try {
-    const content = (await readFile(getHighWaterMarkPath(taskListId), "utf-8")).trim();
-    const value = parseInt(content, 10);
-    return Number.isNaN(value) ? 0 : value;
-  } catch {
-    return 0;
+    const content = (await readFile(filePath, "utf-8")).trim();
+    if (!/^\d+$/.test(content)) {
+      throw new PersistentDataError(filePath, "expected a non-negative integer high-water mark");
+    }
+    return Number.parseInt(content, 10);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return 0;
+    throw error;
   }
 }
 
@@ -123,8 +130,9 @@ async function findHighestTaskIdFromFiles(taskListId: string): Promise<number> {
   let files: string[];
   try {
     files = await readdir(getTasksDir(taskListId));
-  } catch {
-    return 0;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return 0;
+    throw error;
   }
   let highest = 0;
   for (const file of files) {
@@ -212,28 +220,27 @@ export async function createTask(
   taskListId: string,
   data: Omit<Task, "id">,
 ): Promise<string> {
-  const lockPath = await ensureTaskListLockFile(taskListId);
-  const release = await lockfile.lock(lockPath, LOCK_OPTIONS);
-  try {
+  return withTaskListLock(taskListId, async () => {
     const highest = await findHighestTaskId(taskListId);
     const id = String(highest + 1);
     const task: Task = { id, ...data };
     await writePrivateFile(getTaskPath(taskListId, id), JSON.stringify(task, null, 2));
     notifyTasksUpdated(taskListId);
     return id;
-  } finally {
-    await release();
-  }
+  });
 }
 
 export async function getTask(taskListId: string, taskId: string): Promise<Task | null> {
+  const filePath = getTaskPath(taskListId, taskId);
   try {
-    const content = await readFile(getTaskPath(taskListId, taskId), "utf-8");
-    return parseTask(JSON.parse(content));
+    const content = await readFile(filePath, "utf-8");
+    const task = parseTask(parsePersistedJson(filePath, content));
+    if (!task) throw new PersistentDataError(filePath, "task record does not match the expected schema");
+    return task;
   } catch (error: unknown) {
     const err = error as NodeJS.ErrnoException;
     if (err?.code === "ENOENT") return null;
-    return null;
+    throw error;
   }
 }
 
@@ -241,8 +248,9 @@ export async function listTasks(taskListId: string): Promise<Task[]> {
   let files: string[];
   try {
     files = await readdir(getTasksDir(taskListId));
-  } catch {
-    return [];
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw error;
   }
   const ids = files.filter((f) => f.endsWith(".json") && !f.startsWith(".")).map((f) => f.replace(".json", ""));
   const tasks = await Promise.all(ids.map((id) => getTask(taskListId, id)));
@@ -275,18 +283,9 @@ export async function updateTask(
   taskId: string,
   updates: Partial<Omit<Task, "id">>,
 ): Promise<Task | null> {
-  // Check existence BEFORE locking: proper-lockfile throws if the target
-  // path doesn't exist, and we want a clean null return for the benign
-  // "task was already deleted" case.
-  const pre = await getTask(taskListId, taskId);
-  if (!pre) return null;
-
-  const release = await lockfile.lock(getTaskPath(taskListId, taskId), LOCK_OPTIONS);
-  try {
-    return await updateTaskUnsafe(taskListId, taskId, updates);
-  } finally {
-    await release();
-  }
+  return withTaskFileLock(taskListId, taskId, () =>
+    updateTaskUnsafe(taskListId, taskId, updates),
+  );
 }
 
 /**
@@ -295,40 +294,46 @@ export async function updateTask(
  * / blockedBy references in siblings.
  */
 export async function deleteTask(taskListId: string, taskId: string): Promise<boolean> {
-  const numericId = parseInt(taskId, 10);
-  if (!Number.isNaN(numericId)) {
-    const mark = await readHighWaterMark(taskListId);
-    if (numericId > mark) {
-      await writeHighWaterMark(taskListId, numericId);
+  return withTaskListLock(taskListId, async () => {
+    const numericId = parseInt(taskId, 10);
+    if (!Number.isNaN(numericId)) {
+      const mark = await readHighWaterMark(taskListId);
+      if (numericId > mark) {
+        await writeHighWaterMark(taskListId, numericId);
+      }
     }
-  }
 
-  try {
-    await unlink(getTaskPath(taskListId, taskId));
-  } catch (error: unknown) {
-    const err = error as NodeJS.ErrnoException;
-    if (err?.code === "ENOENT") return false;
-    throw error;
-  }
+    const deleted = await withTaskFileLock(taskListId, taskId, async () => {
+      try {
+        await unlink(getTaskPath(taskListId, taskId));
+        return true;
+      } catch (error: unknown) {
+        const err = error as NodeJS.ErrnoException;
+        if (err?.code === "ENOENT") return false;
+        throw error;
+      }
+    });
+    if (!deleted) return false;
 
-  // Cascade: remove references to the deleted task in every sibling.
-  const siblings = await listTasks(taskListId);
-  for (const sibling of siblings) {
-    const newBlocks = sibling.blocks.filter((id) => id !== taskId);
-    const newBlockedBy = sibling.blockedBy.filter((id) => id !== taskId);
-    if (
-      newBlocks.length !== sibling.blocks.length ||
-      newBlockedBy.length !== sibling.blockedBy.length
-    ) {
-      await updateTask(taskListId, sibling.id, {
-        blocks: newBlocks,
-        blockedBy: newBlockedBy,
-      });
+    // Cascade: remove references to the deleted task in every sibling.
+    const siblings = await listTasks(taskListId);
+    for (const sibling of siblings) {
+      const newBlocks = sibling.blocks.filter((id) => id !== taskId);
+      const newBlockedBy = sibling.blockedBy.filter((id) => id !== taskId);
+      if (
+        newBlocks.length !== sibling.blocks.length ||
+        newBlockedBy.length !== sibling.blockedBy.length
+      ) {
+        await updateTask(taskListId, sibling.id, {
+          blocks: newBlocks,
+          blockedBy: newBlockedBy,
+        });
+      }
     }
-  }
 
-  notifyTasksUpdated(taskListId);
-  return true;
+    notifyTasksUpdated(taskListId);
+    return true;
+  });
 }
 
 /**
@@ -343,19 +348,23 @@ export async function blockTask(
   fromTaskId: string,
   toTaskId: string,
 ): Promise<boolean> {
-  const [from, to] = await Promise.all([
-    getTask(taskListId, fromTaskId),
-    getTask(taskListId, toTaskId),
-  ]);
-  if (!from || !to) return false;
+  return withTaskListLock(taskListId, async () => {
+    const [from, to] = await Promise.all([
+      getTask(taskListId, fromTaskId),
+      getTask(taskListId, toTaskId),
+    ]);
+    if (!from || !to) return false;
 
-  if (!from.blocks.includes(toTaskId)) {
-    await updateTask(taskListId, fromTaskId, { blocks: [...from.blocks, toTaskId] });
-  }
-  if (!to.blockedBy.includes(fromTaskId)) {
-    await updateTask(taskListId, toTaskId, { blockedBy: [...to.blockedBy, fromTaskId] });
-  }
-  return true;
+    // Persist the scheduling constraint before its reverse index. If the
+    // process stops between writes, the dependent task remains blocked.
+    if (!to.blockedBy.includes(fromTaskId)) {
+      await updateTask(taskListId, toTaskId, { blockedBy: [...to.blockedBy, fromTaskId] });
+    }
+    if (!from.blocks.includes(toTaskId)) {
+      await updateTask(taskListId, fromTaskId, { blocks: [...from.blocks, toTaskId] });
+    }
+    return true;
+  });
 }
 
 /**
@@ -366,9 +375,7 @@ export async function blockTask(
  * the user may want to keep a task graph across conversation clears.
  */
 export async function resetTaskList(taskListId: string): Promise<void> {
-  const lockPath = await ensureTaskListLockFile(taskListId);
-  const release = await lockfile.lock(lockPath, LOCK_OPTIONS);
-  try {
+  await withTaskListLock(taskListId, async () => {
     const current = await findHighestTaskIdFromFiles(taskListId);
     if (current > 0) {
       const existing = await readHighWaterMark(taskListId);
@@ -385,17 +392,18 @@ export async function resetTaskList(taskListId: string): Promise<void> {
     }
     for (const file of files) {
       if (file.endsWith(".json") && !file.startsWith(".")) {
-        try {
-          await unlink(path.join(getTasksDir(taskListId), file));
-        } catch {
-          // Another deleter won; fine.
-        }
+        const taskId = file.slice(0, -".json".length);
+        await withTaskFileLock(taskListId, taskId, async () => {
+          try {
+            await unlink(path.join(getTasksDir(taskListId), file));
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+          }
+        });
       }
     }
     notifyTasksUpdated(taskListId);
-  } finally {
-    await release();
-  }
+  });
 }
 
 // ─── Derived helpers ───────────────────────────────────────────────

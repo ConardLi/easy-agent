@@ -31,7 +31,10 @@ import {
 } from "../../../sandbox/index.js";
 import { loadSettingsDiagnostics } from "../../../utils/settings.js";
 import { getEnvironmentLoadReport } from "../../../config/environment.js";
-import { isProjectTrusted } from "../../../config/globalState.js";
+import {
+  getGlobalStateDiagnostics,
+  isProjectTrusted,
+} from "../../../config/globalState.js";
 import { redactUrlForDisplay } from "../../../config/redaction.js";
 import {
   getActivePluginErrors,
@@ -293,6 +296,14 @@ export async function* handleDoctorCommand(
   } else {
     lines.push(`${ICON.fail} Settings problems:`);
     for (const e of settingsErrors) lines.push(`    - ${e}`);
+  }
+
+  const stateErrors = getGlobalStateDiagnostics();
+  if (stateErrors.length === 0) {
+    lines.push(`${ICON.ok} Runtime state valid`);
+  } else {
+    lines.push(`${ICON.fail} Runtime state problems:`);
+    for (const error of stateErrors) lines.push(`    - ${error}`);
   }
 
   const privateData = await inspectPrivateDataSecurity(cwd);

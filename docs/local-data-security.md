@@ -2,6 +2,8 @@
 
 Easy Agent stores user-specific state under `~/.easy-agent`. On macOS and Linux, the directory is created with mode `0700`; sensitive files are created with mode `0600`. The account running Easy Agent keeps normal read and write access while other local accounts cannot traverse the directory or read its files.
 
+Durability, cross-process locking and corrupt-data behavior are documented in [Persistence and consistency](./persistence.md).
+
 ## Private data
 
 The following data is treated as private:

@@ -42,6 +42,11 @@ import {
 } from "../config/sources.js";
 import { isInheritedCredentialProtected } from "../config/environment.js";
 import { writePrivateFile } from "./privateData.js";
+import {
+  atomicWriteFile,
+  PersistentDataError,
+  withFileLock,
+} from "./atomicFile.js";
 
 export interface SettingsFileResult<T = unknown> {
   /** Parsed JSON object, or null if missing / unreadable / invalid. */
@@ -95,9 +100,8 @@ export async function readJsonSettingsFile<T = unknown>(
  * `/config`) to persist a top-level preference like `outputStyle`.
  *
  * Semantics:
- *   - Missing / unparseable file → starts from `{}` (we don't want a single
- *     malformed character to make a preference un-persistable; the original
- *     bad content is overwritten with the merged result).
+ *   - Missing file → starts from `{}`.
+ *   - Unparseable files are preserved and reported instead of overwritten.
  *   - Shallow merge only — nested objects are replaced, not deep-merged.
  *     That's all the current callers need.
  *   - Creates `~/.easy-agent/` if it doesn't exist yet.
@@ -137,29 +141,31 @@ export async function updateLocalSettings(
 /**
  * Shared shallow read-merge-write primitive. A `value === undefined` deletes
  * the key; otherwise the top-level key is replaced. Creates the parent
- * directory if needed and never throws on a missing/garbled source file (the
- * bad content is overwritten by the merged result).
+ * directory if needed. A malformed source file is preserved and reported.
  */
 async function writeSettingsPatch(
   filePath: string,
   patch: Record<string, unknown>,
   storage: "private-home" | "private-project" | "shared-project",
 ): Promise<void> {
-  const { raw } = await readJsonSettingsFile<Record<string, unknown>>(filePath);
-  const merged: Record<string, unknown> = { ...(raw ?? {}) };
-  for (const [key, value] of Object.entries(patch)) {
-    if (value === undefined) delete merged[key];
-    else merged[key] = value;
-  }
-  const content = JSON.stringify(merged, null, 2) + "\n";
-  if (storage === "shared-project") {
-    await fs.mkdir(path.dirname(filePath), { recursive: true });
-    await fs.writeFile(filePath, content, "utf-8");
-  } else {
-    await writePrivateFile(filePath, content, {
-      secureParent: storage === "private-home",
-    });
-  }
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  await withFileLock(filePath, async () => {
+    const { raw, parseError } = await readJsonSettingsFile<Record<string, unknown>>(filePath);
+    if (parseError) throw new PersistentDataError(filePath, parseError);
+    const merged: Record<string, unknown> = { ...(raw ?? {}) };
+    for (const [key, value] of Object.entries(patch)) {
+      if (value === undefined) delete merged[key];
+      else merged[key] = value;
+    }
+    const content = JSON.stringify(merged, null, 2) + "\n";
+    if (storage === "shared-project") {
+      await atomicWriteFile(filePath, content);
+    } else {
+      await writePrivateFile(filePath, content, {
+        secureParent: storage === "private-home",
+      });
+    }
+  });
   // Bust the merged-read cache so the freshly written value is visible to the
   // next `loadSettingSources` call (e.g. `/config set` → live reload), even if
   // the filesystem's mtime resolution is too coarse to register the change.
@@ -175,17 +181,19 @@ async function ensureLocalSettingsGitignored(cwd: string): Promise<void> {
   const gitignorePath = path.join(dir, ".gitignore");
   const entry = "settings.local.json";
   try {
-    let existing = "";
-    try {
-      existing = await fs.readFile(gitignorePath, "utf-8");
-    } catch {
-      existing = "";
-    }
-    const lines = existing.split("\n").map((l) => l.trim());
-    if (lines.includes(entry)) return;
-    const next = existing && !existing.endsWith("\n") ? `${existing}\n${entry}\n` : `${existing}${entry}\n`;
     await fs.mkdir(dir, { recursive: true });
-    await fs.writeFile(gitignorePath, next, "utf-8");
+    await withFileLock(gitignorePath, async () => {
+      let existing = "";
+      try {
+        existing = await fs.readFile(gitignorePath, "utf-8");
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      }
+      const lines = existing.split("\n").map((line) => line.trim());
+      if (lines.includes(entry)) return;
+      const next = existing && !existing.endsWith("\n") ? `${existing}\n${entry}\n` : `${existing}${entry}\n`;
+      await atomicWriteFile(gitignorePath, next);
+    });
   } catch {
     // Best-effort — failing to update .gitignore must not block the write.
   }
