@@ -32,6 +32,7 @@ const TESTS: TestDefinition[] = [
   { id: "path-boundary", group: "core", file: "src/scripts/test-path-boundary.ts" },
   { id: "private-data", group: "core", file: "src/scripts/test-private-data-permissions.ts" },
   { id: "persistence", group: "core", file: "src/scripts/test-atomic-persistence.ts" },
+  { id: "controlled-process", group: "core", file: "src/scripts/test-controlled-process.ts" },
   { id: "bash-readonly", group: "core", file: "src/scripts/test-bash-readonly.ts" },
   { id: "tasks", group: "core", file: "src/scripts/test-tasks.ts" },
   { id: "tool-search", group: "core", file: "src/scripts/test-toolsearch.ts" },

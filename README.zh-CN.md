@@ -176,7 +176,7 @@ git diff | eagent -p "审查这个补丁"              # 合并 stdin 与 Prompt
 
 - 文件与代码工具：Read、Write、Edit、MultiEdit、Glob、Grep、Bash、PowerShell
 - Web 与外部工具：WebFetch、WebSearch、MCP Tools、MCP Resources
-- 安全执行：Allow/Ask/Deny、Plan Mode、Auto Mode、项目可信判断、Hooks、[本地私有数据保护](./docs/local-data-security.md)，以及 macOS 和 Linux 上[默认失败关闭的 Shell Sandbox](./docs/sandbox-security.md)
+- 安全执行：Allow/Ask/Deny、Plan Mode、Auto Mode、项目可信判断、Hooks、[受控子进程](./docs/subprocesses.md)、[本地私有数据保护](./docs/local-data-security.md)，以及 macOS 和 Linux 上[默认失败关闭的 Shell Sandbox](./docs/sandbox-security.md)
 - 长任务：TodoWrite、持久化任务图、Sub-Agent、后台运行、Git Worktree 隔离、Agent Teams
 - 上下文与连续性：[可靠持久化与一致性](./docs/persistence.md)、Resume、Compaction、Token 预算、项目记忆、文件检查点和 Rewind
 - 扩展能力：Skills、自定义 Agents、Slash Commands、Output Styles、Hooks、MCP Servers、Plugins 和静态 Marketplace

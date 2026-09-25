@@ -33,8 +33,8 @@
  * still surfaced via HookResult so the UI layer can render it.
  */
 
-import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { formatCapturedOutput, runControlledProcess } from "../utils/controlledProcess.js";
 import type {
   HookCommand,
   HookEvent,
@@ -44,6 +44,7 @@ import type {
 } from "./types.js";
 
 const DEFAULT_TIMEOUT_SEC = 60;
+const MAX_HOOK_OUTPUT_BYTES = 64 * 1024;
 
 /**
  * Run one shell-command hook and return its raw subprocess result.
@@ -68,113 +69,52 @@ async function runShellCommand(
   exitCode: number;
   aborted: boolean;
   timedOut: boolean;
+  outputTruncated: boolean;
   durationMs: number;
 }> {
   const shellBin = hook.shell === "sh" ? "sh" : "bash";
   const timeoutMs = (hook.timeout ?? DEFAULT_TIMEOUT_SEC) * 1000;
-  const startTime = Date.now();
-
-  return new Promise((resolve) => {
-    const child = spawn(shellBin, ["-c", hook.command], {
+  const startedAt = Date.now();
+  try {
+    const run = await runControlledProcess({
+      executable: shellBin,
+      args: ["-c", hook.command],
       cwd,
       env: {
         ...process.env,
-        // Source exposes CLAUDE_PROJECT_DIR; we follow the same
-        // pattern with the Easy Agent prefix so hooks can resolve
-        // their working tree without re-doing process.cwd() (which
-        // may differ for sub-agents running in a worktree).
         EASY_AGENT_PROJECT_DIR: cwd,
         ...(hook.env ?? {}),
       },
-      stdio: ["pipe", "pipe", "pipe"],
+      stdin: jsonInput,
+      signal,
+      timeoutMs,
+      idleTimeoutMs: timeoutMs,
+      maxOutputBytes: MAX_HOOK_OUTPUT_BYTES,
     });
-
-    let stdout = "";
-    let stderr = "";
-    let timedOut = false;
-    let aborted = false;
-    let settled = false;
-
-    const onAbort = () => {
-      if (settled) return;
-      aborted = true;
-      try {
-        child.kill("SIGTERM");
-      } catch {
-        // Best-effort; process may have already exited.
-      }
+    return {
+      stdout: formatCapturedOutput(run.stdout, run.stdoutOmittedBytes),
+      stderr: run.spawnError
+        ? `Hook spawn failed: ${run.spawnError.message}`
+        : run.stdinError && !run.stderr
+          ? `Hook stdin failed: ${run.stdinError.message}`
+          : formatCapturedOutput(run.stderr, run.stderrOmittedBytes),
+      exitCode: run.exitCode ?? (run.reason === "aborted" ? 130 : 1),
+      aborted: run.reason === "aborted",
+      timedOut: run.reason === "timeout" || run.reason === "idle_timeout",
+      outputTruncated: run.stdoutTruncated || run.stderrTruncated,
+      durationMs: run.durationMs,
     };
-
-    if (signal?.aborted) {
-      // Already aborted before spawn finished — bail synchronously.
-      onAbort();
-    } else {
-      signal?.addEventListener("abort", onAbort);
-    }
-
-    const timer = setTimeout(() => {
-      timedOut = true;
-      try {
-        child.kill("SIGTERM");
-      } catch {
-        // Best-effort.
-      }
-    }, timeoutMs);
-
-    child.stdout.on("data", (chunk: Buffer) => {
-      stdout += chunk.toString("utf-8");
-    });
-    child.stderr.on("data", (chunk: Buffer) => {
-      stderr += chunk.toString("utf-8");
-    });
-    child.stdin.on("error", (err: NodeJS.ErrnoException) => {
-      // A command may exit before consuming the payload. Node reports that
-      // expected race asynchronously, so the surrounding try/catch cannot
-      // intercept it.
-      if (err.code !== "EPIPE" && !settled && !stderr) {
-        stderr = `Hook stdin failed: ${err.message}`;
-      }
-    });
-
-    child.on("error", (err) => {
-      // Spawn failed (e.g. shell binary missing). Synthesize a
-      // non-blocking error result.
-      settled = true;
-      clearTimeout(timer);
-      signal?.removeEventListener("abort", onAbort);
-      resolve({
-        stdout,
-        stderr: stderr || `Hook spawn failed: ${err.message}`,
-        exitCode: 1,
-        aborted,
-        timedOut,
-        durationMs: Date.now() - startTime,
-      });
-    });
-
-    child.on("close", (code) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      signal?.removeEventListener("abort", onAbort);
-      resolve({
-        stdout,
-        stderr,
-        exitCode: code ?? (aborted ? 130 : 1),
-        aborted,
-        timedOut,
-        durationMs: Date.now() - startTime,
-      });
-    });
-
-    // Feed the event payload over stdin and close.
-    try {
-      child.stdin.end(jsonInput);
-    } catch {
-      // Race: child exited before stdin write finished. The 'close'
-      // handler will resolve us with whatever we captured so far.
-    }
-  });
+  } catch (error) {
+    return {
+      stdout: "",
+      stderr: `Hook execution failed: ${error instanceof Error ? error.message : String(error)}`,
+      exitCode: 1,
+      aborted: false,
+      timedOut: false,
+      outputTruncated: false,
+      durationMs: Date.now() - startedAt,
+    };
+  }
 }
 
 // ─── Output parsing + interpretation ──────────────────────────────────
@@ -330,6 +270,21 @@ export async function executeHookCommand(params: {
         run.stderr ||
         `Hook timed out after ${hook.timeout ?? DEFAULT_TIMEOUT_SEC}s`,
       exitCode: run.exitCode,
+    };
+  }
+
+  if (run.outputTruncated) {
+    const detail = `Hook output exceeded ${MAX_HOOK_OUTPUT_BYTES} bytes per stream; output was truncated.`;
+    const blocking = run.exitCode === 2 || hookEvent === "PreToolUse";
+    return {
+      hookName,
+      command: commandLabel,
+      durationMs: run.durationMs,
+      outcome: blocking ? "blocking" : "non_blocking_error",
+      stdout: run.stdout,
+      stderr: [run.stderr, detail].filter(Boolean).join("\n"),
+      exitCode: run.exitCode,
+      ...(blocking ? { permissionBehavior: "deny" as const, blockingError: detail } : {}),
     };
   }
 

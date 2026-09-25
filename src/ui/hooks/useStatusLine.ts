@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { spawn } from "node:child_process";
 import {
   readStatusLineConfig,
   type StatusLineCommandConfig,
 } from "../../utils/settings.js";
+import { runControlledProcess } from "../../utils/controlledProcess.js";
 
 /**
  * Context handed to a user-configured status-line command on stdin (as JSON),
@@ -21,6 +21,7 @@ export interface StatusLineContext {
 
 const DEBOUNCE_MS = 300;
 const RUN_TIMEOUT_MS = 2000;
+const MAX_STATUS_OUTPUT_BYTES = 8 * 1024;
 
 /**
  * useStatusLine — drives the optional custom status line.
@@ -64,31 +65,36 @@ export function useStatusLine(context: StatusLineContext): { custom: string | nu
       return;
     }
     if (timerRef.current) clearTimeout(timerRef.current);
+    const controller = new AbortController();
+    let cancelled = false;
     timerRef.current = setTimeout(() => {
-      const child = spawn(process.env.SHELL || "bash", ["-lc", config.command], {
+      void runControlledProcess({
+        executable: process.env.SHELL || "bash",
+        args: ["-lc", config.command],
         cwd: context.cwd,
         env: process.env,
-      });
-      let out = "";
-      const killTimer = setTimeout(() => child.kill("SIGTERM"), RUN_TIMEOUT_MS);
-      child.stdout.on("data", (c: Buffer | string) => {
-        out += c.toString();
-      });
-      child.on("error", () => {
-        clearTimeout(killTimer);
-        setCustom(null);
-      });
-      child.on("close", () => {
-        clearTimeout(killTimer);
-        // Use the trimmed output; collapse to first line if multi-line so the
-        // footer stays one row (scripts that want multi-line are out of scope).
-        const line = out.replace(/\n+$/, "").split("\n")[0] ?? "";
+        stdin: contextKey,
+        signal: controller.signal,
+        timeoutMs: RUN_TIMEOUT_MS,
+        idleTimeoutMs: RUN_TIMEOUT_MS,
+        maxOutputBytes: MAX_STATUS_OUTPUT_BYTES,
+      }).then((run) => {
+        if (cancelled) return;
+        if (run.reason !== "completed" || run.stdoutTruncated) {
+          setCustom(null);
+          return;
+        }
+        // The footer stays one row even when a command emits several lines.
+        const line = run.stdout.replace(/\n+$/, "").split("\n")[0]?.slice(0, 512) ?? "";
         setCustom(line || null);
+      }).catch(() => {
+        if (!cancelled) setCustom(null);
       });
-      child.stdin.end(contextKey);
     }, DEBOUNCE_MS);
 
     return () => {
+      cancelled = true;
+      controller.abort();
       if (timerRef.current) clearTimeout(timerRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

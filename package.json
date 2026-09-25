@@ -42,6 +42,7 @@
     "test:path-boundary": "node --import tsx src/scripts/test-path-boundary.ts",
     "test:private-data": "node --import tsx src/scripts/test-private-data-permissions.ts",
     "test:persistence": "node --import tsx src/scripts/test-atomic-persistence.ts",
+    "test:controlled-process": "node --import tsx src/scripts/test-controlled-process.ts",
     "test:bash-readonly": "node --import tsx src/scripts/test-bash-readonly.ts",
     "test:tasks": "tsx src/scripts/test-tasks.ts",
     "test:toolsearch": "node --import tsx src/scripts/test-toolsearch.ts && node --import tsx src/scripts/test-toolsearch-integration.ts",
