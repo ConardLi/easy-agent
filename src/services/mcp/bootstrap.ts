@@ -37,6 +37,10 @@ function stopReconnect(name: string): void {
   reconnectAttempts.delete(name);
 }
 
+export function cancelMcpReconnect(name: string): void {
+  stopReconnect(name);
+}
+
 function scheduleReconnect(name: string, config: PendingMcpServer["config"], immediate = false): void {
   if (reconnectTimers.has(name) || reconnecting.has(name)) return;
   const entry = getMcpRegistryEntry(name);
@@ -46,8 +50,13 @@ function scheduleReconnect(name: string, config: PendingMcpServer["config"], imm
   reconnectAttempts.set(name, attempt + 1);
   const timer = setTimeout(() => {
     reconnectTimers.delete(name);
+    if (getMcpRegistryEntry(name)?.connection.config !== config) {
+      stopReconnect(name);
+      return;
+    }
     const task = (async () => {
       await clearServerCache(name, config);
+      if (getMcpRegistryEntry(name)?.connection.config !== config) return;
       await connectAndRegister(name, config);
     })().catch((error) => {
       debugLog("mcp", `[${name}] reconnect failed: ${(error as Error).message}`);

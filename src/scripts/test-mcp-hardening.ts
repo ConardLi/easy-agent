@@ -7,6 +7,7 @@ import type { ConnectedMcpServer } from "../types/mcp.js";
 import { fetchToolsForConnection } from "../services/mcp/fetchTools.js";
 import { readMcpResourceTool } from "../tools/readMcpResourceTool.js";
 import { clearMcpRegistry, setMcpRegistryEntry } from "../services/mcp/registry.js";
+import { applyPluginMcpDiff } from "../plugins/mcpApply.js";
 import { createServer } from "node:http";
 import { randomUUID } from "node:crypto";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
@@ -90,6 +91,12 @@ try {
   assert.equal(plainError.content, "failure");
   assert.equal(plainError.isError, true);
   assert.deepEqual(plainError.mcpResult?._meta, { traceId: "error" });
+  const plainSuccess = await adaptMcpToolResult({ content: [
+    { type: "text", text: "first" },
+    { type: "resource", resource: { uri: "memo://text", text: "embedded" } },
+    { type: "text", text: "last" },
+  ] });
+  assert.equal(plainSuccess.content, "first\nembedded\nlast");
   await assert.rejects(storeMcpArtifact("not base64!", "application/octet-stream"), /base64/);
   await assert.rejects(adaptMcpToolResult({ content: [{ type: "image", mimeType: "image/png", data: "not base64!" }] }), /base64/);
 
@@ -141,6 +148,7 @@ try {
   assert.equal(helperHeaders.get("Authorization"), "Bearer helper-token");
 
   const sessions = new Map<string, { server: Server; transport: StreamableHTTPServerTransport }>();
+  let serverInstances = 0;
   let executed = 0;
   let expireOnce = true;
   let listSeen = false;
@@ -164,6 +172,7 @@ try {
       }
       let current = sessionKey ? sessions.get(sessionKey) : undefined;
       if (!current) {
+        serverInstances += 1;
         const server = new Server({ name: "hardening-fixture", version: "1.0" }, { capabilities: { tools: {} } });
         server.setRequestHandler(ListToolsRequestSchema, async () => {
           listSeen = true;
@@ -239,6 +248,20 @@ try {
     const recovered = getMcpRegistryEntry("recoverable")?.connection;
     assert.equal(recovered?.type, "connected", "closed connection recovered automatically");
     if (recovered?.type === "connected") await clearServerCache("recoverable", recovered.config);
+
+    const pluginName = "plugin__recoverable";
+    const enabled = new Map([[pluginName, remoteConfig]]);
+    await applyPluginMcpDiff(new Map(), enabled);
+    const pluginConnection = getMcpRegistryEntry(pluginName)?.connection;
+    assert.equal(pluginConnection?.type, "connected");
+    if (pluginConnection?.type !== "connected") throw new Error("Plugin MCP fixture failed to connect");
+    await pluginConnection.client.close();
+    assert.equal(getMcpRegistryEntry(pluginName)?.connection.type, "pending");
+    await applyPluginMcpDiff(enabled, new Map());
+    assert.equal(getMcpRegistryEntry(pluginName), undefined);
+    const instancesAfterDisable = serverInstances;
+    await new Promise((resolve) => setTimeout(resolve, 1_200));
+    assert.equal(serverInstances, instancesAfterDisable, "disabled plugin server must not be restarted by a queued retry");
   } finally {
     await new Promise<void>((resolve) => httpServer.close(() => resolve()));
   }
@@ -358,6 +381,20 @@ try {
     assert.equal((await sseTools[0]!.call({}, { cwd: home })).content, "sse-ok");
     assert.ok(seenSseHeaders.length >= 2 && seenSseHeaders.every((value) => value === "Bearer sse-token"));
     await clearServerCache("sse-hardening", sseConfig);
+
+    const staticSseConfig = {
+      type: "sse" as const,
+      url: sseConfig.url,
+      headers: { Authorization: "Bearer sse-token" },
+      scope: "user" as const,
+    };
+    const staticSseConnection = await connectToServer("sse-static-headers", staticSseConfig);
+    assert.equal(staticSseConnection.type, "connected", staticSseConnection.type === "failed" ? staticSseConnection.error : "");
+    if (staticSseConnection.type !== "connected") throw new Error("Static SSE headers fixture failed to connect");
+    const staticSseTools = await fetchToolsForConnection(staticSseConnection);
+    assert.equal((await staticSseTools[0]!.call({}, { cwd: home })).content, "sse-ok");
+    assert.ok(seenSseHeaders.length >= 4 && seenSseHeaders.every((value) => value === "Bearer sse-token"));
+    await clearServerCache("sse-static-headers", staticSseConfig);
   } finally {
     delete process.env.MCP_HARDENING_SSE_TOKEN;
     await new Promise<void>((resolve) => sseServer.close(() => resolve()));

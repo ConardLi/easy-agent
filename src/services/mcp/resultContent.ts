@@ -82,7 +82,7 @@ export async function adaptMcpToolResult(raw: Record<string, unknown>): Promise<
       const uri = typeof resource?.uri === "string" ? resource.uri : "<unknown>";
       const mimeType = typeof resource?.mimeType === "string" ? resource.mimeType : undefined;
       if (typeof resource?.text === "string") {
-        content.push({ type: "text", text: `${describeResource(uri, mimeType)}:\n${resource.text}` });
+        content.push({ type: "text", text: resource.text });
       } else if (typeof resource?.blob === "string") {
         const stored = await storeMcpArtifact(resource.blob, mimeType ?? "application/octet-stream");
         content.push({ type: "text", text: `${describeResource(uri, mimeType)} saved to ${stored.filePath} (${stored.bytes} bytes)` });
