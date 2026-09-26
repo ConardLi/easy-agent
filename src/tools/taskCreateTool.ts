@@ -11,8 +11,8 @@
  *   - app-state auto-expand (we always render TaskList when in task mode)
  */
 
-import { createTask, getTaskListId } from "../state/taskStore.js";
-import { isTaskModeEnabled } from "../state/taskModeStore.js";
+import { createTask } from "../state/taskStore.js";
+import { isTaskGraphEnabled, resolveTaskScope, validateTaskActor, withActiveTaskActor } from "./taskScope.js";
 import type { Tool, ToolContext, ToolResult } from "./Tool.js";
 
 const TOOL_NAME = "TaskCreate";
@@ -61,6 +61,8 @@ export const taskCreateTool: Tool = {
   },
 
   async call(input: Record<string, unknown>, context: ToolContext): Promise<ToolResult> {
+    const actorError = await validateTaskActor(context);
+    if (actorError) return { content: `Error: ${actorError}`, isError: true };
     const subject = pickString(input, "subject")?.trim();
     const description = pickString(input, "description")?.trim();
     const activeForm = pickString(input, "activeForm")?.trim();
@@ -71,16 +73,21 @@ export const taskCreateTool: Tool = {
     if (!subject) return { content: "Error: `subject` must be a non-empty string.", isError: true };
     if (!description) return { content: "Error: `description` must be a non-empty string.", isError: true };
 
-    const taskListId = getTaskListId(context.sessionId ?? "default");
-    const id = await createTask(taskListId, {
-      subject,
-      description,
-      activeForm: activeForm || undefined,
-      status: "pending",
-      blocks: [],
-      blockedBy: [],
-      metadata,
-    });
+    const taskListId = resolveTaskScope(context).listId;
+    let id: string;
+    try {
+      id = await withActiveTaskActor(context, () => createTask(taskListId, {
+        subject,
+        description,
+        activeForm: activeForm || undefined,
+        status: "pending",
+        blocks: [],
+        blockedBy: [],
+        metadata,
+      }));
+    } catch (error) {
+      return { content: `Error: ${error instanceof Error ? error.message : String(error)}`, isError: true };
+    }
 
     return { content: `Task #${id} created: ${subject}` };
   },
@@ -90,6 +97,6 @@ export const taskCreateTool: Tool = {
   },
 
   isEnabled() {
-    return isTaskModeEnabled();
+    return isTaskGraphEnabled();
   },
 };

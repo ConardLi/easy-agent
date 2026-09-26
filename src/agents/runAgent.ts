@@ -51,6 +51,7 @@ export type AgentProgressEvent =
   | { type: "text"; text: string }
   | { type: "error"; text: string }
   | { type: "turn_complete"; reason: LoopTerminationReason }
+  | { type: "tool_batch_done" }
   | {
       /**
        * Per-turn usage delta forwarded out of the inner agentic loop.
@@ -121,6 +122,7 @@ export interface RunChildAgentParams {
     agentId: string;
     agentName: string;
     teamName: string;
+    runId?: string;
   };
 }
 
@@ -188,6 +190,7 @@ export async function runChildAgent(params: RunChildAgentParams): Promise<AgentR
     cwd: params.cwdOverride ?? params.parentToolContext.cwd,
     abortSignal: params.abortSignal,
     sessionId: subSessionId,
+    taskScope: params.teammateIdentity ? "team" : "session",
     // Sub-agent reads its own mode — isolating plan-mode transitions
     // (Enter/ExitPlanMode) from the parent's mode state.
     getPermissionMode: () => subPermissionMode,
@@ -245,6 +248,12 @@ export async function runChildAgent(params: RunChildAgentParams): Promise<AgentR
     abortSignal: params.abortSignal,
     toolContext: subToolContext,
     maxTurns: def.maxTurns ?? DEFAULT_AGENT_MAX_TURNS,
+    ...(params.teammateIdentity ? {
+      beforeModelCall: async (): Promise<MessageParam[]> => {
+        const unread = await drainUnreadMessages(params.teammateIdentity!.agentName, params.teammateIdentity!.teamName);
+        return unread.length > 0 ? [{ role: "user", content: formatMailboxAttachment(unread) }] : [];
+      },
+    } : {}),
     permissionMode: subPermissionMode,
     permissionSettings: params.permissionSettings,
     sessionPermissionRules: params.sessionPermissionRules,
@@ -291,6 +300,11 @@ export async function runChildAgent(params: RunChildAgentParams): Promise<AgentR
           break;
         case "turn_complete":
           params.onProgress({ type: "turn_complete", reason: value.reason });
+          break;
+        case "tool_result_message":
+          if (Array.isArray(value.message.content) && value.message.content.some((block) => block.type === "tool_result")) {
+            params.onProgress({ type: "tool_batch_done" });
+          }
           break;
         case "turn_usage":
           params.onProgress({

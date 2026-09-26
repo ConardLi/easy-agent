@@ -58,7 +58,9 @@ import { formatToolInputPreview, extractBashOutput } from "../utils/toolCardForm
 import { bashTool } from "../../tools/bashTool.js";
 import { clearTodos, getTodos, subscribeTodos } from "../../state/todoStore.js";
 import type { TodoItem } from "../../types/todo.js";
-import { getTaskListId, listTasks, subscribeTasks } from "../../state/taskStore.js";
+import { getTaskListId, getTeamTaskListId, listTasks, subscribeTasks } from "../../state/taskStore.js";
+import { getActiveTeam, subscribeActiveTeam } from "../../state/teamContext.js";
+import { hasPendingLeadMailboxSignal, subscribeMailboxWrites } from "../../utils/teammateMailbox.js";
 import {
   clearAllSubAgentProgress,
   getSubAgentProgress,
@@ -172,6 +174,8 @@ export function useAgentSession({
   // closure (it's set up once on mount), so we mirror them into refs
   // and update on every render via the useEffect below.
   const isLoadingRef = useRef(false);
+  const autoWakeInFlightRef = useRef(false);
+  const wakeAutoRef = useRef<(() => void) | null>(null);
   const permissionPromptRef = useRef<PermissionPromptState | null>(null);
   const submitRef = useRef<((text: string) => Promise<SubmitResult>) | null>(null);
   const sessionRulesRef = useRef<PermissionRuleSet>({ allow: [], deny: [] });
@@ -264,11 +268,15 @@ export function useAgentSession({
   // so the reader doesn't need its own synchronization.
   useEffect(() => {
     let cancelled = false;
+    const currentListId = () => {
+      const active = getActiveTeam();
+      return active ? getTeamTaskListId(active.teamName) : getTaskListId(sessionIdRef.current);
+    };
     const refresh = async () => {
-      const taskListId = getTaskListId(sessionIdRef.current);
+      const taskListId = currentListId();
       try {
         const list = await listTasks(taskListId);
-        if (!cancelled) setTasksState(list);
+        if (!cancelled && taskListId === currentListId()) setTasksState(list);
       } catch {
         // Ignore transient read errors — a future mutation will trigger
         // another refresh that can succeed.
@@ -276,13 +284,15 @@ export function useAgentSession({
     };
     void refresh();
     const unsubscribe = subscribeTasks((taskListId) => {
-      if (taskListId === getTaskListId(sessionIdRef.current)) {
+      if (taskListId === currentListId()) {
         void refresh();
       }
     });
+    const unsubscribeTeam = subscribeActiveTeam(() => { void refresh(); });
     return () => {
       cancelled = true;
       unsubscribe();
+      unsubscribeTeam();
     };
   }, []);
 
@@ -401,21 +411,48 @@ export function useAgentSession({
   // because submitInternal drains at the *start* of the turn, before
   // the notification arrived), we kick off another auto-trigger.
   useEffect(() => {
-    const unsubscribe = subscribePendingNotifications(() => {
+    let disposed = false;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    const hasQueuedInput = () => {
+      const active = getActiveTeam();
+      return pendingNotificationCount() > 0 || (active !== null && hasPendingLeadMailboxSignal(active.teamName));
+    };
+    const wake = () => {
       // Defer to a microtask so multiple back-to-back enqueues
       // (e.g. two background agents finishing in the same tick) only
       // trigger one auto-resume — the deferred handler sees the full
       // queue and submitInternal drains it all at once.
       queueMicrotask(() => {
+        if (disposed || autoWakeInFlightRef.current) return;
         if (isLoadingRef.current) return;
         if (permissionPromptRef.current) return;
-        if (pendingNotificationCount() === 0) return;
+        if (!hasQueuedInput()) return;
         const fn = submitRef.current;
         if (!fn) return;
-        void fn("");
+        autoWakeInFlightRef.current = true;
+        void fn("").catch(() => {}).finally(() => {
+          autoWakeInFlightRef.current = false;
+          if (!disposed && hasQueuedInput() && !retryTimer) {
+            retryTimer = setTimeout(() => {
+              retryTimer = null;
+              wake();
+            }, 1000);
+          }
+        });
       });
+    };
+    wakeAutoRef.current = wake;
+    const unsubscribe = subscribePendingNotifications(wake);
+    const unsubscribeMailbox = subscribeMailboxWrites((recipient, teamName) => {
+      if (recipient === "team-lead" && getActiveTeam()?.teamName === teamName) wake();
     });
-    return unsubscribe;
+    return () => {
+      disposed = true;
+      if (retryTimer) clearTimeout(retryTimer);
+      wakeAutoRef.current = null;
+      unsubscribe();
+      unsubscribeMailbox();
+    };
   }, []);
 
   // Retry-on-idle: if a notification was enqueued while we were busy,
@@ -424,10 +461,9 @@ export function useAgentSession({
   useEffect(() => {
     if (isLoading) return;
     if (permissionPrompt) return;
-    if (pendingNotificationCount() === 0) return;
-    const fn = submitRef.current;
-    if (!fn) return;
-    void fn("");
+    const active = getActiveTeam();
+    if (pendingNotificationCount() === 0 && !(active && hasPendingLeadMailboxSignal(active.teamName))) return;
+    wakeAutoRef.current?.();
   }, [isLoading, permissionPrompt]);
 
   useEffect(() => {
@@ -674,7 +710,8 @@ export function useAgentSession({
     // which prepends the queued <task-notification> blocks as the
     // turn's user content. Reject empty input only when there's also
     // nothing in the queue.
-    if (!trimmed && pendingNotificationCount() === 0) {
+    const activeTeam = getActiveTeam();
+    if (!trimmed && pendingNotificationCount() === 0 && !(activeTeam && hasPendingLeadMailboxSignal(activeTeam.teamName))) {
       return { handled: false };
     }
 

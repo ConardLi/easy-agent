@@ -1,9 +1,7 @@
 /**
  * Task V2 store — persistent task graph on disk.
  *
- * Replicates `claude-code-source-code/src/utils/tasks.ts`, dropping the
- * multi-agent pieces (teammate mailbox, claim-with-busy-check, team name
- * resolution) since Easy Agent is single-agent in stage 15.
+ * Session task lists and shared team task lists use the same durable store.
  *
  * Layout (per task list):
  *
@@ -57,12 +55,15 @@ export function sanitizePathComponent(input: string): string {
 /**
  * Resolve a sessionId to the corresponding task-list id.
  *
- * Single-agent keeps this 1-to-1. The function exists mostly as a seam
- * for future multi-agent work (leader team name, teammate context) —
- * callers shouldn't assume sessionId itself is safe to use as a path.
+ * Ordinary tasks keep the session's list id. Team tasks use
+ * getTeamTaskListId instead.
  */
 export function getTaskListId(sessionId: string): string {
   return sessionId || "default";
+}
+
+export function getTeamTaskListId(teamName: string): string {
+  return `team-${sanitizePathComponent(teamName.toLowerCase())}`;
 }
 
 export function getTasksDir(taskListId: string): string {
@@ -293,7 +294,7 @@ export async function updateTask(
  * never reassign it to a new task after reset, then cascades the blocks
  * / blockedBy references in siblings.
  */
-export async function deleteTask(taskListId: string, taskId: string): Promise<boolean> {
+export async function deleteTask(taskListId: string, taskId: string, actor?: string): Promise<boolean> {
   return withTaskListLock(taskListId, async () => {
     const numericId = parseInt(taskId, 10);
     if (!Number.isNaN(numericId)) {
@@ -305,6 +306,12 @@ export async function deleteTask(taskListId: string, taskId: string): Promise<bo
 
     const deleted = await withTaskFileLock(taskListId, taskId, async () => {
       try {
+        if (actor) {
+          const current = await getTask(taskListId, taskId);
+          if (current?.owner && current.owner !== actor) {
+            throw new Error(`Task #${taskId} is owned by ${current.owner}`);
+          }
+        }
         await unlink(getTaskPath(taskListId, taskId));
         return true;
       } catch (error: unknown) {
@@ -336,6 +343,64 @@ export async function deleteTask(taskListId: string, taskId: string): Promise<bo
   });
 }
 
+export async function updateTeamTask(
+  taskListId: string,
+  taskId: string,
+  actor: string,
+  updates: Partial<Omit<Task, "id">>,
+): Promise<Task | null> {
+  return withTaskListLock(taskListId, () => withTaskFileLock(taskListId, taskId, async () => {
+    const current = await getTask(taskListId, taskId);
+    if (!current) return null;
+    if (current.owner && current.owner !== actor) throw new Error(`Task #${taskId} is owned by ${current.owner}`);
+    if (current.status === "completed" && Object.keys(updates).length > 0) {
+      throw new Error(`Task #${taskId} is already completed`);
+    }
+
+    const next: Task = { ...current, ...updates, id: taskId };
+    if (updates.status === "in_progress") {
+      if (current.status !== "pending" && !(current.status === "in_progress" && current.owner === actor)) {
+        throw new Error(`Task #${taskId} cannot be claimed from ${current.status}`);
+      }
+      for (const blockerId of current.blockedBy) {
+        const blocker = await getTask(taskListId, blockerId);
+        if (blocker && blocker.status !== "completed") throw new Error(`Task #${taskId} is blocked by #${blockerId}`);
+      }
+      next.owner = actor;
+    } else if (updates.status === "pending") {
+      if (current.status === "completed") throw new Error(`Task #${taskId} is already completed`);
+      next.owner = undefined;
+    } else if (updates.status === "completed") {
+      if (current.status !== "in_progress" || current.owner !== actor) {
+        throw new Error(`Task #${taskId} must be claimed by ${actor} before completion`);
+      }
+      next.owner = actor;
+    }
+    await writePrivateFile(getTaskPath(taskListId, taskId), JSON.stringify(next, null, 2));
+    notifyTasksUpdated(taskListId);
+    return next;
+  }));
+}
+
+export async function releaseMemberTasks(teamName: string, memberName: string): Promise<number> {
+  const taskListId = getTeamTaskListId(teamName);
+  return withTaskListLock(taskListId, async () => {
+    const tasks = await listTasks(taskListId);
+    let released = 0;
+    for (const task of tasks) {
+      if (task.owner !== memberName || task.status !== "in_progress") continue;
+      await withTaskFileLock(taskListId, task.id, async () => {
+        const current = await getTask(taskListId, task.id);
+        if (current?.owner !== memberName || current.status !== "in_progress") return;
+        await writePrivateFile(getTaskPath(taskListId, task.id), JSON.stringify({ ...current, owner: undefined, status: "pending" }, null, 2));
+        released++;
+        notifyTasksUpdated(taskListId);
+      });
+    }
+    return released;
+  });
+}
+
 /**
  * Bidirectional dependency link: `from` blocks `to`.
  *
@@ -347,6 +412,7 @@ export async function blockTask(
   taskListId: string,
   fromTaskId: string,
   toTaskId: string,
+  actor?: string,
 ): Promise<boolean> {
   return withTaskListLock(taskListId, async () => {
     const [from, to] = await Promise.all([
@@ -354,6 +420,11 @@ export async function blockTask(
       getTask(taskListId, toTaskId),
     ]);
     if (!from || !to) return false;
+    if (actor) {
+      if (from.owner && from.owner !== actor) throw new Error(`Task #${fromTaskId} is owned by ${from.owner}`);
+      if (to.owner && to.owner !== actor) throw new Error(`Task #${toTaskId} is owned by ${to.owner}`);
+      if (to.status !== "pending") throw new Error(`Task #${toTaskId} cannot gain a blocker after work has started`);
+    }
 
     // Persist the scheduling constraint before its reverse index. If the
     // process stops between writes, the dependent task remains blocked.

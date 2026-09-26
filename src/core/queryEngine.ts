@@ -26,7 +26,11 @@ import type { ModelProfile } from "../services/api/providers/profile.js";
 import { getPlanFilePath, planExists as checkPlanExists } from "../context/plans.js";
 import { getPlanModeAttachment, getPlanModeExitAttachment } from "../context/planAttachments.js";
 import { getTaskMode, setTaskMode } from "../state/taskModeStore.js";
-import { getTaskListId, resetTaskList } from "../state/taskStore.js";
+import { resetTaskList } from "../state/taskStore.js";
+import { resolveTaskScope } from "../tools/taskScope.js";
+import { getActiveTeam } from "../state/teamContext.js";
+import { TEAM_LEAD_NAME } from "../utils/teamHelpers.js";
+import { drainUnreadMessages, formatMailboxAttachment, readMailbox } from "../utils/teammateMailbox.js";
 import { findSkill } from "../services/skills/registry.js";
 import {
   drainPendingNotifications,
@@ -304,7 +308,10 @@ export class QueryEngine {
     // and run a turn". `submitInternal` is already empty-text safe (it
     // skips the user-message append).
     if (!trimmed && pendingNotificationCount() === 0) {
-      return { handled: false };
+      const active = getActiveTeam();
+      if (!active || !(await readMailbox(TEAM_LEAD_NAME, active.teamName)).some((message) => !message.read)) {
+        return { handled: false };
+      }
     }
 
     // Stage 26: the auto-trigger (background-agent reply) path has no
@@ -663,6 +670,14 @@ export class QueryEngine {
     // Source reference: claude-code-source-code/src/utils/queueProcessor.ts
     //   `processQueueIfReady` drains task-notification entries between
     //   turns and calls `enqueueUserOrSystemMessage` to inject them.
+    const activeTeam = getActiveTeam();
+    if (activeTeam) {
+      const teamMessages = await drainUnreadMessages(TEAM_LEAD_NAME, activeTeam.teamName);
+      if (teamMessages.length > 0) {
+        this.messages = [...this.messages, { role: "user", content: formatMailboxAttachment(teamMessages) }];
+        yield { type: "messages_updated", messages: [...this.messages] };
+      }
+    }
     const pendingNotifs = drainPendingNotifications();
     for (const notif of pendingNotifs) {
       const notifMessage: MessageParam = {
@@ -918,7 +933,7 @@ export class QueryEngine {
           return { handled: true };
         }
         if (arg === "reset") {
-          const taskListId = getTaskListId(this.toolContext.sessionId ?? "default");
+          const taskListId = resolveTaskScope(this.toolContext).listId;
           try {
             await resetTaskList(taskListId);
             yield { type: "command", kind: "info", message: `Task list '${taskListId}' has been reset.` };

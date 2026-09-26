@@ -155,6 +155,8 @@ export interface QueryParams {
   abortSignal?: AbortSignal;
   toolContext: ToolContext;
   maxTurns?: number;
+  /** Optional user-side messages that arrive while a sub-agent is running. */
+  beforeModelCall?: () => Promise<MessageParam[]>;
   /**
    * Stage 27: foreground (user waiting) vs background (sub-agent / summary).
    * Threaded into the streaming layer so 529 capacity overloads are retried
@@ -713,6 +715,14 @@ export async function* query(
       return { state: abortedState, usage: totalUsage, lastCallUsage, reason: "aborted" };
     }
 
+    if (state.turnCount > 0 && params.beforeModelCall) {
+      const incoming = await params.beforeModelCall();
+      if (incoming.length > 0) {
+        state = { ...state, messages: [...state.messages, ...incoming] };
+        for (const message of incoming) yield { type: "tool_result_message", message };
+      }
+    }
+
     const nextTurnCount = state.turnCount + 1;
 
     // Token budget check before API call (skip first turn — let the API decide)
@@ -955,6 +965,14 @@ export async function* query(
     };
 
     if (stopReason !== "tool_use") {
+      if (params.beforeModelCall && state.turnCount < maxTurns) {
+        const incoming = await params.beforeModelCall();
+        if (incoming.length > 0) {
+          state = { ...state, messages: [...state.messages, ...incoming] };
+          for (const message of incoming) yield { type: "tool_result_message", message };
+          continue;
+        }
+      }
       // ─── Stage 22: Stop hook ──────────────────────────────────────
       // Fire user-defined Stop hooks before the loop returns. A hook
       // can inject extra context that becomes a user message and

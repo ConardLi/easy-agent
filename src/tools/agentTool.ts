@@ -25,6 +25,7 @@
  */
 
 import { findAgent, getAllAgents } from "../agents/registry.js";
+import { randomUUID } from "node:crypto";
 import type { AgentIsolation, AgentRunResult } from "../agents/types.js";
 import type { Tool, ToolContext, ToolResult } from "./Tool.js";
 import { DEFAULT_MODEL } from "../services/api/client.js";
@@ -45,6 +46,7 @@ import { ensureTaskOutputFile } from "../utils/taskOutput.js";
 import {
   createAgentWorktree,
   isInsideGitRepo,
+  removeAgentWorktree,
   type WorktreeInfo,
 } from "../utils/worktree.js";
 import { isAgentTeamsEnabled } from "../utils/agentTeamsEnabled.js";
@@ -53,7 +55,7 @@ import {
   addTeamMember,
   formatAgentId,
   readTeamFileAsync,
-  setMemberActive,
+  sanitizeName,
   TEAM_LEAD_NAME,
   type TeamMember,
 } from "../utils/teamHelpers.js";
@@ -280,7 +282,7 @@ export const agentTool: Tool = {
     //   4. Teammate trying to spawn another teammate (sub-team) → source
     //      forbids this; we do too. Detect via context.teammateIdentity.
     let teammateIdentity:
-      | { agentId: string; agentName: string; teamName: string }
+      | { agentId: string; agentName: string; teamName: string; runId: string }
       | undefined;
     if (name || team_name) {
       if (!isAgentTeamsEnabled()) {
@@ -302,6 +304,9 @@ export const agentTool: Tool = {
           content: `Error: "${TEAM_LEAD_NAME}" is reserved for the team lead — pick a different teammate name.`,
           isError: true,
         };
+      }
+      if (!/^[A-Za-z0-9_-]{1,64}$/.test(name)) {
+        return { content: "Error: teammate name must contain 1-64 letters, digits, underscores or hyphens.", isError: true };
       }
       const active = getActiveTeam();
       if (!active) {
@@ -340,9 +345,10 @@ export const agentTool: Tool = {
         };
       }
       teammateIdentity = {
-        agentId: formatAgentId(name, team_name),
+        agentId: `${formatAgentId(name, sanitizeName(team_name))}-${randomUUID()}`,
         agentName: name,
         teamName: team_name,
+        runId: randomUUID(),
       };
     }
 
@@ -449,6 +455,10 @@ export const agentTool: Tool = {
           ...(model ? { model } : {}),
           joinedAt: Date.now(),
           isActive: true,
+          status: "running",
+          runId: teammateIdentity.runId,
+          hostPid: process.pid,
+          heartbeatAt: Date.now(),
           outputFile,
           ...(worktreeInfo
             ? {
@@ -458,7 +468,13 @@ export const agentTool: Tool = {
               }
             : {}),
         };
-        await addTeamMember(teammateIdentity.teamName, member);
+        try {
+          const added = await addTeamMember(teammateIdentity.teamName, member);
+          if (!added) throw new Error(`Team "${teammateIdentity.teamName}" no longer exists`);
+        } catch (error) {
+          if (worktreeInfo) await removeAgentWorktree(worktreeInfo);
+          return { content: `Error: ${error instanceof Error ? error.message : String(error)}`, isError: true };
+        }
       }
 
       const entry = registerAsyncAgent({

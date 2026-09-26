@@ -46,6 +46,7 @@ const TESTS: TestDefinition[] = [
 
   { id: "background-worktree", group: "extensions", file: "src/scripts/test-stage20.ts" },
   { id: "agent-teams", group: "extensions", file: "src/scripts/test-stage21.ts" },
+  { id: "team-lifecycle", group: "extensions", file: "src/scripts/test-team-lifecycle.ts" },
   { id: "hooks", group: "extensions", file: "src/scripts/test-stage22.ts" },
   { id: "styles-commands", group: "extensions", file: "src/scripts/test-stage23.ts" },
   { id: "configuration", group: "extensions", file: "src/scripts/smoke-config.ts" },

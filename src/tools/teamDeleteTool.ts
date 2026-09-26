@@ -6,38 +6,33 @@
  * Lifecycle:
  *   1. Refuse if no team is active (no-op error so the model doesn't
  *      retry blindly).
- *   2. Refuse if any non-lead teammate is still `isActive: true` —
- *      mirrors source's `activeMembers.length > 0` check. The model is
- *      instructed to message the teammates first (or wait for them to
- *      finish) before deleting the team. Stage 21 does not implement
- *      the shutdown_request protocol, so the model handles cleanup
- *      manually.
+ *   2. Refuse while live teammates remain. Stale members require an
+ *      explicit forceStale request after their work has been reviewed.
  *   3. Best-effort `removeAgentWorktree` for each teammate that left
  *      uncommitted changes in an isolated worktree.
- *   4. `rm -rf ~/.easy-agent/teams/<sanitized>/` — atomically removes
- *      the team file, every inbox, and any leftover lock files.
+ *   4. Remove the shared task list and team directory.
  *   5. Clear the in-process teamContext singleton.
  *
  * What we omit vs source:
  *   - Analytics event.
  *   - Color-assignment registry cleanup (we don't track teammate colors).
  *   - tmux pane / orphan-process cleanup (no tmux backend).
- *   - `clearLeaderTeamName()` (we don't share the task-list-id namespace
- *     between lead and teammates; each teammate has its own session id).
  */
 
 import type { Tool, ToolContext, ToolResult } from "./Tool.js";
 import { isAgentTeamsEnabled } from "../utils/agentTeamsEnabled.js";
 import {
   cleanupTeamDirectory,
+  isProcessAlive,
+  prepareTeamDelete,
   readTeamFileAsync,
-  TEAM_LEAD_NAME,
 } from "../utils/teamHelpers.js";
 import {
   clearActiveTeam,
   getActiveTeam,
 } from "../state/teamContext.js";
 import { removeAgentWorktree } from "../utils/worktree.js";
+import { getTeamTaskListId, resetTaskList } from "../state/taskStore.js";
 
 export const teamDeleteTool: Tool = {
   name: "TeamDelete",
@@ -46,50 +41,61 @@ export const teamDeleteTool: Tool = {
   description:
     "Disband the currently active Agent Teams session. " +
     "Removes the on-disk team file, every teammate's inbox, and any worktrees the teammates were operating in (when those worktrees are clean). " +
-    "Refuses if any teammate is still `isActive: true` — finish or interrupt their work first (use `SendMessage` to ask them to stop, or wait for the `<task-notification>`). " +
+    "Refuses while any live teammate is active. Ask them to stop with a structured `SendMessage` shutdown request, or wait for their completion notification. " +
+    "After a process crash, pass `team_name` and `forceStale: true` only after reviewing stale work. " +
     "Use this when the team's mission is complete and you want to return the session to single-agent mode.",
   inputSchema: {
     type: "object",
-    properties: {},
+    properties: {
+      team_name: { type: "string", description: "Existing team name, required when recovering after a process restart." },
+      forceStale: { type: "boolean", description: "Delete a team whose previous members are confirmed stale. Live members are never forced." },
+    },
     additionalProperties: false,
   },
 
   async call(
-    _input: Record<string, unknown>,
-    _context: ToolContext,
+    input: Record<string, unknown>,
+    context: ToolContext,
   ): Promise<ToolResult> {
+    if (context.teammateIdentity || context.taskScope === "session") {
+      return { content: "Error: only the team lead can delete a team.", isError: true };
+    }
     const active = getActiveTeam();
-    if (!active) {
+    const requestedName = typeof input.team_name === "string" ? input.team_name.trim() : "";
+    const teamName = active?.teamName ?? requestedName;
+    if (!teamName) {
       return {
         content: "Error: no team is currently active. Nothing to delete.",
         isError: true,
       };
     }
 
-    const file = await readTeamFileAsync(active.teamName);
+    if (active && requestedName && requestedName !== active.teamName) {
+      return { content: `Error: active team is "${active.teamName}".`, isError: true };
+    }
+    const file = await readTeamFileAsync(teamName);
     if (!file) {
       // On-disk file vanished out from under us. Clean up the in-memory
       // state anyway — a stale teamContext is worse than a missing file.
-      clearActiveTeam();
+      if (active) clearActiveTeam();
       return {
         content:
-          `Team "${active.teamName}" was already missing on disk. Cleared the in-process team context.`,
+          `Team "${teamName}" was already missing on disk. Cleared the in-process team context.`,
       };
+    }
+    if (!active && isProcessAlive(file.leadPid)) {
+      return { content: `Error: team "${teamName}" still has a live lead process.`, isError: true };
     }
 
     // Source-aligned safety: refuse cleanup while real work is running.
     // The lead's own entry is always `isActive: true` while the session
     // is alive — exclude it from the check.
-    const activeTeammates = file.members.filter(
-      (m) => m.name !== TEAM_LEAD_NAME && m.isActive,
-    );
-    if (activeTeammates.length > 0) {
-      const names = activeTeammates.map((m) => m.name).join(", ");
+    let prepared: Awaited<ReturnType<typeof prepareTeamDelete>>;
+    try {
+      prepared = await prepareTeamDelete(teamName, input.forceStale === true);
+    } catch (error) {
       return {
-        content:
-          `Error: cannot delete team "${active.teamName}" — ${activeTeammates.length} teammate(s) still active: ${names}.\n` +
-          `Either wait for them to finish (you'll get a <task-notification> for each), or SendMessage them to wrap up. ` +
-          `Once every teammate's isActive flag flips to false, retry TeamDelete.`,
+        content: `Error: cannot delete team "${teamName}" — ${error instanceof Error ? error.message : String(error)}`,
         isError: true,
       };
     }
@@ -103,7 +109,7 @@ export const teamDeleteTool: Tool = {
     // pointer rather than auto-deleting.
     const worktreeWarnings: string[] = [];
     const preservedWorktrees: string[] = [];
-    for (const member of file.members) {
+    for (const member of prepared.file.members) {
       if (!member.worktreePath || !member.worktreeBranch || !member.gitRoot) {
         continue;
       }
@@ -128,11 +134,16 @@ export const teamDeleteTool: Tool = {
       }
     }
 
-    await cleanupTeamDirectory(active.teamName);
-    clearActiveTeam();
+    try {
+      await resetTaskList(getTeamTaskListId(teamName));
+      await cleanupTeamDirectory(teamName);
+    } catch (error) {
+      return { content: `Error: team cleanup failed: ${error instanceof Error ? error.message : String(error)}`, isError: true };
+    }
+    if (active) clearActiveTeam();
 
     const lines = [
-      `Team "${active.teamName}" disbanded. Removed team file and inboxes.`,
+      `Team "${teamName}" disbanded. Removed team file, inboxes, and shared task list.`,
       preservedWorktrees.length > 0
         ? `Preserved worktrees (likely have uncommitted changes — review manually):\n${preservedWorktrees.join("\n")}`
         : "",

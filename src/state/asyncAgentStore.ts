@@ -48,6 +48,8 @@ export interface AsyncAgentEntry {
   /** ISO timestamp at register(). */
   startedAt: string;
   status: AsyncAgentStatus;
+  shutdownRequested?: boolean;
+  shutdownRequestId?: string;
 
   /** Independent abort handle — caller can kill the sub-agent. */
   abortController: AbortController;
@@ -164,7 +166,7 @@ export function completeAsyncAgent(
   if (!cur) return;
   const next: AsyncAgentEntry = {
     ...cur,
-    status: "completed",
+    status: result.reason === "aborted" ? "killed" : result.reason === "completed" ? "completed" : "failed",
     finalText: result.finalText,
     durationMs: result.totalDurationMs,
     totalTokens: result.totalTokens,
@@ -203,7 +205,7 @@ export function failAsyncAgent(
  * Abort a running async agent. Idempotent — second call is a no-op.
  * Returns true when the entry transitioned from `running` to `killed`.
  */
-export function killAsyncAgent(agentId: string): boolean {
+export function killAsyncAgent(agentId: string, requestId?: string): boolean {
   const cur = entries.get(agentId);
   if (!cur || cur.status !== "running") return false;
   cur.abortController.abort();
@@ -211,9 +213,18 @@ export function killAsyncAgent(agentId: string): boolean {
     ...cur,
     status: "killed",
     reason: "aborted",
+    ...(requestId ? { shutdownRequestId: requestId } : {}),
   };
   entries.set(agentId, next);
   notify(agentId, next);
+  return true;
+}
+
+export function requestShutdownAsyncAgent(agentId: string, requestId: string): boolean {
+  const cur = entries.get(agentId);
+  if (!cur || cur.status !== "running") return false;
+  entries.set(agentId, { ...cur, shutdownRequested: true, shutdownRequestId: requestId });
+  notify(agentId, entries.get(agentId)!);
   return true;
 }
 

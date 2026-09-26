@@ -3,21 +3,18 @@
  *
  * Reference: claude-code-source-code/src/tools/SendMessageTool/SendMessageTool.ts
  *
- * Stage 21 implements only the plain-text path of source's tool:
+ * Supports ordinary messages and teammate control requests:
  *   - `to: "<name>"`  — write to one teammate's inbox
  *   - `to: "*"`       — broadcast to every active teammate (skip self)
  *
+ *   - `type: "shutdown_request"` stops after the current tool batch.
+ *   - `type: "abort_request"` cancels immediately.
+ *
  * Skipped vs source:
- *   - Structured messages: shutdown_request / shutdown_response /
- *     plan_approval_response. These require either the in-process
- *     subagent-task layer to wire abort signals back into the running
- *     teammate's loop (source) or a separate shutdown protocol. Stage
- *     21 keeps shutdown handling implicit (`run_in_background` agent
- *     naturally terminates; TeamDelete waits for `isActive=false`).
+ *   - Plan approval and permission-request routing.
  *   - UDS / bridge cross-machine routing.
- *   - SendMessage-to-stopped-agent auto-resume (source's
- *     `resumeAgentBackground`). Easy Agent's async sub-agents are not
- *     resumable today (stage 20 §20.3 deferred).
+ *   - SendMessage-to-stopped-agent auto-resume; the lead must start a
+ *     new named run explicitly.
  *
  * Identity: who is "from"? Two paths converge here:
  *
@@ -32,18 +29,22 @@
  */
 
 import type { Tool, ToolContext, ToolResult } from "./Tool.js";
+import { randomUUID } from "node:crypto";
+import { getAsyncAgent, killAsyncAgent, requestShutdownAsyncAgent } from "../state/asyncAgentStore.js";
 import { isAgentTeamsEnabled } from "../utils/agentTeamsEnabled.js";
 import { getActiveTeam } from "../state/teamContext.js";
 import {
   readTeamFileAsync,
+  setMemberStatus,
   TEAM_LEAD_NAME,
 } from "../utils/teamHelpers.js";
-import { writeToMailbox } from "../utils/teammateMailbox.js";
+import { markControlRequestAsRead, writeToMailbox } from "../utils/teammateMailbox.js";
 
 interface SendMessageInput {
   to: string;
   message: string;
   summary?: string;
+  type?: "message" | "shutdown_request" | "abort_request";
 }
 
 function readInput(raw: Record<string, unknown>): SendMessageInput {
@@ -51,10 +52,13 @@ function readInput(raw: Record<string, unknown>): SendMessageInput {
   const message = typeof raw["message"] === "string" ? raw["message"] : "";
   const summary =
     typeof raw["summary"] === "string" ? raw["summary"].trim() : undefined;
+  const type = raw["type"] === "shutdown_request" || raw["type"] === "abort_request"
+    ? raw["type"] : "message";
   return {
     to,
     message,
     ...(summary ? { summary } : {}),
+    type,
   };
 }
 
@@ -80,8 +84,8 @@ export const sendMessageTool: Tool = {
   searchHint: "send messages to agent teammates (swarm protocol)",
   shouldDefer: true,
   description:
-    "Send a plain-text message to another teammate's inbox in the active Agent Teams session. " +
-    "The recipient sees the message as a `<teammate-message>` context block at the start of their next loop turn. " +
+    "Send a message or control request to another teammate in the active Agent Teams session. " +
+    "A running recipient sees ordinary messages before its next model call. " +
     "Use this for coordination (\"backend, the auth endpoint is at /v2/login\") or for status pings (\"reviewer, ready for you to look at PR draft\"). " +
     "Use `to: \"*\"` to broadcast to every other active teammate. " +
     "If no team is active, this tool errors — call TeamCreate first.",
@@ -103,6 +107,11 @@ export const sendMessageTool: Tool = {
         description:
           "Optional 5-10 word preview the UI shows alongside the full message. Recommended for messages longer than ~200 chars.",
       },
+      type: {
+        type: "string",
+        enum: ["message", "shutdown_request", "abort_request"],
+        description: "Use shutdown_request to stop a teammate after its current tool batch, or abort_request to cancel immediately.",
+      },
     },
     required: ["to", "message"],
     additionalProperties: false,
@@ -112,7 +121,10 @@ export const sendMessageTool: Tool = {
     input: Record<string, unknown>,
     context: ToolContext,
   ): Promise<ToolResult> {
-    const { to, message, summary } = readInput(input);
+    if (context.taskScope === "session" && !context.teammateIdentity) {
+      return { content: "Error: ordinary sub-agents are not team members.", isError: true };
+    }
+    const { to, message, summary, type } = readInput(input);
     if (!to) {
       return {
         content: "Error: 'to' is required (teammate name or '*').",
@@ -149,6 +161,7 @@ export const sendMessageTool: Tool = {
       summary ? { summary } : {};
 
     if (to === "*") {
+      if (type !== "message") return { content: "Error: control requests require a single teammate recipient.", isError: true };
       // Broadcast — every active member except the sender.
       const recipients = teamFile.members.filter(
         (m) => m.isActive && m.name !== senderName,
@@ -189,9 +202,34 @@ export const sendMessageTool: Tool = {
       };
     }
 
+    if (type === "shutdown_request" || type === "abort_request") {
+      if (senderName !== TEAM_LEAD_NAME) return { content: "Error: only the team lead can stop a teammate.", isError: true };
+      if (!recipient.isActive || !recipient.runId) {
+        return { content: `Error: teammate "${to}" is not running in this team.`, isError: true };
+      }
+      if (getAsyncAgent(recipient.agentId)?.status !== "running") {
+        return { content: `Error: teammate "${to}" is no longer running in this process. Recover the team before retrying.`, isError: true };
+      }
+      const requestId = randomUUID();
+      await writeToMailbox(recipient.name, { from: senderName, text: message, timestamp, type, requestId, ...summaryField }, active.teamName);
+      const accepted = type === "shutdown_request"
+        ? requestShutdownAsyncAgent(recipient.agentId, requestId)
+        : killAsyncAgent(recipient.agentId, requestId);
+      if (!accepted) {
+        await markControlRequestAsRead(recipient.name, active.teamName, requestId);
+        return { content: `Error: teammate "${to}" is no longer running in this process. Recover the team before retrying.`, isError: true };
+      }
+      try {
+        await setMemberStatus(active.teamName, recipient.name, recipient.runId, type === "shutdown_request" ? "stopping" : "aborting");
+        return { content: `${type} ${requestId} accepted for "${to}".` };
+      } catch (error) {
+        return { content: `${type} ${requestId} accepted for "${to}", but team status could not be updated: ${error instanceof Error ? error.message : String(error)}` };
+      }
+    }
+
     await writeToMailbox(
       recipient.name,
-      { from: senderName, text: message, timestamp, ...summaryField },
+      { from: senderName, text: message, timestamp, type: "message", ...summaryField },
       active.teamName,
     );
 

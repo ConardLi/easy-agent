@@ -70,6 +70,8 @@ export interface TeammateMessage {
   read: boolean;
   /** Optional 5-10 word preview shown in any future UI panel. */
   summary?: string;
+  type?: "message" | "shutdown_request" | "shutdown_response" | "abort_request";
+  requestId?: string;
 }
 
 // Per-file lock options — patterned after source's LOCK_OPTIONS in
@@ -82,6 +84,19 @@ const LOCK_OPTIONS = {
     maxTimeout: 100,
   },
 };
+
+type MailboxListener = (recipientName: string, teamName: string) => void;
+const mailboxListeners = new Set<MailboxListener>();
+const pendingLeadSignals = new Set<string>();
+
+export function subscribeMailboxWrites(listener: MailboxListener): () => void {
+  mailboxListeners.add(listener);
+  return () => { mailboxListeners.delete(listener); };
+}
+
+export function hasPendingLeadMailboxSignal(teamName: string): boolean {
+  return pendingLeadSignals.has(teamName);
+}
 
 /** Returns the absolute path to a teammate's inbox file. */
 export function getInboxPath(agentName: string, teamName: string): string {
@@ -150,6 +165,10 @@ export async function writeToMailbox(
     const messages = await readMailbox(recipientName, teamName);
     messages.push({ ...message, read: false });
     await writePrivateFile(inboxPath, JSON.stringify(messages, null, 2));
+    if (recipientName === "team-lead") pendingLeadSignals.add(teamName);
+    for (const listener of mailboxListeners) {
+      try { listener(recipientName, teamName); } catch { /* UI listeners cannot fail a send. */ }
+    }
   } finally {
     if (release) {
       try {
@@ -205,6 +224,48 @@ export async function markMessagesAsRead(
   }
 }
 
+export async function markTerminalControlMessagesAsRead(agentName: string, teamName: string): Promise<void> {
+  const inboxPath = getInboxPath(agentName, teamName);
+  let release: (() => Promise<void>) | undefined;
+  try {
+    release = await lockfile.lock(inboxPath, LOCK_OPTIONS);
+    const messages = await readMailbox(agentName, teamName);
+    let changed = false;
+    for (const message of messages) {
+      if (!message.read && (message.type === "shutdown_request" || message.type === "abort_request")) {
+        message.read = true;
+        changed = true;
+      }
+    }
+    if (changed) await writePrivateFile(inboxPath, JSON.stringify(messages, null, 2));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  } finally {
+    if (release) await release().catch(() => {});
+  }
+}
+
+export async function markControlRequestAsRead(agentName: string, teamName: string, requestId: string): Promise<void> {
+  const inboxPath = getInboxPath(agentName, teamName);
+  let release: (() => Promise<void>) | undefined;
+  try {
+    release = await lockfile.lock(inboxPath, LOCK_OPTIONS);
+    const messages = await readMailbox(agentName, teamName);
+    let changed = false;
+    for (const message of messages) {
+      if (message.requestId === requestId && !message.read) {
+        message.read = true;
+        changed = true;
+      }
+    }
+    if (changed) await writePrivateFile(inboxPath, JSON.stringify(messages, null, 2));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  } finally {
+    if (release) await release().catch(() => {});
+  }
+}
+
 /**
  * Atomically read + clear unread messages in one locked op. Equivalent
  * to `read → markMessagesAsRead` but holds the lock across both steps
@@ -225,7 +286,10 @@ export async function drainUnreadMessages(
     release = await lockfile.lock(inboxPath, LOCK_OPTIONS);
     const messages = await readMailbox(agentName, teamName);
     const unread = messages.filter((m) => !m.read);
-    if (unread.length === 0) return [];
+    if (unread.length === 0) {
+      if (agentName === "team-lead") pendingLeadSignals.delete(teamName);
+      return [];
+    }
     let changed = false;
     for (const m of messages) {
       if (!m.read) {
@@ -236,6 +300,7 @@ export async function drainUnreadMessages(
     if (changed) {
       await writePrivateFile(inboxPath, JSON.stringify(messages, null, 2));
     }
+    if (agentName === "team-lead") pendingLeadSignals.delete(teamName);
     return unread;
   } catch (error: unknown) {
     const code = (error as NodeJS.ErrnoException | undefined)?.code;
@@ -270,6 +335,8 @@ export function formatMailboxAttachment(
   const blocks = messages.map((m) => {
     const attrs: string[] = [`from="${m.from}"`, `at="${m.timestamp}"`];
     if (m.summary) attrs.push(`summary="${m.summary}"`);
+    if (m.type && m.type !== "message") attrs.push(`type="${m.type}"`);
+    if (m.requestId) attrs.push(`request_id="${m.requestId}"`);
     return `<teammate-message ${attrs.join(" ")}>\n${m.text}\n</teammate-message>`;
   });
   return [

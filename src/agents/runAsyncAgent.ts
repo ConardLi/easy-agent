@@ -27,6 +27,8 @@ import type { AgentDefinition } from "./types.js";
 import {
   completeAsyncAgent,
   failAsyncAgent,
+  getAsyncAgent,
+  killAsyncAgent,
   updateAsyncAgentProgress,
   type AsyncAgentEntry,
 } from "../state/asyncAgentStore.js";
@@ -52,7 +54,9 @@ import type {
   PermissionRuleSet,
   PermissionSettings,
 } from "../permissions/permissions.js";
-import { setMemberActive } from "../utils/teamHelpers.js";
+import { finalizeTeamMember, setMemberActive, TEAM_LEAD_NAME } from "../utils/teamHelpers.js";
+import { releaseMemberTasks } from "../state/taskStore.js";
+import { markTerminalControlMessagesAsRead, writeToMailbox } from "../utils/teammateMailbox.js";
 
 export interface RunAsyncAgentLifecycleParams {
   /** The freshly-registered store entry — its abortController is used for the run. */
@@ -80,6 +84,7 @@ export interface RunAsyncAgentLifecycleParams {
     agentId: string;
     agentName: string;
     teamName: string;
+    runId?: string;
   };
 }
 
@@ -110,29 +115,65 @@ async function cleanupWorktreeIfNeeded(
   // Clean → safe to remove. Best-effort: if removal fails we still
   // surface no worktree (the leftover is harmless and `git worktree
   // prune` will eventually clean it).
-  await removeAgentWorktree(info);
-  return {};
+  const removed = await removeAgentWorktree(info);
+  return removed.ok ? {} : { worktreePath: info.worktreePath, worktreeBranch: info.worktreeBranch };
 }
 
 export async function runAsyncAgentLifecycle(
   params: RunAsyncAgentLifecycleParams,
 ): Promise<void> {
+  try {
+    await runAsyncAgentLifecycleInner(params);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const durationMs = Date.now() - Date.parse(params.entry.startedAt);
+    try {
+      if (params.entry.abortController.signal.aborted) killAsyncAgent(params.entry.agentId);
+      else failAsyncAgent(params.entry.agentId, message, durationMs);
+    } catch {
+      // Continue settling the background task if a state subscriber fails.
+    }
+    try {
+      enqueuePendingNotification({
+        mode: "task-notification",
+        text: formatTaskNotification({
+          agentId: params.entry.agentId,
+          agentType: params.entry.agentType,
+          status: params.entry.abortController.signal.aborted ? "killed" : "failed",
+          outputFile: params.entry.outputFile,
+          error: message,
+          durationMs,
+        }),
+      });
+    } catch {
+      // The background runner must settle even if notification persistence fails.
+    }
+  }
+}
+
+async function runAsyncAgentLifecycleInner(
+  params: RunAsyncAgentLifecycleParams,
+): Promise<void> {
   const { entry } = params;
   const startTime = Date.now();
+  let notificationText: string | undefined;
+  let terminalStatus: "completed" | "failed" | "aborted" = "failed";
 
-  // Header record — makes it obvious from a tail what kicked off this run.
-  await appendTaskOutput(entry.outputFile, {
-    type: "started",
-    agentType: entry.agentType,
-    ...(entry.description ? { description: entry.description } : {}),
-    prompt: params.prompt,
-  });
   let pendingOutput = Promise.resolve();
+  let outputError: unknown;
   const queueOutput = (event: TaskOutputEvent): void => {
-    pendingOutput = pendingOutput.then(() => appendTaskOutput(entry.outputFile, event));
+    pendingOutput = pendingOutput.then(() => appendTaskOutput(entry.outputFile, event)).catch((error: unknown) => {
+      outputError ??= error;
+    });
   };
 
   try {
+    await appendTaskOutput(entry.outputFile, {
+      type: "started",
+      agentType: entry.agentType,
+      ...(entry.description ? { description: entry.description } : {}),
+      prompt: params.prompt,
+    });
     const result = await runChildAgent({
       agentDefinition: params.agentDefinition,
       prompt: params.prompt,
@@ -234,6 +275,9 @@ export async function runAsyncAgentLifecycle(
             });
             break;
           }
+          case "tool_batch_done":
+            if (getAsyncAgent(entry.agentId)?.shutdownRequested) entry.abortController.abort();
+            break;
           default:
             break;
         }
@@ -241,6 +285,7 @@ export async function runAsyncAgentLifecycle(
     });
 
     await pendingOutput;
+    if (outputError) throw outputError;
     const worktreeFinal = await cleanupWorktreeIfNeeded(params.worktreeInfo);
 
     const durationMs = Date.now() - startTime;
@@ -258,12 +303,10 @@ export async function runAsyncAgentLifecycle(
     // Killed sub-agents have reason: "aborted" and surface a slightly
     // different status in the notification so the parent doesn't
     // mistake an ESC'd run for a successful completion.
-    const status: "completed" | "killed" =
-      result.reason === "aborted" ? "killed" : "completed";
-
-    enqueuePendingNotification({
-      mode: "task-notification",
-      text: formatTaskNotification({
+    const status: "completed" | "failed" | "killed" =
+      result.reason === "aborted" ? "killed" : result.reason === "completed" ? "completed" : "failed";
+    terminalStatus = status === "killed" ? "aborted" : status;
+    notificationText = formatTaskNotification({
         agentId: entry.agentId,
         agentType: entry.agentType,
         status,
@@ -274,7 +317,6 @@ export async function runAsyncAgentLifecycle(
         totalTokens: result.totalTokens,
         toolUseCount: result.totalToolUseCount,
         ...worktreeFinal,
-      }),
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
@@ -286,26 +328,22 @@ export async function runAsyncAgentLifecycle(
     // so we never delete in-progress edits.
     const worktreeFinal = await cleanupWorktreeIfNeeded(params.worktreeInfo);
 
-    await appendTaskOutput(entry.outputFile, {
-      type: "failed",
-      error: message,
-      durationMs,
-    });
+    const aborted = entry.abortController.signal.aborted;
+    await appendTaskOutput(entry.outputFile, aborted
+      ? { type: "completed", reason: "aborted", finalText: "", durationMs, totalTokens: 0, toolUseCount: entry.toolUseCount }
+      : { type: "failed", error: message, durationMs });
+    if (!aborted) failAsyncAgent(entry.agentId, message, durationMs);
 
-    failAsyncAgent(entry.agentId, message, durationMs);
-
-    enqueuePendingNotification({
-      mode: "task-notification",
-      text: formatTaskNotification({
+    terminalStatus = aborted ? "aborted" : "failed";
+    notificationText = formatTaskNotification({
         agentId: entry.agentId,
         agentType: entry.agentType,
-        status: "failed",
+        status: aborted ? "killed" : "failed",
         ...(entry.description ? { description: entry.description } : {}),
         outputFile: entry.outputFile,
         error: message,
         durationMs,
         ...worktreeFinal,
-      }),
     });
   } finally {
     // Stage 21: regardless of how this lifecycle ended (success,
@@ -316,14 +354,34 @@ export async function runAsyncAgentLifecycle(
     // doesn't break correctness, just nags TeamDelete to refuse once.
     if (params.teammateIdentity) {
       try {
-        await setMemberActive(
-          params.teammateIdentity.teamName,
-          params.teammateIdentity.agentName,
-          false,
-        );
+        let finalized = true;
+        if (params.teammateIdentity.runId) {
+          finalized = await finalizeTeamMember(
+            params.teammateIdentity.teamName,
+            params.teammateIdentity.agentName,
+            params.teammateIdentity.runId,
+            terminalStatus,
+            () => releaseMemberTasks(params.teammateIdentity!.teamName, params.teammateIdentity!.agentName),
+          );
+        } else {
+          await releaseMemberTasks(params.teammateIdentity.teamName, params.teammateIdentity.agentName);
+          await setMemberActive(params.teammateIdentity.teamName, params.teammateIdentity.agentName, false);
+        }
+        if (finalized) await markTerminalControlMessagesAsRead(params.teammateIdentity.agentName, params.teammateIdentity.teamName);
+        const requestId = finalized ? getAsyncAgent(entry.agentId)?.shutdownRequestId : undefined;
+        if (requestId) {
+          await writeToMailbox(TEAM_LEAD_NAME, {
+            from: params.teammateIdentity.agentName,
+            text: `Teammate stopped with status ${terminalStatus}.`,
+            timestamp: new Date().toISOString(),
+            type: "shutdown_response",
+            requestId,
+          }, params.teammateIdentity.teamName);
+        }
       } catch {
-        // Best-effort.
+        // The team file may have been removed after the run ended.
       }
     }
+    if (notificationText) enqueuePendingNotification({ mode: "task-notification", text: notificationText });
   }
 }
