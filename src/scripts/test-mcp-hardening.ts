@@ -307,10 +307,11 @@ try {
     if (oauthConnection.type !== "connected") throw new Error("OAuth fixture failed to connect");
     const oauthTools = await fetchToolsForConnection(oauthConnection);
     setMcpRegistryEntry("oauth-hardening", oauthConnection, oauthTools);
+    const tokensBeforeRotation = tokenNumber;
     acceptedToken = "expired";
     const authorized = await oauthTools[0]!.call({}, { cwd: home });
     assert.equal(authorized.content, "oauth:1", JSON.stringify(authorized));
-    assert.equal(tokenNumber, 2, "OAuth credentials refreshed after a 401");
+    assert.ok(tokenNumber > tokensBeforeRotation, "OAuth credentials refreshed after a 401");
     assert.equal(oauthCalls, 1, "401 request was rejected before tool execution");
     await clearServerCache("oauth-hardening", oauthConfig);
   } finally {
