@@ -175,7 +175,7 @@ Run `eagent --help` for every startup option. Useful REPL commands include:
 ## Capabilities
 
 - File and code tools: Read, Write, Edit, MultiEdit, Glob, Grep, Bash, and PowerShell
-- Web and external tools: WebFetch, WebSearch, MCP tools, and MCP resources
+- Web and external tools: WebFetch, WebSearch, [MCP tools and resources](./docs/mcp.md)
 - Safe execution: allow/ask/deny rules, Plan Mode, Auto Mode, project trust, hooks, [controlled subprocesses](./docs/subprocesses.md), [private local data](./docs/local-data-security.md), and [fail-closed shell sandboxing](./docs/sandbox-security.md) on macOS and Linux
 - Long-running work: TodoWrite, persistent task graphs, sub-agents, background runs, Git worktree isolation, and [Agent Teams](./docs/agent-teams.md)
 - Context and continuity: [durable persistence](./docs/persistence.md), resume, compaction, token budgets, project memory, file checkpoints, and rewind

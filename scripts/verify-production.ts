@@ -38,6 +38,7 @@ const TESTS: TestDefinition[] = [
   { id: "tool-search", group: "core", file: "src/scripts/test-toolsearch.ts" },
   { id: "tool-search-integration", group: "core", file: "src/scripts/test-toolsearch-integration.ts" },
   { id: "mcp", group: "core", file: "src/scripts/test-mcp.ts" },
+  { id: "mcp-hardening", group: "core", file: "src/scripts/test-mcp-hardening.ts" },
   { id: "skills", group: "core", file: "src/scripts/test-skills.ts" },
   { id: "sandbox-unit", group: "core", file: "src/scripts/test-sandbox.ts" },
   { id: "agents", group: "core", file: "src/scripts/test-agents.ts" },

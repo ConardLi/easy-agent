@@ -1,18 +1,4 @@
-/**
- * MCP startup orchestration.
- *
- * Called once from the CLI entrypoint before the React UI mounts. This is
- * the equivalent of the source's `prefetchAllMcpResources` /
- * `getMcpToolsCommandsAndResources` (client.ts:2228+) — minus the React
- * Hook lifecycle, since Easy Agent doesn't yet need live reconnection.
- *
- * Flow:
- *   1. Load + validate `mcpServers` from settings.json
- *   2. Spawn every server in parallel (Promise.allSettled)
- *   3. For each connected server, fetch its tools/list
- *   4. Register the flat tool array into the global registry
- *   5. Install a SIGINT/SIGTERM cleanup hook so child procs don't leak
- */
+/** Start configured MCP servers and keep the tool registry in sync. */
 
 import type { McpServerConnection, PendingMcpServer } from "../../types/mcp.js";
 import { registerMcpTools } from "../../tools/index.js";
@@ -21,6 +7,7 @@ import {
   connectToServer,
   registerMcpProcessCleanup,
   clearServerCache,
+  setMcpConnectionListeners,
 } from "./client.js";
 import { fetchToolsForConnection } from "./fetchTools.js";
 import {
@@ -38,32 +25,64 @@ export interface McpBootstrapResult {
   configErrors: string[];
 }
 
-/**
- * Asynchronously bring up every configured MCP server WITHOUT blocking
- * the caller longer than necessary.
- *
- * Behavior contract:
- *   - On entry: every configured server is immediately registered as
- *     `{ type: 'pending' }` so `/mcp` shows accurate state from t=0.
- *   - Each server connects in parallel via `Promise.allSettled`, and the
- *     registry entry is REPLACED atomically when the connection resolves
- *     (or fails / times out via the per-server timeout in client.ts).
- *   - Whenever the registry changes, the global Tool registry is refreshed
- *     so `getAllTools()` includes any newly available MCP tools on the
- *     next call.
- *   - The returned promise only resolves after EVERY server has reached
- *     a terminal state; it's safe to ignore (`void bootstrapMcp(...)`)
- *     when you want non-blocking startup — just like Claude Code's
- *     `prefetchAllMcpResources` running inside a useEffect.
- */
+const reconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const reconnectAttempts = new Map<string, number>();
+const reconnecting = new Map<string, Promise<void>>();
+const requestedReconnects = new Map<string, Promise<McpServerConnection | null>>();
+
+function stopReconnect(name: string): void {
+  const timer = reconnectTimers.get(name);
+  if (timer) clearTimeout(timer);
+  reconnectTimers.delete(name);
+  reconnectAttempts.delete(name);
+}
+
+function scheduleReconnect(name: string, config: PendingMcpServer["config"], immediate = false): void {
+  if (reconnectTimers.has(name) || reconnecting.has(name)) return;
+  const entry = getMcpRegistryEntry(name);
+  if (!entry || entry.connection.config !== config) return;
+  const attempt = reconnectAttempts.get(name) ?? 0;
+  const delay = immediate ? 0 : Math.min(30_000, 1_000 * 2 ** Math.min(attempt, 5));
+  reconnectAttempts.set(name, attempt + 1);
+  const timer = setTimeout(() => {
+    reconnectTimers.delete(name);
+    const task = (async () => {
+      await clearServerCache(name, config);
+      await connectAndRegister(name, config);
+    })().catch((error) => {
+      debugLog("mcp", `[${name}] reconnect failed: ${(error as Error).message}`);
+      scheduleReconnect(name, config);
+    }).finally(() => {
+      reconnecting.delete(name);
+      const current = getMcpRegistryEntry(name);
+      if (current?.connection.config === config && current.connection.type === "failed" && !current.connection.error.startsWith("Authorization required:")) {
+        scheduleReconnect(name, config);
+      }
+    });
+    reconnecting.set(name, task);
+  }, delay);
+  timer.unref?.();
+  reconnectTimers.set(name, timer);
+}
+
+/** Connect configured servers in parallel and publish each result as it arrives. */
 export async function bootstrapMcp(cwd: string): Promise<McpBootstrapResult> {
   const { servers, errors: configErrors } = await loadMcpConfigs(cwd);
   registerMcpProcessCleanup();
+  for (const name of reconnectTimers.keys()) stopReconnect(name);
+  setMcpConnectionListeners({
+    onUnexpectedClose: (name, config) => {
+      const entry = getMcpRegistryEntry(name);
+      if (!entry || entry.connection.config !== config) return;
+      setMcpRegistryEntry(name, { name, type: "pending", config, startedAt: Date.now() }, []);
+      refreshGlobalToolRegistry();
+      scheduleReconnect(name, config);
+    },
+    onAuthorized: (name, config) => scheduleReconnect(name, config, true),
+    onReconnectRequested: reconnectMcpServer,
+  });
   clearMcpRegistry();
 
-  // Seed `pending` placeholders BEFORE any IO. This is the key change that
-  // lets the UI render immediately and `/mcp` show "connecting" servers
-  // instead of "0 configured" during a cold `npx -y` install.
   const startedAt = Date.now();
   for (const [name, config] of Object.entries(servers)) {
     const placeholder: PendingMcpServer = { name, type: "pending", config, startedAt };
@@ -71,9 +90,6 @@ export async function bootstrapMcp(cwd: string): Promise<McpBootstrapResult> {
   }
   refreshGlobalToolRegistry();
 
-  // Now connect each server in parallel. Each one independently updates
-  // the registry as it resolves, so MCP tools become available
-  // incrementally — slow servers don't block fast ones.
   const tasks = Object.entries(servers).map(([name, config]) =>
     connectAndRegister(name, config),
   );
@@ -109,8 +125,17 @@ async function connectAndRegister(
       debugLog("mcp", `[${name}] tools/list failed after connect: ${(error as Error).message}`);
     }
   }
+  if (getMcpRegistryEntry(name)?.connection.config !== config) {
+    if (connection.type === "connected") await connection.cleanup();
+    return { connection, toolCount: 0 };
+  }
   setMcpRegistryEntry(name, connection, tools);
   refreshGlobalToolRegistry();
+  if (connection.type === "connected") {
+    stopReconnect(name);
+  } else if (connection.type === "failed" && !connection.error.startsWith("Authorization required:")) {
+    scheduleReconnect(name, config);
+  }
   return { connection, toolCount: tools.length };
 }
 
@@ -124,18 +149,32 @@ function refreshGlobalToolRegistry(): void {
  * Reconnect a single MCP server. Returns the new connection state. Used by
  * `/mcp reconnect <name>`.
  */
-export async function reconnectMcpServer(name: string): Promise<McpServerConnection | null> {
+export function reconnectMcpServer(name: string): Promise<McpServerConnection | null> {
+  const ongoing = requestedReconnects.get(name);
+  if (ongoing) return ongoing;
+  const attempt = reconnectMcpServerOnce(name);
+  requestedReconnects.set(name, attempt);
+  void attempt.finally(() => {
+    if (requestedReconnects.get(name) === attempt) requestedReconnects.delete(name);
+  }).catch(() => {});
+  return attempt;
+}
+
+async function reconnectMcpServerOnce(name: string): Promise<McpServerConnection | null> {
   const entry = getMcpRegistryEntry(name);
   if (!entry) return null;
 
+  stopReconnect(name);
+
   await clearServerCache(name, entry.connection.config);
   deleteMcpRegistryEntry(name);
+  setMcpRegistryEntry(name, {
+    name,
+    type: "pending",
+    config: entry.connection.config,
+    startedAt: Date.now(),
+  }, []);
   refreshGlobalToolRegistry();
 
-  const connection = await connectToServer(name, entry.connection.config);
-  const tools = connection.type === "connected" ? await fetchToolsForConnection(connection) : [];
-  setMcpRegistryEntry(name, connection, tools);
-  refreshGlobalToolRegistry();
-
-  return connection;
+  return (await connectAndRegister(name, entry.connection.config)).connection;
 }
