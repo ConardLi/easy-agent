@@ -1,17 +1,4 @@
-/**
- * MCP configuration loading.
- *
- * Reference: claude-code-source-code/src/services/mcp/config.ts (1500+ lines).
- *
- * The source supports user/project/local/enterprise/managed/dynamic/claudeai
- * scopes plus per-server policy filtering. Easy Agent only needs two scopes:
- *   1. user:    ~/.easy-agent/settings.json
- *   2. project: <cwd>/.easy-agent/settings.json
- * with project overriding user (same as existing permission settings).
- *
- * The `mcpServers` field lives inside the existing settings.json so users
- * don't have to learn a second config file.
- */
+/** Load and validate MCP server configuration from trusted settings sources. */
 
 import type {
   McpHTTPServerConfig,
@@ -41,12 +28,7 @@ export interface McpConfigLoadResult {
   pending?: string[];
 }
 
-/**
- * Validate a single server config object. Returns the validated config or
- * `null` plus an error string. Mirrors the source's per-server validation
- * loop (config.ts:1327-1373); we accept three transport types: stdio (default
- * if `type` omitted), `http`, and `sse`.
- */
+/** Validate one configured server without rejecting unrelated servers. */
 function validateServerConfig(
   name: string,
   raw: unknown,
@@ -112,11 +94,10 @@ function validateRemoteConfig(
   if (typeof obj.url !== "string" || obj.url.trim().length === 0) {
     return { ok: false, error: `mcpServers.${name} (${scope}): '${type}' transport requires 'url'` };
   }
-  // We accept any URL the SDK can parse. Source only mandates `https://` for
-  // OAuth metadata URLs, not for the server URL itself, so localhost http://
-  // works for local testing.
+  // Local loopback HTTP endpoints are supported alongside remote HTTPS servers.
   try {
-    new URL(obj.url);
+    const parsed = new URL(obj.url);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") throw new Error("Unsupported protocol");
   } catch {
     return { ok: false, error: `mcpServers.${name} (${scope}): 'url' is not a valid URL: ${obj.url}` };
   }
@@ -128,15 +109,86 @@ function validateRemoteConfig(
       if (typeof v !== "string") {
         return { ok: false, error: `mcpServers.${name} (${scope}): headers.${k} must be a string` };
       }
+      try { new Headers({ [k]: v }); } catch { return { ok: false, error: `mcpServers.${name} (${scope}): headers.${k} is invalid` }; }
     }
   }
   const headers = obj.headers as Record<string, string> | undefined;
+  let headersEnv: Record<string, string> | undefined;
+  if (obj.headersEnv !== undefined) {
+    if (!obj.headersEnv || typeof obj.headersEnv !== "object" || Array.isArray(obj.headersEnv)) {
+      return { ok: false, error: `mcpServers.${name} (${scope}): 'headersEnv' must be a string→environment-variable map` };
+    }
+    headersEnv = {};
+    for (const [header, envName] of Object.entries(obj.headersEnv)) {
+      if (typeof envName !== "string" || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(envName)) {
+        return { ok: false, error: `mcpServers.${name} (${scope}): headersEnv.${header} must name an environment variable` };
+      }
+      try { new Headers({ [header]: "value" }); } catch { return { ok: false, error: `mcpServers.${name} (${scope}): headersEnv.${header} is invalid` }; }
+      headersEnv[header] = envName;
+    }
+  }
+  let headersHelper: { command: string; args?: string[] } | undefined;
+  if (obj.headersHelper !== undefined) {
+    const helper = obj.headersHelper as Record<string, unknown> | null;
+    if (!helper || typeof helper !== "object" || Array.isArray(helper) || typeof helper.command !== "string" || !helper.command.trim() || (helper.args !== undefined && (!Array.isArray(helper.args) || helper.args.some((arg) => typeof arg !== "string")))) {
+      return { ok: false, error: `mcpServers.${name} (${scope}): 'headersHelper' requires command and optional string args` };
+    }
+    headersHelper = { command: helper.command, ...(helper.args ? { args: helper.args as string[] } : {}) };
+  }
+  let oauth: McpHTTPServerConfig["oauth"];
+  if (obj.oauth !== undefined) {
+    const raw = obj.oauth === true ? { type: "authorization_code" } : obj.oauth;
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+      return { ok: false, error: `mcpServers.${name} (${scope}): 'oauth' must be true or an OAuth configuration object` };
+    }
+    const auth = raw as Record<string, unknown>;
+    const authType = auth.type ?? "authorization_code";
+    if (authType !== "authorization_code" && authType !== "client_credentials") {
+      return { ok: false, error: `mcpServers.${name} (${scope}): unsupported OAuth type` };
+    }
+    if (auth.clientId !== undefined && (typeof auth.clientId !== "string" || !auth.clientId.trim())) {
+      return { ok: false, error: `mcpServers.${name} (${scope}): oauth.clientId must be non-empty` };
+    }
+    if (auth.clientSecretEnv !== undefined && (typeof auth.clientSecretEnv !== "string" || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(auth.clientSecretEnv))) {
+      return { ok: false, error: `mcpServers.${name} (${scope}): oauth.clientSecretEnv must name an environment variable` };
+    }
+    if (auth.scope !== undefined && typeof auth.scope !== "string") {
+      return { ok: false, error: `mcpServers.${name} (${scope}): oauth.scope must be a string` };
+    }
+    if (authType === "client_credentials") {
+      if (typeof auth.clientId !== "string" || typeof auth.clientSecretEnv !== "string") {
+        return { ok: false, error: `mcpServers.${name} (${scope}): client_credentials requires clientId and clientSecretEnv` };
+      }
+      oauth = { type: "client_credentials", clientId: auth.clientId, clientSecretEnv: auth.clientSecretEnv, ...(typeof auth.scope === "string" ? { scope: auth.scope } : {}) };
+    } else {
+      if (auth.redirectPort !== undefined && (!Number.isSafeInteger(auth.redirectPort) || (auth.redirectPort as number) < 1 || (auth.redirectPort as number) > 65535)) {
+        return { ok: false, error: `mcpServers.${name} (${scope}): oauth.redirectPort must be a TCP port` };
+      }
+      if (auth.clientId && auth.redirectPort === undefined) {
+        return { ok: false, error: `mcpServers.${name} (${scope}): pre-registered OAuth clients require redirectPort` };
+      }
+      if (auth.clientSecretEnv && !auth.clientId) {
+        return { ok: false, error: `mcpServers.${name} (${scope}): oauth.clientSecretEnv requires clientId` };
+      }
+      oauth = { type: "authorization_code", ...(typeof auth.clientId === "string" ? { clientId: auth.clientId } : {}), ...(typeof auth.clientSecretEnv === "string" ? { clientSecretEnv: auth.clientSecretEnv } : {}), ...(typeof auth.scope === "string" ? { scope: auth.scope } : {}), ...(typeof auth.redirectPort === "number" ? { redirectPort: auth.redirectPort } : {}) };
+    }
+    const authorizationHeaders = [
+      ...Object.keys(headers ?? {}),
+      ...Object.keys(headersEnv ?? {}),
+    ].some((header) => header.toLowerCase() === "authorization");
+    if (authorizationHeaders || headersHelper) {
+      return { ok: false, error: `mcpServers.${name} (${scope}): OAuth cannot be combined with custom authorization headers or headersHelper` };
+    }
+  }
   return {
     ok: true,
     value: {
       type,
       url: obj.url,
       ...(headers ? { headers } : {}),
+      ...(headersEnv ? { headersEnv } : {}),
+      ...(headersHelper ? { headersHelper } : {}),
+      ...(oauth ? { oauth } : {}),
     } as McpHTTPServerConfig | McpSSEServerConfig,
   };
 }
@@ -172,19 +224,17 @@ function asStringArray(value: unknown): string[] {
 /**
  * Read + gate the project-level `<cwd>/.mcp.json` servers.
  *
- * `.mcp.json` is the standard Claude Code project MCP file (`{ "mcpServers":
- * {...} }`). Because each stdio server runs a local command, loading one is an
- * execution surface — so it is gated twice:
+ * Stdio definitions in this file can execute local commands, so loading it is
+ * gated by project trust and per-server approval:
  *
  *   1. Folder trust: an untrusted folder's `.mcp.json` is ignored entirely.
- *   2. Per-server approval (mirrors source's `enabledMcpjsonServers` flow):
+ *   2. Per-server approval:
  *        - in `disabledMcpjsonServers`            → rejected
  *        - `enableAllProjectMcpServers: true`     → approved
  *        - listed in `enabledMcpjsonServers`      → approved
  *        - otherwise                              → PENDING (not loaded; the
  *          user approves by adding it to `enabledMcpjsonServers` or setting
- *          `enableAllProjectMcpServers`). We don't have an interactive prompt,
- *          so pending servers are surfaced as a notice instead of auto-loaded.
+ *          `enableAllProjectMcpServers`). Pending servers are surfaced as a notice.
  */
 async function loadProjectMcpJson(
   cwd: string,
@@ -225,8 +275,7 @@ async function loadProjectMcpJson(
  * Later sources override earlier ones on name conflicts (user → project →
  * local → flag → policy; `.mcp.json` is applied before settings so an explicit
  * settings entry wins). Servers that fail schema validation are dropped with a
- * warning — never throws (mirrors the source's "best-effort" loading approach
- * so a single malformed entry can't take the whole CLI down).
+ * warning, so one malformed entry cannot prevent other servers from loading.
  */
 export async function loadMcpConfigs(cwd: string): Promise<McpConfigLoadResult> {
   const [allSources, sources] = await Promise.all([

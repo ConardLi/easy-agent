@@ -1,26 +1,10 @@
-/**
- * MCP client connection management.
- *
- * Reference: claude-code-source-code/src/services/mcp/client.ts (3351 lines).
- *
- * What we keep (the educational core):
- *   - connectToServer()           — create transport + Client + handshake
- *   - 30s connect timeout (Promise.race)
- *   - In-memory connection cache  — same config key reuses the same Promise
- *   - SIGINT → SIGTERM → SIGKILL  cleanup escalation for stdio child procs
- *   - Promise.allSettled           — one server's failure doesn't kill the rest
- *
- * What we drop (out of scope for §16):
- *   - HTTP / SSE / WebSocket transports + OAuth + needs-auth cache
- *   - Roots reverse-RPC (Claude exposes cwd via file://; not needed yet)
- *   - Connection drop detection + auto-reconnect (consecutive error counter)
- *   - In-process transport for Chrome / Computer Use
- */
+/** MCP transport lifecycle and connection cache. */
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
+import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import type {
   ConnectedMcpServer,
@@ -31,6 +15,8 @@ import type {
 } from "../../types/mcp.js";
 import { debugLog, logWarn } from "../../utils/log.js";
 import { CLIENT_NAME, USER_AGENT, VERSION } from "../../version.js";
+import { createMcpAuthSession, type McpAuthSession } from "./oauth.js";
+import { createMcpFetch } from "./remoteHeaders.js";
 
 // ─── Connect timeout ─────────────────────────────────────────────────
 
@@ -43,23 +29,16 @@ function getConnectTimeoutMs(): number {
 
 // ─── Connection cache ────────────────────────────────────────────────
 
-/**
- * Cache key includes the full config so a `/mcp reconnect` after editing
- * settings.json picks up the new command/args. Same as the source's
- * `getServerCacheKey(name, JSON.stringify(config))` pattern.
- */
+/** Include every connection-affecting setting in the cache key. */
 function getCacheKey(name: string, config: ScopedMcpServerConfig): string {
-  // Stringify the entire transport-specific config so that *any* edit
-  // (command, args, env, url, headers, type-switch) yields a fresh cache
-  // entry on next `connectToServer`. Order matters for stable hashing —
-  // we list the fields explicitly per transport rather than JSON-stringify
-  // the whole object to avoid spuriously busting the cache when scope
-  // metadata (which doesn't affect the connection) changes.
   if (config.type === "http" || config.type === "sse") {
     return `${name}:${JSON.stringify({
       type: config.type,
       url: config.url,
       headers: config.headers,
+      headersEnv: config.headersEnv,
+      headersHelper: config.headersHelper,
+      oauth: config.oauth,
     })}`;
   }
   return `${name}:${JSON.stringify({
@@ -74,6 +53,24 @@ const connectionCache = new Map<string, Promise<McpServerConnection>>();
 
 /** Track active connections for shutdown cleanup. */
 const activeConnections = new Map<string, ConnectedMcpServer>();
+const pendingAuthorizations = new Map<string, McpAuthSession>();
+let unexpectedCloseListener: ((name: string, config: ScopedMcpServerConfig) => void) | undefined;
+let authorizedListener: ((name: string, config: ScopedMcpServerConfig) => void) | undefined;
+let reconnectHandler: ((name: string) => Promise<McpServerConnection | null>) | undefined;
+
+export function setMcpConnectionListeners(listeners: {
+  onUnexpectedClose?: (name: string, config: ScopedMcpServerConfig) => void;
+  onAuthorized?: (name: string, config: ScopedMcpServerConfig) => void;
+  onReconnectRequested?: (name: string) => Promise<McpServerConnection | null>;
+}): void {
+  unexpectedCloseListener = listeners.onUnexpectedClose;
+  authorizedListener = listeners.onAuthorized;
+  reconnectHandler = listeners.onReconnectRequested;
+}
+
+export async function requestMcpReconnect(name: string): Promise<McpServerConnection | null> {
+  return reconnectHandler ? reconnectHandler(name) : null;
+}
 
 // ─── Cleanup helpers ─────────────────────────────────────────────────
 
@@ -81,19 +78,11 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/**
- * Stdio cleanup escalation: SIGINT (100ms) → SIGTERM (400ms) → SIGKILL.
- * Total cap ~500ms so CLI exit isn't held up by a misbehaving server.
- *
- * Direct port of source code's escalation strategy
- * (client.ts:1431-1559) but flattened — no need for the resolved/timer
- * juggling because we await inline.
- */
+/** Stop a stdio server without delaying CLI shutdown indefinitely. */
 async function escalatedKill(name: string, pid: number | undefined): Promise<void> {
   if (!pid) return;
   const aliveCheck = (): boolean => {
     try {
-      // signal 0 = "is the process still alive?"
       process.kill(pid, 0);
       return true;
     } catch {
@@ -129,12 +118,7 @@ async function escalatedKill(name: string, pid: number | undefined): Promise<voi
 
 // ─── connectToServer ─────────────────────────────────────────────────
 
-/**
- * Connect to a single MCP server. Cached per (name + config) — concurrent
- * callers share the same in-flight Promise. Failures are also cached briefly
- * but are dropped from `activeConnections`, so a follow-up `/mcp reconnect`
- * still triggers a real retry by clearing the cache key first.
- */
+/** Share concurrent connection attempts for the same server configuration. */
 export function connectToServer(
   name: string,
   config: ScopedMcpServerConfig,
@@ -146,10 +130,8 @@ export function connectToServer(
   const promise = doConnect(name, config);
   connectionCache.set(key, promise);
 
-  // If the connection ultimately resolves to a `connected` server, register
-  // it for shutdown cleanup. Failed/disabled placeholders don't need cleanup.
   void promise.then((conn) => {
-    if (conn.type === "connected") {
+    if (conn.type === "connected" && connectionCache.get(key) === promise) {
       activeConnections.set(name, conn);
     }
   });
@@ -157,27 +139,16 @@ export function connectToServer(
   return promise;
 }
 
-/**
- * Per-transport-type "factory" — returns a Transport plus a per-transport
- * cleanup that the connection wrapper composes with `client.close()`.
- *
- * Splitting this out keeps `doConnect` focused on the parts that are
- * universal (handshake, timeout, capabilities introspection, error wrapping)
- * while letting stdio carry its child-process baggage and remote transports
- * stay delightfully minimal.
- */
+/** Transport and its cleanup action. */
 interface TransportBundle {
   transport: Transport;
   /** Diagnostic prefix for this transport (e.g. "stdio: npx -y …"). */
   describe: string;
   /** Buffered stderr — only stdio populates this. */
   collectStderrTail: () => string;
-  /**
-   * Transport-specific shutdown step run BEFORE `client.close()`. For stdio
-   * this is the SIGINT→SIGTERM→SIGKILL escalation; for remote it's a no-op
-   * because the SDK's transport.close() already terminates the connection.
-   */
+  /** Run before closing the MCP client. */
   preCleanup: () => Promise<void>;
+  auth?: McpAuthSession;
 }
 
 function createStdioTransport(
@@ -188,11 +159,10 @@ function createStdioTransport(
     command: config.command,
     args: config.args ?? [],
     env: {
-      // Inherit parent env first, then layer per-server overrides.
       ...(process.env as Record<string, string>),
       ...(config.env ?? {}),
     },
-    stderr: "pipe", // keep server stderr off our terminal UI
+    stderr: "pipe",
   });
 
   let stderrBuf = "";
@@ -215,59 +185,35 @@ function createStdioTransport(
   };
 }
 
-function createHttpTransport(config: McpHTTPServerConfig & { scope: string }): TransportBundle {
-  // Match the source's StreamableHTTPClientTransport options: requestInit
-  // (headers + UA) flows into every POST. We DO NOT pass an authProvider;
-  // OAuth is §16.9 deferred. If the server returns 401 we surface it as a
-  // connection failure with the response body so users can fix their token.
+async function createHttpTransport(name: string, config: McpHTTPServerConfig & { scope: string }): Promise<TransportBundle> {
+  const auth = await createMcpAuthSession(name, config.url, config.oauth);
   const transport = new StreamableHTTPClientTransport(new URL(config.url), {
-    requestInit: {
-      headers: {
-        "User-Agent": USER_AGENT,
-        ...(config.headers ?? {}),
-      },
-    },
+    requestInit: { headers: { "User-Agent": USER_AGENT } },
+    fetch: createMcpFetch(config),
+    authProvider: auth?.provider,
   });
   return {
     transport,
     describe: `http: ${config.url}`,
     collectStderrTail: () => "",
-    preCleanup: async () => { /* http: client.close() handles it */ },
+    preCleanup: async () => { auth?.close(); },
+    auth,
   };
 }
 
-function createSseTransport(config: McpSSEServerConfig & { scope: string }): TransportBundle {
-  // SSE has TWO request paths and headers must be supplied to BOTH:
-  //   1. requestInit  → POSTs (every JSON-RPC envelope sent client→server)
-  //   2. eventSourceInit → the long-lived GET that streams server→client
-  //
-  // The source code (client.ts:644-672) is explicit that the eventSourceInit
-  // fetch must NOT inherit any timeout wrapper, otherwise the SSE stream
-  // dies after 60s. We don't have a timeout wrapper to begin with, so we
-  // just ensure both header sets are present.
-  const headers = {
-    "User-Agent": USER_AGENT,
-    ...(config.headers ?? {}),
-  };
+async function createSseTransport(name: string, config: McpSSEServerConfig & { scope: string }): Promise<TransportBundle> {
+  const auth = await createMcpAuthSession(name, config.url, config.oauth);
   const transport = new SSEClientTransport(new URL(config.url), {
-    requestInit: { headers },
-    eventSourceInit: {
-      fetch: (url, init) =>
-        fetch(url, {
-          ...init,
-          headers: {
-            ...(init?.headers as Record<string, string> | undefined),
-            ...headers,
-            Accept: "text/event-stream",
-          },
-        }),
-    },
+    requestInit: { headers: { "User-Agent": USER_AGENT } },
+    fetch: createMcpFetch(config),
+    authProvider: auth?.provider,
   });
   return {
     transport,
     describe: `sse: ${config.url}`,
     collectStderrTail: () => "",
-    preCleanup: async () => { /* sse: client.close() handles it */ },
+    preCleanup: async () => { auth?.close(); },
+    auth,
   };
 }
 
@@ -284,9 +230,9 @@ async function doConnect(
   let bundle: TransportBundle;
   try {
     if (config.type === "http") {
-      bundle = createHttpTransport(config);
+      bundle = await createHttpTransport(name, config);
     } else if (config.type === "sse") {
-      bundle = createSseTransport(config);
+      bundle = await createSseTransport(name, config);
     } else {
       bundle = createStdioTransport(name, config);
     }
@@ -298,14 +244,7 @@ async function doConnect(
 
   const client = new Client(
     { name: CLIENT_NAME, version: VERSION },
-    {
-      capabilities: {
-        // We declare empty `roots` — Easy Agent doesn't yet expose project
-        // roots back to the server (that needs setRequestHandler with
-        // ListRootsRequestSchema). Declaring the capability is harmless.
-        roots: {},
-      },
-    },
+    { capabilities: {} },
   );
 
   const connectPromise = client.connect(bundle.transport);
@@ -323,15 +262,35 @@ async function doConnect(
   } catch (error) {
     if (timeoutHandle) clearTimeout(timeoutHandle);
     const errMsg = (error as Error).message;
+    const interactive = bundle.auth?.interactive;
+    const authorizationUrl = error instanceof UnauthorizedError ? interactive?.pendingAuthorizationUrl : undefined;
+    if (authorizationUrl && interactive && "finishAuth" in bundle.transport) {
+      const key = getCacheKey(name, config);
+      if (bundle.auth) pendingAuthorizations.set(key, bundle.auth);
+      logWarn(`MCP server '${name}' requires authorization. Open: ${authorizationUrl}`);
+      const transport = bundle.transport as StreamableHTTPClientTransport | SSEClientTransport;
+      void interactive.waitForCode().then(async (code) => {
+        await transport.finishAuth(code);
+        if (pendingAuthorizations.get(key) === bundle.auth) pendingAuthorizations.delete(key);
+        bundle.auth?.close();
+        authorizedListener?.(name, config);
+      }).catch((authError) => {
+        logWarn(`MCP server '${name}' authorization failed: ${(authError as Error).message}`);
+        if (pendingAuthorizations.get(key) === bundle.auth) pendingAuthorizations.delete(key);
+        bundle.auth?.close();
+      });
+    } else {
+      bundle.auth?.close();
+    }
     const stderrTail = bundle.collectStderrTail();
     const detail = stderrTail ? `${errMsg} (stderr: ${stderrTail.slice(0, 200).trim()})` : errMsg;
-    logWarn(`MCP server '${name}' failed to connect: ${detail}`);
+    if (!authorizationUrl) logWarn(`MCP server '${name}' failed to connect: ${detail}`);
     try {
       await bundle.transport.close();
     } catch {
       /* best-effort */
     }
-    return { name, type: "failed", config, error: detail };
+    return { name, type: "failed", config, error: authorizationUrl ? `Authorization required: ${authorizationUrl}` : detail };
   }
   if (timeoutHandle) clearTimeout(timeoutHandle);
 
@@ -347,12 +306,29 @@ async function doConnect(
   );
 
   let cleaned = false;
+  const interactive = bundle.auth?.interactive;
+  if (interactive && "finishAuth" in bundle.transport) {
+    const transport = bundle.transport as StreamableHTTPClientTransport | SSEClientTransport;
+    void interactive.waitForCode().then(async (code) => {
+      if (cleaned) return;
+      await transport.finishAuth(code);
+      authorizedListener?.(name, config);
+    }).catch((error) => {
+      logWarn(`MCP server '${name}' authorization failed: ${(error as Error).message}`);
+    });
+  }
+  client.onclose = () => {
+    if (cleaned) return;
+    if (activeConnections.get(name)?.client !== client) return;
+    connectionCache.delete(getCacheKey(name, config));
+    activeConnections.delete(name);
+    void cleanup().catch((error) => debugLog("mcp", `[${name}] cleanup after disconnect failed: ${(error as Error).message}`));
+    unexpectedCloseListener?.(name, config);
+  };
   const cleanup = async (): Promise<void> => {
     if (cleaned) return;
     cleaned = true;
-    // A stale connection can finish after a newer generation has already
-    // connected under the same name. Never let cleanup of the stale instance
-    // unregister the newer one.
+    // A stale connection must not unregister its replacement.
     if (activeConnections.get(name)?.client === client) {
       activeConnections.delete(name);
     }
@@ -371,6 +347,8 @@ async function doConnect(
     capabilities,
     serverInfo: serverVersion ? { name: serverVersion.name ?? name, version: serverVersion.version ?? "?" } : undefined,
     config,
+    sessionId: config.type === "http" ? () => (bundle.transport as StreamableHTTPClientTransport).sessionId : undefined,
+    authorizationUrl: interactive ? () => interactive.pendingAuthorizationUrl : undefined,
     cleanup,
   };
 }
@@ -388,6 +366,8 @@ export async function clearServerCache(
   const key = getCacheKey(name, config);
   const pending = connectionCache.get(key);
   connectionCache.delete(key);
+  pendingAuthorizations.get(key)?.close();
+  pendingAuthorizations.delete(key);
   const existing = activeConnections.get(name);
   if (existing) {
     if (activeConnections.get(name) === existing) activeConnections.delete(name);
@@ -431,6 +411,8 @@ export function registerMcpProcessCleanup(): void {
   const runCleanup = async (): Promise<void> => {
     const conns = Array.from(activeConnections.values());
     activeConnections.clear();
+    for (const auth of pendingAuthorizations.values()) auth.close();
+    pendingAuthorizations.clear();
     await Promise.allSettled(conns.map((c) => c.cleanup()));
   };
 
@@ -464,6 +446,11 @@ export function getActiveMcpConnections(): readonly ConnectedMcpServer[] {
 export function _resetMcpClientForTesting(): void {
   connectionCache.clear();
   activeConnections.clear();
+  for (const auth of pendingAuthorizations.values()) auth.close();
+  pendingAuthorizations.clear();
+  unexpectedCloseListener = undefined;
+  authorizedListener = undefined;
+  reconnectHandler = undefined;
 }
 
 // (Batch-connect helper removed — bootstrap.ts now drives parallelism

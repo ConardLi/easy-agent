@@ -6,15 +6,9 @@ import type { Tool, ToolContext, ToolResult } from "./Tool.js";
 import { getMcpRegistry } from "../services/mcp/registry.js";
 import type { ConnectedMcpServer } from "../types/mcp.js";
 import { logWarn } from "../utils/log.js";
+import { withMcpReadRecovery } from "../services/mcp/readRecovery.js";
 
-/**
- * ListMcpResources — list resources exposed by connected MCP servers.
- *
- * Reference: claude-code-source-code/src/tools/ListMcpResourcesTool/.
- * MCP servers can expose `resources` (database schemas, docs, file URIs) in
- * addition to `tools`. Stage 16 only consumed tools; this completes the data
- * path by reading the `resources/list` capability.
- */
+/** List resources exposed by connected MCP servers. */
 interface ListMcpResourcesInput {
   server?: string;
 }
@@ -64,10 +58,10 @@ export const listMcpResourcesTool: Tool = {
     for (const server of targets) {
       if (!server.capabilities?.resources) continue;
       try {
-        const result = (await server.client.request(
+        const result = await withMcpReadRecovery(server, async (current) => current.client.request(
           { method: "resources/list" },
           ListResourcesResultSchema,
-        )) as ListResourcesResult;
+        ) as Promise<ListResourcesResult>);
         for (const r of result.resources) {
           entries.push({
             uri: r.uri,
