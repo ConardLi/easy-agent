@@ -16,6 +16,7 @@ import { ESCALATED_MAX_TOKENS, MAX_OUTPUT_TOKENS_RECOVERY_LIMIT } from "../servi
 import type { QuerySource } from "../services/api/withRetry.js";
 import { compactMessages } from "../context/compaction.js";
 import { findToolByName } from "../tools/index.js";
+import { hasValidToolInputSchema, validateToolInput } from "../tools/inputValidation.js";
 import { truncateToolResult, type Tool, type ToolContext, type ToolResult } from "../tools/Tool.js";
 import { appendTextToContent, prependTextToContent } from "../tools/contentBlocks.js";
 import { resolveProfile } from "../services/api/providers/profile.js";
@@ -289,13 +290,17 @@ interface ToolBatch {
  * order the model's tool_use blocks appeared in the assistant message
  * (the API also requires tool_results to follow that order).
  */
-function partitionToolCalls(blocks: ToolUseBlock[]): ToolBatch[] {
+function partitionToolCalls(blocks: ToolUseBlock[], availableTools?: readonly Tool[]): ToolBatch[] {
   const batches: ToolBatch[] = [];
   for (const block of blocks) {
-    const tool = findToolByName(block.name);
-    const safe = !!tool?.isConcurrencySafe?.(
-      (block.input as Record<string, unknown>) ?? {},
-    );
+    const tool = availableTools
+      ? availableTools.find((candidate) => candidate.name === block.name)
+      : findToolByName(block.name);
+    const validated = tool ? validateToolInput(tool, block.input) : undefined;
+    let safe = false;
+    if (tool && validated?.ok) {
+      try { safe = tool.isConcurrencySafe?.(validated.input) === true; } catch { safe = false; }
+    }
     const last = batches[batches.length - 1];
     if (safe && last?.isConcurrencySafe) {
       last.blocks.push(block);
@@ -327,11 +332,13 @@ async function runOneToolBlock(
   context: ToolContext,
   options: RunToolsOptions,
 ): Promise<RunOneToolReturn> {
-  const toolInput = (block.input as Record<string, unknown>) ?? {};
   const tool = options.availableTools
     ? options.availableTools.find((candidate) => candidate.name === block.name)
     : findToolByName(block.name);
   if (!tool) {
+    const toolInput = block.input && typeof block.input === "object" && !Array.isArray(block.input)
+      ? block.input as Record<string, unknown>
+      : {};
     const result: ToolResult = {
       content: `Error: Unknown tool "${block.name}"`,
       isError: true,
@@ -340,6 +347,24 @@ async function runOneToolBlock(
       execution: { toolUseId: block.id, toolName: block.name, toolInput, result },
     };
   }
+
+  const validated = validateToolInput(tool, block.input);
+  if (!validated.ok) {
+    const hint = buildSchemaNotSentHint(
+      tool,
+      options.conversationMessages ?? [],
+      options.availableTools ?? [],
+    );
+    const content = `Invalid input for ${tool.name}: ${validated.message}`;
+    const result: ToolResult = {
+      content: hint ? appendTextToContent(content, hint) : content,
+      isError: true,
+    };
+    return {
+      execution: { toolUseId: block.id, toolName: block.name, toolInput: validated.input ?? {}, result },
+    };
+  }
+  const toolInput = validated.input;
 
   try {
     // ─── Stage 22: PreToolUse hooks ────────────────────────────────
@@ -631,7 +656,7 @@ export async function runTools(
   const executions: ToolExecutionResult[] = [];
   const permissionRequests: PermissionRequest[] = [];
 
-  for (const batch of partitionToolCalls(toolUseBlocks)) {
+  for (const batch of partitionToolCalls(toolUseBlocks, options.availableTools)) {
     const results = batch.isConcurrencySafe && batch.blocks.length > 1
       ? await runBlocksConcurrently(batch.blocks, context, options)
       : await runBlocksSerially(batch.blocks, context, options);
@@ -756,7 +781,8 @@ export async function* query(
     // in the history has loaded them; the rest are announced by name in an
     // <available-deferred-tools> block prepended to the API copy of the
     // history. `state.messages` itself is never mutated by this step.
-    const currentTools = (params.getTools ? params.getTools() : params.tools) ?? [];
+    const currentTools = ((params.getTools ? params.getTools() : params.tools) ?? [])
+      .filter(hasValidToolInputSchema);
     const profile = await resolveProfile(params.model, params.toolContext.cwd);
     const prepared = prepareToolSearchRequest({
       tools: currentTools,
