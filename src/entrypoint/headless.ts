@@ -33,6 +33,9 @@ import { getAllAgents } from "../agents/registry.js";
 import { getActiveOutputStyleName } from "../styles/registry.js";
 import { installStreamJsonStdoutGuard } from "../utils/streamJsonStdoutGuard.js";
 
+/** Version of the public JSON / NDJSON envelope. Additive fields keep this stable. */
+export const HEADLESS_SCHEMA_VERSION = 1;
+
 /** Output formats supported in headless mode. */
 export type OutputFormat = "text" | "json" | "stream-json";
 
@@ -62,15 +65,21 @@ interface ResultMessage {
   session_id: string;
   num_turns: number;
   duration_ms: number;
-  total_cost_usd: number;
+  total_cost_usd: number | null;
   usage: Usage;
 }
 
 const EMPTY_USAGE: Usage = { input_tokens: 0, output_tokens: 0 };
 
+function withSchemaVersion<T extends object>(
+  message: T,
+): T & { schema_version: typeof HEADLESS_SCHEMA_VERSION } {
+  return { ...message, schema_version: HEADLESS_SCHEMA_VERSION };
+}
+
 /** Write one NDJSON line to stdout. */
-function writeJsonLine(obj: unknown): void {
-  process.stdout.write(`${JSON.stringify(obj)}\n`);
+function writeJsonLine(obj: object): void {
+  process.stdout.write(`${JSON.stringify(withSchemaVersion(obj))}\n`);
 }
 
 /**
@@ -226,6 +235,7 @@ export async function runHeadless(options: RunHeadlessOptions): Promise<void> {
   }
 
   let finalText = "";
+  let executionError = "";
   let reason: LoopTerminationReason | undefined;
   let numTurns = 0;
   let totalUsage: Usage = { ...EMPTY_USAGE };
@@ -255,8 +265,9 @@ export async function runHeadless(options: RunHeadlessOptions): Promise<void> {
           totalUsage = value.totalUsage;
           break;
         case "error":
+          executionError = value.error.message;
           // Always to stderr so it never corrupts the stdout result payload.
-          process.stderr.write(`Error: ${value.error.message}\n`);
+          process.stderr.write(`Error: ${executionError}\n`);
           break;
         default:
           break;
@@ -276,7 +287,7 @@ export async function runHeadless(options: RunHeadlessOptions): Promise<void> {
         session_id: sessionId,
         num_turns: numTurns,
         duration_ms: Date.now() - startedAt,
-        total_cost_usd: 0,
+        total_cost_usd: null,
         usage: totalUsage,
       };
       writeJsonLine(errResult);
@@ -293,13 +304,13 @@ export async function runHeadless(options: RunHeadlessOptions): Promise<void> {
       type: "result",
       subtype: subtypeForReason(reason),
       is_error: reason !== "completed",
-      result: finalText,
+      result: finalText || executionError,
       session_id: sessionId,
       num_turns: numTurns,
       duration_ms: Date.now() - startedAt,
-      // We don't price tokens yet; surface 0 to keep the field stable for
-      // consumers (a later stage can wire real cost accounting).
-      total_cost_usd: 0,
+      // Cost accounting is not available yet. `null` distinguishes unknown
+      // from a measured zero while preserving the established field name.
+      total_cost_usd: null,
       usage: totalUsage,
     };
     writeJsonLine(result);

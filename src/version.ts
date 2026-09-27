@@ -14,6 +14,9 @@
  */
 declare const __EAGENT_VERSION__: string | undefined;
 
+/** Runtime floor shared by process preflight and diagnostics. */
+export const MIN_NODE_MAJOR = 22;
+
 export const VERSION: string =
   typeof __EAGENT_VERSION__ === "string" ? __EAGENT_VERSION__ : "0.0.0-dev";
 

@@ -158,6 +158,8 @@ eagent -p "list the tools" --output-format json # machine-readable output
 git diff | eagent -p "review this patch"         # combine stdin and a prompt
 ```
 
+Structured JSON and NDJSON messages follow the versioned [headless output schema](./docs/headless-output.md). Unknown cost is reported as `null`, not as a measured zero.
+
 Run `eagent --help` for every startup option. Useful REPL commands include:
 
 | Command | Purpose |

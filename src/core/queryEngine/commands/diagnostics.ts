@@ -7,7 +7,14 @@
  */
 
 import { getAllTools, getToolsForMode } from "../../../tools/index.js";
-import { resolveProfile } from "../../../services/api/providers/profile.js";
+import {
+  getProfileBaseURL,
+  loadProfiles,
+  resolveProfile,
+  type LoadedProfiles,
+} from "../../../services/api/providers/profile.js";
+import { loadTrustedSettingSources } from "../../../config/sources.js";
+import { MIN_NODE_MAJOR } from "../../../version.js";
 import { hasPendingMcpServers } from "../../../services/mcp/registry.js";
 import { prepareToolSearchRequest } from "../../../utils/toolSearch.js";
 import { loadFeatureSettings } from "../../../config/features.js";
@@ -174,10 +181,18 @@ async function probeEndpoint(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 5000);
   try {
-    const res = await fetch(baseURL, { method: "GET", signal: controller.signal });
+    const target = new URL(baseURL);
+    if (!["http:", "https:"].includes(target.protocol)) return { ok: false, error: "endpoint must use HTTP or HTTPS" };
+    // Never forward embedded credentials or secret query parameters in a probe.
+    target.username = "";
+    target.password = "";
+    target.search = "";
+    target.hash = "";
+    const res = await fetch(target.href, { method: "GET", redirect: "manual", signal: controller.signal });
+    await res.body?.cancel();
     return { ok: true, status: res.status };
-  } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  } catch {
+    return { ok: false, error: controller.signal.aborted ? "probe timed out after 5s" : "probe failed; check endpoint, network and TLS configuration" };
   } finally {
     clearTimeout(timer);
   }
@@ -196,34 +211,88 @@ export async function* handleDoctorCommand(
   const ICON = { ok: "✓", warn: "⚠", fail: "✗" };
   const lines = ["Doctor — environment check", ""];
 
-  // Node version
+  // Node version — use the same floor enforced before the CLI starts.
   const nodeMajor = Number(process.versions.node.split(".")[0]);
-  if (nodeMajor >= 18) lines.push(`${ICON.ok} Node.js ${process.version}`);
-  else lines.push(`${ICON.fail} Node.js ${process.version} — upgrade to v18+ (v20+ recommended).`);
-
-  // API auth token (env or a model profile's apiKey)
-  const hasEnvToken = !!(process.env.ANTHROPIC_AUTH_TOKEN || process.env.ANTHROPIC_API_KEY);
-  let hasProfileKey = false;
-  try {
-    const { loadProfiles } = await import("../../../services/api/providers/profile.js");
-    const { profiles } = await loadProfiles(cwd);
-    hasProfileKey = Object.values(profiles).some((p) => !!p.apiKey);
-  } catch {
-    // ignore profile load failures here — surfaced under settings validity
-  }
-  if (hasEnvToken || hasProfileKey) {
-    lines.push(
-      `${ICON.ok} API auth token present${hasEnvToken ? " (ANTHROPIC_AUTH_TOKEN)" : " (model profile)"}`,
-    );
+  if (nodeMajor >= MIN_NODE_MAJOR) {
+    lines.push(`${ICON.ok} Node.js ${process.version} (requires ${MIN_NODE_MAJOR}+)`);
   } else {
-    lines.push(
-      `${ICON.fail} No API auth token — set ANTHROPIC_AUTH_TOKEN (and ANTHROPIC_BASE_URL for a custom endpoint).`,
-    );
+    lines.push(`${ICON.fail} Node.js ${process.version} — upgrade to v${MIN_NODE_MAJOR} or newer.`);
   }
 
-  // Endpoint + reachability
-  const baseURL = process.env.ANTHROPIC_BASE_URL || "https://api.anthropic.com";
-  lines.push(`  Endpoint: ${redactUrlForDisplay(baseURL)}`);
+  // Resolve exactly the model/profile this session will use. Looking at any
+  // configured profile can produce a false-positive auth diagnosis when the
+  // active profile is missing its own key.
+  const activeHandle = ctx.getActiveModel();
+  const loadedProfiles: LoadedProfiles = await loadProfiles(cwd).catch(() => ({
+    profiles: {},
+    defaultModel: undefined,
+    warnings: [],
+    provenance: {},
+    defaultModelSource: undefined,
+  }));
+  const declaredProfile = loadedProfiles.profiles[activeHandle];
+  const profile = declaredProfile ?? await resolveProfile(activeHandle, cwd);
+  const fieldSources = declaredProfile
+    ? [...new Set(Object.values(loadedProfiles.provenance[activeHandle] ?? {}))]
+    : [];
+  const profileSources = await loadTrustedSettingSources(cwd).catch(() => []);
+  const effectiveSources = [...profileSources].reverse();
+  const modelSource = effectiveSources.find((source) => typeof source.raw?.model === "string");
+  const defaultSource = effectiveSources.find((source) => typeof source.raw?.defaultModel === "string");
+  const selected = modelSource ?? defaultSource;
+  const selectedValue = modelSource?.raw?.model ?? defaultSource?.raw?.defaultModel;
+  const selectionSource = ctx.getModelSource() === "session"
+    ? "session override"
+    : selectedValue === activeHandle
+      ? selected!.source
+      : process.env.ANTHROPIC_MODEL === activeHandle ? "ANTHROPIC_MODEL" : "runtime default";
+  lines.push(
+    `${ICON.ok} Active model: ${activeHandle}${profile.model !== activeHandle ? ` → ${profile.model}` : ""}`,
+    `  Provider: ${profile.protocol}`,
+    declaredProfile
+      ? `  Profile: ${activeHandle} (configuration: ${fieldSources.join("+") || "unknown"}; selection: ${selectionSource})`
+      : `  Profile: raw model name (source: ${ctx.getModelSource()})`,
+  );
+  for (const warning of loadedProfiles.warnings) lines.push(`  ${ICON.warn} ${warning}`);
+
+  const profileKeySource = declaredProfile
+    ? loadedProfiles.provenance[activeHandle]?.apiKey
+    : undefined;
+  const envKeyName = process.env.ANTHROPIC_AUTH_TOKEN
+    ? "ANTHROPIC_AUTH_TOKEN"
+    : !profile.baseURL && process.env.ANTHROPIC_API_KEY
+      ? "ANTHROPIC_API_KEY"
+      : undefined;
+  const usesAnthropicEnvironmentKey = profile.protocol === "anthropic" && !!envKeyName;
+  const authHeaderNames = profile.protocol === "gemini"
+    ? ["x-goog-api-key", "authorization"]
+    : profile.protocol === "anthropic" ? ["x-api-key", "authorization"] : ["authorization"];
+  const hasAuthHeader = Object.entries(profile.headers ?? {}).some(([name, value]) =>
+    authHeaderNames.includes(name.toLowerCase()) && value.trim().length > 0,
+  );
+  if (hasAuthHeader) {
+    lines.push(`${ICON.ok} API auth configured (active profile headers, source: ${loadedProfiles.provenance[activeHandle]?.headers ?? "unknown"})`);
+  } else if (profile.apiKey) {
+    lines.push(`${ICON.ok} API auth configured (active profile${profileKeySource ? `, source: ${profileKeySource}` : ""})`);
+  } else if (usesAnthropicEnvironmentKey) {
+    lines.push(`${ICON.ok} API auth configured (${envKeyName})`);
+  } else if (profile.baseURL) {
+    lines.push(`${ICON.warn} No API auth configured for the active profile; the custom endpoint must allow keyless access.`);
+  } else {
+    const hint = profile.protocol === "anthropic"
+      ? "set ANTHROPIC_AUTH_TOKEN or configure apiKey on the active profile"
+      : `configure apiKey on profile '${activeHandle}'`;
+    lines.push(`${ICON.fail} No API auth configured for the active ${profile.protocol} provider — ${hint}.`);
+  }
+
+  // Endpoint + reachability. Any HTTP response proves network reachability;
+  // provider APIs are not required to accept an unauthenticated GET at root.
+  lines.push("  Credential presence only; authentication has not been verified.");
+  const baseURL = getProfileBaseURL(profile);
+  const endpointSource = profile.baseURL
+    ? loadedProfiles.provenance[activeHandle]?.baseURL ?? "profile"
+    : profile.protocol === "anthropic" && process.env.ANTHROPIC_BASE_URL ? "ANTHROPIC_BASE_URL" : "provider default";
+  lines.push(`  Endpoint: ${redactUrlForDisplay(baseURL)} (source: ${endpointSource})`);
   const reach = await probeEndpoint(baseURL);
   if (reach.ok) lines.push(`${ICON.ok} Endpoint reachable (HTTP ${reach.status})`);
   else lines.push(`${ICON.warn} Endpoint not reachable: ${reach.error}`);

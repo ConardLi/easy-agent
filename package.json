@@ -33,6 +33,7 @@
     "prepublishOnly": "npm run verify:release",
     "test:queryengine": "tsx src/scripts/test-queryengine-characterization.ts",
     "test:cli-headless": "node --import tsx src/scripts/test-cli-headless-characterization.ts",
+    "test:user-output": "node --import tsx src/scripts/test-user-output-contract.ts",
     "test:config-session": "node --import tsx src/scripts/test-config-session-characterization.ts",
     "test:config-trust": "node --import tsx src/scripts/test-config-trust-boundary.ts && node --import tsx src/scripts/test-config-trust-cli.ts",
     "test:feature-config": "node --import tsx src/scripts/test-feature-config.ts",

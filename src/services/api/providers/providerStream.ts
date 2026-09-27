@@ -30,7 +30,7 @@ import { APIError } from "@anthropic-ai/sdk";
 
 import { DEFAULT_MAX_TOKENS } from "../client.js";
 import type { StreamRequestParams, StreamResult } from "../streaming.js";
-import type { ModelProfile } from "./profile.js";
+import { getProfileBaseURL, type ModelProfile } from "./profile.js";
 import type {
   ContentBlock,
   StreamEvent,
@@ -69,9 +69,6 @@ const LLM_BRIDGE_PROVIDER: Record<
   "openai-responses": "openai-responses",
   gemini: "google",
 };
-
-const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1";
-const DEFAULT_GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
 
 function stripTrailingSlash(url: string): string {
   return url.replace(/\/+$/, "");
@@ -188,7 +185,7 @@ export function prepareRequest(profile: ModelProfile, params: StreamRequestParam
       translated.generationConfig = genConfig;
     }
 
-    const base = stripTrailingSlash(profile.baseURL ?? DEFAULT_GEMINI_BASE_URL);
+    const base = stripTrailingSlash(getProfileBaseURL(profile));
     const url = `${base}/models/${encodeURIComponent(profile.model)}:streamGenerateContent?alt=sse`;
     return {
       provider,
@@ -203,7 +200,7 @@ export function prepareRequest(profile: ModelProfile, params: StreamRequestParam
   }
 
   // OpenAI Chat Completions / Responses
-  const base = stripTrailingSlash(profile.baseURL ?? DEFAULT_OPENAI_BASE_URL);
+  const base = stripTrailingSlash(getProfileBaseURL(profile));
   const path = profile.protocol === "openai-responses" ? "/responses" : "/chat/completions";
   const body: Record<string, unknown> = { ...translated, stream: true };
   // Stage 34: request-side reasoning effort. Chat Completions takes a top-level

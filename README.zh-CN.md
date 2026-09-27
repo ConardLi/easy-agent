@@ -158,6 +158,8 @@ eagent -p "列出可用工具" --output-format json   # 机器可读输出
 git diff | eagent -p "审查这个补丁"              # 合并 stdin 与 Prompt
 ```
 
+结构化 JSON 与 NDJSON 消息遵循版本化的 [Headless 输出 Schema](./docs/headless-output.md)。成本尚无法计算时返回 `null`，不会伪装成实际零成本。
+
 运行 `eagent --help` 查看全部启动参数。常用 REPL 命令包括：
 
 | 命令 | 用途 |
