@@ -10,6 +10,7 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import type { Tool } from "./Tool.js";
 import { toolToApiParam } from "./Tool.js";
+import { hasValidToolInputSchema } from "./inputValidation.js";
 import { bashTool } from "./bashTool.js";
 import { fileEditTool } from "./fileEditTool.js";
 import { multiEditTool } from "./multiEditTool.js";
@@ -75,6 +76,7 @@ const BUILTIN_TOOLS: Tool[] = [
   // utils/toolSearch.ts drops it again when the definitive check says no.
   toolSearchTool,
 ];
+const VALID_BUILTIN_TOOLS = BUILTIN_TOOLS.filter(hasValidToolInputSchema);
 
 let mcpTools: Tool[] = [];
 
@@ -83,7 +85,7 @@ let mcpTools: Tool[] = [];
  * connecting to all MCP servers, and again after `/mcp reconnect`.
  */
 export function registerMcpTools(tools: Tool[]): void {
-  mcpTools = [...tools];
+  mcpTools = tools.filter(hasValidToolInputSchema);
 }
 
 /** Drop the MCP-provided tools — used before re-registering after reconnect. */
@@ -92,11 +94,11 @@ export function clearMcpTools(): void {
 }
 
 export function getAllTools(): Tool[] {
-  return [...BUILTIN_TOOLS, ...mcpTools].filter((tool) => tool.isEnabled());
+  return [...VALID_BUILTIN_TOOLS, ...mcpTools].filter((tool) => tool.isEnabled());
 }
 
 export function findToolByName(name: string): Tool | undefined {
-  return [...BUILTIN_TOOLS, ...mcpTools].find((tool) => tool.name === name);
+  return [...VALID_BUILTIN_TOOLS, ...mcpTools].find((tool) => tool.name === name);
 }
 
 /**

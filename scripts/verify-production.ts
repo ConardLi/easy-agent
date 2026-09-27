@@ -29,6 +29,7 @@ const TESTS: TestDefinition[] = [
   { id: "provider-stream", group: "core", file: "src/scripts/test-providerstream-characterization.ts" },
   { id: "session-notices", group: "core", file: "src/scripts/test-useagentsession-notices.ts" },
   { id: "tools", group: "core", file: "src/scripts/test-tools.ts" },
+  { id: "tool-input", group: "core", file: "src/scripts/test-tool-input-validation.ts" },
   { id: "path-boundary", group: "core", file: "src/scripts/test-path-boundary.ts" },
   { id: "private-data", group: "core", file: "src/scripts/test-private-data-permissions.ts" },
   { id: "persistence", group: "core", file: "src/scripts/test-atomic-persistence.ts" },
