@@ -6,6 +6,7 @@ import * as path from "node:path";
 import { runTools } from "../core/agenticLoop.js";
 import type { Tool } from "../tools/Tool.js";
 import { getAllTools, registerMcpTools } from "../tools/index.js";
+import { powerShellTool } from "../tools/powerShellTool.js";
 import { hasValidToolInputSchema, validateToolInput } from "../tools/inputValidation.js";
 import { _resetHooksSettingsCache } from "../hooks/runHooks.js";
 
@@ -147,6 +148,7 @@ try {
     Glob: { pattern: "*.ts" },
     Grep: { pattern: "query" },
     Bash: { command: "pwd" },
+    PowerShell: { command: "Get-Location" },
     WebFetch: { url: "https://example.com", prompt: "summarize" },
     WebSearch: { query: "easy agent" },
     ListMcpResources: {},
@@ -166,6 +168,7 @@ try {
   for (const tool of getAllTools().filter((tool) => !tool.isMcp)) {
     assert.equal(validateToolInput(tool, builtinInputs[tool.name]).ok, true, `valid ${tool.name} input`);
   }
+  assert.equal(validateToolInput(powerShellTool, builtinInputs.PowerShell).ok, true, "valid PowerShell input");
   console.log("Tool input validation checks passed.");
 } finally {
   registerMcpTools([]);
