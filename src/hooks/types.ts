@@ -1,49 +1,6 @@
-/**
- * Hooks system types (Stage 22).
- *
- * Mirrors a slim subset of Claude Code's `src/utils/hooks.ts` +
- * `src/entrypoints/agentSdkTypes.ts`. Source defines 25+ event types
- * — we teach 6:
- *
- *   PreToolUse  — fires before each tool execution; can deny / ask / inject context
- *   PostToolUse — fires after each tool execution; can inject context for the model
- *   UserPromptSubmit — fires before each user prompt; can inject context or block
- *   SessionStart — fires once at session boot (or resume); can inject startup context
- *   Stop        — fires when the main agent is about to finish a turn
- *   SubagentStop — fires when a sub-agent / background agent / teammate finishes
- *
- * On-disk shape (under `~/.easy-agent/settings.json` or
- * `<cwd>/.easy-agent/settings.json`):
- *
- *   {
- *     "hooks": {
- *       "PreToolUse": [
- *         { "matcher": "Bash", "hooks": [{ "type": "command",
- *           "command": "./check.sh", "timeout": 30 }] }
- *       ],
- *       "UserPromptSubmit": [
- *         { "hooks": [{ "type": "command", "command": "git status -s" }] }
- *       ]
- *     }
- *   }
- *
- * The on-disk shape mirrors Claude Code's exactly so users that have
- * existing `.claude/settings.json` hook blocks can paste them in.
- *
- * What we deliberately DON'T teach (source has all of these):
- *   - `type: "prompt"` (LLM-based hook) — needs a side query path
- *   - `type: "agent"` (sub-agent hook) — same
- *   - `type: "http"` / `type: "function"` / `type: "callback"`
- *   - Async hook backgrounding (AsyncHookRegistry)
- *   - Plugin-source / managed-source hooks (only user + project here)
- *   - PreCompact / PostCompact / SubagentStart / Setup / ConfigChange /
- *     PermissionDenied / TeammateIdle / TaskCreated / WorktreeCreate
- *     and ~15 other events
- */
-
 // ─── Event names ──────────────────────────────────────────────────────
 
-/** The six hook events Easy Agent ships. */
+/** Events emitted by the agent runtime. */
 export const HOOK_EVENTS = [
   "PreToolUse",
   "PostToolUse",
@@ -61,28 +18,15 @@ export function isHookEvent(value: string): value is HookEvent {
 
 // ─── On-disk configuration shape ──────────────────────────────────────
 
-/**
- * One executable hook entry. Source supports several `type` values
- * (command / prompt / agent / http / function / callback); we ship
- * only "command" — the shell-exec one — because it covers >90% of
- * real-world hook use cases and stays language-agnostic.
- */
+/** One executable command hook. */
 export interface HookCommand {
   type?: "command";
   /** Shell command to execute. Receives JSON hook input on stdin. */
   command: string;
-  /**
-   * Timeout in seconds (matches source's units — settings.json
-   * shipped by Claude Code uses seconds, not ms, in this field).
-   * Default 60s.
-   */
+  /** Timeout in seconds. Defaults to 60. */
   timeout?: number;
-  /**
-   * Optional shell override. Today we only support "bash" (or
-   * `sh` on POSIX when bash is unavailable). Source supports
-   * "powershell" too — we omit it for simplicity.
-   */
-  shell?: "bash" | "sh";
+  /** Defaults to bash on POSIX and Windows PowerShell on Windows. */
+  shell?: "bash" | "sh" | "powershell" | "pwsh";
   /** Extra environment supplied by a plugin/runtime wrapper. */
   env?: Record<string, string>;
 }
@@ -94,15 +38,12 @@ export interface HookCommand {
  * `source` (startup / resume / clear / compact); UserPromptSubmit and
  * Stop have no matcher (matcher is ignored, all hooks fire).
  *
- * Matcher syntax (source-compatible):
+ * Matcher syntax:
  *   - omitted / empty / "*"  →  matches everything
  *   - exact string            →  case-sensitive equality match
  *   - regex literal           →  if the matcher contains regex meta
  *                                 chars (e.g. `Bash|Edit`), we treat
- *                                 it as a regex. Pipe-separated lists
- *                                 like `Bash|Edit|Write` are the most
- *                                 common form, lifted straight from
- *                                 source's user-facing docs.
+ *                                 it as a regex.
  */
 export interface HookMatcherGroup {
   /** Optional match expression. See "Matcher syntax" above. */
@@ -175,9 +116,7 @@ export type HookInput =
 // ─── Hook output (parsed from stdout) ─────────────────────────────────
 
 /**
- * Common JSON shape hooks can return on stdout. Mirrors source's
- * `hookJSONOutputSchema` (the relevant fields — we drop the SDK /
- * async / elicitation extensions).
+ * JSON response fields accepted from command hooks.
  *
  *   {
  *     "continue": false,                  ← stop further hooks + halt loop
@@ -255,7 +194,6 @@ export interface HookResult {
    * this hook as if it blocked outright — for tool hooks this means
    * the tool does not run; for Stop hooks it means the loop bows out.
    *
-   * Source's term is `preventContinuation`; we keep the name.
    */
   preventContinuation?: boolean;
   /** Optional reason that pairs with preventContinuation. */
@@ -285,7 +223,6 @@ export interface AggregatedHookOutcome {
   /**
    * Final permission verdict if any hook spoke up. Order of priority:
    *   deny > ask > allow > undefined (no opinion)
-   * Source uses the same precedence (deny always wins).
    */
   permissionBehavior?: PermissionBehavior;
   /** Reason that pairs with `permissionBehavior`. */

@@ -1,24 +1,8 @@
-/**
- * Hooks settings loader — reads the `hooks` block from
- * ~/.easy-agent/settings.json and <cwd>/.easy-agent/settings.json,
- * normalizes it into the strongly-typed `HooksSettings` shape,
- * and exposes a `findMatchingHooks(...)` helper that picks the
- * right matcher groups for a given event + match field.
- *
- * The on-disk shape is intentionally identical to Claude Code's so
- * existing `.claude/settings.json` hook blocks paste-in cleanly.
- *
- * Merge precedence:
- *   user (loaded first)  →  project (loaded second; later wins)
- *
- * Source uses 5 scopes (policy / managed / user / project / local);
- * we ship 2 — matching the existing permission + MCP loaders.
- */
-
 import { getSettingsPaths } from "../utils/paths.js";
-import { readJsonSettingsFile, isAllHooksDisabled } from "../utils/settings.js";
+import { logWarn } from "../utils/log.js";
 import {
   loadTrustedSettingSources,
+  loadSettingSources,
   type LoadedSource,
 } from "../config/sources.js";
 import {
@@ -37,12 +21,7 @@ interface RawSettingsBlock {
 /** Default per-hook timeout in seconds when the entry omits it. */
 const DEFAULT_HOOK_TIMEOUT_SEC = 60;
 
-/**
- * Normalize one `hooks` entry from raw JSON into a typed
- * `HookMatcherGroup`. Silently drops malformed entries — we never
- * crash startup on a bad hook block, just skip the offending item so
- * the rest of the user's config still works.
- */
+/** Normalize valid commands from one matcher group. */
 function normalizeMatcherGroup(value: unknown): HookMatcherGroup | null {
   if (!value || typeof value !== "object") return null;
   const obj = value as Record<string, unknown>;
@@ -58,13 +37,15 @@ function normalizeMatcherGroup(value: unknown): HookMatcherGroup | null {
     if (!raw || typeof raw !== "object") continue;
     const h = raw as Record<string, unknown>;
     const type = h.type ?? "command";
-    if (type !== "command") continue; // we only support command-type hooks
+    if (type !== "command") continue;
     if (typeof h.command !== "string" || h.command.length === 0) continue;
     const timeout =
       typeof h.timeout === "number" && Number.isFinite(h.timeout) && h.timeout > 0
         ? h.timeout
         : DEFAULT_HOOK_TIMEOUT_SEC;
-    const shell = h.shell === "sh" || h.shell === "bash" ? h.shell : undefined;
+    const shell = h.shell === "sh" || h.shell === "bash" || h.shell === "powershell" || h.shell === "pwsh"
+      ? h.shell
+      : undefined;
     const entry: HookCommand = { type: "command", command: h.command, timeout };
     if (shell) entry.shell = shell;
     hooks.push(entry);
@@ -92,15 +73,76 @@ function normalizeHooksBlock(raw: unknown): HooksSettings {
   return result;
 }
 
-async function readHooksFromSettings(filePath: string): Promise<HooksSettings> {
-  const { raw } = await readJsonSettingsFile<RawSettingsBlock>(filePath);
-  if (!raw) return {};
-  return normalizeHooksBlock(raw.hooks);
-}
-
 function hooksFromSource(src: LoadedSource): HooksSettings {
   if (!src.raw) return {};
   return normalizeHooksBlock((src.raw as RawSettingsBlock).hooks);
+}
+
+const lastValidHooks = new Map<string, HooksSettings>();
+const reportedErrors = new Map<string, string>();
+
+export function resetHooksSettingsSnapshot(): void {
+  lastValidHooks.clear();
+  reportedErrors.clear();
+  disableBySource.clear();
+  disabledByCwd.clear();
+  lastRefreshedCwd = undefined;
+}
+
+function reportSettingError(key: string, error: string): void {
+  if (reportedErrors.get(key) === error) return;
+  logWarn(`Hooks settings in ${key} could not be updated: ${error}. Keeping the last valid configuration.`);
+  reportedErrors.set(key, error);
+}
+
+function hooksShapeError(raw: unknown): string | undefined {
+  if (raw === undefined) return undefined;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return "hooks must be an object";
+  for (const [event, groups] of Object.entries(raw)) {
+    if (!isHookEvent(event)) continue;
+    if (!Array.isArray(groups)) return `${event} must be an array`;
+    for (const group of groups) {
+      if (!group || typeof group !== "object" || Array.isArray(group)) return `${event} contains an invalid matcher group`;
+      const entry = group as Record<string, unknown>;
+      if (entry.matcher !== undefined && typeof entry.matcher !== "string") return `${event} has an invalid matcher`;
+      if (typeof entry.matcher === "string" && entry.matcher !== "*" && isRegexMatcher(entry.matcher)) {
+        try { new RegExp(`^(?:${entry.matcher})$`); }
+        catch { return `${event} has an invalid matcher expression`; }
+      }
+      if (!Array.isArray(entry.hooks) || entry.hooks.length === 0) return `${event} has an invalid hooks array`;
+      for (const rawHook of entry.hooks) {
+        if (!rawHook || typeof rawHook !== "object" || Array.isArray(rawHook)) return `${event} contains an invalid hook`;
+        const hook = rawHook as Record<string, unknown>;
+        if (hook.type !== undefined && hook.type !== "command") return `${event} contains an unsupported hook type`;
+        if (typeof hook.command !== "string" || hook.command.length === 0) return `${event} contains a hook without a command`;
+        if (hook.timeout !== undefined && (typeof hook.timeout !== "number" || !Number.isFinite(hook.timeout) || hook.timeout <= 0)) {
+          return `${event} contains an invalid timeout`;
+        }
+        if (hook.shell !== undefined && !["bash", "sh", "powershell", "pwsh"].includes(String(hook.shell))) {
+          return `${event} contains an unsupported shell`;
+        }
+      }
+    }
+  }
+  return undefined;
+}
+
+function sourceHooks(src: LoadedSource): HooksSettings {
+  const key = src.path ?? src.source;
+  const hookValidationError = src.validationErrors?.find((error) =>
+    error.includes('field "hooks"') || error.includes("settings root must be"),
+  );
+  const error = src.parseError ?? hookValidationError ?? hooksShapeError(src.raw?.["hooks"]);
+  if (error) {
+    reportSettingError(key, error);
+    return lastValidHooks.get(key) ?? hooksFromSource(src);
+  }
+
+  if (!src.validationErrors?.length) reportedErrors.delete(key);
+  const hooks = hooksFromSource(src);
+  if (src.raw) lastValidHooks.set(key, hooks);
+  else lastValidHooks.delete(key);
+  return hooks;
 }
 
 /**
@@ -108,14 +150,11 @@ function hooksFromSource(src: LoadedSource): HooksSettings {
  * Per-event arrays concatenate in source order (user → project → local →
  * flag → policy), so all configured hooks fire and earlier sources run first.
  *
- * SECURITY: hooks execute arbitrary shell commands. We read from the TRUSTED
- * source set — until the user has trusted this folder, project + local hooks
- * are dropped so an untrusted repository can't run code on session start /
- * tool use. The user's own (~/.easy-agent) hooks always apply.
+ * Project and local hooks are excluded until the project is trusted.
  */
 export async function loadHooksSettings(cwd: string): Promise<HooksSettings> {
   const sources = await loadTrustedSettingSources(cwd);
-  const perSource = sources.map(hooksFromSource);
+  const perSource = sources.map(sourceHooks);
 
   const merged: HooksSettings = {};
   for (const event of HOOK_EVENTS) {
@@ -129,50 +168,42 @@ export async function loadHooksSettings(cwd: string): Promise<HooksSettings> {
   return merged;
 }
 
-/**
- * Introspection helper used by the `/hooks` slash command. Returns
- * per-source views of the on-disk config (without merging), so the UI
- * can show the user WHICH settings file each hook came from. Returns
- * the absolute file paths it consulted too, so the user can `vim`
- * straight to them when they want to edit.
- */
+/** Current user and project Hook configuration for `/hooks`. */
 export interface HooksDiagnosticReport {
   userPath: string;
   projectPath: string;
   userHooks: HooksSettings;
   projectHooks: HooksSettings;
+  errors: string[];
   globallyDisabled: boolean;
 }
 
 export async function loadHooksDiagnosticReport(
   cwd: string,
 ): Promise<HooksDiagnosticReport> {
+  await refreshHookDisableFromSettings(cwd);
   const { user: userPath, project: projectPath } = getSettingsPaths(cwd);
-  const [userHooks, projectHooks] = await Promise.all([
-    readHooksFromSettings(userPath),
-    readHooksFromSettings(projectPath),
-  ]);
+  const sources = await loadSettingSources(cwd);
+  const user = sources.find((source) => source.source === "user");
+  const project = sources.find((source) => source.source === "project");
+  const userHooks = user ? sourceHooks(user) : {};
+  const projectHooks = project ? sourceHooks(project) : {};
+  const errors = [user, project].flatMap((source) => source
+    ? [source.parseError, ...(source.validationErrors ?? []), hooksShapeError(source.raw?.["hooks"])].filter((error): error is string => Boolean(error))
+    : []);
   return {
     userPath,
     projectPath,
     userHooks,
     projectHooks,
-    globallyDisabled: hooksGloballyDisabled(),
+    errors,
+    globallyDisabled: hooksGloballyDisabled(cwd),
   };
 }
 
 // ─── Matcher selection ────────────────────────────────────────────────
 
-/**
- * Heuristic from source: treat a matcher as a regex iff it contains
- * any regex meta-character. Plain identifiers like "Bash" stay as
- * exact string comparisons (which short-circuits the regex compile
- * for the common case).
- *
- * NB: this is the same heuristic source uses — `|` is the most common
- * meta-char users reach for ("Bash|Edit|Write"), but `*`, `.`, `[`,
- * `(`, etc., all trigger regex mode.
- */
+/** Plain identifiers match exactly; patterns with regex syntax are compiled. */
 function isRegexMatcher(matcher: string): boolean {
   return /[*.?+()[\]{}|^$\\]/.test(matcher);
 }
@@ -180,9 +211,7 @@ function isRegexMatcher(matcher: string): boolean {
 function matcherFires(matcher: string | undefined, matchField: string | undefined): boolean {
   // No matcher / "*" / empty → fires for everything.
   if (!matcher || matcher === "*") return true;
-  // If the event has no match field but the matcher is non-trivial,
-  // we err on the side of NOT firing — source does the same (matcher
-  // is silently ignored for events that don't expose a match field).
+  // Events without a match field ignore the matcher.
   if (!matchField) return true;
 
   if (!isRegexMatcher(matcher)) {
@@ -234,32 +263,36 @@ export function hasHookForEvent(
 
 // ─── Toggle / introspection helpers ───────────────────────────────────
 
-// Cached `disableAllHooks` settings value. Sync `hooksGloballyDisabled()` is on
-// the hot path, but settings reads are async — so we snapshot the merged value
-// at startup (and after `/config set`) into this flag. Mirrors source's
-// `disableAllHooks`, which also gates hooks AND the statusLine.
-let settingsHooksDisabled = false;
+const disableBySource = new Map<string, boolean>();
+const disabledByCwd = new Map<string, boolean>();
+let lastRefreshedCwd: string | undefined;
 
-/**
- * Refresh the cached `disableAllHooks` flag from settings. Call at startup and
- * whenever settings change live (e.g. after `/config set disableAllHooks ...`).
- */
+/** Refresh the per-directory disable state from current settings. */
 export async function refreshHookDisableFromSettings(cwd: string): Promise<void> {
   try {
-    settingsHooksDisabled = await isAllHooksDisabled(cwd);
+    const sources = await loadSettingSources(cwd);
+    let disabled = false;
+    for (const src of sources) {
+      const key = src.path ?? src.source;
+      const disableValidationError = src.validationErrors?.find((error) =>
+        error.includes('field "disableAllHooks"') || error.includes("settings root must be"),
+      );
+      const error = src.parseError ?? disableValidationError;
+      if (error) reportSettingError(key, error);
+      else if (!src.validationErrors?.length && !hooksShapeError(src.raw?.["hooks"])) reportedErrors.delete(key);
+      if (!error) disableBySource.set(key, src.raw?.["disableAllHooks"] === true);
+      if (disableBySource.get(key)) disabled = true;
+    }
+    disabledByCwd.set(cwd, disabled);
+    lastRefreshedCwd = cwd;
   } catch {
-    // keep previous value on read failure
+    // Keep the last effective value on read failure.
   }
 }
 
-/**
- * Master kill-switch. True when EITHER the `EASY_AGENT_DISABLE_HOOKS` env var is
- * truthy (mirrors source's `CLAUDE_CODE_DISABLE_HOOKS`) OR any settings source
- * sets `disableAllHooks: true`. When on, the executor returns empty for every
- * event regardless of settings.json.
- */
-export function hooksGloballyDisabled(): boolean {
-  if (settingsHooksDisabled) return true;
+/** Environment and settings kill switch for command hooks. */
+export function hooksGloballyDisabled(cwd?: string): boolean {
+  if (disabledByCwd.get(cwd ?? lastRefreshedCwd ?? "")) return true;
   const v = process.env.EASY_AGENT_DISABLE_HOOKS;
   if (!v) return false;
   const lower = v.toLowerCase();

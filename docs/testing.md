@@ -75,6 +75,13 @@ Run the subprocess suite after changing Bash, PowerShell, hooks, the status line
 npm run test:controlled-process
 ```
 
+Run the Hooks suite after changing Hook settings, shell selection, or event handling:
+
+```bash
+npm run test:stage22
+npm run test:hooks-hardening
+```
+
 Run the configuration trust suite after changing settings precedence, environment loading, providers, MCP, plugins, sandbox settings, or headless startup:
 
 ```bash
