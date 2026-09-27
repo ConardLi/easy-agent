@@ -20,6 +20,7 @@ import {
   connectToServer,
 } from "../services/mcp/client.js";
 import { fetchToolsForConnection } from "../services/mcp/fetchTools.js";
+import { cancelMcpReconnect } from "../services/mcp/bootstrap.js";
 import {
   deleteMcpRegistryEntry,
   getMcpRegistry,
@@ -87,6 +88,7 @@ export async function applyPluginMcpDiff(
       const cfg = applied.get(name);
       if (cfg) {
         try {
+          cancelMcpReconnect(name);
           await clearServerCache(name, cfg);
         } catch (error) {
           debugLog("plugins", `[mcp] cleanup failed for ${name}: ${(error as Error).message}`);

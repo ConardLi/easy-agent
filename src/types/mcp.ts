@@ -1,15 +1,4 @@
-/**
- * MCP (Model Context Protocol) types — Stage 16.
- *
- * Reference: claude-code-source-code/src/services/mcp/types.ts
- *
- * The source supports 8 transport types (stdio/sse/http/ws/sse-ide/ws-ide/sdk/
- * claudeai-proxy). Easy Agent supports the three that cover the public MCP
- * ecosystem: `stdio` (local subprocess), `http` (Streamable HTTP), and `sse`
- * (legacy SSE-only servers). WebSocket / IDE / SDK / Claude.ai proxy stay
- * out of scope (§16.9). OAuth is also deferred — remote servers can still
- * pass static `headers` (e.g. a bearer token) for simple authenticated use.
- */
+/** MCP server configuration and connection state. */
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import type { ServerCapabilities } from "@modelcontextprotocol/sdk/types.js";
 
@@ -28,18 +17,14 @@ export interface McpStdioServerConfig {
   env?: Record<string, string>;
 }
 
-/**
- * Streamable HTTP MCP server (the recommended remote transport).
- *
- * Equivalent to source's `McpHTTPServerConfigSchema`. We intentionally don't
- * accept the source's `oauth` / `headersHelper` fields — for Easy Agent §16,
- * `headers` (a static string→string map) is enough to support bearer-token
- * APIs like `Authorization: Bearer <token>`.
- */
+/** Streamable HTTP MCP server. */
 export interface McpHTTPServerConfig {
   type: "http";
   url: string;
   headers?: Record<string, string>;
+  headersEnv?: Record<string, string>;
+  headersHelper?: { command: string; args?: string[] };
+  oauth?: McpOAuthConfig;
 }
 
 /**
@@ -52,7 +37,14 @@ export interface McpSSEServerConfig {
   type: "sse";
   url: string;
   headers?: Record<string, string>;
+  headersEnv?: Record<string, string>;
+  headersHelper?: { command: string; args?: string[] };
+  oauth?: McpOAuthConfig;
 }
+
+export type McpOAuthConfig =
+  | { type: "authorization_code"; clientId?: string; clientSecretEnv?: string; scope?: string; redirectPort?: number }
+  | { type: "client_credentials"; clientId: string; clientSecretEnv: string; scope?: string };
 
 export type McpServerConfig =
   | McpStdioServerConfig
@@ -79,6 +71,8 @@ export interface ConnectedMcpServer {
   serverInfo?: { name: string; version: string };
   config: ScopedMcpServerConfig;
   cleanup: () => Promise<void>;
+  sessionId?: () => string | undefined;
+  authorizationUrl?: () => string | undefined;
 }
 
 export interface FailedMcpServer {

@@ -2,6 +2,7 @@ import type { PermissionMode } from "../permissions/permissions.js";
 import type { SubAgentProgress } from "../state/subAgentProgressStore.js";
 import type { BashProgress } from "../state/bashProgressStore.js";
 import type { ToolStatus } from "../state/toolStatusStore.js";
+import type { McpProgress } from "../state/mcpProgressStore.js";
 
 export interface ToolCallInfo {
   /**
@@ -50,6 +51,7 @@ export interface ToolCallInfo {
    * on long commands (installs, test runs) instead of a frozen spinner.
    */
   bashProgress?: BashProgress;
+  mcpProgress?: McpProgress;
 }
 
 export interface UsageSummary {

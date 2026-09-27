@@ -75,6 +75,7 @@ import {
   subscribeToolStatus,
 } from "../../state/toolStatusStore.js";
 import { clearUiNotices } from "../../state/uiNoticeStore.js";
+import { clearAllMcpProgress, subscribeMcpProgress } from "../../state/mcpProgressStore.js";
 import {
   getAllAsyncAgents,
   subscribeAsyncAgents,
@@ -345,6 +346,17 @@ export function useAgentSession({
     });
     return unsubscribe;
   }, []);
+
+  useEffect(() => subscribeMcpProgress((toolUseId, progress) => {
+    setToolCalls((previous) => previous.map((call) => {
+      if (call.id !== toolUseId) return call;
+      if (!progress) {
+        const { mcpProgress: _discard, ...rest } = call;
+        return rest;
+      }
+      return { ...call, mcpProgress: progress };
+    }));
+  }), []);
 
   // Mirror the live execution phase (queued → classifier → waiting-permission
   // → running), published by the agentic loop's runOneToolBlock, into the
@@ -953,6 +965,7 @@ export function useAgentSession({
             // card from the formatted tool_result text, not the store.
             clearAllSubAgentProgress();
             clearAllBashProgress();
+            clearAllMcpProgress();
             clearAllToolStatus();
             await appendTranscriptEntry(toolContext.cwd, sessionIdRef.current, {
               type: "message",
@@ -1134,6 +1147,7 @@ export function useAgentSession({
             setToolCalls([]);
             clearAllSubAgentProgress();
             clearAllBashProgress();
+            clearAllMcpProgress();
             clearAllToolStatus();
             clearUiNotices();
             setResumePicker(null);
@@ -1180,6 +1194,7 @@ export function useAgentSession({
             clearTodos(sessionIdRef.current);
             clearAllSubAgentProgress();
             clearAllBashProgress();
+            clearAllMcpProgress();
             clearAllToolStatus();
             clearUiNotices();
             // Wipe the terminal so the previous conversation is gone from the

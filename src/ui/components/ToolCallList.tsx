@@ -139,6 +139,20 @@ function SingleToolCard({ toolCall }: { toolCall: ToolCallInfo }): React.ReactNo
       );
     }
 
+    if (toolCall.name.startsWith("mcp__") && toolCall.mcpProgress) {
+      const progress = toolCall.mcpProgress;
+      return (
+        <Box flexDirection="column">
+          <ToolCardHeader line={headerLine} state="running" tag={tag} />
+          <ResultLine>
+            <Text color={theme.muted}>
+              {`Progress ${progress.progress}${progress.total === undefined ? "" : `/${progress.total}`}${progress.message ? ` · ${progress.message}` : ""}`}
+            </Text>
+          </ResultLine>
+        </Box>
+      );
+    }
+
     const phaseText = phaseSubLine(liveState);
     return (
       <Box flexDirection="column">

@@ -147,6 +147,8 @@ export interface ToolResult {
   content: string | ContentBlock[];
   /** Whether this call produced an error. */
   isError?: boolean;
+  /** Original protocol result, retained for MCP metadata and structured output. */
+  mcpResult?: Record<string, unknown>;
 }
 
 // ─── Tool Interface ────────────────────────────────────────────────

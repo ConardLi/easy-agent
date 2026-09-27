@@ -1,29 +1,16 @@
 import {
-  ReadResourceResultSchema,
-  type ReadResourceResult,
+  ResultSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import type { Tool, ToolContext, ToolResult } from "./Tool.js";
 import { getMcpRegistry } from "../services/mcp/registry.js";
 import type { ConnectedMcpServer } from "../types/mcp.js";
+import { adaptMcpResourceResult } from "../services/mcp/resultContent.js";
+import { withMcpReadRecovery } from "../services/mcp/readRecovery.js";
 
-/**
- * ReadMcpResource — read a single resource (by URI) from a connected MCP server.
- *
- * Reference: claude-code-source-code/src/tools/ReadMcpResourceTool/.
- * Text resources are returned inline. Binary (blob) resources are noted but
- * not decoded for vision — multimodal persistence lands in a later stage, so
- * for now we stringify a placeholder (consistent with §16's MCP image handling).
- */
+/** Read a resource from a connected MCP server. */
 interface ReadMcpResourceInput {
   server: string;
   uri: string;
-}
-
-interface ReadContent {
-  uri: string;
-  mimeType?: string;
-  text?: string;
-  note?: string;
 }
 
 function findConnected(name: string): ConnectedMcpServer | undefined {
@@ -69,12 +56,12 @@ export const readMcpResourceTool: Tool = {
       return { content: `Error: server "${input.server}" does not support resources`, isError: true };
     }
 
-    let result: ReadResourceResult;
+    let result: Record<string, unknown>;
     try {
-      result = (await server.client.request(
+      result = await withMcpReadRecovery(server, async (current) => (await current.client.request(
         { method: "resources/read", params: { uri: input.uri } },
-        ReadResourceResultSchema,
-      )) as ReadResourceResult;
+        ResultSchema,
+      )) as Record<string, unknown>);
     } catch (error) {
       return {
         content: `Error reading resource "${input.uri}" from "${input.server}": ${
@@ -84,22 +71,11 @@ export const readMcpResourceTool: Tool = {
       };
     }
 
-    const contents: ReadContent[] = result.contents.map((c) => {
-      if (typeof (c as { text?: unknown }).text === "string") {
-        return { uri: c.uri, mimeType: c.mimeType, text: (c as { text: string }).text };
-      }
-      if (typeof (c as { blob?: unknown }).blob === "string") {
-        const blob = (c as { blob: string }).blob;
-        return {
-          uri: c.uri,
-          mimeType: c.mimeType,
-          note: `[binary resource: ${c.mimeType ?? "?"}, ${blob.length} base64 chars — not rendered as text]`,
-        };
-      }
-      return { uri: c.uri, mimeType: c.mimeType, note: "[empty resource]" };
-    });
-
-    return { content: JSON.stringify({ contents }, null, 2) };
+    try {
+      return await adaptMcpResourceResult(result);
+    } catch (error) {
+      return { content: `Error processing resource "${input.uri}": ${error instanceof Error ? error.message : String(error)}`, isError: true };
+    }
   },
   isReadOnly(): boolean {
     return true;
