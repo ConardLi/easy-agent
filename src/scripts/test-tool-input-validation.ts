@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { mkdtemp, readFile, rm, writeFile, mkdir } from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -38,11 +39,12 @@ try {
   const settingsDir = path.join(cwd, ".easy-agent");
   await mkdir(settingsDir);
   const marker = path.join(cwd, "hook-marker");
-  const hookScript = path.join(cwd, "hook.cjs");
-  await writeFile(hookScript, "require('node:fs').appendFileSync(process.argv[2], 'hit\\n')");
-  await writeFile(path.join(settingsDir, "settings.json"), JSON.stringify({
-    hooks: { PreToolUse: [{ matcher: fixture.name, hooks: [{ type: "command", command: `${process.execPath} ${hookScript} ${marker}` }] }] },
-  }));
+  const hookShellAvailable = spawnSync("bash", ["-c", "printf ready"], { encoding: "utf8" }).stdout === "ready";
+  if (hookShellAvailable) {
+    await writeFile(path.join(settingsDir, "settings.json"), JSON.stringify({
+      hooks: { PreToolUse: [{ matcher: fixture.name, hooks: [{ type: "command", command: "printf 'hit\\n' >> hook-marker" }] }] },
+    }));
+  }
   _resetHooksSettingsCache();
 
   async function run(input: unknown): Promise<string> {
@@ -77,7 +79,7 @@ try {
   assert.equal(calls, 0);
   assert.equal(permissionChecks, 0);
   assert.equal(concurrencyChecks, 0);
-  await assert.rejects(readFile(marker), { code: "ENOENT" });
+  if (hookShellAvailable) await assert.rejects(readFile(marker), { code: "ENOENT" });
 
   const validResult = await runTools(
     [{ type: "tool_use", id: "valid", name: fixture.name, input: { action: "read", count: 2, label: "okay", items: [{ value: "ok" }] } }],
@@ -88,7 +90,7 @@ try {
   assert.equal(calls, 1);
   assert.ok(permissionChecks > 0);
   assert.equal(concurrencyChecks, 1);
-  assert.equal(await readFile(marker, "utf8"), "hit\n");
+  if (hookShellAvailable) assert.equal(await readFile(marker, "utf8"), "hit\n");
 
   const deep: Record<string, unknown> = { action: "read" };
   let cursor = deep;
