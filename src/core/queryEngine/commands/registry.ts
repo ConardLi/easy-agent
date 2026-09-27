@@ -36,7 +36,7 @@ export async function* handleSkillsCommand(
     const lines = [
       `Extensions reloaded: ${summary.enabledPlugins} enabled, ${summary.disabledPlugins} disabled.`,
       `Skills ${summary.skills} · Commands ${summary.commands} · Agents ${summary.agents} · ` +
-        `Styles ${summary.outputStyles} · Hooks ${summary.hooks} · MCP ${summary.mcpServers} · ` +
+        `Styles ${summary.outputStyles} · Hooks ${summary.hooks} · MCP ${summary.mcpServers} · LSP ${summary.lspServers} · ` +
         `Errors ${summary.errors}`,
     ];
     if (result.mcpStarted.length > 0) lines.push(`MCP started: ${result.mcpStarted.join(", ")}`);

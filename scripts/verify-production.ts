@@ -25,6 +25,7 @@ const TESTS: TestDefinition[] = [
   { id: "config-session", group: "core", file: "src/scripts/test-config-session-characterization.ts" },
   { id: "config-trust", group: "core", file: "src/scripts/test-config-trust-boundary.ts" },
   { id: "config-trust-cli", group: "core", file: "src/scripts/test-config-trust-cli.ts" },
+  { id: "feature-config", group: "core", file: "src/scripts/test-feature-config.ts" },
   { id: "query-engine", group: "core", file: "src/scripts/test-queryengine-characterization.ts" },
   { id: "provider-stream", group: "core", file: "src/scripts/test-providerstream-characterization.ts" },
   { id: "session-notices", group: "core", file: "src/scripts/test-useagentsession-notices.ts" },

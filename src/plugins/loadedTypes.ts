@@ -51,8 +51,9 @@ export interface LoadedPlugin {
   outputStyles: OutputStyleConfig[];
   hooks: PluginHookEntry[];
   mcpServers: PluginMcpServer[];
+  lspServers: import("../services/lsp/runtime.js").LspRegistration[];
 
-  /** True when the plugin ships hooks or MCP servers (needs trust to run). */
+  /** True when the plugin ships hooks, MCP, or LSP servers (needs trust to run). */
   hasExecutableComponents: boolean;
 
   /** Non-fatal per-component failures; the plugin still loads its good parts. */

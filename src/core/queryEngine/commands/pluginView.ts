@@ -48,6 +48,7 @@ const EMPTY_COUNTS: PluginComponentCounts = {
   outputStyles: 0,
   hooks: 0,
   mcpServers: 0,
+  lspServers: 0,
 };
 
 const EMPTY_NAMES: PluginComponentNames = {
@@ -57,6 +58,7 @@ const EMPTY_NAMES: PluginComponentNames = {
   outputStyles: [],
   hooks: [],
   mcpServers: [],
+  lspServers: [],
 };
 
 function authorLabel(author: unknown): string | undefined {
@@ -124,6 +126,7 @@ export async function buildPluginView(cwd: string): Promise<PluginViewData> {
               outputStyles: loaded.outputStyles.length,
               hooks: loaded.hooks.length,
               mcpServers: loaded.mcpServers.length,
+              lspServers: loaded.lspServers.length,
             }
           : { ...EMPTY_COUNTS },
         componentNames: loaded
@@ -136,6 +139,7 @@ export async function buildPluginView(cwd: string): Promise<PluginViewData> {
                 `${item.event}${item.matcher ? `:${item.matcher}` : ""}`,
               ),
               mcpServers: loaded.mcpServers.map((item) => item.namespacedName),
+              lspServers: loaded.lspServers.map((item) => item.name),
             }
           : { ...EMPTY_NAMES },
         hasExecutableComponents: loaded?.hasExecutableComponents ?? false,

@@ -333,6 +333,7 @@ export function componentPathsFromEntry(entry: MarketplacePluginEntry): PluginCo
   if (entry.outputStyles !== undefined) paths.outputStyles = entry.outputStyles;
   if (entry.hooks !== undefined) paths.hooks = entry.hooks;
   if (entry.mcpServers !== undefined) paths.mcpServers = entry.mcpServers;
+  if (entry.lspServers !== undefined) paths.lspServers = entry.lspServers;
   return paths;
 }
 

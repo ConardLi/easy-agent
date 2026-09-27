@@ -51,9 +51,14 @@ export const SettingsSchema = z.looseObject({
     .optional(),
   // Stage 30: default profile id (or raw model name) when no --model is given.
   defaultModel: z.string().trim().min(1).optional(),
-  // Stage 30 (optional): map well-known roles → profile ids for future
-  // task-based routing (background/think/longContext). Parsed but not yet wired.
-  modelRoles: z.record(z.string(), z.string()).optional(),
+  // Role names match runtime invocation classes. Unknown roles are rejected.
+  modelRoles: z.object({
+    background: z.string().trim().min(1).optional(),
+    think: z.string().trim().min(1).optional(),
+    longContext: z.string().trim().min(1).optional(),
+  }).strict().optional(),
+  toolSearch: z.enum(["off", "auto", "on"]).optional(),
+  toolSearchAutoThreshold: z.number().min(0).max(100).optional(),
   mode: z.enum(["default", "plan", "auto"]).optional(),
   // Stage 29: convenience switch equivalent to `mode: "auto"`. Like `mode`,
   // it is SECURITY-SENSITIVE and only honored from trusted scopes (user / flag
@@ -119,6 +124,11 @@ export function validateSettings(raw: unknown, label: string): ValidationResult 
   }
 
   const errors: string[] = [];
+  for (const key of Object.keys(raw as Record<string, unknown>)) {
+    if (!Object.hasOwn(SettingsSchema.shape, key) && key !== "sandbox") {
+      errors.push(`${label}: unsupported setting "${key}"; retained for compatibility but not applied by this build`);
+    }
+  }
   const candidate: Record<string, unknown> = { ...(raw as Record<string, unknown>) };
 
   // 1) Per-rule tolerance for permission arrays: keep valid string rules,

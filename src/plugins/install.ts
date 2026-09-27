@@ -48,13 +48,13 @@ import type { LoadedPlugin } from "./loadedTypes.js";
 export interface InstallResult {
   record: InstalledPluginRecord;
   loaded: LoadedPlugin;
-  /** True when hooks/MCP were present and require folder trust to run. */
+  /** True when hooks/MCP/LSP were present and require folder trust to run. */
   requiresTrust: boolean;
 }
 
 export interface InstallOptions {
   /**
-   * Explicit user acknowledgement that Hooks/MCP can execute local processes.
+   * Explicit user acknowledgement that Hooks/MCP/LSP can execute local processes.
    * Non-interactive callers leave this false, so executable plugins fail
    * closed instead of silently acquiring code-execution capability.
    */
@@ -75,6 +75,7 @@ export interface PluginInstallPreview {
     outputStyles: string[];
     hooks: string[];
     mcpServers: string[];
+    lspServers?: string[];
   };
   hasExecutableComponents: boolean;
   warnings: string[];
@@ -210,6 +211,7 @@ async function inspectPluginUnlocked(pluginRef: string): Promise<PluginInstallPr
           `${item.event}${item.matcher ? `:${item.matcher}` : ""}`,
         ),
         mcpServers: loaded.mcpServers.map((item) => item.namespacedName),
+        lspServers: (loaded.lspServers ?? []).map((item) => item.name),
       },
       hasExecutableComponents: loaded.hasExecutableComponents,
       warnings: loaded.warnings,
@@ -277,6 +279,7 @@ async function installPluginUnlocked(
       const kinds = [
         loaded.hooks.length > 0 ? `${loaded.hooks.length} hook group(s)` : "",
         loaded.mcpServers.length > 0 ? `${loaded.mcpServers.length} MCP server(s)` : "",
+        (loaded.lspServers?.length ?? 0) > 0 ? `${loaded.lspServers!.length} LSP server(s)` : "",
       ].filter(Boolean);
       throw new Error(
         `confirmation required: ${pluginId} includes ${kinds.join(" and ")} that may execute local processes. ` +

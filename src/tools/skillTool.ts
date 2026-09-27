@@ -12,9 +12,8 @@
  * calls the skill makes during this session don't trigger another permission
  * prompt. Mirrors the source's `contextModifier.alwaysAllowRules` injection.
  *
- * Out of scope for stage 17 (will surface as errors):
- *   - `context: fork`            — needs sub-agent (stage 20+)
- *   - `disable-model-invocation` — model calling a hidden skill is rejected
+ * Skills may request `context: fork`; those execute in a fresh sub-agent
+ * context. `disable-model-invocation` remains enforced for model-originated calls.
  *
  * Reference: claude-code-source-code/src/tools/SkillTool/SkillTool.ts
  */
@@ -114,13 +113,8 @@ export const skillTool: Tool = {
     }
 
     if (skill.frontmatter.hasForkContext) {
-      return {
-        content:
-          `Error: skill "${name}" declares context: fork, which requires sub-agent execution. ` +
-          "This is not implemented in Easy Agent's stage 17. Remove `context: fork` from " +
-          "the SKILL.md frontmatter to run it inline, or wait for the AgentTool stage.",
-        isError: true,
-      };
+      const { executeForkSkill } = await import("../services/skills/fork.js");
+      return executeForkSkill(skill, buildPromptText(skill, args ?? "", context.sessionId ?? "skill"), context);
     }
 
     // Inject the skill's allowedTools into session-allow rules so subsequent

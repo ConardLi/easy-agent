@@ -22,6 +22,7 @@
  */
 
 import * as path from "node:path";
+import { applyLspServers } from "../services/lsp/runtime.js";
 import { loadAllSkills } from "../services/skills/loadSkillsDir.js";
 import { setSkills } from "../services/skills/registry.js";
 import { getBuiltInAgents } from "../agents/builtIn/index.js";
@@ -67,6 +68,7 @@ export interface RefreshResult {
     outputStyles: number;
     hooks: number;
     mcpServers: number;
+    lspServers: number;
     errors: number;
   };
 }
@@ -341,11 +343,16 @@ async function performRefresh(
       outputStyles: pluginStyles.length,
       hooks: plugins.reduce((sum, plugin) => sum + plugin.hooks.length, 0),
       mcpServers: plugins.reduce((sum, plugin) => sum + plugin.mcpServers.length, 0),
+      lspServers: plugins.reduce((sum, plugin) => sum + (plugin.lspServers?.length ?? 0), 0),
       errors: nextErrors.length,
     },
   });
 
   if (opts.applyMcp !== false) {
+    const lspErrors = await applyLspServers(plugins.filter((plugin) => trustedById.get(plugin.pluginId)).flatMap((plugin) =>
+      (plugin.lspServers ?? []).map((server) => ({ ...server, cwd }))));
+    nextErrors.push(...lspErrors.map((message) => ({ pluginId: "lsp", scope: "io" as const, message })));
+    activeErrors = nextErrors;
     const generation = ++refreshGeneration;
     const previousMcp = appliedMcp;
     // Publish intent before connecting so a newer generation diffs against the
