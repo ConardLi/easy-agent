@@ -320,7 +320,10 @@ async function buildRecording(): Promise<string> {
       initialMessages: SEED_MESSAGES,
       initialUsage: { input_tokens: 100, output_tokens: 50 },
     });
-    return [await record(e, "/status")];
+    const output = await record(e, "/status");
+    assert.match(output, /Task system: persistent task list \(task\)|Task system: session-only todo list \(todo\)/);
+    assert.doesNotMatch(output, /Task V2|TodoWrite V1/);
+    return [output];
   });
 
   await section("context", async () => {

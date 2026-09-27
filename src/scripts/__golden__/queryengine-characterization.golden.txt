@@ -142,7 +142,7 @@ command[info]:
   | - Session id: char-session
   | - Model: claude-sonnet-4-20250514 (source: default; default: claude-sonnet-4-20250514)
   | - Permission mode: default
-  | - Task system: task
+  | - Task system: persistent task list (task)
   | - Output style: default
   | - Messages in context: 2
   | - Session tokens: in 100 / out 50

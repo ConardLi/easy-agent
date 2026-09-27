@@ -65,6 +65,8 @@ export async function* handleStatusCommand(
   const connectedMcp = mcp.filter((e) => e.connection.type === "connected");
 
   const prePlanMode = ctx.getPrePlanMode();
+  const taskMode = getTaskMode();
+  const taskModeLabel = taskMode === "task" ? "persistent task list" : "session-only todo list";
   const lines = [
     "Status",
     "",
@@ -73,7 +75,7 @@ export async function* handleStatusCommand(
     `- Model: ${ctx.getActiveModel()} (source: ${ctx.getModelSource()}; default: ${ctx.defaultModel})`,
     `- Permission mode: ${ctx.getPermissionMode()}` +
       (prePlanMode ? ` (restores to ${prePlanMode} on plan exit)` : ""),
-    `- Task system: ${getTaskMode()}`,
+    `- Task system: ${taskModeLabel} (${taskMode})`,
     `- Output style: ${getActiveOutputStyleName()}`,
     `- Messages in context: ${ctx.getMessages().length}`,
     `- Session tokens: in ${ctx.getTotalUsage().input_tokens} / out ${ctx.getTotalUsage().output_tokens}`,
