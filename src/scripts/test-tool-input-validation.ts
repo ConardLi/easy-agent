@@ -39,7 +39,8 @@ try {
   const settingsDir = path.join(cwd, ".easy-agent");
   await mkdir(settingsDir);
   const marker = path.join(cwd, "hook-marker");
-  const hookShellAvailable = spawnSync("bash", ["-c", "printf ready"], { encoding: "utf8" }).stdout === "ready";
+  const hookShellAvailable = process.platform !== "win32" &&
+    spawnSync("bash", ["-c", "printf ready"], { encoding: "utf8" }).stdout === "ready";
   if (hookShellAvailable) {
     await writeFile(path.join(settingsDir, "settings.json"), JSON.stringify({
       hooks: { PreToolUse: [{ matcher: fixture.name, hooks: [{ type: "command", command: "printf 'hit\\n' >> hook-marker" }] }] },
