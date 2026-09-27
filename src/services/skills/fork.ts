@@ -21,7 +21,7 @@ export async function executeForkSkill(skill: Skill, prompt: string, context: To
   const model = typeof skill.frontmatter.raw.model === "string" ? skill.frontmatter.raw.model : definition.model ?? context.defaultModel;
   if (!model) return { content: "No model configured for fork skill.", isError: true };
   const result = await runChildAgent({
-    agentDefinition: { ...definition, permissionMode: context.getPermissionMode?.() as PermissionMode | undefined },
+    agentDefinition: definition,
     prompt, availableTools: pool, model, parentToolContext: context,
     abortSignal: context.abortSignal,
     permissionMode: context.getPermissionMode?.() as PermissionMode | undefined,
