@@ -45,6 +45,7 @@ jobs:
       - run: npm run typecheck
       - run: npm run build
       - run: npm run verify:production:core
+      - run: npm run test:hooks-hardening
 
   sandbox-host:
     name: Host sandbox integration

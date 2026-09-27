@@ -50,6 +50,7 @@ const TESTS: TestDefinition[] = [
   { id: "agent-teams", group: "extensions", file: "src/scripts/test-stage21.ts" },
   { id: "team-lifecycle", group: "extensions", file: "src/scripts/test-team-lifecycle.ts" },
   { id: "hooks", group: "extensions", file: "src/scripts/test-stage22.ts" },
+  { id: "hooks-hardening", group: "extensions", file: "src/scripts/test-hooks-hardening.ts" },
   { id: "styles-commands", group: "extensions", file: "src/scripts/test-stage23.ts" },
   { id: "configuration", group: "extensions", file: "src/scripts/smoke-config.ts" },
   { id: "providers", group: "extensions", file: "scripts/verify-multi-protocol.ts" },

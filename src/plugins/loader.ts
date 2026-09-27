@@ -257,7 +257,9 @@ function normalizeHookGroup(
     if ((entry.type ?? "command") !== "command") continue;
     if (typeof entry.command !== "string" || !entry.command) continue;
     const timeout = typeof entry.timeout === "number" && entry.timeout > 0 ? entry.timeout : 60;
-    const shell = entry.shell === "sh" || entry.shell === "bash" ? entry.shell : undefined;
+    const shell = entry.shell === "sh" || entry.shell === "bash" || entry.shell === "powershell" || entry.shell === "pwsh"
+      ? entry.shell
+      : undefined;
     const command = substitutePluginVars(entry.command, vars);
     hooks.push({
       type: "command",

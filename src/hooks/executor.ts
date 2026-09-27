@@ -1,38 +1,3 @@
-/**
- * Hook executor — spawns one shell command per configured hook, pipes
- * the event's JSON payload to stdin, captures stdout / stderr / exit
- * code, and interprets the result per Claude Code's hook protocol.
- *
- * Source mirror: `claude-code-source-code/src/utils/hooks.ts` →
- *   - `execCommandHook` (the spawn + capture mechanics, lines 830+)
- *   - `processHookJSONOutput` (decoding JSON into HookResult fields)
- *
- * Hook protocol summary (what the user-authored shell script gets):
- *   - stdin = JSON.stringify(hookInput)
- *   - env.EASY_AGENT_PROJECT_DIR = absolute cwd
- *   - exit 0 → success; stdout text is shown to the user (unless
- *     `suppressOutput: true` in JSON)
- *   - exit 2 → "block": stderr text is fed back to the model so it
- *     can adapt. Same convention Claude Code uses.
- *   - any other non-zero → "non-blocking error": surfaced as a
- *     warning but the loop continues
- *   - JSON stdout (parseable by `JSON.parse`) → richer control:
- *       { continue: false }                       → stop the loop
- *       { decision: "block", reason: "..." }      → block
- *       { systemMessage: "..." }                  → show to user
- *       { hookSpecificOutput: { permissionDecision: "deny" / "ask" / "allow",
- *                                additionalContext: "...", ... } }
- *
- * The Anthropic SDK + agentic loop don't care about most of these
- * fields — they care about three outputs:
- *   1. blockingError (rejects a tool call OR ends a turn)
- *   2. permissionBehavior (overrides the permission check)
- *   3. additionalContext (injected verbatim into the model's context)
- *
- * Everything else (systemMessage / suppressOutput / continue) is
- * still surfaced via HookResult so the UI layer can render it.
- */
-
 import { randomUUID } from "node:crypto";
 import { formatCapturedOutput, runControlledProcess } from "../utils/controlledProcess.js";
 import type {
@@ -46,18 +11,17 @@ import type {
 const DEFAULT_TIMEOUT_SEC = 60;
 const MAX_HOOK_OUTPUT_BYTES = 64 * 1024;
 
-/**
- * Run one shell-command hook and return its raw subprocess result.
- *
- * Why we don't use exec/execFile:
- *   - Hooks need stdin piping (the JSON payload)
- *   - We want streaming stdout/stderr capture with abort support
- *   - The shell flag matters (some hooks rely on `$VAR` expansion)
- *
- * We spawn `bash -c "<command>"` (or `sh -c` if the entry asked for
- * `shell: "sh"`). Windows installations therefore need a compatible
- * POSIX shell on PATH.
- */
+function resolveShell(hook: HookCommand): { executable: string; args: string[] } {
+  const shell = hook.shell ?? (process.platform === "win32" ? "powershell" : "bash");
+  if (shell === "powershell" || shell === "pwsh") {
+    return {
+      executable: shell === "powershell" && process.platform === "win32" ? "powershell.exe" : shell,
+      args: ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", hook.command],
+    };
+  }
+  return { executable: shell, args: ["-c", hook.command] };
+}
+
 async function runShellCommand(
   hook: HookCommand,
   jsonInput: string,
@@ -72,13 +36,13 @@ async function runShellCommand(
   outputTruncated: boolean;
   durationMs: number;
 }> {
-  const shellBin = hook.shell === "sh" ? "sh" : "bash";
+  const shell = resolveShell(hook);
   const timeoutMs = (hook.timeout ?? DEFAULT_TIMEOUT_SEC) * 1000;
   const startedAt = Date.now();
   try {
     const run = await runControlledProcess({
-      executable: shellBin,
-      args: ["-c", hook.command],
+      executable: shell.executable,
+      args: shell.args,
       cwd,
       env: {
         ...process.env,
@@ -142,14 +106,7 @@ function tryParseJsonOutput(stdout: string): HookJSONOutput | undefined {
   return undefined;
 }
 
-/**
- * Decode a parsed JSON output into the relevant HookResult fields.
- *
- * Mirror: source's `processHookJSONOutput` (utils/hooks.ts line 569).
- * Source has many more branches (`SubagentStart`, `PermissionDenied`,
- * `Elicitation`, …); we ship the four event-specific branches that
- * actually flow control in Easy Agent.
- */
+/** Decode a JSON hook response into the runtime decision fields. */
 function decodeJsonOutput(
   json: HookJSONOutput,
   hookEvent: HookEvent,
@@ -163,7 +120,7 @@ function decodeJsonOutput(
     if (json.stopReason) out.stopReason = json.stopReason;
   }
 
-  // ─── Legacy top-level `decision` (still supported by source) ─────
+  // ─── Top-level decision ──────────────────────────────────────────
   if (json.decision === "approve") {
     out.permissionBehavior = "allow";
   } else if (json.decision === "block") {
@@ -181,10 +138,7 @@ function decodeJsonOutput(
       spec.hookEventName &&
       spec.hookEventName !== hookEvent
     ) {
-      // Source validates this — we keep it loose and just log via
-      // stderr; the easy-agent uses console for diagnostics elsewhere.
-      // We DO honor the spec block regardless so a stray name field
-      // doesn't tank an otherwise valid hook.
+      // Keep processing the response to preserve its decision fields.
     }
 
     if (hookEvent === "PreToolUse" && spec.permissionDecision) {
@@ -292,9 +246,7 @@ export async function executeHookCommand(params: {
   const json = tryParseJsonOutput(run.stdout);
   if (json) {
     const decoded = decodeJsonOutput(json, hookEvent, commandLabel);
-    // exit code 2 still beats JSON `decision: "approve"` — source
-    // says blocking errors always win — but JSON `decision: "block"`
-    // already set `blockingError`, so no special case needed here.
+    // Exit code 2 takes precedence over a JSON approval.
     if (run.exitCode === 2 && !decoded.blockingError) {
       decoded.blockingError =
         run.stderr.trim() || `Hook returned exit code 2 (${commandLabel})`;
@@ -319,10 +271,7 @@ export async function executeHookCommand(params: {
 
   // ─── Plain-text path (no JSON) ───────────────────────────────────
   if (run.exitCode === 0) {
-    // For UserPromptSubmit / SessionStart / PostToolUse, source treats
-    // any non-empty stdout from a successful hook as additionalContext.
-    // It's the most common pattern in the wild — `git status -s` or
-    // `cat ENV.md` style hooks.
+    // Successful plain text from these events becomes model context.
     const stdoutTrimmed = run.stdout.trim();
     const additionalContext =
       stdoutTrimmed &&
@@ -344,7 +293,7 @@ export async function executeHookCommand(params: {
   }
 
   if (run.exitCode === 2) {
-    // Source's special "blocking" exit code.
+    // Exit code 2 blocks the action.
     return {
       hookName,
       command: commandLabel,

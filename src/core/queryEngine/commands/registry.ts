@@ -157,21 +157,7 @@ export async function* handleAgentsCommand(): AsyncGenerator<QueryEngineEvent, {
   return { handled: true };
 }
 
-/**
- * Handle `/hooks` — read-only listing of every configured hook the
- * loader picked up at startup, grouped by event + source. Mirrors
- * source's `commands/hooks/index.ts` + `HooksConfigMenu`, stripped
- * to a text-only listing (no interactive TUI) — Easy Agent
- * deliberately keeps the teaching version's slash UX dead simple.
- *
- * Shows:
- *   - which file path was read for each scope (user / project)
- *   - the kill switch state (EASY_AGENT_DISABLE_HOOKS)
- *   - per-event matcher groups + the command + timeout
- *
- * The model never sees this output — it's a human-side answer to
- * "what hooks are running right now?".
- */
+/** Render the current user and project Hook configuration for `/hooks`. */
 export async function* handleHooksCommand(
   ctx: CommandContext,
 ): AsyncGenerator<QueryEngineEvent, { handled: boolean }> {
@@ -187,6 +173,8 @@ export async function* handleHooksCommand(
   lines.push(`User-scope file:    ${report.userPath}`);
   lines.push(`Project-scope file: ${report.projectPath}`);
   lines.push("");
+  for (const error of report.errors) lines.push(`⚠ ${error}`);
+  if (report.errors.length > 0) lines.push("");
 
   const totalHookCount = (scope: HooksSettings): number =>
     HOOK_EVENTS.reduce(

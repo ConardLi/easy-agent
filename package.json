@@ -57,6 +57,7 @@
     "test:stage21": "tsx src/scripts/test-stage21.ts",
     "test:team-lifecycle": "node --import tsx src/scripts/test-team-lifecycle.ts",
     "test:stage22": "tsx src/scripts/test-stage22.ts",
+    "test:hooks-hardening": "node --import tsx src/scripts/test-hooks-hardening.ts",
     "test:stage23": "tsx src/scripts/test-stage23.ts",
     "test:stage24": "tsx src/scripts/smoke-stage24.tsx",
     "test:stage24-md": "tsx src/scripts/smoke-markdown.tsx",

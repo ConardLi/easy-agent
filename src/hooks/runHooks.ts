@@ -1,23 +1,4 @@
-/**
- * Per-event entry points used by the agentic loop / queryEngine /
- * sub-agent runner. Each function is one call:
- *
- *   runPreToolUseHooks({ toolName, ... })  →  AggregatedHookOutcome
- *
- * It:
- *   1. Loads the user's hooks settings (cached after first call)
- *   2. Finds the matcher groups that fire for this event + field
- *   3. Spawns each hook in parallel
- *   4. Aggregates the per-hook results into one rolled-up outcome
- *
- * Caching note: settings are loaded once per `(cwd, signal)` triple
- * and reused for the duration of the process. Hot-reload on file
- * change is intentionally not implemented in the teaching version —
- * source has a `hooksConfigSnapshot` system for that, which adds a
- * lot of complexity we don't need for a 22-stage tutorial.
- */
-
-import { hooksGloballyDisabled, loadHooksSettings, findMatchingHooks } from "./settings.js";
+import { hooksGloballyDisabled, loadHooksSettings, findMatchingHooks, resetHooksSettingsSnapshot, refreshHookDisableFromSettings } from "./settings.js";
 import { executeHookCommand, newHookCorrelationId } from "./executor.js";
 import { getActivePluginHooks } from "../plugins/runtime.js";
 import { HOOK_EVENTS } from "./types.js";
@@ -29,26 +10,8 @@ import type {
   HooksSettings,
 } from "./types.js";
 
-// ─── Settings cache ───────────────────────────────────────────────────
-
-const SETTINGS_CACHE = new Map<string, Promise<HooksSettings>>();
-
-/**
- * Cached `loadHooksSettings`. The key is the resolved cwd — different
- * cwds (e.g. sub-agent worktrees) get their own snapshot, but two
- * tools running in the same cwd share one promise.
- */
 async function getSettings(cwd: string): Promise<HooksSettings> {
-  let p = SETTINGS_CACHE.get(cwd);
-  if (!p) {
-    p = loadHooksSettings(cwd);
-    SETTINGS_CACHE.set(cwd, p);
-  }
-  const base = await p;
-  // Merge plugin-contributed hooks (stage 35) fresh each call — the active
-  // plugin set changes live via /plugin enable|disable, so it must NOT be
-  // frozen into the file-settings cache. Plugin groups are already trust-gated
-  // by the runtime; they concatenate AFTER the user/project groups so both fire.
+  const base = await loadHooksSettings(cwd);
   return mergePluginHooks(base, getActivePluginHooks());
 }
 
@@ -62,12 +25,8 @@ function mergePluginHooks(base: HooksSettings, plugin: HooksSettings): HooksSett
   return merged;
 }
 
-/**
- * Test-only: drop the cache so a unit test can mutate settings.json
- * mid-run without inheriting a stale snapshot from a sibling test.
- */
 export function _resetHooksSettingsCache(): void {
-  SETTINGS_CACHE.clear();
+  resetHooksSettingsSnapshot();
 }
 
 // ─── Aggregator ───────────────────────────────────────────────────────
@@ -135,7 +94,8 @@ async function runHooksForEvent(params: {
   cwd: string;
   signal?: AbortSignal;
 }): Promise<AggregatedHookOutcome> {
-  if (hooksGloballyDisabled()) {
+  await refreshHookDisableFromSettings(params.cwd);
+  if (hooksGloballyDisabled(params.cwd)) {
     return { results: [] };
   }
 
@@ -146,9 +106,7 @@ async function runHooksForEvent(params: {
   const matchLabel = params.matchField ? `:${params.matchField}` : "";
   const hookName = `${params.event}${matchLabel}`;
 
-  // Run all matching hooks in parallel. Source does the same — each
-  // hook has its own timeout, and the aggregate result merges in any
-  // order (we re-sort by start order in the output for determinism).
+  // Each hook has its own timeout; Promise.all preserves configuration order.
   const settled = await Promise.all(
     hooks.map((hook) =>
       executeHookCommand({
