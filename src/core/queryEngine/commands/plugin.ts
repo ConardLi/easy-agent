@@ -158,7 +158,7 @@ async function* reload(ctx: CommandContext): Yield {
   const lines = [
     `Plugins reloaded: ${summary.enabledPlugins} enabled, ${summary.disabledPlugins} disabled.`,
     `  Skills ${summary.skills} · Commands ${summary.commands} · Agents ${summary.agents} · ` +
-      `Styles ${summary.outputStyles} · Hooks ${summary.hooks} · MCP ${summary.mcpServers} · ` +
+      `Styles ${summary.outputStyles} · Hooks ${summary.hooks} · MCP ${summary.mcpServers} · LSP ${summary.lspServers} · ` +
       `Errors ${summary.errors}`,
   ];
   if (result.mcpStarted.length > 0) lines.push(`  MCP started: ${result.mcpStarted.join(", ")}`);
@@ -409,6 +409,7 @@ async function* validate(ctx: CommandContext, args: string[]): Yield {
     `${loaded.outputStyles.length} style(s)`,
     `${loaded.hooks.length} hook(s)`,
     `${loaded.mcpServers.length} mcp server(s)`,
+    `${loaded.lspServers?.length ?? 0} lsp server(s)`,
   ];
   const lines = [
     loaded.errors.length === 0
@@ -440,6 +441,7 @@ async function* install(ctx: CommandContext, args: string[]): Yield {
     `${l.outputStyles.length} style(s)`,
     `${l.hooks.length} hook(s)`,
     `${l.mcpServers.length} mcp server(s)`,
+    `${l.lspServers?.length ?? 0} lsp server(s)`,
   ];
   const lines = [
     `Installed ${result.record.pluginId} v${result.record.version} (${scope}).`,
@@ -447,7 +449,7 @@ async function* install(ctx: CommandContext, args: string[]): Yield {
   ];
   if (result.requiresTrust) {
     lines.push(
-      "  note: this plugin ships hooks/MCP servers. They run only in trusted folders" +
+      "  note: this plugin ships hooks/MCP/LSP servers. They run only in trusted folders" +
         (scope === "user" ? "" : " — trust this folder to enable them here."),
     );
   }

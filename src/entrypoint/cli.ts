@@ -43,6 +43,7 @@ Options:
   --output-format <fmt>       Headless output: text (default) | json | stream-json
                               json: one result object; stream-json: NDJSON stream
                               (system/init → assistant/user → result)
+  --tool-search <mode>         ToolSearch mode: off | auto | on
   --resume [session-id]       Resume the latest or a specific session
   --plan                      Start in plan mode (read-only tools only)
   --auto                      Start in auto mode: an AI classifier auto-approves
@@ -204,6 +205,15 @@ Settings keys (in ~/.easy-agent/settings.json or <cwd>/.easy-agent/settings.json
     } else if (raw && typeof raw === "object") {
       Object.assign(flagSettings, raw);
     }
+  }
+  const searchIndex = process.argv.indexOf("--tool-search");
+  if (searchIndex !== -1) {
+    const mode = process.argv[searchIndex + 1];
+    if (mode !== "off" && mode !== "auto" && mode !== "on") {
+      console.error("[easy-agent] --tool-search requires off, auto or on.");
+      process.exit(1);
+    }
+    flagSettings.toolSearch = mode;
   }
   if (model) flagSettings.model = model;
   if (permissionMode) flagSettings.mode = permissionMode;
@@ -425,6 +435,11 @@ Settings keys (in ~/.easy-agent/settings.json or <cwd>/.easy-agent/settings.json
   // toggles) but BEFORE any Ink rendering. It runs one turn and exits, so we
   // never reach the interactive REPL below.
   if (isPrintMode) {
+    // Headless has no later UI bootstrap phase; executable plugin services must
+    // be reconciled before the one request so plugin MCP/LSP tools are usable.
+    await refreshActivePlugins(process.cwd(), { pluginDirs }).catch((error) => {
+      console.error(`[easy-agent] plugin services bootstrap failed: ${(error as Error).message}`);
+    });
     const { runHeadless } = await import("./headless.js");
     await runHeadless({
       promptArg: printPrompt,

@@ -10,6 +10,7 @@ import { getAllTools, getToolsForMode } from "../../../tools/index.js";
 import { resolveProfile } from "../../../services/api/providers/profile.js";
 import { hasPendingMcpServers } from "../../../services/mcp/registry.js";
 import { prepareToolSearchRequest } from "../../../utils/toolSearch.js";
+import { loadFeatureSettings } from "../../../config/features.js";
 import { getMcpRegistry } from "../../../services/mcp/registry.js";
 import { getTaskMode } from "../../../state/taskModeStore.js";
 import { getActiveOutputStyleName } from "../../../styles/registry.js";
@@ -100,7 +101,7 @@ export async function* handleContextCommand(
     tools: getToolsForMode(ctx.getPermissionMode()),
     messages,
     model: profile.model,
-    env: { protocol: profile.protocol, baseURL: profile.baseURL ?? process.env.ANTHROPIC_BASE_URL },
+    env: { protocol: profile.protocol, baseURL: profile.baseURL ?? process.env.ANTHROPIC_BASE_URL, settings: await loadFeatureSettings(cwd) },
     hasPendingMcpServers: hasPendingMcpServers(),
     source: "context",
   });
@@ -361,6 +362,11 @@ export async function* handleDoctorCommand(
     }
     for (const issue of pluginStateErrors) lines.push(`    - state: ${issue}`);
   }
+
+  const { describeConfiguration } = await import("../../../config/catalog.js");
+  lines.push("", ...await describeConfiguration(cwd));
+  const { getLspStatus } = await import("../../../services/lsp/runtime.js");
+  for (const server of getLspStatus()) lines.push(`LSP ${server.name}: ${server.status}${server.error ? ` (${server.error})` : ""}`);
 
   yield { type: "command", kind: "info", message: lines.join("\n") };
   return { handled: true };

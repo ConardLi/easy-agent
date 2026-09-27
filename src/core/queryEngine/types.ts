@@ -75,6 +75,7 @@ export interface PluginComponentCounts {
   outputStyles: number;
   hooks: number;
   mcpServers: number;
+  lspServers?: number;
 }
 
 export interface PluginComponentNames {
@@ -84,6 +85,7 @@ export interface PluginComponentNames {
   outputStyles: string[];
   hooks: string[];
   mcpServers: string[];
+  lspServers?: string[];
 }
 
 /** An installed plugin, as shown in the manager's "Installed" tab. */

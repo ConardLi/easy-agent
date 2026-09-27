@@ -12,6 +12,8 @@ import {
   type PermissionSettings,
 } from "../permissions/permissions.js";
 import { streamMessage } from "../services/api/streaming.js";
+import { loadFeatureSettings } from "../config/features.js";
+import { getFlagSettings } from "../config/sources.js";
 import { ESCALATED_MAX_TOKENS, MAX_OUTPUT_TOKENS_RECOVERY_LIMIT } from "../services/api/client.js";
 import type { QuerySource } from "../services/api/withRetry.js";
 import { compactMessages } from "../context/compaction.js";
@@ -195,6 +197,8 @@ export interface QueryParams {
    * own id + type so SubagentStop hooks fire per-agent.
    */
   subagentInfo?: { agentId: string; agentType: string };
+  /** Do not apply modelRoles when the caller/user selected a model explicitly. */
+  explicitModel?: boolean;
 }
 
 export interface RunToolsOptions {
@@ -204,6 +208,8 @@ export interface RunToolsOptions {
   onPermissionRequest?: (request: PermissionRequest) => Promise<PermissionDecision>;
   /** See RunQueryParams.shouldAvoidPermissionPrompts. */
   shouldAvoidPermissionPrompts?: boolean;
+  /** Effective per-request ToolSearch state; gates deferred-schema retry hints. */
+  toolSearchEnabled?: boolean;
   /**
    * Conversation so far (before the current tool-use action). Threaded into
    * `checkPermission` so the Auto Mode classifier can infer user intent.
@@ -350,7 +356,7 @@ async function runOneToolBlock(
 
   const validated = validateToolInput(tool, block.input);
   if (!validated.ok) {
-    const hint = buildSchemaNotSentHint(
+    const hint = options.toolSearchEnabled === false ? null : buildSchemaNotSentHint(
       tool,
       options.conversationMessages ?? [],
       options.availableTools ?? [],
@@ -532,7 +538,7 @@ async function runOneToolBlock(
     // almost always a parameter guess. Tell the model to ToolSearch first
     // instead of letting it retry blind.
     if (result.isError) {
-      const hint = buildSchemaNotSentHint(
+      const hint = options.toolSearchEnabled === false ? null : buildSchemaNotSentHint(
         tool,
         options.conversationMessages ?? [],
         options.availableTools ?? [],
@@ -783,7 +789,20 @@ export async function* query(
     // history. `state.messages` itself is never mutated by this step.
     const currentTools = ((params.getTools ? params.getTools() : params.tools) ?? [])
       .filter(hasValidToolInputSchema);
-    const profile = await resolveProfile(params.model, params.toolContext.cwd);
+    const featureSettings = await loadFeatureSettings(params.toolContext.cwd);
+    // Explicit per-invocation model selection remains authoritative for child
+    // agents. Main requests can route thinking or oversized context by role.
+    const { buildDefaultThinkingConfig } = await import("../utils/thinking.js");
+    const thinking = buildDefaultThinkingConfig();
+    const { getContextWindowForModel } = await import("../utils/tokens.js");
+    const baseProfile = await resolveProfile(params.model, params.toolContext.cwd);
+    const contextTokens = tokenCountWithEstimation(state.messages, { systemPrompt: params.systemPrompt });
+    const roleModel = !params.subagentInfo && !params.explicitModel && typeof getFlagSettings()?.model !== "string"
+      ? (contextTokens > getContextWindowForModel(baseProfile.model) * 0.8 ? featureSettings.modelRoles.longContext : undefined)
+        ?? (thinking.type !== "disabled" ? featureSettings.modelRoles.think : undefined)
+      : undefined;
+    const requestModel = roleModel ?? params.model;
+    const profile = roleModel ? await resolveProfile(requestModel, params.toolContext.cwd) : baseProfile;
     const prepared = prepareToolSearchRequest({
       tools: currentTools,
       messages: state.messages,
@@ -791,13 +810,14 @@ export async function* query(
       env: {
         protocol: profile.protocol,
         baseURL: profile.baseURL ?? process.env.ANTHROPIC_BASE_URL,
+        settings: featureSettings,
       },
       hasPendingMcpServers: hasPendingMcpServers(),
       source: params.subagentInfo ? "subagent" : "query",
     });
     const stream = streamMessage({
       messages: prepared.messages,
-      model: params.model,
+      model: requestModel,
       system: params.systemPrompt,
       tools: prepared.tools.length > 0 ? prepared.tools : undefined,
       toolSearchEnabled: prepared.enabled,
@@ -1064,6 +1084,7 @@ export async function* query(
         conversationMessages: state.messages,
         model: params.model,
         availableTools: currentTools,
+        toolSearchEnabled: prepared.enabled,
       },
     );
 

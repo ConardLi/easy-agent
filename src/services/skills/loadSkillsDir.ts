@@ -95,6 +95,10 @@ async function loadFromOneDir(dir: string, source: SkillSource): Promise<LoadedF
       warnings.push(`[skills] Skipping ${dirName}: invalid frontmatter (${split.parseError})`);
       continue;
     }
+    if (split.raw.context !== undefined && split.raw.context !== "fork") {
+      warnings.push(`[skills] Skipping ${dirName}: unsupported context; use fork or omit context`);
+      continue;
+    }
     const frontmatter = normalizeFrontmatter(split.raw, split.body);
 
     // Resolve to canonical paths for symlink dedupe (handled by caller).

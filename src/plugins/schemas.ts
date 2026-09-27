@@ -18,6 +18,7 @@
  */
 
 import { z } from "zod";
+import { LspServersSchema } from "../services/lsp/schema.js";
 
 // ─── Shared primitives ────────────────────────────────────────────────
 
@@ -84,8 +85,7 @@ export const PluginManifestSchema = z.looseObject({
   hooks: RelInsidePathList.optional(),
   mcpServers: RelInsidePathList.optional(),
 
-  // Parsed + carried through, but LSP launch is deferred (see plan §35.0).
-  lspServers: z.unknown().optional(),
+  lspServers: z.union([RelInsidePathList, LspServersSchema]).optional(),
 });
 
 export type PluginManifest = z.infer<typeof PluginManifestSchema>;
@@ -133,6 +133,7 @@ export const MarketplacePluginEntrySchema = z.looseObject({
   outputStyles: RelInsidePathList.optional(),
   hooks: RelInsidePathList.optional(),
   mcpServers: RelInsidePathList.optional(),
+  lspServers: RelInsidePathList.optional(),
 });
 
 export type MarketplacePluginEntry = z.infer<typeof MarketplacePluginEntrySchema>;
@@ -163,6 +164,7 @@ export interface PluginComponentPaths {
   outputStyles?: string | string[];
   hooks?: string | string[];
   mcpServers?: string | string[];
+  lspServers?: string | string[];
 }
 
 // ─── State files (~/.easy-agent/plugins/*.json) ───────────────────────

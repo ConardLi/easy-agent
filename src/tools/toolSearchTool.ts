@@ -271,6 +271,10 @@ export const toolSearchTool: Tool = {
   maxResultSizeChars: 100_000,
 
   async call(input: Record<string, unknown>, context: ToolContext): Promise<ToolResult> {
+    const { loadFeatureSettings } = await import("../config/features.js");
+    if ((await loadFeatureSettings(context.cwd)).toolSearch === "off") {
+      return { content: "ToolSearch is disabled by the effective configuration.", isError: true };
+    }
     const query = typeof input.query === "string" ? input.query : "";
     if (!query.trim()) return { content: "Error: `query` is required.", isError: true };
     const maxResults =
@@ -292,7 +296,9 @@ export const toolSearchTool: Tool = {
   },
 
   isEnabled() {
-    return isToolSearchEnabledOptimistic();
+    // Registration must survive off → on settings changes. Request shaping
+    // removes the tool whenever the resolved request policy disables it.
+    return true;
   },
 
   isConcurrencySafe() {

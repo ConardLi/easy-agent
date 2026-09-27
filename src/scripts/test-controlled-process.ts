@@ -131,7 +131,7 @@ try {
       const { getBashProgress } = await import("../state/bashProgressStore.js");
       const toolUseId = "bounded-bash-test";
       const bash = await bashTool.call({
-        command: `${process.execPath} -e "process.stdout.write('x'.repeat(2000000))"`,
+        command: `${JSON.stringify(process.execPath)} -e "process.stdout.write('x'.repeat(2000000))"`,
         timeout: 5_000,
       }, { cwd: ROOT, toolUseId });
       assert.notEqual(bash.isError, true);
@@ -141,7 +141,7 @@ try {
 
       const { executeHookCommand } = await import("../hooks/executor.js");
       const hook = await executeHookCommand({
-        hook: { type: "command", command: `${process.execPath} -e "process.stdout.write('x'.repeat(200000))"` },
+        hook: { type: "command", command: `${JSON.stringify(process.execPath)} -e "process.stdout.write('x'.repeat(200000))"` },
         hookEvent: "UserPromptSubmit",
         hookName: "bounded-hook",
         hookInput: { hook_event_name: "UserPromptSubmit", session_id: "test", cwd: ROOT, prompt: "test" },

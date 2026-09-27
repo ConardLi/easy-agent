@@ -87,6 +87,8 @@ interface CacheEntry {
 }
 
 const sourceCache = new Map<string, CacheEntry>();
+const lastValidSources = new Map<string, Record<string, unknown>>();
+const loading = new Map<string, Promise<LoadedSource[]>>();
 
 /**
  * Drop all cached source reads. Called automatically when flags change or a
@@ -101,7 +103,7 @@ export function resetSettingsCache(): void {
 async function fileSignature(filePath: string): Promise<string> {
   try {
     const stat = await fs.stat(filePath);
-    return `${stat.mtimeMs}:${stat.size}`;
+    return `${stat.mtimeMs}:${stat.ctimeMs}:${stat.size}`;
   } catch {
     return "none";
   }
@@ -134,6 +136,14 @@ function buildSource(
  * `parseError` the caller can report.
  */
 export async function loadSettingSources(cwd: string): Promise<LoadedSource[]> {
+  const previous = loading.get(cwd) ?? Promise.resolve([]);
+  const next = previous.catch(() => []).then(() => readSettingSources(cwd));
+  loading.set(cwd, next);
+  try { return structuredClone(await next); }
+  finally { if (loading.get(cwd) === next) loading.delete(cwd); }
+}
+
+async function readSettingSources(cwd: string): Promise<LoadedSource[]> {
   const userPath = getUserSettingsPath();
   const projectPath = getProjectSettingsPath(cwd);
   const localPath = getLocalSettingsPath(cwd);
@@ -170,6 +180,20 @@ export async function loadSettingSources(cwd: string): Promise<LoadedSource[]> {
     buildSource("policy", policyPath, policy.raw, policy.parseError),
   ];
 
+  // Publish a whole source snapshot, never a mixture of a new valid field and
+  // stale siblings. Initial loads retain field-level tolerance for compatibility.
+  for (const src of sources) {
+    const key = `${userPath}|${cwd}|${src.source}|${src.path ?? "flag"}`;
+    const invalid = Boolean(src.parseError || src.validationErrors?.some((error) => !error.includes("unsupported setting")));
+    const previous = lastValidSources.get(key);
+    if (invalid && previous) {
+      src.raw = structuredClone(previous);
+      src.validationErrors = [...(src.validationErrors ?? []), `${src.path ?? src.source}: update rejected; retained last valid source snapshot`];
+    } else if (!invalid) {
+      if (src.raw) lastValidSources.set(key, structuredClone(src.raw));
+      else lastValidSources.delete(key);
+    }
+  }
   sourceCache.set(cwd, { signature, sources });
   return sources;
 }

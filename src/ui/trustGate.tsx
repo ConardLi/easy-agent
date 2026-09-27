@@ -56,7 +56,7 @@ export async function detectRisks(cwd: string): Promise<string[]> {
         (value) => value === true,
       )
     ) {
-      risks.add("project plugins (may include hooks or MCP servers)");
+      risks.add("project plugins (may include hooks, MCP, or LSP servers)");
     }
     const allow = raw["allow"];
     if (Array.isArray(allow) && allow.some((r) => typeof r === "string" && r.startsWith("Bash("))) {

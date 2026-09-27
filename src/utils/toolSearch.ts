@@ -25,6 +25,7 @@ import { toolToApiParam, type ApiToolParam, type Tool } from "../tools/Tool.js";
 import type { ContentBlock, ToolReferenceBlock } from "../types/message.js";
 import { redactUrlForDisplay } from "../config/redaction.js";
 import { debugLog } from "./log.js";
+import type { FeatureSettings } from "../config/features.js";
 import { getContextWindowForModel } from "./tokens.js";
 import { areExperimentalBetasDisabled } from "./experimentalBetas.js";
 export { areExperimentalBetasDisabled } from "./experimentalBetas.js";
@@ -113,7 +114,8 @@ function isAutoToolSearchMode(value: string | undefined): boolean {
   return value === "auto" || value.startsWith("auto:");
 }
 
-function getAutoToolSearchPercentage(): number {
+function getAutoToolSearchPercentage(settings?: FeatureSettings): number {
+  if (settings) return settings.toolSearchAutoThreshold;
   const value = getToolSearchEnvValue();
   if (!value || value === "auto") return DEFAULT_AUTO_TOOL_SEARCH_PERCENTAGE;
   return parseAutoPercentage(value) ?? DEFAULT_AUTO_TOOL_SEARCH_PERCENTAGE;
@@ -128,8 +130,9 @@ function getAutoToolSearchPercentage(): number {
  *   false / auto:100      standard
  *   (unset)               tst   (default: always defer MCP and shouldDefer tools)
  */
-export function getToolSearchMode(): ToolSearchMode {
+export function getToolSearchMode(settings?: FeatureSettings): ToolSearchMode {
   if (areExperimentalBetasDisabled()) return "standard";
+  if (settings) return settings.toolSearch === "off" ? "standard" : settings.toolSearch === "auto" ? "tst-auto" : "tst";
 
   const value = getToolSearchEnvValue();
   const autoPercent = value ? parseAutoPercentage(value) : null;
@@ -219,6 +222,7 @@ export interface ToolSearchRequestEnv {
   protocol: "anthropic" | "openai-chat" | "openai-responses" | "gemini";
   /** Effective base URL for the Anthropic protocol (profile override or ANTHROPIC_BASE_URL). */
   baseURL?: string;
+  settings?: FeatureSettings;
 }
 
 function calculateDeferredToolDefinitionChars(tools: readonly Tool[]): number {
@@ -235,12 +239,12 @@ function calculateDeferredToolDefinitionChars(tools: readonly Tool[]): number {
  * Threshold = contextWindow × N%. Without a token-count API we use the
  * character heuristic (2.5 chars/token) directly.
  */
-function checkAutoThreshold(model: string, tools: readonly Tool[]): {
+function checkAutoThreshold(model: string, tools: readonly Tool[], settings?: FeatureSettings): {
   enabled: boolean;
   chars: number;
   charThreshold: number;
 } {
-  const tokenThreshold = Math.floor(getContextWindowForModel(model) * (getAutoToolSearchPercentage() / 100));
+  const tokenThreshold = Math.floor(getContextWindowForModel(model) * (getAutoToolSearchPercentage(settings) / 100));
   const charThreshold = Math.floor(tokenThreshold * CHARS_PER_TOKEN);
   const chars = calculateDeferredToolDefinitionChars(tools);
   return { enabled: chars >= charThreshold, chars, charThreshold };
@@ -275,7 +279,7 @@ export function isToolSearchEnabled(
     return false;
   }
 
-  const mode = getToolSearchMode();
+  const mode = getToolSearchMode(env.settings);
   if (mode === "standard") {
     log(false, "standard_mode");
     return false;
@@ -283,7 +287,7 @@ export function isToolSearchEnabled(
 
   if (
     env.protocol === "anthropic" &&
-    !getToolSearchEnvValue() &&
+    !(env.settings ? env.settings.toolSearchExplicit : getToolSearchEnvValue()) &&
     !isFirstPartyAnthropicBaseUrl(env.baseURL)
   ) {
     log(false, "non_first_party_base_url", {
@@ -297,11 +301,11 @@ export function isToolSearchEnabled(
     return true;
   }
 
-  const { enabled, chars, charThreshold } = checkAutoThreshold(model, tools);
+  const { enabled, chars, charThreshold } = checkAutoThreshold(model, tools, env.settings);
   log(enabled, enabled ? "auto_above_threshold" : "auto_below_threshold", {
     chars,
     charThreshold,
-    percentage: getAutoToolSearchPercentage(),
+    percentage: getAutoToolSearchPercentage(env.settings),
   });
   return enabled;
 }

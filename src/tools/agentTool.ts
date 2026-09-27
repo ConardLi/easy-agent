@@ -363,8 +363,10 @@ export const agentTool: Tool = {
     //   2. Agent definition's `model` field
     //   3. Parent's active model (set by QueryEngine on the context)
     //   4. DEFAULT_MODEL (env or hard-coded fallback)
-    const resolvedModel =
-      model || def.model || context.defaultModel || DEFAULT_MODEL;
+    const { resolveRoleModel } = await import("../config/features.js");
+    const fallbackModel = context.defaultModel || DEFAULT_MODEL;
+    const resolvedModel = model || def.model || ((run_in_background || teammateIdentity)
+      ? await resolveRoleModel(context.cwd, "background", fallbackModel) : fallbackModel);
 
     const permissionMode = context.getPermissionMode?.() as PermissionMode | undefined;
     const permissionSettings = context.permissionSettings as PermissionSettings | undefined;

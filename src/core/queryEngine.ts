@@ -386,6 +386,24 @@ export class QueryEngine {
       // ConversationView.
       const skillExpansion = this.tryExpandSkillCommand(trimmed);
       if (skillExpansion) {
+        if (skillExpansion.skill.frontmatter.hasForkContext) {
+          const { executeForkSkill } = await import("../services/skills/fork.js");
+          this.abortController = new AbortController();
+          try {
+            const result = await executeForkSkill(skillExpansion.skill, skillExpansion.bodyText, {
+              ...this.toolContext, abortSignal: this.abortController.signal,
+              defaultModel: this.getActiveModel(), availableTools: getToolsForMode(this.currentPermissionMode),
+              getPermissionMode: () => this.currentPermissionMode,
+              permissionSettings: this.permissionSettings, sessionPermissionRules: this.sessionPermissionRules,
+              onPermissionRequest: this.onPermissionRequest,
+            });
+            const message: MessageParam = { role: "assistant", content: typeof result.content === "string" ? result.content : JSON.stringify(result.content) };
+            this.messages.push({ role: "user", content: skillExpansion.markerContent }, message);
+            yield { type: "assistant_message", message };
+            yield { type: "messages_updated", messages: [...this.messages] };
+            return { handled: true, reason: result.isError ? "model_error" : "completed" };
+          } finally { this.abortController = null; }
+        }
         const markerMessage: MessageParam = {
           role: "user",
           content: skillExpansion.markerContent,
@@ -430,13 +448,13 @@ export class QueryEngine {
     // explicitly asked for this skill to run — no need to re-prompt for
     // each tool call inside it). Same effect as the SkillTool's
     // contextModifier when the model invokes a skill.
-    if (skill.frontmatter.allowedTools.length > 0) {
+    if (!skill.frontmatter.hasForkContext && skill.frontmatter.allowedTools.length > 0) {
       this.addSessionAllowRules(skill.frontmatter.allowedTools);
     }
 
     // Stage 34: a skill can declare a reasoning-effort level; invoking it
     // sets the session effort (maps to output_config.effort on Anthropic).
-    if (skill.frontmatter.effort) {
+    if (!skill.frontmatter.hasForkContext && skill.frontmatter.effort) {
       setSessionEffortLevel(skill.frontmatter.effort);
     }
 
@@ -767,6 +785,7 @@ export class QueryEngine {
         permissionSettings: this.permissionSettings,
         sessionPermissionRules: this.sessionPermissionRules,
         onPermissionRequest: this.onPermissionRequest,
+        explicitModel: Boolean(this.turnModelOverride || this.sessionModelOverride),
       });
 
       while (true) {

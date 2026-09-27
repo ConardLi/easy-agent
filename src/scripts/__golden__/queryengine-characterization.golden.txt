@@ -187,6 +187,24 @@ command[info]:
   | <LOCAL_DATA_PERMISSIONS>
   | ✓ Project configuration: trusted
   | ✓ Plugins: 0 active, no load errors
+  |
+  | Configuration (effective values + source; reload policy)
+  |   models = {} [{}; next request]
+  |   mode = "default" [default; config command]
+  |   autoMode = false [default; config command]
+  |   allow = [] [default; config command]
+  |   deny = [] [default; config command]
+  |   ask = [] [default; config command]
+  |   additionalDirectories = [] [default; restart]
+  |   disableAllHooks = false [default; next event]
+  |   checkpointingEnabled = true [default; next checkpoint]
+  |   respectGitignore = true [default; next search]
+  |   syntaxHighlightingDisabled = false [default; restart]
+  |   prefersReducedMotion = false [default; restart]
+  |   enableAllProjectMcpServers = false [default; restart]
+  |   enabledPlugins = {} [default; plugin reload]
+  |   toolSearch = on [default; next request]
+  |   toolSearchAutoThreshold = 10 [default; next request]
 <<< handled=true
 
 ### copy
@@ -345,7 +363,7 @@ command[info]:
   | Setting updated
   | - cleanupPeriodDays = 7
   | - Scope: local
-  | - Applied to this session; permission changes take effect on the next tool call.
+  | - Reload: restart required.
 <<< handled=true
 
 >>> /config get cleanupPeriodDays

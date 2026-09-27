@@ -19,6 +19,7 @@
 
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { LspServersSchema } from "../services/lsp/schema.js";
 import { loadSkillsFromDir } from "../services/skills/loadSkillsDir.js";
 import { loadAgentsFromDir } from "../agents/loadAgentsDir.js";
 import { loadCommandsFromDir } from "../commands/userCommands/loadCommandsDir.js";
@@ -407,6 +408,7 @@ export async function loadPlugin(opts: LoadPluginOptions): Promise<LoadedPlugin>
     outputStyles: [],
     hooks: [],
     mcpServers: [],
+    lspServers: [],
     hasExecutableComponents: false,
     errors,
     warnings,
@@ -498,8 +500,33 @@ export async function loadPlugin(opts: LoadPluginOptions): Promise<LoadedPlugin>
   // ── Hooks & MCP (executable — gated by trust at apply time) ──
   emptyPlugin.hooks = await loadPluginHooks(opts.root, opts.pluginId, vars, [manifest.hooks, opts.overlay?.hooks], errors);
   emptyPlugin.mcpServers = await loadPluginMcp(opts.root, opts.pluginId, name, vars, [manifest.mcpServers, opts.overlay?.mcpServers], errors);
+  const lspMaps: unknown[] = [];
+  if (manifest.lspServers && typeof manifest.lspServers === "object" && !Array.isArray(manifest.lspServers)) lspMaps.push(manifest.lspServers);
+  const lspFiles = [path.join(opts.root, ".lsp.json"), ...[manifest.lspServers, opts.overlay?.lspServers].flatMap(asPathList).map((file) => path.resolve(opts.root, file))];
+  for (const file of new Set(lspFiles)) {
+    const check = await resolveInsidePlugin(opts.root, file);
+    if (!check.ok) { errors.push({ pluginId: opts.pluginId, scope: "manifest", message: "Rejected LSP configuration path outside plugin" }); continue; }
+    try {
+      const json = JSON.parse(await fs.readFile(check.resolved, "utf8"));
+      lspMaps.push(json.lspServers ?? json);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") errors.push({ pluginId: opts.pluginId, scope: "manifest", message: "Invalid LSP configuration file" });
+    }
+  }
+  const lspByName = new Map<string, import("../services/lsp/runtime.js").LspRegistration>();
+  for (const map of lspMaps) {
+    const parsed = LspServersSchema.safeParse(map);
+    if (!parsed.success) { errors.push({ pluginId: opts.pluginId, scope: "manifest", message: `Invalid lspServers: ${parsed.error.issues.map((issue) => issue.path.join(".")).join(", ")}; expected stdio command, args and extensionToLanguage` }); continue; }
+    for (const [serverName, config] of Object.entries(parsed.data)) {
+      const sub = (value: string) => substitutePluginVars(value, vars);
+      const name = `plugin:${emptyPlugin.name}:${serverName}`;
+      lspByName.set(name, { name, cwd: opts.root, config: { ...config, command: sub(config.command), args: config.args.map(sub),
+        env: { ...Object.fromEntries(Object.entries(config.env ?? {}).map(([key, value]) => [key, sub(value)])), EASY_AGENT_PLUGIN_ROOT: opts.root, EASY_AGENT_PLUGIN_DATA: dataDir } } });
+    }
+  }
+  emptyPlugin.lspServers = [...lspByName.values()];
   emptyPlugin.hasExecutableComponents =
-    emptyPlugin.hooks.length > 0 || emptyPlugin.mcpServers.length > 0;
+    emptyPlugin.hooks.length > 0 || emptyPlugin.mcpServers.length > 0 || emptyPlugin.lspServers.length > 0;
 
   // ── Within-plugin public-name conflict (plan §35.3): a skill and a command
   //    resolving to the same `/name` is ambiguous → validation error. ──

@@ -9,6 +9,9 @@
 import { loadSettingSources, type SettingSource } from "../../../config/sources.js";
 import { isProjectTrusted } from "../../../config/globalState.js";
 import { redactSettingValue } from "../../../config/redaction.js";
+import { validateSettings, SettingsSchema } from "../../../config/schema.js";
+import { loadFeatureSettings } from "../../../config/features.js";
+import { SETTING_RELOAD } from "../../../config/catalog.js";
 import {
   updateUserSettings,
   updateProjectSettings,
@@ -103,6 +106,11 @@ export async function* handleConfigCommand(
       yield { type: "command", kind: "error", message: "Usage: /config get <key>" };
       return { handled: true };
     }
+    if (key === "toolSearch" || key === "toolSearchAutoThreshold" || key === "modelRoles") {
+      const features = await loadFeatureSettings(cwd);
+      yield { type: "command", kind: "info", message: `${key} = ${fmt(key, features[key])} [${features.sources[key]}]` };
+      return { handled: true };
+    }
     const sources = await loadSettingSources(cwd);
     const r = resolveKey(sources, key);
     if (!r) {
@@ -142,6 +150,11 @@ export async function* handleConfigCommand(
       value = rawValue;
     }
 
+    const validation = validateSettings({ [key]: value }, scope);
+    if (validation.errors.length || (!Object.hasOwn(SettingsSchema.shape, key) && key !== "sandbox")) {
+      yield { type: "command", kind: "error", message: `Setting not written: ${validation.errors.join("; ") || "unsupported key"}` };
+      return { handled: true };
+    }
     try {
       if (scope === "project") await updateProjectSettings(cwd, { [key]: value });
       else if (scope === "local") await updateLocalSettings(cwd, { [key]: value });
@@ -162,7 +175,7 @@ export async function* handleConfigCommand(
         "Setting updated",
         `- ${key} = ${fmt(key, value)}`,
         `- Scope: ${scope}`,
-        "- Applied to this session; permission changes take effect on the next tool call.",
+        `- Reload: ${SETTING_RELOAD[key] ?? "restart required"}.`,
       ].join("\n"),
     };
     return { handled: true };

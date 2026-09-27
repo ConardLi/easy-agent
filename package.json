@@ -35,6 +35,7 @@
     "test:cli-headless": "node --import tsx src/scripts/test-cli-headless-characterization.ts",
     "test:config-session": "node --import tsx src/scripts/test-config-session-characterization.ts",
     "test:config-trust": "node --import tsx src/scripts/test-config-trust-boundary.ts && node --import tsx src/scripts/test-config-trust-cli.ts",
+    "test:feature-config": "node --import tsx src/scripts/test-feature-config.ts",
     "test:providerstream": "tsx src/scripts/test-providerstream-characterization.ts",
     "test:notices": "tsx src/scripts/test-useagentsession-notices.ts",
     "test:streaming": "tsx src/scripts/test-streaming.ts",

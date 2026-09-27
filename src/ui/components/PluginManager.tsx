@@ -75,6 +75,7 @@ function componentSummary(
   if (components.outputStyles) parts.push(`${components.outputStyles} style`);
   if (components.hooks) parts.push(`${components.hooks} hook`);
   if (components.mcpServers) parts.push(`${components.mcpServers} MCP`);
+  if (components.lspServers) parts.push(`${components.lspServers} LSP`);
   return parts.join(" · ") || "No components detected";
 }
 
@@ -92,6 +93,7 @@ function previewSummary(preview: PluginInstallPreview): string {
     ["styles", preview.components.outputStyles.length],
     ["hooks", preview.components.hooks.length],
     ["MCP servers", preview.components.mcpServers.length],
+    ["LSP servers", preview.components.lspServers?.length ?? 0],
   ]
     .filter(([, count]) => Number(count) > 0)
     .map(([kind, count]) => `${count} ${kind}`)
@@ -197,8 +199,8 @@ export function PluginManager({
           body:
             `Scope: ${scopeLabel(scope)} · ${previewSummary(preview)}. ` +
             (preview.hasExecutableComponents
-              ? "⚠ Hooks/MCP may execute local processes."
-              : "No executable Hooks or MCP servers detected."),
+              ? "⚠ Hooks/MCP/LSP may execute local processes."
+              : "No executable Hooks, MCP, or LSP servers detected."),
           danger: preview.hasExecutableComponents,
         });
       })

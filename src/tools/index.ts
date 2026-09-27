@@ -38,6 +38,7 @@ import { teamCreateTool } from "./teamCreateTool.js";
 import { teamDeleteTool } from "./teamDeleteTool.js";
 import { sendMessageTool } from "./sendMessageTool.js";
 import { toolSearchTool } from "./toolSearchTool.js";
+import { lspTool } from "./lspTool.js";
 import type { PermissionMode } from "../permissions/permissions.js";
 
 const BUILTIN_TOOLS: Tool[] = [
@@ -71,10 +72,10 @@ const BUILTIN_TOOLS: Tool[] = [
   teamCreateTool,
   teamDeleteTool,
   sendMessageTool,
-  // ToolSearch gates itself on isToolSearchEnabledOptimistic() — present
-  // whenever tool search *might* be on; the per-request shaping in
-  // utils/toolSearch.ts drops it again when the definitive check says no.
+  // Always registered so a settings hot reload can enable it. Request shaping
+  // drops it when the resolved per-request policy disables ToolSearch.
   toolSearchTool,
+  lspTool,
 ];
 const VALID_BUILTIN_TOOLS = BUILTIN_TOOLS.filter(hasValidToolInputSchema);
 
