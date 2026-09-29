@@ -86,7 +86,7 @@ const BUILTIN_COMMANDS: CommandSuggestion[] = [
   { name: "/mode", description: "Inspect or switch permission mode (default/plan/auto)" },
   { name: "/think", description: "Control extended thinking (on/off/<budget>)" },
   { name: "/effort", description: "Set reasoning effort (low/medium/high/max, Anthropic)" },
-  { name: "/tasks", description: "Switch task tracking system (task=persistent V2, todo=session V1)" },
+  { name: "/tasks", description: "Switch task tracking (persistent or session-only)" },
   { name: "/mcp", description: "Inspect / reconnect MCP servers" },
   { name: "/plugin", description: "Manage plugins & marketplaces (install/enable/disable/marketplace ...)" },
   { name: "/reload-plugins", description: "Atomically reload plugins and extension registries" },
@@ -117,8 +117,8 @@ const MODE_OPTIONS: { mode: PermissionMode; description: string }[] = [
 ];
 
 const TASK_MODE_OPTIONS: { mode: TaskMode; description: string }[] = [
-  { mode: "task", description: "Persistent task graph (Task V2) — default" },
-  { mode: "todo", description: "Session-memory todo list (TodoWrite V1)" },
+  { mode: "task", description: "Persistent task list — default" },
+  { mode: "todo", description: "Session-only todo list" },
 ];
 
 // Stage 34: extended-thinking on/off selector (arrow-navigable like /mode).

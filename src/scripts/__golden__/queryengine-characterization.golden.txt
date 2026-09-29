@@ -59,9 +59,9 @@ command[error]:
 >>> /tasks
 command[info]:
   | Task system status
-  | - Active: task (persistent graph (Task V2))
-  | - Usage: /tasks task      Use persistent Task V2 tools (default)
-  | - Usage: /tasks todo      Use in-memory TodoWrite V1
+  | - Active: task (persistent task list)
+  | - Usage: /tasks task      Use the persistent task list (default)
+  | - Usage: /tasks todo      Use a session-only todo list
   | - Usage: /tasks reset     Delete every task in the current task list
 <<< handled=true
 
@@ -142,7 +142,7 @@ command[info]:
   | - Session id: char-session
   | - Model: claude-sonnet-4-20250514 (source: default; default: claude-sonnet-4-20250514)
   | - Permission mode: default
-  | - Task system: task
+  | - Task system: persistent task list (task)
   | - Output style: default
   | - Messages in context: 2
   | - Session tokens: in 100 / out 50
@@ -176,9 +176,13 @@ command[info]:
 command[info]:
   | Doctor — environment check
   |
-  | ✓ Node.js <NODE>
-  | <AUTH_TOKEN>
-  |   Endpoint: https://api.anthropic.com
+  | ✓ Node.js <NODE> (requires 22+)
+  | ✓ Active model: claude-sonnet-4-20250514
+  |   Provider: anthropic
+  |   Profile: raw model name (source: default)
+  | ✗ No API auth configured for the active anthropic provider — set ANTHROPIC_AUTH_TOKEN or configure apiKey on the active profile.
+  |   Credential presence only; authentication has not been verified.
+  |   Endpoint: https://api.anthropic.com (source: provider default)
   | <ENDPOINT_PROBE>
   | ✓ MCP: none configured
   | <SANDBOX_STATUS>

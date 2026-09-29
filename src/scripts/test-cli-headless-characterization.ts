@@ -5,6 +5,19 @@ import type { AddressInfo } from "node:net";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { Ajv } from "ajv";
+
+const validateOutput = new Ajv({ strictRequired: false, allowUnionTypes: true }).compile(JSON.parse(
+  await readFile(new URL("../../docs/headless-output.schema.json", import.meta.url), "utf8"),
+));
+
+function assertOutput(payload: Record<string, unknown>): void {
+  assert.ok(validateOutput(payload), JSON.stringify(validateOutput.errors));
+  assert.equal(validateOutput({ ...payload, schema_version: 99 }), false, "unsupported schema rejected");
+  if (payload.type === "result") {
+    assert.equal(validateOutput({ ...payload, total_cost_usd: "unknown" }), false, "invalid cost rejected");
+  }
+}
 
 const PROJECT_ROOT = path.resolve(import.meta.dirname, "../..");
 const CLI_PATH = path.join(PROJECT_ROOT, "src", "entrypoint", "cli.ts");
@@ -182,6 +195,11 @@ async function buildRecording(): Promise<string> {
         headers: request.headers,
         body: raw ? (JSON.parse(raw) as Record<string, unknown>) : {},
       });
+      if (requests.at(-1)?.body.model === "fixture-failure") {
+        response.writeHead(401, { "content-type": "application/json" });
+        response.end(JSON.stringify({ type: "error", error: { type: "authentication_error", message: "fixture authentication failure" } }));
+        return;
+      }
       response.writeHead(200, { "content-type": "text/event-stream" });
       response.end(anthropicStream());
     });
@@ -243,6 +261,13 @@ async function buildRecording(): Promise<string> {
     ]);
     assert.equal(jsonResult.code, 0, jsonResult.stderr);
     assert.equal(requests.length, beforeJson + 1);
+    const jsonPayload = JSON.parse(jsonResult.stdout) as Record<string, unknown>;
+    assertOutput(jsonPayload);
+    assert.equal(jsonPayload.schema_version, 1, "JSON result declares headless schema v1");
+    assert.equal(jsonPayload.total_cost_usd, null, "unknown cost is null, never a fabricated zero");
+    for (const field of ["type", "subtype", "is_error", "result", "session_id", "num_turns", "duration_ms", "usage"]) {
+      assert.ok(field in jsonPayload, `JSON result preserves compatibility field ${field}`);
+    }
     sections.push(
       `### json\n${normalizedStructuredLines(jsonResult.stdout)}\nrequest: ${requestSummary(requests.at(-1)!)}`,
     );
@@ -258,9 +283,26 @@ async function buildRecording(): Promise<string> {
     ]);
     assert.equal(streamResult.code, 0, streamResult.stderr);
     assert.equal(requests.length, beforeStream + 1);
+    const streamPayloads = streamResult.stdout.trim().split(/\r?\n/).map((line) => JSON.parse(line) as Record<string, unknown>);
+    streamPayloads.forEach(assertOutput);
+    assert.ok(streamPayloads.length >= 3, "stream-json emits init, events, and result");
+    assert.ok(streamPayloads.every((payload) => payload.schema_version === 1), "every stream-json message declares schema v1");
+    assert.equal(streamPayloads.at(-1)?.total_cost_usd, null, "stream result reports unknown cost as null");
     sections.push(
       `### stream-json\n${normalizedStructuredLines(streamResult.stdout)}\nrequest: ${requestSummary(requests.at(-1)!)}`,
     );
+    for (const format of ["json", "stream-json"]) {
+      const failed = await runCli(cwd, home, baseURL, ["--print", "Fail deterministically", "--model", "fixture-failure", "--output-format", format]);
+      assert.equal(failed.code, 1, failed.stderr);
+      const payloads = failed.stdout.trim().split(/\r?\n/).map((line) => JSON.parse(line) as Record<string, unknown>);
+      payloads.forEach(assertOutput);
+      const result = payloads.at(-1)!;
+      assert.equal(result.type, "result");
+      assert.equal(result.subtype, "error_during_execution");
+      assert.equal(result.is_error, true);
+      assert.equal(result.total_cost_usd, null);
+      assert.ok(typeof result.result === "string" && result.result.length > 0, "failure carries actionable text");
+    }
   } finally {
     await new Promise<void>((resolve, reject) => {
       server.close((error) => (error ? reject(error) : resolve()));

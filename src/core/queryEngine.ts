@@ -943,9 +943,9 @@ export class QueryEngine {
             kind: "info",
             message: [
               "Task system status",
-              `- Active: ${current} (${current === "task" ? "persistent graph (Task V2)" : "session memory (TodoWrite V1)"})`,
-              "- Usage: /tasks task      Use persistent Task V2 tools (default)",
-              "- Usage: /tasks todo      Use in-memory TodoWrite V1",
+              `- Active: ${current} (${current === "task" ? "persistent task list" : "session-only todo list"})`,
+              "- Usage: /tasks task      Use the persistent task list (default)",
+              "- Usage: /tasks todo      Use a session-only todo list",
               "- Usage: /tasks reset     Delete every task in the current task list",
             ].join("\n"),
           };

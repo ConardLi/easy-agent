@@ -57,6 +57,25 @@ export interface ModelProfile {
   headers?: Record<string, string>;
 }
 
+export const DEFAULT_PROVIDER_BASE_URLS: Readonly<Record<ModelProtocol, string>> = {
+  anthropic: "https://api.anthropic.com",
+  "openai-chat": "https://api.openai.com/v1",
+  "openai-responses": "https://api.openai.com/v1",
+  gemini: "https://generativelanguage.googleapis.com/v1beta",
+};
+
+/** Return the base URL the runtime will actually use for a resolved profile. */
+export function getProfileBaseURL(profile: ModelProfile): string {
+  if (profile.protocol === "anthropic") {
+    // Only a profile override is normalized by getAnthropicClientForProfile.
+    // The environment-configured SDK client uses its base URL verbatim.
+    return profile.baseURL
+      ? profile.baseURL.replace(/\/+$/, "").replace(/\/v1$/i, "")
+      : process.env.ANTHROPIC_BASE_URL || DEFAULT_PROVIDER_BASE_URLS.anthropic;
+  }
+  return profile.baseURL ?? DEFAULT_PROVIDER_BASE_URLS[profile.protocol];
+}
+
 interface RawProfile {
   protocol?: unknown;
   model?: unknown;

@@ -293,6 +293,8 @@ async function buildRecording(): Promise<string> {
       await record(e, `/tasks ${original}`),
       await record(e, "/tasks bogus"),
     ];
+    assert.doesNotMatch(out.join("\n"), /Task V2|TodoWrite V1/, "task commands must not expose internal iteration names");
+    assert.match(out[0]!, /persistent task list|session-only todo list/, "task status uses stable product concepts");
     setTaskMode(original);
     return out;
   });
@@ -318,7 +320,10 @@ async function buildRecording(): Promise<string> {
       initialMessages: SEED_MESSAGES,
       initialUsage: { input_tokens: 100, output_tokens: 50 },
     });
-    return [await record(e, "/status")];
+    const output = await record(e, "/status");
+    assert.match(output, /Task system: persistent task list \(task\)|Task system: session-only todo list \(todo\)/);
+    assert.doesNotMatch(output, /Task V2|TodoWrite V1/);
+    return [output];
   });
 
   await section("context", async () => {
@@ -331,7 +336,12 @@ async function buildRecording(): Promise<string> {
     const originalFetch = globalThis.fetch;
     globalThis.fetch = (async () => new Response(null, { status: 401 })) as typeof fetch;
     try {
-      return [await record(makeEngine(isolatedCwd), "/doctor")];
+      const output = await record(makeEngine(isolatedCwd), "/doctor");
+      assert.match(output, /Node\.js .*\(requires 22\+\)/, "doctor reports the same Node requirement as runtime preflight");
+      assert.match(output, /Active model: claude-sonnet-4-20250514/);
+      assert.match(output, /Provider: anthropic/);
+      assert.match(output, /Profile: raw model name \(source: default\)/);
+      return [output];
     } finally {
       globalThis.fetch = originalFetch;
     }

@@ -17,7 +17,9 @@
  *    dead weight and every reported stack trace points at bundled line numbers.
  */
 
-export const MIN_NODE_MAJOR = 22;
+import { MIN_NODE_MAJOR } from "../version.js";
+
+export { MIN_NODE_MAJOR };
 
 const nodeMajor = Number.parseInt(process.versions.node.split(".")[0] ?? "0", 10);
 
