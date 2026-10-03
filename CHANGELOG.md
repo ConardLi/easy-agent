@@ -20,6 +20,7 @@ All notable changes to Easy Agent are documented in this file.
 - The development milestone table moved from the README to `docs/learning-path.md`.
 - The system prompt is written once per session so later turns reuse the provider prompt cache. The date has day precision and git status is a session-start snapshot. Changes to AGENT.md, memory, language, output style, skills, agents, or the date reach the model as a hidden context update before the next message. `/clear`, compaction, and resume rebuild the prompt. Anthropic markers now cover both system blocks, so a full conversation is read from cache on the next user message.
 - The tool-turn limit per request is configurable with `--max-turns <n>` or the `maxTurns` setting. The interactive REPL default rises from 50 to 200, and reaching the limit explains how to continue. Headless runs keep the 50-turn default and the `error_max_turns` result.
+- `eagent --help` and `/help` render the same command list. `--help` gains the 17 commands it was missing, `/help` gains `/think`, `/effort`, `/plugin`, `/reload-plugins`, `/hooks`, and `/rewind`, and both name the command aliases. `/compact` and `/exit` no longer appear after the settings keys in `--help`.
 - `verify:release` also runs the host sandbox tests. The release workflow runs the gate on macOS and Ubuntu and the core tests on Windows before publishing, and publishes the verified artifact without rebuilding it.
 
 ## [0.1.1] - 2026-09-04
