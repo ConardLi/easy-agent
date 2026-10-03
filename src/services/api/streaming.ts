@@ -50,6 +50,12 @@ import {
   sleep,
   type QuerySource,
 } from "./withRetry.js";
+import {
+  buildCachedSystem,
+  isPromptCachingDisabled,
+  withMessageCacheBreakpoints,
+  withToolsCacheBreakpoint,
+} from "./promptCache.js";
 
 // ─── Request Parameters ────────────────────────────────────────────
 
@@ -183,13 +189,16 @@ async function* streamOnce(
       availableToolNames: new Set((params.tools ?? []).map((t) => t.name)),
     },
   );
+  const promptCaching = !isPromptCachingDisabled();
   const baseParams = {
     model,
     max_tokens: maxTokens,
-    messages: normalizedMessages,
+    messages: promptCaching ? withMessageCacheBreakpoints(normalizedMessages) : normalizedMessages,
     stream: true as const,
-    ...(params.system && { system: params.system }),
-    ...(params.tools && params.tools.length > 0 && { tools: params.tools }),
+    ...(params.system && { system: promptCaching ? buildCachedSystem(params.system) : params.system }),
+    ...(params.tools && params.tools.length > 0 && {
+      tools: promptCaching ? withToolsCacheBreakpoint(params.tools) : params.tools,
+    }),
     ...(params.toolChoice && { tool_choice: params.toolChoice }),
   };
   // Pass thinking / output_config as extra body entries to avoid strict-SDK
@@ -216,6 +225,7 @@ async function* streamOnce(
     thinking: thinkingParam,
     output_config: outputConfig,
     betas: betaHeaders,
+    promptCaching,
     hasApiKey: Boolean(profile.apiKey || process.env.ANTHROPIC_AUTH_TOKEN),
   });
 
