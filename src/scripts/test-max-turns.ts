@@ -226,6 +226,8 @@ try {
   });
 } finally {
   server.close();
+  // Windows cannot remove the process's current directory.
+  process.chdir(os.tmpdir());
   await rm(root, { recursive: true, force: true });
 }
 
