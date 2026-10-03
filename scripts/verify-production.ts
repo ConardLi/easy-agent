@@ -66,6 +66,7 @@ const TESTS: TestDefinition[] = [
   { id: "rendering", group: "ui", file: "src/scripts/smoke-stage24.tsx" },
   { id: "markdown", group: "ui", file: "src/scripts/smoke-markdown.tsx" },
   { id: "clear", group: "ui", file: "src/scripts/smoke-static-clear.tsx" },
+  { id: "resize", group: "ui", file: "src/scripts/smoke-resize-repaint.tsx" },
   { id: "ui", group: "ui", file: "src/scripts/smoke-ui.tsx" },
   { id: "question", group: "ui", file: "src/scripts/smoke-question.tsx" },
   { id: "transcript", group: "ui", file: "src/scripts/smoke-transcript.tsx" },

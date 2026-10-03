@@ -65,6 +65,7 @@
     "test:stage24": "tsx src/scripts/smoke-stage24.tsx",
     "test:stage24-md": "tsx src/scripts/smoke-markdown.tsx",
     "test:stage24-clear": "tsx src/scripts/smoke-static-clear.tsx",
+    "test:stage24-resize": "tsx src/scripts/smoke-resize-repaint.tsx",
     "test:stage24-ui": "tsx src/scripts/smoke-ui.tsx",
     "test:stage24-ask": "tsx src/scripts/smoke-question.tsx",
     "test:stage24-transcript": "tsx src/scripts/smoke-transcript.tsx",

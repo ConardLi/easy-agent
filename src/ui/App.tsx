@@ -31,6 +31,7 @@ import { buildTranscriptLines } from "./utils/transcriptLines.js";
 import { usePromptInput } from "./hooks/usePromptInput.js";
 import { useQuestionPrompt } from "./hooks/useQuestionPrompt.js";
 import { useTranscript } from "./hooks/useTranscript.js";
+import { useResizeRepaint } from "./hooks/useResizeRepaint.js";
 import { useAgentSession } from "./hooks/useAgentSession.js";
 import { useResumePicker } from "./hooks/useResumePicker.js";
 import { useMemoryPicker } from "./hooks/useMemoryPicker.js";
@@ -301,6 +302,10 @@ export function App({ model, permissionMode, shouldResume, resumeSessionId }: Ap
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationItems, model]);
 
+  // Bumped after the terminal width changes and the screen has been wiped;
+  // keying <Static> on it reprints the whole history at the new width.
+  const staticEpoch = useResizeRepaint();
+
   return (
     <Box flexDirection="column" paddingX={1}>
       {/*
@@ -322,8 +327,14 @@ export function App({ model, permissionMode, shouldResume, resumeSessionId }: Ap
         internal cursor via a layout effect, so appends after a shrink render
         correctly. The already-printed history stays in the terminal
         scrollback, which is the expected behaviour for an append-only log.
+
+        The one deliberate remount is `staticEpoch`, bumped by useResizeRepaint
+        after a width change has wiped the screen and scrollback. Ink's
+        reconciler only drops `staticNode` when it still points at the removed
+        node, so a key-driven remount keeps the new node registered and later
+        appends keep printing (guarded by smoke-resize-repaint).
       */}
-      <Static items={staticItems}>
+      <Static key={staticEpoch} items={staticItems}>
         {(item) => (
           <Box key={item.key} flexDirection="column">
             {item.element}
