@@ -211,6 +211,8 @@ export async function classifyAutoModeAction(
       tools: [CLASSIFY_RESULT_TOOL],
       toolChoice: { type: "tool", name: "classify_result" },
       querySource: "background",
+      // The classifier prompt and tool are identical on every call.
+      cacheStablePrefix: true,
     });
 
     const toolUse = response.content.find(

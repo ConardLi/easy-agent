@@ -12,6 +12,7 @@ import {
 } from "./AssistantThinkingMessage.js";
 import { AssistantMessageRow } from "./AssistantMessageRow.js";
 import { theme, glyph } from "../theme.js";
+import { CONTEXT_UPDATE_MARKER } from "../../constants/systemPromptMarkers.js";
 
 // Re-exported for back-compat: ToolResultInfo now lives (React-free) in
 // toolCardFormat so the renderer registry and the string transcript can share
@@ -69,6 +70,8 @@ export function isInternalMessage(message: MessageParam): boolean {
   if (content.startsWith("[skill_invocation:")) return true;
   // The hidden ultrathink meta message (model-only nudge).
   if (content.startsWith("[ultrathink]")) return true;
+  // Session context changes reported after the cached system prompt.
+  if (content.startsWith(CONTEXT_UPDATE_MARKER)) return true;
   // User-command invocations follow the same two-message pattern
   // as skills — a visible `<command-name>` bubble plus this hidden body that
   // carries the substituted prompt template to the model.

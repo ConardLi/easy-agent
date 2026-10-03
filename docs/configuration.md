@@ -48,11 +48,35 @@ Values are model profile IDs or raw Anthropic model names. Per-call and custom-a
 
 ## Prompt caching
 
-Requests that use the Anthropic protocol mark the tool definitions, the static part of the system prompt, and the latest messages for prompt caching. Later requests in the same tool loop read the shared prefix from cache, which cuts input cost and time to first token on long sessions. OpenAI-compatible and Gemini requests are not changed.
+Providers reuse a cached request prefix only while it stays byte-identical. Easy Agent keeps the prefix stable for the whole session and tells each provider where it ends.
 
-`/cost` and `/status` show cache read and write tokens and the cached share of input once the provider reports cache activity.
+**The system prompt is written once per session.** The environment section holds the date (day precision) and a git snapshot labelled as taken at session start. When AGENT.md, the memory index, the response language, the output style, the available skills or agents, or the date change later, the next user message is preceded by a hidden context update that lists only the changed sections. The system prompt is rebuilt from the current state after `/clear`, after compaction, when a session is resumed, and when an output style drops the base coding instructions. Run `git status` (the agent does this itself when it needs to) for the current repository state.
 
-Set `EASY_AGENT_DISABLE_PROMPT_CACHING=1` for an Anthropic-compatible endpoint that rejects `cache_control`. Requests then go out in the uncached shape.
+**Anthropic** requests carry four `cache_control` markers: the end of the static system block, the end of the dynamic system block, the last message of the previous request, and the last message. A system prompt without the static/dynamic split gives its spare marker to the last loaded tool. The Auto Mode classifier caches its fixed prompt and tool; other single-shot calls are sent uncached.
+
+**OpenAI** caches matching prefixes automatically. Requests to `api.openai.com` also send the session id as `prompt_cache_key`, which routes requests with the same prefix to the same cache. For an OpenAI-compatible endpoint that documents `prompt_cache_key`, enable it on the profile:
+
+```json
+{
+  "models": {
+    "gateway": {
+      "protocol": "openai-chat",
+      "model": "gpt-5.5",
+      "baseURL": "https://gateway.example/v1",
+      "apiKey": "${GATEWAY_API_KEY}",
+      "promptCacheKey": true
+    }
+  }
+}
+```
+
+`"promptCacheKey": false` turns it off for an `api.openai.com` profile.
+
+**Gemini** applies implicit caching on its own; nothing extra is sent.
+
+`/cost` and `/status` show cache read and write tokens and the cached share of input once the provider reports cache activity. OpenAI `cached_tokens` and Gemini `cachedContentTokenCount` are reported as cache reads, and input tokens then count only the uncached part, the same as on Anthropic. Headless JSON `usage` follows the same rule.
+
+Set `EASY_AGENT_DISABLE_PROMPT_CACHING=1` for an endpoint that rejects `cache_control` or `prompt_cache_key`. Requests then go out without cache fields; the session-stable system prompt is unaffected.
 
 ## Forked Skills
 

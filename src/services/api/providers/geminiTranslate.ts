@@ -21,7 +21,7 @@ import type {
   Usage,
 } from "../../../types/message.js";
 import { writeStreamDebug } from "../../../utils/streamDebug.js";
-import { resultToString, normalizeStopReason } from "./translateShared.js";
+import { applyCachedPromptTokens, resultToString, normalizeStopReason } from "./translateShared.js";
 
 interface GeminiFunctionCall {
   name: string;
@@ -163,7 +163,11 @@ type GeminiNativeEvent =
   | { type: "text"; text: string }
   | { type: "thinking"; text: string }
   | { type: "tool_call"; id: string; name: string; args: Record<string, unknown>; thoughtSignature?: string }
-  | { type: "message_end"; stop_reason?: string; usage?: { input_tokens?: number; output_tokens?: number } };
+  | {
+      type: "message_end";
+      stop_reason?: string;
+      usage?: { input_tokens?: number; output_tokens?: number; cached_tokens?: number };
+    };
 
 /**
  * Parse a Gemini `streamGenerateContent?alt=sse` stream. Unlike llm-bridge's
@@ -178,7 +182,7 @@ async function* parseGeminiNative(
   let buffer = "";
   let started = false;
   let stopReason: string | undefined;
-  let usage: { input_tokens?: number; output_tokens?: number } | undefined;
+  let usage: { input_tokens?: number; output_tokens?: number; cached_tokens?: number } | undefined;
 
   const handleLine = function* (line: string): Generator<GeminiNativeEvent> {
     const trimmed = line.trim();
@@ -222,6 +226,7 @@ async function* parseGeminiNative(
       usage = {
         input_tokens: typeof um.promptTokenCount === "number" ? um.promptTokenCount : usage?.input_tokens,
         output_tokens: typeof um.candidatesTokenCount === "number" ? um.candidatesTokenCount : usage?.output_tokens,
+        cached_tokens: typeof um.cachedContentTokenCount === "number" ? um.cachedContentTokenCount : usage?.cached_tokens,
       };
     }
   };
@@ -319,6 +324,7 @@ export async function* assembleGemini(
         if (event.usage) {
           if (typeof event.usage.input_tokens === "number") usage.input_tokens = event.usage.input_tokens;
           if (typeof event.usage.output_tokens === "number") usage.output_tokens = event.usage.output_tokens;
+          applyCachedPromptTokens(usage, event.usage.cached_tokens);
         }
         break;
       }

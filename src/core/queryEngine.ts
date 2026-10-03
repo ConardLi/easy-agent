@@ -12,7 +12,8 @@ import {
   type PermissionRuleSet,
   type PermissionSettings,
 } from "../permissions/permissions.js";
-import { buildSystemPrompt, renderSystemPrompt } from "../context/systemPrompt.js";
+import { renderSystemPrompt } from "../context/systemPrompt.js";
+import { createSessionPromptContext, type SessionPromptContext } from "../context/sessionPromptContext.js";
 import { loadMaxTurnsSetting } from "../config/features.js";
 import { compactMessages } from "../context/compaction.js";
 import { autoCompactIfNeeded, calculateTokenWarningState } from "../context/autoCompact.js";
@@ -163,6 +164,8 @@ export class QueryEngine {
   private readonly sessionPermissionRules: PermissionRuleSet;
   private readonly onPermissionRequest?: (request: PermissionRequest) => Promise<PermissionDecision>;
   private readonly defaultMaxTurns?: number;
+  /** Keeps the system prompt fixed for the session; see sessionPromptContext.ts. */
+  private readonly promptContext: SessionPromptContext;
   private abortController: AbortController | null = null;
   private usageAnchorIndex: number = -1;
   private lastCallUsage: Usage = { input_tokens: 0, output_tokens: 0 };
@@ -198,6 +201,7 @@ export class QueryEngine {
     this.sessionPermissionRules = options.sessionPermissionRules ?? { allow: [], deny: [] };
     this.onPermissionRequest = options.onPermissionRequest;
     this.defaultMaxTurns = options.defaultMaxTurns;
+    this.promptContext = createSessionPromptContext({ cwd: options.toolContext.cwd });
   }
 
   getPermissionMode(): PermissionMode {
@@ -260,6 +264,7 @@ export class QueryEngine {
    */
   clearContextAndImplement(planContent: string, allowedPrompts?: string[]): string {
     this.messages = [];
+    this.promptContext.reset();
     this.invalidateUsageAnchor();
     if (allowedPrompts) {
       this.addSessionAllowRules(allowedPrompts);
@@ -605,11 +610,9 @@ export class QueryEngine {
       }
     }
 
-    const previewSystemParts = await buildSystemPrompt({
-      cwd: this.toolContext.cwd,
-      userQuery: promptToSubmit,
-    });
-    const previewSystemPrompt = renderSystemPrompt(previewSystemParts);
+    let turnContext = await this.promptContext.prepareTurn({ userQuery: promptToSubmit });
+    const previewSystemPrompt = renderSystemPrompt(turnContext.systemParts);
+    let compactedThisTurn = false;
 
     // Only run compaction when there's meaningful conversation history
     if (this.messages.length > 0) {
@@ -622,6 +625,7 @@ export class QueryEngine {
       });
       if (microResult.didMicroCompact || microResult.didCompact) {
         this.messages = [...microResult.messages];
+        compactedThisTurn ||= microResult.didCompact;
         this.invalidateUsageAnchor();
         yield { type: "messages_updated", messages: [...this.messages] };
         yield {
@@ -643,6 +647,7 @@ export class QueryEngine {
       );
       if (didAutoCompact) {
         this.messages = [...autoResult.messages];
+        compactedThisTurn = true;
         this.invalidateUsageAnchor();
         yield { type: "messages_updated", messages: [...this.messages] };
         yield { type: "compacted", summary: autoResult.summary, trigger: "auto" };
@@ -658,6 +663,14 @@ export class QueryEngine {
       if (warningState.state !== "normal") {
         yield { type: "token_warning", warning: warningState };
       }
+    }
+
+    // Compaction rewrote the conversation prefix and may have summarized
+    // earlier context updates away, so rebuild the system prompt from the
+    // current state instead of patching an outdated snapshot.
+    if (compactedThisTurn) {
+      this.promptContext.reset();
+      turnContext = await this.promptContext.prepareTurn({ userQuery: promptToSubmit });
     }
 
     // Inject plan mode attachments as user messages (before user input)
@@ -696,6 +709,13 @@ export class QueryEngine {
     }
     if (pendingNotifs.length > 0) {
       yield { type: "messages_updated", messages: [...this.messages] };
+    }
+
+    // Context that changed after the system prompt was written (AGENT.md,
+    // memory index, skills, output style, a new date, ...) goes at the end of
+    // the conversation so the cached prompt prefix stays byte-identical.
+    if (turnContext.update) {
+      this.messages = [...this.messages, { role: "user", content: turnContext.update }];
     }
 
     // ─── Ultrathink keyword ────────────────────────────────────────
@@ -743,8 +763,7 @@ export class QueryEngine {
     this.abortController = abortController;
 
     try {
-      const systemParts = previewSystemParts;
-      const systemPrompt = renderSystemPrompt(systemParts);
+      const systemPrompt = renderSystemPrompt(turnContext.systemParts);
       const enrichedToolContext: ToolContext = {
         ...this.toolContext,
         abortSignal: abortController.signal,
@@ -855,6 +874,7 @@ export class QueryEngine {
       getPrePlanMode: () => this.prePlanMode,
       applyRestoredSession: (messages, totalUsage) => {
         this.messages = [...messages];
+        this.promptContext.reset();
         this.totalUsage = { ...totalUsage };
         this.usageAnchorIndex = this.messages.length > 0 ? this.messages.length - 1 : -1;
         this.lastCallUsage = { input_tokens: 0, output_tokens: 0 };
@@ -981,6 +1001,7 @@ export class QueryEngine {
       }
       case "clear":
         this.messages = [];
+        this.promptContext.reset();
         yield { type: "session_cleared" };
         yield { type: "messages_updated", messages: [] };
         yield { type: "command", kind: "info", message: "Conversation cleared." };
@@ -1092,10 +1113,10 @@ export class QueryEngine {
         return { handled: true };
       case "compact": {
         const focus = args.join(" ").trim();
-        const manualSystemParts = await buildSystemPrompt({ cwd: this.toolContext.cwd });
-        const manualSystemPrompt = renderSystemPrompt(manualSystemParts);
+        const manualSystemPrompt = renderSystemPrompt(await this.promptContext.peekSystemParts());
         const result = await compactMessages(this.messages, focus || undefined, { usage: this.lastCallUsage, usageAnchorIndex: this.usageAnchorIndex, systemPrompt: manualSystemPrompt, model: this.getActiveModel(), force: true });
         this.messages = [...result.messages];
+        if (result.didCompact) this.promptContext.reset();
         if (result.didCompact || result.didMicroCompact) {
           this.invalidateUsageAnchor();
         }

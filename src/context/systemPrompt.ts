@@ -42,6 +42,32 @@ export interface BuildSystemPromptOptions {
   userQuery?: string;
 }
 
+/** Named parts of the dynamic system prompt block, in prompt order. */
+export type PromptSectionName =
+  | "output_style"
+  | "language"
+  | "environment"
+  | "agent_md"
+  | "memory"
+  | "session_instructions"
+  | "skills"
+  | "agents"
+  | "team";
+
+/** One dynamic section. `text` is empty when the section does not apply. */
+export interface PromptSection {
+  name: PromptSectionName;
+  text: string;
+}
+
+export interface CollectDynamicSectionsOptions {
+  cwd: string;
+  environment: RuntimeEnvironmentContext;
+  additionalInstructions?: string;
+  /** Leave the memory index out and say so (the user asked not to use memory). */
+  ignoreMemory?: boolean;
+}
+
 // Identity framing — always present, regardless of output style.
 const IDENTITY_SECTIONS = [
   "You are Easy Agent, a terminal-native local coding assistant running inside the user's workspace.",
@@ -85,11 +111,21 @@ async function getGitContext(cwd: string): Promise<Pick<RuntimeEnvironmentContex
   }
 }
 
-export async function getRuntimeEnvironmentContext(cwd: string): Promise<RuntimeEnvironmentContext> {
+/** Local calendar date as YYYY-MM-DD. Day precision keeps the prompt stable within a day. */
+export function getLocalDateString(now: Date = new Date()): string {
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${now.getFullYear()}-${month}-${day}`;
+}
+
+export async function getRuntimeEnvironmentContext(
+  cwd: string,
+  now: Date = new Date(),
+): Promise<RuntimeEnvironmentContext> {
   const git = await getGitContext(cwd);
   return {
     cwd,
-    date: new Date().toISOString(),
+    date: getLocalDateString(now),
     os:       os.platform() + " " + os.release() + " (" + os.arch() + ")",
     ...git,
   };
@@ -99,44 +135,83 @@ function formatEnvironmentContext(context: RuntimeEnvironmentContext): string {
   const lines = [
     "Environment:",
     "- Current working directory: " + context.cwd,
-    "- Current date: " + context.date,
+    "- Today's date: " + context.date,
     "- Operating system: " + context.os,
   ];
 
   if (context.gitBranch) {
-    lines.push("- Git branch: " + context.gitBranch);
+    lines.push("- Git branch at session start: " + context.gitBranch);
   }
   if (context.gitStatus) {
-    lines.push("- Git status snapshot:\n" + context.gitStatus);
+    lines.push(
+      "- Git status at session start (a snapshot that is not updated during the session; run git to see the current state):\n" +
+        context.gitStatus,
+    );
   }
   if (context.gitRecentCommit) {
-    lines.push("- Recent commit: " + context.gitRecentCommit);
+    lines.push("- Most recent commit at session start: " + context.gitRecentCommit);
   }
 
   return lines.join("\n");
 }
 
-export async function buildSystemPrompt(options: BuildSystemPromptOptions): Promise<string[]> {
-  const ignoreMemory = options.userQuery ? shouldIgnoreMemory(options.userQuery) : false;
-  const memoryDir = await ensureMemoryDirExists(options.cwd);
-  const [environmentContext, agentMdContext, memoryEntrypoint, language] = await Promise.all([
-    getRuntimeEnvironmentContext(options.cwd),
-    loadAgentMdContext(options.cwd),
-    ignoreMemory ? Promise.resolve(null) : readMemoryEntrypoint(options.cwd),
-    readMergedStringSetting(options.cwd, "language").catch(() => undefined),
-  ]);
-
+/**
+ * Static block: identity plus coding instructions. Changes only when the
+ * active output style toggles `keepCodingInstructions`.
+ */
+export function buildStaticSystemParts(): string[] {
   // Output style reshapes HOW the agent answers. A non-null
   // config means a non-default style is active; keepCodingInstructions
   // decides whether the base coding guidance survives.
   const activeStyle = getActiveOutputStyleConfig();
   const keepCodingInstructions = !activeStyle || activeStyle.keepCodingInstructions !== false;
-
-  const staticSections = [
+  return [
     SYSTEM_PROMPT_STATIC_START,
     ...getStaticPromptSections(keepCodingInstructions),
     SYSTEM_PROMPT_STATIC_END,
   ];
+}
+
+/** Join the static block and the non-empty dynamic sections into prompt parts. */
+export function assembleSystemPrompt(staticParts: string[], sections: PromptSection[]): string[] {
+  return [
+    ...staticParts,
+    SYSTEM_PROMPT_DYNAMIC_START,
+    ...sections.map((section) => section.text).filter(Boolean),
+    SYSTEM_PROMPT_DYNAMIC_END,
+  ];
+}
+
+/**
+ * Build a complete system prompt from the current workspace state. The main
+ * session uses `createSessionPromptContext` instead, which keeps this prompt
+ * fixed for the session and reports later changes separately.
+ */
+export async function buildSystemPrompt(options: BuildSystemPromptOptions): Promise<string[]> {
+  const ignoreMemory = options.userQuery ? shouldIgnoreMemory(options.userQuery) : false;
+  const environment = await getRuntimeEnvironmentContext(options.cwd);
+  const sections = await collectDynamicSections({
+    cwd: options.cwd,
+    environment,
+    additionalInstructions: options.additionalInstructions,
+    ignoreMemory,
+  });
+  return assembleSystemPrompt(buildStaticSystemParts(), sections);
+}
+
+/**
+ * Every dynamic section in prompt order, including empty ones, so callers can
+ * compare two collections section by section.
+ */
+export async function collectDynamicSections(options: CollectDynamicSectionsOptions): Promise<PromptSection[]> {
+  const ignoreMemory = options.ignoreMemory === true;
+  const memoryDir = await ensureMemoryDirExists(options.cwd);
+  const [agentMdContext, memoryEntrypoint, language] = await Promise.all([
+    loadAgentMdContext(options.cwd),
+    ignoreMemory ? Promise.resolve(null) : readMemoryEntrypoint(options.cwd),
+    readMergedStringSetting(options.cwd, "language").catch(() => undefined),
+  ]);
+  const activeStyle = getActiveOutputStyleConfig();
 
   const memorySections = [
     ...formatMemorySystemLocation(memoryDir),
@@ -174,8 +249,8 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions): Prom
 
   // The active output-style prompt, injected as a labelled
   // section. Placed in the dynamic block (not static) because the user can
-  // flip styles at runtime via /output-style and we want the change to take
-  // effect on the very next turn without a cache-stale prefix.
+  // flip styles at runtime via /output-style; the session prompt context
+  // announces such a change at the end of the conversation.
   const outputStyleSection = activeStyle
     ? `# Output Style: ${activeStyle.name}\n${activeStyle.prompt}`
     : "";
@@ -187,21 +262,20 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions): Prom
     ? `Respond to the user in ${language}, unless they explicitly ask for another language. Keep code, file paths, and identifiers unchanged.`
     : "";
 
-  const dynamicSections = [
-    SYSTEM_PROMPT_DYNAMIC_START,
-    outputStyleSection,
-    languageSection,
-    formatEnvironmentContext(environmentContext),
-    agentMdContext ? "Project memory (AGENT.md):\n" + agentMdContext : "",
-    memorySections.length > 0 ? memorySections.join("\n\n") : "",
-    options.additionalInstructions ? "Session instructions:\n" + options.additionalInstructions : "",
-    skillsReminder,
-    agentsReminder,
-    teamReminder,
-    SYSTEM_PROMPT_DYNAMIC_END,
-  ].filter(Boolean);
-
-  return [...staticSections, ...dynamicSections];
+  return [
+    { name: "output_style", text: outputStyleSection },
+    { name: "language", text: languageSection },
+    { name: "environment", text: formatEnvironmentContext(options.environment) },
+    { name: "agent_md", text: agentMdContext ? "Project memory (AGENT.md):\n" + agentMdContext : "" },
+    { name: "memory", text: memorySections.length > 0 ? memorySections.join("\n\n") : "" },
+    {
+      name: "session_instructions",
+      text: options.additionalInstructions ? "Session instructions:\n" + options.additionalInstructions : "",
+    },
+    { name: "skills", text: skillsReminder },
+    { name: "agents", text: agentsReminder },
+    { name: "team", text: teamReminder },
+  ];
 }
 
 export function renderSystemPrompt(parts: string[]): string {

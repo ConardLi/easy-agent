@@ -6,6 +6,8 @@
  * (providerStream.ts) can all depend on them without importing one another.
  */
 
+import type { Usage } from "../../../types/message.js";
+
 /**
  * Flatten a tool result (string | content-block array | object) to text.
  * Image blocks collapse to a `[image]` marker: neither the OpenAI `tool`
@@ -30,6 +32,61 @@ export function resultToString(result: unknown): string {
       .join("\n");
   }
   return JSON.stringify(result);
+}
+
+/**
+ * OpenAI and Gemini count cache hits inside the prompt total
+ * (`cached_tokens`, `cachedContentTokenCount`); Anthropic reports them next
+ * to an uncached `input_tokens`. Move the cached share into
+ * `cache_read_input_tokens` so every protocol reports usage the same way.
+ * Totals and context-window accounting are unchanged.
+ */
+export function applyCachedPromptTokens(usage: Usage, cachedTokens: number | undefined): void {
+  if (typeof cachedTokens !== "number" || !Number.isFinite(cachedTokens) || cachedTokens <= 0) return;
+  const cached = Math.min(Math.floor(cachedTokens), usage.input_tokens);
+  if (cached <= 0) return;
+  usage.input_tokens -= cached;
+  usage.cache_read_input_tokens = cached;
+}
+
+/**
+ * Pass an OpenAI Chat Completions SSE body through unchanged while reading
+ * `usage.prompt_tokens_details.cached_tokens` from the final usage chunk
+ * (the shared stream parser drops that field).
+ */
+export function observeOpenAIChatCachedTokens(body: ReadableStream<Uint8Array>): {
+  stream: ReadableStream<Uint8Array>;
+  cachedTokens: () => number | undefined;
+} {
+  const decoder = new TextDecoder();
+  let pending = "";
+  let cached: number | undefined;
+  const scan = (line: string): void => {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("data:") || !trimmed.includes("cached_tokens")) return;
+    try {
+      const value = (JSON.parse(trimmed.slice(5)) as { usage?: { prompt_tokens_details?: { cached_tokens?: unknown } } })
+        .usage?.prompt_tokens_details?.cached_tokens;
+      if (typeof value === "number") cached = value;
+    } catch {
+      /* not a JSON data line */
+    }
+  };
+  const stream = body.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
+    transform(chunk, controller) {
+      controller.enqueue(chunk);
+      pending += decoder.decode(chunk, { stream: true });
+      let newline: number;
+      while ((newline = pending.indexOf("\n")) >= 0) {
+        scan(pending.slice(0, newline));
+        pending = pending.slice(newline + 1);
+      }
+    },
+    flush() {
+      scan(pending + decoder.decode());
+    },
+  }));
+  return { stream, cachedTokens: () => cached };
 }
 
 /** Normalize a provider/universal stop reason to the Anthropic vocabulary. */

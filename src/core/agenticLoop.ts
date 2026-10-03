@@ -809,6 +809,7 @@ export async function* query(
       // Silent 64K escalation override (undefined → default cap).
       ...(maxOutputTokensOverride !== undefined ? { maxTokens: maxOutputTokensOverride } : {}),
       querySource: params.querySource,
+      ...(params.toolContext.sessionId ? { promptCacheKey: params.toolContext.sessionId } : {}),
     });
 
     let assistantContent: ContentBlock[] = [];
