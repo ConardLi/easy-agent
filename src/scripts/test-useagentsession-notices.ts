@@ -180,7 +180,10 @@ check('"max_turns" → error notice with turn count', () => {
   const n = turnCompleteNotice("max_turns", 12)!;
   assert.equal(n.tone, "error");
   assert.equal(n.title, "Maximum tool turns reached");
-  assert.equal(n.body, "Reached maximum tool turns (12).");
+  assert.equal(
+    n.body,
+    'Stopped after 12 tool turns. The work so far is kept; send a message such as "continue" to keep going, or raise the limit with --max-turns or the maxTurns setting.',
+  );
 });
 
 check('"blocking_limit" → error notice', () => {

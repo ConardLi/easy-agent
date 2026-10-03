@@ -72,6 +72,20 @@ export function resolveFeatureSettings(sources: readonly LoadedSource[], env: No
   return result;
 }
 
+/**
+ * Effective `maxTurns` from trusted sources (the `--max-turns` flag and
+ * managed policy included; later sources win). Values that are not positive
+ * integers are ignored, so a bad file falls back to the caller's default.
+ */
+export async function loadMaxTurnsSetting(cwd: string): Promise<number | undefined> {
+  let result: number | undefined;
+  for (const source of await loadTrustedSettingSources(cwd)) {
+    const value = source.raw?.maxTurns;
+    if (typeof value === "number" && Number.isSafeInteger(value) && value >= 1) result = value;
+  }
+  return result;
+}
+
 export async function loadFeatureSettings(cwd: string): Promise<FeatureSettings> {
   return resolveFeatureSettings(await loadTrustedSettingSources(cwd));
 }

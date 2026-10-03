@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useStdout } from "ink";
 import type { MessageParam } from "@anthropic-ai/sdk/resources/messages.js";
 import { QueryEngine } from "../../core/queryEngine.js";
+import { INTERACTIVE_MAX_TOOL_TURNS } from "../../core/agenticLoop.js";
 import type {
   ResumeSessionInfo,
   DiffViewData,
@@ -555,6 +556,7 @@ export function useAgentSession({
           permissionMode: permissionMode ?? permissionSettings.mode,
           permissionSettings,
           sessionPermissionRules: sessionRulesRef.current,
+          defaultMaxTurns: INTERACTIVE_MAX_TOOL_TURNS,
           onPermissionRequest: async (request: PermissionRequest) => {
             const isPlanExit = request.toolName === "ExitPlanMode";
             setSpinnerLabel(isPlanExit ? "Waiting for plan approval" : "Waiting for permission");

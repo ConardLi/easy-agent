@@ -41,7 +41,10 @@ import {
   runSubagentStopHooks,
 } from "../hooks/index.js";
 
+/** Default tool-turn limit for one request; Headless runs keep this value. */
 export const MAX_TOOL_TURNS = 50;
+/** Default for the interactive REPL, where the user can continue after the limit. */
+export const INTERACTIVE_MAX_TOOL_TURNS = 200;
 
 /**
  * Injected when output is truncated and the silent 64K escalation
