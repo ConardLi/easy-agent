@@ -6,6 +6,8 @@ A terminal coding agent that reads your code, edits files, and runs commands und
 
 Easy Agent (`eagent`) runs in your terminal next to your repository. Describe a task and it plans the work, reads and changes files, runs tests or shell commands, and reports back. Every action that can change your machine goes through permission rules, workspace trust, and an optional OS-level sandbox. It works with Anthropic, OpenAI-compatible, Gemini, and local models.
 
+The code is written to be read as well as run. Model communication, the agentic loop, tools, permissions, context management, and each extension system live in separate layers. The documents linked below explain how the security-relevant parts behave and why, and the [learning path](./docs/learning-path.md) walks through the layers in order with code snapshots, which helps if you want to build or customize an agent of your own.
+
 > 中文文档：[README.zh-CN.md](./README.zh-CN.md)
 
 ## What you can use it for
