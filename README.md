@@ -1,98 +1,104 @@
 # Easy Agent
 
-An open-source, terminal-native coding agent built with TypeScript and Node.js.
+A terminal coding agent that reads your code, edits files, and runs commands under permission rules you control.
 
 ![Easy Agent banner](https://raw.githubusercontent.com/ConardLi/easy-agent/main/public/img/banner.jpeg)
 
-Easy Agent provides a Claude Code-style workflow in a readable, extensible codebase: streaming model conversations, local file and shell tools, permission modes, sessions, MCP, skills, sub-agents, Agent Teams, multimodal input, and plugins.
+Easy Agent (`eagent`) runs in your terminal next to your repository. Describe a task and it plans the work, reads and changes files, runs tests or shell commands, and reports back. Every action that can change your machine goes through permission rules, workspace trust, and an optional OS-level sandbox. It works with Anthropic, OpenAI-compatible, Gemini, and local models.
 
 > 中文文档：[README.zh-CN.md](./README.zh-CN.md)
 
-## Project status
+## What you can use it for
 
-**Current stage:** Stage 36 complete.
+- Find your way around an unfamiliar codebase: ask where something is handled, how a flow works, or what a change would touch.
+- Make multi-file changes, review the diff, and undo them with `/rewind` if they are wrong.
+- Run builds and tests, read the failures, and iterate on a fix.
+- Plan a change first in read-only Plan Mode, then carry it out.
+- Script it: pipe input into `eagent -p` and read text, JSON, or NDJSON output in CI or shell scripts.
+- Connect your own tools through MCP servers, skills, custom agents, hooks, and plugins.
 
-The implementation, tutorial article, and `step/` snapshot tracks are complete through Stage 36. The `eagent` package is published on npm under the `latest` tag, and the post-publication cold-cache registry check passes.
-
-## Roadmap and progress
-
-Easy Agent follows a 37-stage roadmap that builds the system progressively from model communication to distribution.
-
-| Stage | Area | Core snapshot | Status |
-|---|---|---|---:|
-| 0 | Project scaffold | Project foundation | ✅ Done |
-| 1 | LLM communication layer | [`step/step1.js`](./step/step1.js) | ✅ Done |
-| 2 | React/Ink terminal UI | [`step/step2.js`](./step/step2.js) | ✅ Done |
-| 3 | Tool interface and first tool | [`step/step3.js`](./step/step3.js) | ✅ Done |
-| 4 | Core agentic loop | [`step/step4.js`](./step/step4.js) | ✅ Done |
-| 5 | Complete core toolset | [`step/step5.js`](./step/step5.js) | ✅ Done |
-| 6 | System prompt and context engineering | [`step/step6.js`](./step/step6.js) | ✅ Done |
-| 7 | Permission control system | [`step/step7.js`](./step/step7.js) | ✅ Done |
-| 8 | QueryEngine multi-turn orchestration | [`step/step8.js`](./step/step8.js) | ✅ Done |
-| 9 | Session persistence and restore | [`step/step9.js`](./step/step9.js) | ✅ Done |
-| 10 | Project memory system | [`step/step10.js`](./step/step10.js) | ✅ Done |
-| 11 | Context compaction | [`step/step11.js`](./step/step11.js) | ✅ Done |
-| 12 | Fine-grained token budget management | [`step/step12.js`](./step/step12.js) | ✅ Done |
-| 13 | Plan Mode | [`step/step13.js`](./step/step13.js) | ✅ Done |
-| 14 | TodoWrite session task tracking | [`step/step14.js`](./step/step14.js) | ✅ Done |
-| 15 | Persistent task graph (V2) | [`step/step15.js`](./step/step15.js) | ✅ Done |
-| 16 | MCP protocol support | [`step/step16.js`](./step/step16.js) | ✅ Done |
-| 17 | Skills system | [`step/step17.js`](./step/step17.js) | ✅ Done |
-| 18 | Sandbox | [`step/step18.js`](./step/step18.js) | ✅ Done |
-| 19 | Sub-Agent and agent definitions | [`step/step19.js`](./step/step19.js) | ✅ Done |
-| 20 | Background agents and worktree isolation | [`step/step20.js`](./step/step20.js) | ✅ Done |
-| 21 | Agent Teams and multi-agent collaboration | [`step/step21.js`](./step/step21.js) | ✅ Done |
-| 22 | Hooks lifecycle system | [`step/step22.js`](./step/step22.js) | ✅ Done |
-| 23 | Output styles and user commands | [`step/step23.js`](./step/step23.js) | ✅ Done |
-| 24 | Rendering experience upgrades | [`step/step24.js`](./step/step24.js) | ✅ Done |
-| 25 | Configuration system improvements | [`step/step25.js`](./step/step25.js) | ✅ Done |
-| 26 | File history and rewind | [`step/step26.js`](./step/step26.js) | ✅ Done |
-| 27 | Error handling and resilience | [`step/step27.js`](./step/step27.js) | ✅ Done |
-| 28 | Headless and pipe mode | [`step/step28.js`](./step/step28.js) | ✅ Done |
-| 29 | Auto Mode classifier | [`step/step29.js`](./step/step29.js) | ✅ Done |
-| 30 | Multi-provider support | [`step/step30.js`](./step/step30.js) | ✅ Done |
-| 31 | Web, MultiEdit, MCP resources, and PowerShell | [`step/step31.js`](./step/step31.js) | ✅ Done |
-| 32 | Multimodal image and screenshot input | [`step/step32.js`](./step/step32.js) | ✅ Done |
-| 33 | Built-in command completion | [`step/step33.js`](./step/step33.js) | ✅ Done |
-| 34 | Extended Thinking controls and display | [`step/step34.js`](./step/step34.js) | ✅ Done |
-| 35 | Plugins and Marketplace | [`step/step35.js`](./step/step35.js) | ✅ Done |
-| 36 | Packaging, publishing, and documentation | [`step/step36.js`](./step/step36.js) | ✅ Done |
-
-Stage 36 has passed local typechecking, bundling, tarball boundary checks, isolated global installation, installer tests, real PTY startup, `npm publish --dry-run`, npm publication, and cold-cache `npx eagent@latest` verification.
-
-## Quick start
+## Install
 
 Requirements: Node.js 22 or newer, npm, and credentials for at least one supported model provider.
 
-Try it without installing:
+```bash
+npm install -g --ignore-scripts eagent
+eagent --version
+```
+
+Or try it without installing:
 
 ```bash
-export ANTHROPIC_AUTH_TOKEN="your-token"
 npx --yes eagent@latest
 ```
 
-Or install it globally:
-
-```bash
-npm install -g --ignore-scripts eagent
-eagent
-```
-
-The long command name is also available:
-
-```bash
-easy-agent --help
-```
-
-An npm-backed installer is available for macOS and Linux:
+On macOS and Linux an installer is also available. It checks Node.js, installs the same npm package with `--ignore-scripts`, and verifies that `eagent` is on `PATH`. It does not install Node.js or run package lifecycle scripts.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/ConardLi/easy-agent/main/install.sh | sh
 ```
 
-The installer checks Node.js, installs the same npm package with `--ignore-scripts`, verifies `eagent` on `PATH`, and does not install Node.js or run package lifecycle scripts for you.
+The package installs two commands, `eagent` and the long alias `easy-agent`.
 
-## Model configuration
+## Quick start
+
+```bash
+export ANTHROPIC_AUTH_TOKEN="your-token"
+cd your-project
+eagent
+```
+
+On first use in a folder, Easy Agent asks whether you trust it. Then type a request, for example `explain how requests are authenticated in this repo`. Type `/help` for commands; press Ctrl+D to exit.
+
+## Core capabilities
+
+- File and code tools: Read, Write, Edit, MultiEdit, Glob, Grep, Bash, and PowerShell on Windows
+- Web and external tools: WebFetch, WebSearch, [MCP tools and resources](./docs/mcp.md)
+- Safe execution: allow/ask/deny rules, Plan Mode, Auto Mode, workspace trust, [hooks](./docs/hooks.md), [controlled subprocesses](./docs/subprocesses.md), [private local data](./docs/local-data-security.md), and [fail-closed shell sandboxing](./docs/sandbox-security.md) on macOS and Linux
+- Long-running work: TodoWrite, persistent task graphs, sub-agents, background runs, Git worktree isolation, and [Agent Teams](./docs/agent-teams.md)
+- Context and continuity: [durable persistence](./docs/persistence.md), resume, compaction, token budgets, project memory (`AGENT.md`), file checkpoints, and rewind
+- Extensibility: skills, custom agents, slash commands, output styles, hooks, MCP servers, plugins, and static marketplaces
+- Interfaces: interactive terminal UI, [headless text/JSON/NDJSON output](./docs/headless-output.md), images and screenshots, and multiple model protocols
+
+## Supported platforms
+
+| Platform | Status | Shell tool | Shell sandbox |
+|---|---|---|---|
+| macOS | Supported | Bash | Seatbelt; needs `rg` |
+| Linux, WSL2 | Supported | Bash | bubblewrap; needs `bubblewrap`, `socat`, `rg`, and unprivileged user namespaces |
+| Windows | Supported without sandbox | PowerShell | Not available; an enabled fail-closed sandbox blocks PowerShell |
+
+- Node.js 22 or newer is required on every platform. Older versions exit with an explanatory message.
+- The `install.sh` installer supports macOS and Linux. On Windows, install with npm.
+- On Windows, local data relies on the user profile's ACLs instead of POSIX `0600`/`0700` modes. `/doctor` reports this.
+- Clipboard image paste needs `pngpaste` or `osascript` on macOS and `xclip` or `xsel` on Linux.
+
+See [Sandbox security](./docs/sandbox-security.md) for per-platform setup, including the Ubuntu AppArmor restriction on user namespaces.
+
+## Security model
+
+Easy Agent assumes the model can make mistakes and that a repository you open may be hostile. Several independent layers limit what a session can do:
+
+- **Permission rules.** Tool calls that change files, run commands, or reach the network are checked against allow, ask, and deny rules. Deny rules always win. In the default mode anything not allowed is asked; Bash commands that are proven read-only can run without a prompt ([analysis rules](./docs/bash-read-only-security.md)).
+- **Permission modes.** `default` asks before risky actions. `plan` (`--plan`) allows only read-only tools. `auto` (`--auto`) lets a classifier approve safe calls, block risky ones, and fall back to a prompt when unsure. Headless runs (`-p`) deny calls that would prompt unless you pass `--dangerously-skip-permissions`; deny rules still apply.
+- **Workspace trust.** Project settings, `.env`, project MCP servers, hooks, plugins, and model profiles are ignored until you trust the folder. Trust is stored in your home directory, so a repository cannot mark itself trusted, and project files cannot replace credentials inherited from your shell ([details](./docs/configuration-security.md)).
+- **Path boundaries.** File tools resolve real paths and refuse to follow symbolic links out of the workspace and its allowed directories ([details](./docs/workspace-path-security.md)).
+- **Shell sandbox.** When `sandbox.enabled` is set, Bash runs inside an OS sandbox with an allow-only write policy and proxy-filtered network. If the sandbox cannot start, the command is blocked rather than run unsandboxed ([details](./docs/sandbox-security.md)).
+- **Local data.** Sessions, settings, trust state, and logs are private to your account. Stream debug logging is off unless you enable it and redacts credentials when on ([details](./docs/local-data-security.md)).
+
+Easy Agent sends no analytics or telemetry. Network requests go to the model provider you configure, to MCP servers and plugin sources you add, and to WebFetch/WebSearch targets when those tools are allowed. `/doctor` probes the configured provider endpoint for reachability.
+
+## Configuration
+
+Settings are JSON files merged in this order, from lowest to highest priority:
+
+1. User: `~/.easy-agent/settings.json`
+2. Project: `<project>/.easy-agent/settings.json` (shared, applied once the folder is trusted)
+3. Local: `<project>/.easy-agent/settings.local.json` (personal, applied once the folder is trusted)
+4. Command line: `--settings <file>`, `--model`, `--permission-mode`, and similar flags
+5. Managed policy: `/Library/Application Support/EasyAgent/managed-settings.json` on macOS, `/etc/easy-agent/managed-settings.json` on Linux, `%PROGRAMDATA%\EasyAgent\managed-settings.json` on Windows
+
+A project `.env` is applied after project and local settings, only for a trusted folder. Feature switches are described in [Configuration and feature controls](./docs/configuration.md).
 
 For a raw Anthropic model name, environment variables are enough:
 
@@ -102,7 +108,7 @@ export ANTHROPIC_MODEL="claude-sonnet-4-20250514" # optional
 eagent
 ```
 
-Easy Agent also supports named Anthropic, OpenAI-compatible, Gemini, and local profiles. Put settings in `~/.easy-agent/settings.json` for user-wide configuration or `.easy-agent/settings.json` for a project:
+Named Anthropic, OpenAI-compatible, Gemini, and local profiles go in `settings.json`:
 
 ```json
 {
@@ -130,8 +136,6 @@ Easy Agent also supports named Anthropic, OpenAI-compatible, Gemini, and local p
 
 Select a profile with `eagent --model gpt` or `/model gpt` inside the REPL.
 
-Project and local settings, including `.env`, are applied only after workspace trust. Interactive sessions prompt on first use. Headless commands ignore untrusted project configuration; after reviewing it, pass `--trust-project-config` to allow it for that invocation. Project environment values cannot replace credentials inherited from the parent process. See [Configuration trust and credentials](./docs/configuration-security.md) for precedence and migration details.
-
 | Environment variable | Purpose |
 |---|---|
 | `ANTHROPIC_AUTH_TOKEN` | Anthropic API token or compatible gateway token |
@@ -141,7 +145,26 @@ Project and local settings, including `.env`, are applied only after workspace t
 | `GEMINI_API_KEY` | Referenced by Gemini profiles |
 | `WEB_SEARCH_API_KEY` | Optional WebSearch provider key |
 
-Run `/config list`, `/model list`, or `/doctor` to inspect the effective setup.
+Run `/config list`, `/model list`, or `/doctor` to inspect the effective setup. Credential values are always redacted.
+
+## Where data is stored
+
+| Location | Contents |
+|---|---|
+| `~/.easy-agent/settings.json` | User settings |
+| `~/.easy-agent/state.json` | Workspace trust decisions and machine-level state |
+| `~/.easy-agent/AGENT.md` | User-wide memory loaded into every session |
+| `~/.easy-agent/projects/` | Session transcripts (JSONL) and per-project memory |
+| `~/.easy-agent/file-history/` | File checkpoints used by `/rewind` |
+| `~/.easy-agent/tasks/`, `plans/`, `teams/` | Task graphs, Plan Mode plans, Agent Team state |
+| `~/.easy-agent/skills/`, `agents/`, `commands/`, `output-styles/` | User extensions |
+| `~/.easy-agent/plugins/`, `mcp/` | Installed plugins, MCP OAuth tokens and artifacts |
+| `~/.easy-agent/stream-debug.log` | Only when `EASY_AGENT_DEBUG_STREAM=1` is set |
+| `<project>/.easy-agent/` | Project settings, local settings, and project extensions |
+| `<project>/AGENT.md` | Project memory you write or create with `/init` |
+| `<git root>/.easy-agent/worktrees/` | Git worktrees for isolated sub-agents |
+
+On macOS and Linux, `~/.easy-agent` is created with mode `0700` and sensitive files with `0600`. Removing the npm package keeps this directory; delete it yourself to remove all data.
 
 ## Common usage
 
@@ -173,16 +196,6 @@ Run `eagent --help` for every startup option. Useful REPL commands include:
 | `/skills`, `/agents`, `/hooks`, `/mcp` | Inspect extension registries |
 | `/plugin`, `/marketplace` | Install and manage plugins |
 | `/memory` | Inspect or edit project memory |
-
-## Capabilities
-
-- File and code tools: Read, Write, Edit, MultiEdit, Glob, Grep, Bash, and PowerShell
-- Web and external tools: WebFetch, WebSearch, [MCP tools and resources](./docs/mcp.md)
-- Safe execution: allow/ask/deny rules, Plan Mode, Auto Mode, project trust, [hooks](https://github.com/ConardLi/easy-agent/blob/main/docs/hooks.md), [controlled subprocesses](./docs/subprocesses.md), [private local data](./docs/local-data-security.md), and [fail-closed shell sandboxing](./docs/sandbox-security.md) on macOS and Linux
-- Long-running work: TodoWrite, persistent task graphs, sub-agents, background runs, Git worktree isolation, and [Agent Teams](./docs/agent-teams.md)
-- Context and continuity: [durable persistence](./docs/persistence.md), resume, compaction, token budgets, project memory, file checkpoints, and rewind
-- Extensibility: skills, custom agents, slash commands, output styles, hooks, MCP servers, plugins, and static marketplaces
-- Interfaces: interactive Ink UI, headless text/JSON/NDJSON output, images and screenshots, and multiple model protocols
 
 ## Upgrade and uninstall
 
@@ -226,9 +239,7 @@ Tools and permission enforcement
 Provider API and streaming adapters
 ```
 
-Packaging is the delivery layer around those five runtime layers. The published npm package contains a readable ESM application bundle and source map. Its version-pinned sandbox runtime dependency supplies the platform helpers used for process isolation.
-
-The implementation and tutorial snapshot series are complete through Stage 35. Stage 36 packages the CLI for distribution and completes the public documentation.
+The npm package ships a single readable ESM bundle with a source map (paths only, no embedded sources), so stack traces in bug reports point at real source lines. Licenses of bundled third-party code are in `dist/THIRD_PARTY_LICENSES.txt`. The version-pinned `@anthropic-ai/sandbox-runtime` dependency supplies the platform helpers for process isolation.
 
 ## Development
 
@@ -239,17 +250,9 @@ npm install
 npm run dev
 ```
 
-Useful checks:
+`npm run verify:production` is the offline pull-request gate and `npm run verify:release` is the full release gate. See [Testing](./docs/testing.md) and [Releasing](./docs/releasing.md).
 
-```bash
-npm run verify:production
-npm run verify:release
-npm publish --dry-run
-```
-
-`verify:production` is the offline pull-request gate. See [Testing](./docs/testing.md) for the test inventory, isolated environment guarantees, platform checks, and explicit live tests.
-
-The main source lives under `src/`; milestone snapshots live under `step/`. Build output under `dist/` is generated and ignored by Git.
+If you want to study how the agent was built step by step, the [learning path](./docs/learning-path.md) lists the development milestones and their code snapshots.
 
 ## Contributing
 
@@ -257,4 +260,4 @@ The project is still evolving quickly and is not accepting external pull request
 
 ## License
 
-[MIT](./LICENSE)
+[MIT](./LICENSE). Bundled third-party packages keep their own licenses; see `dist/THIRD_PARTY_LICENSES.txt` in the installed package.

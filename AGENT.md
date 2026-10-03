@@ -31,7 +31,8 @@ There is **no** catch-all `npm test` and no lint/format script. Tests are smoke/
 - **Dev (no rebuild needed):** `npm run dev` → `tsx src/entrypoint/cli.ts`
 - **Start built binary:** `npm start` → `node dist/eagent.js`
 - **Stage smokes:** `npm run test:stage20` … `test:stage36`
-- **Release gate:** `npm run verify:release`
+- **Release gate:** `npm run verify:release` → `verify:production`, the `platform` sandbox group, then `src/scripts/test-stage36.ts` (bundle hygiene, third-party notices, tarball credential scan, installed Headless and PTY startup). See `docs/releasing.md`.
+- **Third-party notices:** `npm run build` writes `dist/THIRD_PARTY_LICENSES.txt` via `scripts/third-party-notices.ts` and fails on a bundled license outside its allowlist; `--check` verifies the file is current.
 - **Domain smokes:** `test:queryengine`, `test:providerstream`, `test:notices`, `test:streaming`, `test:tasks`, `test:mcp`, `test:skills`, `test:sandbox`, `test:agents`, `test:filehistory`, `test:resilience`
 - **Stage 24 sub-suites:** `test:stage24-md`, `…-clear`, `…-ui`, `…-ask`, `…-transcript`, `…-perm`, `…-stream`, `…-input`, `…-group`, `…-statusline`, `…-command`
 - **Smoke aliases:** `npm run smoke:sandbox`, `npm run smoke:bash-sandbox`
@@ -51,6 +52,7 @@ Most `test:*` commands run files under `src/scripts/`, but **`test:stage30` is t
 - **`step/` is intentional tutorial code**, not a build artifact. It holds milestone snapshots (`step1.js` … `step35.js`) that mirror implementation stages; do not delete or clean it up.
 - **`dist/` is generated and ignored by git**. Rebuilding with `npm run build` replaces it with the single-file release artifact and sourcemap.
 - **Secrets/config caution:** `.env` and `.easy-agent/settings.json` may contain local provider settings or secret-looking values. Do not copy token values into docs or output.
+- **README is the product entry.** The release gate rejects roadmap stage progress or `step/` snapshot links in `README.md` / `README.zh-CN.md` and checks that every relative link resolves. The milestone table lives in `docs/learning-path.md` and `docs/learning-path.zh-CN.md`.
 - **No `CONTRIBUTING.md`**; per the README, external contributions are not accepted yet, so conventions may shift.
 - **Multi-provider model config** lives in user/project `settings.json`:
   - Anthropic provider names pass through directly

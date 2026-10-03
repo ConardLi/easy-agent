@@ -1,9 +1,13 @@
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "tsup";
+import { writeThirdPartyNotices } from "./scripts/third-party-notices.js";
 
 const pkg = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf-8")) as {
+  name: string;
   version: string;
 };
+const projectRoot = fileURLToPath(new URL(".", import.meta.url));
 
 /**
  * Ship one ESM application bundle. Runtime packages that own platform helper
@@ -15,8 +19,10 @@ const pkg = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), 
  * filters, and proxy assets relative to its package directory.
  *
  * Intentional trade-offs, not oversights:
- *   - `minify: false` — for a project whose source is the product, a readable
- *     stack trace in a bug report beats a smaller file.
+ *   - `minify: false` — a readable stack trace in a bug report is worth more
+ *     than a smaller file. Comments in application modules stay in the
+ *     bundle, so the release gate scans them with the source hygiene rules
+ *     and rejects secrets, absolute build paths, and embedded sources.
  *   - `format: "esm"` — the codebase is `type: module`, and a CJS downlevel
  *     would break `import.meta` semantics if assets are ever added.
  *   - `define` for the version — see src/version.ts for why we never read
@@ -92,4 +98,14 @@ export default defineConfig({
     ].join("\n"),
   },
   define: { __EAGENT_VERSION__: JSON.stringify(pkg.version) },
+  // The bundle inlines third-party packages, so their license texts ship in
+  // dist/THIRD_PARTY_LICENSES.txt. The list is derived from the source map and
+  // the build fails if a bundled package uses a license outside the allowlist.
+  async onSuccess() {
+    await writeThirdPartyNotices({
+      distDir: `${projectRoot}dist`,
+      mapFile: `${projectRoot}dist/eagent.js.map`,
+      packageName: pkg.name,
+    });
+  },
 });

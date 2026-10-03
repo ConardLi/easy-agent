@@ -9,7 +9,7 @@ npm ci
 npm run verify:production
 ```
 
-The command runs TypeScript validation, the source hygiene check, builds the distributable CLI, and executes the `core`, `extensions`, and `ui` test groups. Any failed test or timeout returns a non-zero exit code. `npm run verify:release` includes this gate before the package and installation checks.
+The command runs TypeScript validation, the source hygiene check, builds the distributable CLI, and executes the `core`, `extensions`, and `ui` test groups. Any failed test or timeout returns a non-zero exit code. `npm run verify:release` runs this gate, then the `platform` group, then the package and installation checks; see [Releasing](./releasing.md).
 
 Each offline test process receives a temporary `HOME`, `USERPROFILE`, XDG directories, and Windows application-data directories. Provider credentials, API endpoints, MCP settings, editor overrides, and `EASY_AGENT_*` feature settings inherited from the developer environment are removed. Tests must create their own configuration and fixtures under the assigned temporary directories.
 
@@ -22,7 +22,7 @@ Each offline test process receives a temporary `HOME`, `USERPROFILE`, XDG direct
 | Storage and configuration | Configuration precedence and source shapes, workspace trust, credential inheritance, headless routing, session JSONL and restore shape, file history, and retention | `core`, `extensions` |
 | Extensions | Worktrees, agent teams, hooks, commands, web and multimodal tools, plugins, and resilience | `extensions` |
 | UI | Ink rendering, input, transcript, permission prompts, progress, status line, and plugin management | `ui` |
-| Release | Package metadata, bundle, tarball contents, isolated installation, installer behavior, and old Node failure path | `verify:release` |
+| Release | Package metadata, README contract, bundle hygiene, source map, third-party notices, tarball contents and credential scan, isolated installation, installed Headless and interactive startup, installer behavior, and old Node failure path | `verify:release`, `test:stage36` |
 | Platform | Host sandbox and Bash sandbox integration | `platform` |
 | External | Real provider streaming, ToolSearch, Auto Mode classifier requests, and plugin compatibility against a supplied package | `live`, `verify:plugin` |
 
@@ -95,6 +95,8 @@ npm run test:config-trust
 `src/scripts/` is excluded because it holds test and smoke scripts that are not bundled, and their stage-numbered names are kept for command compatibility. `step/`, `article/`, and historical development documents are outside the scanned tree.
 
 A legitimate match, such as the Explanatory output style's teaching wording, goes into `ALLOWED_MATCHES` in `scripts/check-source-hygiene.ts` with a reason. An allowance that no longer matches any line fails the check, so the list cannot go stale.
+
+The bundle is not minified, so comments from application modules ship in `dist/eagent.js`. The release gate runs `node --import tsx scripts/check-source-hygiene.ts --bundle dist/eagent.js`, which applies the same rules and allowances to every `src/` module in the bundle and fails if a module from an excluded directory was bundled or no module markers were found.
 
 ## Platform and external checks
 

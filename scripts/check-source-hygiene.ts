@@ -133,35 +133,94 @@ interface Violation {
   text: string;
 }
 
-async function main(): Promise<void> {
+function scanLines(
+  file: string,
+  lines: readonly string[],
+  usedAllowances: Set<AllowedMatch>,
+  firstLine = 1,
+): Violation[] {
+  const violations: Violation[] = [];
+  lines.forEach((text, index) => {
+    for (const rule of RULES) {
+      if (!rule.pattern.test(text)) continue;
+      const allowance = ALLOWED_MATCHES.find(
+        (entry) => entry.file === file && entry.rule === rule.id && text.includes(entry.text),
+      );
+      if (allowance) {
+        usedAllowances.add(allowance);
+        continue;
+      }
+      violations.push({ file, line: firstLine + index, rule, text: text.trim() });
+    }
+  });
+  return violations;
+}
+
+/**
+ * esbuild prefixes every inlined module with a `// <path>` comment and hoists
+ * third-party license comments after the last module. Only application
+ * modules (`src/...`) are scanned; line numbers refer to the bundle.
+ */
+function scanBundle(bundle: string, usedAllowances: Set<AllowedMatch>): { modules: string[]; violations: Violation[] } {
+  const lines = bundle.split("\n");
+  const legalStart = lines.findIndex((line) => line.startsWith("/*! Bundled license information:"));
+  const end = legalStart < 0 ? lines.length : legalStart;
+  const marker = /^\/\/ ((?:src|node_modules)\/\S+)$/;
+  const modules: string[] = [];
+  const violations: Violation[] = [];
+  let current: string | undefined;
+  let start = 0;
+
+  const flush = (stop: number) => {
+    if (current?.startsWith("src/")) {
+      violations.push(...scanLines(current, lines.slice(start, stop), usedAllowances, start + 1));
+    }
+  };
+  for (let index = 0; index < end; index++) {
+    const match = marker.exec(lines[index]!);
+    if (!match) continue;
+    flush(index);
+    current = match[1]!;
+    start = index + 1;
+    if (current.startsWith("src/")) modules.push(current);
+  }
+  flush(end);
+  return { modules, violations };
+}
+
+function report(violations: readonly Violation[], location: (violation: Violation) => string): void {
+  for (const violation of violations) {
+    process.stdout.write(`${location(violation)} [${violation.rule.id}] ${violation.text}\n  -> ${violation.rule.hint}\n`);
+  }
+}
+
+async function checkBundle(bundleFile: string): Promise<void> {
+  const { modules, violations } = scanBundle(await readFile(path.resolve(PROJECT_ROOT, bundleFile), "utf8"), new Set());
+  const scripts = modules.filter((module) => isExcluded(module));
+  report(violations, (violation) => `${bundleFile}:${violation.line} (${violation.file})`);
+  for (const module of scripts) process.stdout.write(`${bundleFile}: excluded module bundled: ${module}\n`);
+
+  process.stdout.write(
+    `Bundle hygiene: scanned ${modules.length} application module(s) in ${bundleFile}, ` +
+      `${violations.length} violation(s), ${scripts.length} excluded module(s).\n`,
+  );
+  // Without module markers nothing was scanned, which must not pass silently.
+  if (modules.length === 0 || violations.length > 0 || scripts.length > 0) process.exitCode = 1;
+}
+
+async function checkSources(): Promise<void> {
   const usedAllowances = new Set<AllowedMatch>();
   const violations: Violation[] = [];
   const files = (await collectFiles(SCAN_ROOT)).sort();
 
   for (const file of files) {
     const lines = (await readFile(path.join(PROJECT_ROOT, file), "utf8")).split(/\r?\n/);
-    lines.forEach((text, index) => {
-      for (const rule of RULES) {
-        if (!rule.pattern.test(text)) continue;
-        const allowance = ALLOWED_MATCHES.find(
-          (entry) => entry.file === file && entry.rule === rule.id && text.includes(entry.text),
-        );
-        if (allowance) {
-          usedAllowances.add(allowance);
-          continue;
-        }
-        violations.push({ file, line: index + 1, rule, text: text.trim() });
-      }
-    });
+    violations.push(...scanLines(file, lines, usedAllowances));
   }
 
   const staleAllowances = ALLOWED_MATCHES.filter((entry) => !usedAllowances.has(entry));
 
-  for (const violation of violations) {
-    process.stdout.write(
-      `${violation.file}:${violation.line} [${violation.rule.id}] ${violation.text}\n  -> ${violation.rule.hint}\n`,
-    );
-  }
+  report(violations, (violation) => `${violation.file}:${violation.line}`);
   for (const entry of staleAllowances) {
     process.stdout.write(`stale allowance: ${entry.file} [${entry.rule}] "${entry.text}"\n`);
   }
@@ -173,7 +232,13 @@ async function main(): Promise<void> {
   if (violations.length > 0 || staleAllowances.length > 0) process.exitCode = 1;
 }
 
-void main().catch((error: unknown) => {
+async function main(argv: string[]): Promise<void> {
+  if (argv.length === 0) return checkSources();
+  if (argv[0] === "--bundle" && argv[1] && argv.length === 2) return checkBundle(argv[1]);
+  throw new Error("Usage: check-source-hygiene.ts [--bundle <file>]");
+}
+
+void main(process.argv.slice(2)).catch((error: unknown) => {
   process.stderr.write(`${error instanceof Error ? error.stack ?? error.message : String(error)}\n`);
   process.exitCode = 1;
 });
