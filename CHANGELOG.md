@@ -12,6 +12,7 @@ All notable changes to Easy Agent are documented in this file.
 - Prompt caching for Anthropic requests: tool definitions, the static system prompt, and the latest messages are marked for caching. `/cost` and `/status` report cache reads, writes, and the cached share of input. `EASY_AGENT_DISABLE_PROMPT_CACHING=1` turns it off for endpoints that reject `cache_control`.
 - OpenAI `cached_tokens` and Gemini `cachedContentTokenCount` are reported as cache reads in `/cost`, `/status`, and Headless `usage`. Requests to `api.openai.com` send the session id as `prompt_cache_key`; the `promptCacheKey` profile field turns it on or off for other endpoints.
 - The Auto Mode classifier caches its fixed prompt and tool on Anthropic.
+- Project memory also loads `AGENTS.md`. In a directory that has both files, `AGENTS.md` loads before `AGENT.md`; projects with only `AGENT.md` get the same system prompt as before. `/memory` lists existing `AGENTS.md` files, `/init` improves an existing `AGENTS.md` instead of adding `AGENT.md` next to it, and the sandbox denies writes to the project `AGENTS.md` as it does for `AGENT.md`.
 
 ### Changed
 

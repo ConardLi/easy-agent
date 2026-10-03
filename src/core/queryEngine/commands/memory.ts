@@ -10,10 +10,12 @@
 import { writeFile, stat as fsStat, mkdir } from "node:fs/promises";
 import {
   join as joinPath,
+  basename as basenamePath,
   dirname as dirnamePath,
   relative as relativePath,
+  resolve as resolvePath,
 } from "node:path";
-import { getAgentMdFiles } from "../../../context/claudeMd.js";
+import { AGENT_MD_NAME, getAgentMdFiles } from "../../../context/claudeMd.js";
 import {
   loadMemoryHeaders,
   getProjectMemoryDir,
@@ -34,7 +36,8 @@ interface MemoryTarget {
 /**
  * Build the ordered, numbered list of editable memory targets:
  *   - global AGENT.md (always, even if missing — so it can be created)
- *   - any AGENT.md in the cwd→root chain that exists, plus the cwd AGENT.md
+ *   - any AGENTS.md / AGENT.md in the root→cwd chain that exists, plus the
+ *     cwd AGENT.md when the cwd has neither file
  *   - the project memory index (MEMORY.md) + each topic memory file
  * The index is the selector used by `/memory edit <n>`, so it must be stable.
  */
@@ -50,19 +53,27 @@ export async function collectMemoryTargets(cwd: string): Promise<MemoryTarget[]>
 
   const targets: MemoryTarget[] = [];
 
-  const agentFiles = await getAgentMdFiles(cwd);
   const globalPath = getGlobalAgentMdPath();
-  const lastIdx = agentFiles.length - 1;
-  for (let i = 0; i < agentFiles.length; i++) {
-    const fp = agentFiles[i]!;
-    const { exists, size } = await stat(fp);
-    const isGlobal = fp === globalPath || i === 0;
-    const isCwd = i === lastIdx;
-    // Skip non-existent intermediate ancestors — only surface the global
-    // file, the project (cwd) file, and any ancestor AGENT.md that exists.
-    if (!exists && !isGlobal && !isCwd) continue;
+  const projectDir = resolvePath(cwd);
+  const agentFiles = await Promise.all(
+    (await getAgentMdFiles(cwd)).map(async (fp, i) => ({
+      fp,
+      ...(await stat(fp)),
+      isGlobal: fp === globalPath || i === 0,
+    })),
+  );
+  const projectHasMemoryFile = agentFiles.some(
+    (f) => f.exists && !f.isGlobal && dirnamePath(f.fp) === projectDir,
+  );
+  for (const { fp, exists, size, isGlobal } of agentFiles) {
+    const name = basenamePath(fp);
+    const isCwd = !isGlobal && dirnamePath(fp) === projectDir;
+    // Skip missing files, except the global AGENT.md and — when the project
+    // has no memory file yet — the project AGENT.md, so either can be created.
+    const creatable = isGlobal || (isCwd && name === AGENT_MD_NAME && !projectHasMemoryFile);
+    if (!exists && !creatable) continue;
     targets.push({
-      label: isGlobal ? "global AGENT.md" : isCwd ? "project AGENT.md" : "AGENT.md",
+      label: isGlobal ? "global AGENT.md" : isCwd ? `project ${name}` : name,
       path: fp,
       exists,
       size,

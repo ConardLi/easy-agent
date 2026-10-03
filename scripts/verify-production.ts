@@ -31,6 +31,7 @@ const TESTS: TestDefinition[] = [
   { id: "provider-stream", group: "core", file: "src/scripts/test-providerstream-characterization.ts" },
   { id: "prompt-caching", group: "core", file: "src/scripts/test-prompt-caching.ts" },
   { id: "session-prompt-context", group: "core", file: "src/scripts/test-session-prompt-context.ts" },
+  { id: "project-memory-files", group: "core", file: "src/scripts/test-project-memory-files.ts" },
   { id: "session-notices", group: "core", file: "src/scripts/test-useagentsession-notices.ts" },
   { id: "command-help", group: "core", file: "src/scripts/test-command-help.ts" },
   { id: "tools", group: "core", file: "src/scripts/test-tools.ts" },
