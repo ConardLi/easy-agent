@@ -64,8 +64,9 @@ Exclude:
 
 Notes:
 - If an AGENT.md already exists, read it first and propose targeted improvements as a diff instead of silently overwriting it.
+- If the repository root has an AGENTS.md but no AGENT.md, improve AGENTS.md the same way instead of creating AGENT.md. Both files are loaded as project memory, so a second file would only duplicate it.
 - Be specific: "Use 2-space indentation in TypeScript" beats "format code properly".
-- Prefix the file with exactly:
+- When creating a new AGENT.md, prefix the file with exactly:
 
 \`\`\`
 # AGENT.md

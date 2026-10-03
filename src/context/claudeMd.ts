@@ -3,7 +3,14 @@ import * as path from "node:path";
 import { getGlobalAgentMdPath } from "../utils/paths.js";
 import { loadSettingSources } from "../config/sources.js";
 
-const AGENT_MD_NAME = "AGENT.md";
+export const AGENT_MD_NAME = "AGENT.md";
+export const AGENTS_MD_NAME = "AGENTS.md";
+/**
+ * Project memory file names, in load order within one directory. `AGENTS.md`
+ * is the shared convention across agent tools; `AGENT.md` is Easy Agent's own
+ * name. When both exist, both load and the more specific `AGENT.md` comes last.
+ */
+export const PROJECT_MEMORY_FILE_NAMES = [AGENTS_MD_NAME, AGENT_MD_NAME] as const;
 
 /**
  * Compile a glob pattern (matched against absolute file paths) to a RegExp.
@@ -102,7 +109,7 @@ function getDirectoryChain(cwd: string): string[] {
 export async function getAgentMdFiles(cwd: string): Promise<string[]> {
   const files: string[] = [getGlobalAgentMdPath()];
   for (const dir of getDirectoryChain(cwd)) {
-    files.push(path.join(dir, AGENT_MD_NAME));
+    for (const name of PROJECT_MEMORY_FILE_NAMES) files.push(path.join(dir, name));
   }
   return files;
 }

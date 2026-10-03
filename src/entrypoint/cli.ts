@@ -125,7 +125,7 @@ Settings keys (in ~/.easy-agent/settings.json or <cwd>/.easy-agent/settings.json
   respectGitignore: false        Let Glob/Grep search files .gitignore would hide (default: true)
   syntaxHighlightingDisabled: true   Render code blocks as plain text (no ANSI colors)
   prefersReducedMotion: true     Calm, static spinner (no animation) for reduced-motion users
-  claudeMdExcludes: ["**/AGENT.md"]  Glob/abs-path list of AGENT.md files to skip loading
+  claudeMdExcludes: ["**/AGENT.md"]  Glob/abs-path list of AGENTS.md/AGENT.md files to skip loading
   enableAllProjectMcpServers: true   Auto-approve every server in <cwd>/.mcp.json (trusted folder)
   enabledMcpjsonServers: ["name"]    Approve specific .mcp.json servers
   disabledMcpjsonServers: ["name"]   Reject specific .mcp.json servers

@@ -90,6 +90,7 @@ function getCriticalDenyPaths(cwd: string): string[] {
     path.join(getProjectEasyAgentDir(cwd), "agents"),
     path.join(getProjectEasyAgentDir(cwd), "commands"),
     getEasyAgentPath("skills"),
+    path.join(cwd, "AGENTS.md"),
     path.join(cwd, "AGENT.md"),
     getEasyAgentPath("AGENT.md"),
   ];

@@ -58,7 +58,7 @@ On first use in a folder, Easy Agent asks whether you trust it. Then type a requ
 - Web and external tools: WebFetch, WebSearch, [MCP tools and resources](./docs/mcp.md)
 - Safe execution: allow/ask/deny rules, Plan Mode, Auto Mode, workspace trust, [hooks](./docs/hooks.md), [controlled subprocesses](./docs/subprocesses.md), [private local data](./docs/local-data-security.md), and [fail-closed shell sandboxing](./docs/sandbox-security.md) on macOS and Linux
 - Long-running work: TodoWrite, persistent task graphs, sub-agents, background runs, Git worktree isolation, and [Agent Teams](./docs/agent-teams.md)
-- Context and continuity: [durable persistence](./docs/persistence.md), resume, compaction, token budgets, project memory (`AGENT.md`), file checkpoints, and rewind
+- Context and continuity: [durable persistence](./docs/persistence.md), resume, compaction, token budgets, project memory (`AGENTS.md` / `AGENT.md`), file checkpoints, and rewind
 - Extensibility: skills, custom agents, slash commands, output styles, hooks, MCP servers, plugins, and static marketplaces
 - Interfaces: interactive terminal UI, [headless text/JSON/NDJSON output](./docs/headless-output.md), images and screenshots, and multiple model protocols
 
@@ -163,7 +163,7 @@ Run `/config list`, `/model list`, or `/doctor` to inspect the effective setup. 
 | `~/.easy-agent/plugins/`, `mcp/` | Installed plugins, MCP OAuth tokens and artifacts |
 | `~/.easy-agent/stream-debug.log` | Only when `EASY_AGENT_DEBUG_STREAM=1` is set |
 | `<project>/.easy-agent/` | Project settings, local settings, and project extensions |
-| `<project>/AGENT.md` | Project memory you write or create with `/init` |
+| `<project>/AGENTS.md`, `<project>/AGENT.md` | Project memory you write or create with `/init`; both load when present, `AGENTS.md` first |
 | `<git root>/.easy-agent/worktrees/` | Git worktrees for isolated sub-agents |
 
 On macOS and Linux, `~/.easy-agent` is created with mode `0700` and sensitive files with `0600`. Removing the npm package keeps this directory; delete it yourself to remove all data.
