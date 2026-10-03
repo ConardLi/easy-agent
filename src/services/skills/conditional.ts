@@ -15,10 +15,7 @@
 
 import * as path from "node:path";
 import ignore from "ignore";
-import {
-  activateConditional,
-  listConditionalSkills,
-} from "./registry.js";
+import { activateConditional, listConditionalSkills } from "./registry.js";
 
 /**
  * Try to activate every still-conditional skill against the given file
@@ -28,10 +25,7 @@ import {
  * `cwd` is required so we can convert absolute paths into the
  * repo-relative form that gitignore patterns are written against.
  */
-export function activateConditionalSkillsForPaths(
-  filePaths: string[],
-  cwd: string,
-): string[] {
+export function activateConditionalSkillsForPaths(filePaths: string[], cwd: string): string[] {
   if (filePaths.length === 0) return [];
   const candidates = listConditionalSkills();
   if (candidates.length === 0) return [];
@@ -69,10 +63,7 @@ export function activateConditionalSkillsForPaths(
  * from Read / Write / Edit / Glob — to avoid false positives that would
  * activate skills against irrelevant inputs.
  */
-export function extractToolFilePaths(
-  toolName: string,
-  input: Record<string, unknown>,
-): string[] {
+export function extractToolFilePaths(toolName: string, input: Record<string, unknown>): string[] {
   const paths: string[] = [];
   switch (toolName) {
     case "Read":

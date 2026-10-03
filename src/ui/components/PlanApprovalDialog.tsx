@@ -88,7 +88,9 @@ export function PlanApprovalDialog({
     <Box flexDirection="column" marginTop={1}>
       {/* Header */}
       <Box borderStyle="round" borderColor="green" paddingX={1} flexDirection="column">
-        <Text color="green" bold>Ready to code?</Text>
+        <Text color="green" bold>
+          Ready to code?
+        </Text>
         <Text dimColor>Here is the plan:</Text>
       </Box>
 
@@ -115,7 +117,10 @@ export function PlanApprovalDialog({
                 {isFocused ? "> " : "  "}
                 {opt.label}
               </Text>
-              <Text dimColor>{"  "}{opt.hint}</Text>
+              <Text dimColor>
+                {"  "}
+                {opt.hint}
+              </Text>
             </Box>
           );
         })}

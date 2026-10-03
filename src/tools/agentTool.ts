@@ -45,21 +45,10 @@ import {
 } from "../state/subAgentProgressStore.js";
 import { registerAsyncAgent } from "../state/asyncAgentStore.js";
 import { ensureTaskOutputFile } from "../utils/taskOutput.js";
-import {
-  createAgentWorktree,
-  isInsideGitRepo,
-  removeAgentWorktree,
-  type WorktreeInfo,
-} from "../utils/worktree.js";
+import { createAgentWorktree, isInsideGitRepo, removeAgentWorktree, type WorktreeInfo } from "../utils/worktree.js";
 import { isAgentTeamsEnabled } from "../utils/agentTeamsEnabled.js";
 import { getActiveTeam } from "../state/teamContext.js";
-import {
-  addTeamMember,
-  formatAgentId,
-  sanitizeName,
-  TEAM_LEAD_NAME,
-  type TeamMember,
-} from "../utils/teamHelpers.js";
+import { addTeamMember, formatAgentId, sanitizeName, TEAM_LEAD_NAME, type TeamMember } from "../utils/teamHelpers.js";
 
 // Short id helper. Crypto-grade uniqueness isn't needed —
 // agentIds are scoped to one CLI session and we use them as map keys.
@@ -81,9 +70,7 @@ async function loadAllTools(): Promise<Tool[]> {
   return getAllTools();
 }
 
-async function loadRunChildAgent(): Promise<
-  typeof import("../agents/runAgent.js")["runChildAgent"]
-> {
+async function loadRunChildAgent(): Promise<typeof import("../agents/runAgent.js")["runChildAgent"]> {
   const mod = await import("../agents/runAgent.js");
   return mod.runChildAgent;
 }
@@ -126,17 +113,14 @@ interface AgentInput {
 function readInput(raw: Record<string, unknown>): AgentInput {
   const prompt = typeof raw["prompt"] === "string" ? raw["prompt"] : "";
   const description = typeof raw["description"] === "string" ? raw["description"] : undefined;
-  const subagent_type =
-    typeof raw["subagent_type"] === "string" ? raw["subagent_type"].trim() : undefined;
+  const subagent_type = typeof raw["subagent_type"] === "string" ? raw["subagent_type"].trim() : undefined;
   const model = typeof raw["model"] === "string" ? raw["model"].trim() : undefined;
-  const run_in_background =
-    typeof raw["run_in_background"] === "boolean" ? raw["run_in_background"] : undefined;
+  const run_in_background = typeof raw["run_in_background"] === "boolean" ? raw["run_in_background"] : undefined;
   const rawIsolation = raw["isolation"];
   const isolation: AgentIsolation | undefined =
     rawIsolation === "worktree" || rawIsolation === "none" ? rawIsolation : undefined;
   const name = typeof raw["name"] === "string" ? raw["name"].trim() : undefined;
-  const team_name =
-    typeof raw["team_name"] === "string" ? raw["team_name"].trim() : undefined;
+  const team_name = typeof raw["team_name"] === "string" ? raw["team_name"].trim() : undefined;
   return {
     prompt,
     description,
@@ -149,11 +133,7 @@ function readInput(raw: Record<string, unknown>): AgentInput {
   };
 }
 
-function formatResult(args: {
-  agentType: string;
-  description?: string;
-  result: AgentRunResult;
-}): string {
+function formatResult(args: { agentType: string; description?: string; result: AgentRunResult }): string {
   const { agentType, description, result } = args;
   const headerLines = [
     `Sub-agent '${agentType}' completed.`,
@@ -166,13 +146,7 @@ function formatResult(args: {
       : "",
   ].filter(Boolean);
 
-  return [
-    headerLines.join("\n"),
-    "",
-    "<sub_agent_result>",
-    result.finalText,
-    "</sub_agent_result>",
-  ].join("\n");
+  return [headerLines.join("\n"), "", "<sub_agent_result>", result.finalText, "</sub_agent_result>"].join("\n");
 }
 
 export const agentTool: Tool = {
@@ -224,8 +198,8 @@ export const agentTool: Tool = {
       name: {
         type: "string",
         description:
-          "Agent Teams only — register this sub-agent as a named teammate under the active team. The name becomes the address other members use in `SendMessage({ to: \"<name>\", ... })`. " +
-          "Must be a short alphanumeric handle (e.g. \"backend\", \"reviewer\"). Requires `team_name` to also be set and forces `run_in_background: true` (a named teammate that runs in the foreground would never be reachable by a message). " +
+          'Agent Teams only — register this sub-agent as a named teammate under the active team. The name becomes the address other members use in `SendMessage({ to: "<name>", ... })`. ' +
+          'Must be a short alphanumeric handle (e.g. "backend", "reviewer"). Requires `team_name` to also be set and forces `run_in_background: true` (a named teammate that runs in the foreground would never be reachable by a message). ' +
           "Available only when the Agent Teams feature flag is on; omit otherwise.",
       },
       team_name: {
@@ -240,16 +214,8 @@ export const agentTool: Tool = {
   },
 
   async call(input: Record<string, unknown>, context: ToolContext): Promise<ToolResult> {
-    const {
-      prompt,
-      description,
-      subagent_type,
-      model,
-      run_in_background,
-      isolation,
-      name,
-      team_name,
-    } = readInput(input);
+    const { prompt, description, subagent_type, model, run_in_background, isolation, name, team_name } =
+      readInput(input);
 
     if (!prompt || !prompt.trim()) {
       return {
@@ -282,9 +248,7 @@ export const agentTool: Tool = {
     //   3. `team_name` doesn't match the active team → wrong session.
     //   4. Teammate trying to spawn another teammate (sub-team) → source
     //      forbids this; we do too. Detect via context.teammateIdentity.
-    let teammateIdentity:
-      | { agentId: string; agentName: string; teamName: string; runId: string }
-      | undefined;
+    let teammateIdentity: { agentId: string; agentName: string; teamName: string; runId: string } | undefined;
     if (name || team_name) {
       if (!isAgentTeamsEnabled()) {
         return {
@@ -307,13 +271,15 @@ export const agentTool: Tool = {
         };
       }
       if (!/^[A-Za-z0-9_-]{1,64}$/.test(name)) {
-        return { content: "Error: teammate name must contain 1-64 letters, digits, underscores or hyphens.", isError: true };
+        return {
+          content: "Error: teammate name must contain 1-64 letters, digits, underscores or hyphens.",
+          isError: true,
+        };
       }
       const active = getActiveTeam();
       if (!active) {
         return {
-          content:
-            "Error: no team is currently active. Call TeamCreate before spawning a named teammate.",
+          content: "Error: no team is currently active. Call TeamCreate before spawning a named teammate.",
           isError: true,
         };
       }
@@ -328,9 +294,11 @@ export const agentTool: Tool = {
       // visible (it's still useful for in-context delegation) but
       // refuse the named-teammate variant.
       if (
-        (context as ToolContext & {
-          teammateIdentity?: { teamName: string };
-        }).teammateIdentity
+        (
+          context as ToolContext & {
+            teammateIdentity?: { teamName: string };
+          }
+        ).teammateIdentity
       ) {
         return {
           content:
@@ -366,14 +334,16 @@ export const agentTool: Tool = {
     //   4. DEFAULT_MODEL (env or hard-coded fallback)
     const { resolveRoleModel } = await import("../config/features.js");
     const fallbackModel = context.defaultModel || DEFAULT_MODEL;
-    const resolvedModel = model || def.model || ((run_in_background || teammateIdentity)
-      ? await resolveRoleModel(context.cwd, "background", fallbackModel) : fallbackModel);
+    const resolvedModel =
+      model ||
+      def.model ||
+      (run_in_background || teammateIdentity
+        ? await resolveRoleModel(context.cwd, "background", fallbackModel)
+        : fallbackModel);
 
     const permissionMode = context.getPermissionMode?.() as PermissionMode | undefined;
     const permissionSettings = context.permissionSettings as PermissionSettings | undefined;
-    const sessionPermissionRules = context.sessionPermissionRules as
-      | PermissionRuleSet
-      | undefined;
+    const sessionPermissionRules = context.sessionPermissionRules as PermissionRuleSet | undefined;
     const onPermissionRequest = context.onPermissionRequest as
       | ((request: PermissionRequest) => Promise<PermissionDecision>)
       | undefined;
@@ -391,8 +361,7 @@ export const agentTool: Tool = {
     //     visible signal that isolation was skipped).
     // A strict floor is deliberately not enforced: a definition's
     // isolation is a default the model may override per call.
-    const effectiveIsolation: AgentIsolation =
-      isolation ?? def.isolation ?? "none";
+    const effectiveIsolation: AgentIsolation = isolation ?? def.isolation ?? "none";
 
     let worktreeInfo: WorktreeInfo | undefined;
     let isolationWarning: string | undefined;
@@ -479,9 +448,7 @@ export const agentTool: Tool = {
       const entry = registerAsyncAgent({
         agentId,
         agentType,
-        ...(teammateIdentity
-          ? { teammateName: teammateIdentity.agentName }
-          : {}),
+        ...(teammateIdentity ? { teammateName: teammateIdentity.agentName } : {}),
         ...(description ? { description } : {}),
         prompt,
         outputFile,
@@ -551,9 +518,7 @@ export const agentTool: Tool = {
         teammateIdentity
           ? `You can SendMessage to this teammate any time using { to: "${teammateIdentity.agentName}" }.`
           : "",
-        worktreeInfo
-          ? `worktree: ${worktreeInfo.worktreePath} (branch: ${worktreeInfo.worktreeBranch})`
-          : "",
+        worktreeInfo ? `worktree: ${worktreeInfo.worktreePath} (branch: ${worktreeInfo.worktreeBranch})` : "",
         isolationWarning ? `warning: ${isolationWarning}` : "",
         "",
         "The agent is working in the background. You will be notified automatically via a `<task-notification>` user message when it completes.",
@@ -593,9 +558,7 @@ export const agentTool: Tool = {
     if (progressKey) {
       startSubAgentProgress(progressKey, {
         agentType,
-        ...(teammateIdentity
-          ? { teammateName: teammateIdentity.agentName }
-          : {}),
+        ...(teammateIdentity ? { teammateName: teammateIdentity.agentName } : {}),
         ...(description ? { description } : {}),
       });
     }
@@ -672,15 +635,10 @@ export const agentTool: Tool = {
       // payload so the model knows where the work landed.
       let worktreeFinal: { worktreePath?: string; worktreeBranch?: string } = {};
       if (worktreeInfo) {
-        const { hasWorktreeChanges, removeAgentWorktree } = await import(
-          "../utils/worktree.js"
-        );
+        const { hasWorktreeChanges, removeAgentWorktree } = await import("../utils/worktree.js");
         let dirty = true;
         try {
-          dirty = await hasWorktreeChanges(
-            worktreeInfo.worktreePath,
-            worktreeInfo.headCommit,
-          );
+          dirty = await hasWorktreeChanges(worktreeInfo.worktreePath, worktreeInfo.headCommit);
         } catch {
           dirty = true;
         }
@@ -714,8 +672,7 @@ export const agentTool: Tool = {
         );
       }
       return {
-        content:
-          extras.length > 0 ? `${formatted}\n\n${extras.join("\n")}` : formatted,
+        content: extras.length > 0 ? `${formatted}\n\n${extras.join("\n")}` : formatted,
       };
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
@@ -723,15 +680,10 @@ export const agentTool: Tool = {
       // Even on failure, run the same cleanup pass. If the
       // sub-agent crashed mid-edit we want to keep the worktree.
       if (worktreeInfo) {
-        const { hasWorktreeChanges, removeAgentWorktree } = await import(
-          "../utils/worktree.js"
-        );
+        const { hasWorktreeChanges, removeAgentWorktree } = await import("../utils/worktree.js");
         let dirty = true;
         try {
-          dirty = await hasWorktreeChanges(
-            worktreeInfo.worktreePath,
-            worktreeInfo.headCommit,
-          );
+          dirty = await hasWorktreeChanges(worktreeInfo.worktreePath, worktreeInfo.headCommit);
         } catch {
           dirty = true;
         }

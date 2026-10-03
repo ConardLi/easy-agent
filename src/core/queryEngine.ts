@@ -1,9 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { MessageParam } from "@anthropic-ai/sdk/resources/messages.js";
-import {
-  query,
-  type LoopTerminationReason,
-} from "./agenticLoop.js";
+import { query, type LoopTerminationReason } from "./agenticLoop.js";
 import {
   loadPermissionSettings,
   type PermissionDecision,
@@ -34,10 +31,7 @@ import { getActiveTeam } from "../state/teamContext.js";
 import { TEAM_LEAD_NAME } from "../utils/teamHelpers.js";
 import { drainUnreadMessages, formatMailboxAttachment, readMailbox } from "../utils/teammateMailbox.js";
 import { findSkill } from "../services/skills/registry.js";
-import {
-  drainPendingNotifications,
-  pendingNotificationCount,
-} from "../state/notificationStore.js";
+import { drainPendingNotifications, pendingNotificationCount } from "../state/notificationStore.js";
 import type { Skill } from "../types/types.js";
 import { findUserCommand } from "../commands/userCommands/registry.js";
 import { substituteArguments } from "../commands/userCommands/argumentSubstitution.js";
@@ -45,10 +39,7 @@ import { isBuiltinCommandName } from "../commands/builtinCommandNames.js";
 import { tryExpandBuiltinPromptCommand } from "../commands/builtinPromptCommands.js";
 import type { SettingSource } from "../config/sources.js";
 import type { UserCommand } from "../commands/userCommands/types.js";
-import {
-  runSessionStartHooks,
-  runUserPromptSubmitHooks,
-} from "../hooks/index.js";
+import { runSessionStartHooks, runUserPromptSubmitHooks } from "../hooks/index.js";
 import {
   type ThinkingConfig,
   type EffortLevel,
@@ -107,27 +98,16 @@ import { createEmptyUsage } from "./queryEngine/helpers.js";
 
 // Extracted slash-command handlers + the context seam they run against.
 import type { CommandContext } from "./queryEngine/commands/context.js";
-import {
-  handleStatusCommand,
-  handleContextCommand,
-  handleDoctorCommand,
-} from "./queryEngine/commands/diagnostics.js";
+import { handleStatusCommand, handleContextCommand, handleDoctorCommand } from "./queryEngine/commands/diagnostics.js";
 import { handleDiffCommand } from "./queryEngine/commands/diff.js";
-import {
-  handleCopyCommand,
-  handleExportCommand,
-  handleResumeCommand,
-} from "./queryEngine/commands/sessionExport.js";
+import { handleCopyCommand, handleExportCommand, handleResumeCommand } from "./queryEngine/commands/sessionExport.js";
 import {
   handlePermissionsCommand,
   buildPermissionsView,
   mutatePermissionRule as mutatePermissionRuleImpl,
 } from "./queryEngine/commands/permissions.js";
 import { handleMemoryCommand } from "./queryEngine/commands/memory.js";
-import {
-  handleConfigCommand,
-  handleOutputStyleCommand,
-} from "./queryEngine/commands/config.js";
+import { handleConfigCommand, handleOutputStyleCommand } from "./queryEngine/commands/config.js";
 import {
   handleSkillsCommand,
   handleAgentsCommand,
@@ -391,18 +371,26 @@ export class QueryEngine {
           this.abortController = new AbortController();
           try {
             const result = await executeForkSkill(skillExpansion.skill, skillExpansion.bodyText, {
-              ...this.toolContext, abortSignal: this.abortController.signal,
-              defaultModel: this.getActiveModel(), availableTools: getToolsForMode(this.currentPermissionMode),
+              ...this.toolContext,
+              abortSignal: this.abortController.signal,
+              defaultModel: this.getActiveModel(),
+              availableTools: getToolsForMode(this.currentPermissionMode),
               getPermissionMode: () => this.currentPermissionMode,
-              permissionSettings: this.permissionSettings, sessionPermissionRules: this.sessionPermissionRules,
+              permissionSettings: this.permissionSettings,
+              sessionPermissionRules: this.sessionPermissionRules,
               onPermissionRequest: this.onPermissionRequest,
             });
-            const message: MessageParam = { role: "assistant", content: typeof result.content === "string" ? result.content : JSON.stringify(result.content) };
+            const message: MessageParam = {
+              role: "assistant",
+              content: typeof result.content === "string" ? result.content : JSON.stringify(result.content),
+            };
             this.messages.push({ role: "user", content: skillExpansion.markerContent }, message);
             yield { type: "assistant_message", message };
             yield { type: "messages_updated", messages: [...this.messages] };
             return { handled: true, reason: result.isError ? "model_error" : "completed" };
-          } finally { this.abortController = null; }
+          } finally {
+            this.abortController = null;
+          }
         }
         const markerMessage: MessageParam = {
           role: "user",
@@ -431,9 +419,7 @@ export class QueryEngine {
    * Returns null when the input doesn't match any loaded skill — the caller
    * falls back to the generic /command dispatcher in that case.
    */
-  private tryExpandSkillCommand(
-    input: string,
-  ): { skill: Skill; markerContent: string; bodyText: string } | null {
+  private tryExpandSkillCommand(input: string): { skill: Skill; markerContent: string; bodyText: string } | null {
     const match = input.match(/^\/([a-zA-Z0-9_:-]+)(?:\s+(.*))?$/);
     if (!match) return null;
     const [, name, rawArgs] = match;
@@ -536,7 +522,6 @@ export class QueryEngine {
   private async *submitInternal(
     trimmed: string,
   ): AsyncGenerator<QueryEngineEvent, { handled: boolean; reason?: LoopTerminationReason }> {
-
     // ─── Open the file-history snapshot for this turn ───────────────
     // Fire at turn start (before any edit) so the snapshot bound to this
     // turn's id captures the filesystem state *before* the model's edits;
@@ -636,15 +621,11 @@ export class QueryEngine {
       }
 
       // Auto-compact with circuit breaker if still over threshold
-      const { result: autoResult, didAutoCompact } = await autoCompactIfNeeded(
-        this.messages,
-        this.getActiveModel(),
-        {
-          usage: this.lastCallUsage,
-          usageAnchorIndex: this.usageAnchorIndex,
-          systemPrompt: previewSystemPrompt,
-        },
-      );
+      const { result: autoResult, didAutoCompact } = await autoCompactIfNeeded(this.messages, this.getActiveModel(), {
+        usage: this.lastCallUsage,
+        usageAnchorIndex: this.usageAnchorIndex,
+        systemPrompt: previewSystemPrompt,
+      });
       if (didAutoCompact) {
         this.messages = [...autoResult.messages];
         compactedThisTurn = true;
@@ -896,7 +877,8 @@ export class QueryEngine {
         yield {
           type: "command",
           kind: "info",
-          message: "Commands: /help /clear /config [list|get|set] /cost /model [name|list|default] /mode [default|plan|auto] /think [on|off|<budget>] /effort [low|medium|high|max] /tasks [task|todo|reset] /mcp [tools <name>|reconnect <name>] /plugin [install|enable|disable|marketplace|reload ...] /reload-plugins /skills [reload] /agents /hooks /output-style [name] /history /compact /rewind [n] /status /context /doctor /copy [n] /export [file] /resume [n|id] /diff [n] /init /permissions [allow|deny|remove <rule>] /memory [edit <n>] /<skill-or-command> [args] /exit /quit /bye",
+          message:
+            "Commands: /help /clear /config [list|get|set] /cost /model [name|list|default] /mode [default|plan|auto] /think [on|off|<budget>] /effort [low|medium|high|max] /tasks [task|todo|reset] /mcp [tools <name>|reconnect <name>] /plugin [install|enable|disable|marketplace|reload ...] /reload-plugins /skills [reload] /agents /hooks /output-style [name] /history /compact /rewind [n] /status /context /doctor /copy [n] /export [file] /resume [n|id] /diff [n] /init /permissions [allow|deny|remove <rule>] /memory [edit <n>] /<skill-or-command> [args] /exit /quit /bye",
         };
         return { handled: true };
       case "config":
@@ -927,13 +909,18 @@ export class QueryEngine {
           yield {
             type: "command",
             kind: "info",
-            message: `Current mode: ${this.currentPermissionMode}` +
+            message:
+              `Current mode: ${this.currentPermissionMode}` +
               (this.prePlanMode ? ` (will restore to ${this.prePlanMode} on plan exit)` : ""),
           };
           return { handled: true };
         }
         if (nextMode !== "default" && nextMode !== "plan" && nextMode !== "auto") {
-          yield { type: "command", kind: "error", message: `Invalid mode: ${nextMode}. Must be default, plan, or auto.` };
+          yield {
+            type: "command",
+            kind: "error",
+            message: `Invalid mode: ${nextMode}. Must be default, plan, or auto.`,
+          };
           return { handled: true };
         }
         const previous = this.currentPermissionMode;
@@ -1030,8 +1017,12 @@ export class QueryEngine {
               `- Active model: ${this.getActiveModel()}`,
               `- Source: ${this.getModelSource()}`,
               `- Default model: ${this.defaultModel}`,
-              this.sessionModelOverride ? `- Session override: ${this.sessionModelOverride}` : "- Session override: none",
-              ids.length ? `- Declared profiles: ${ids.join(", ")}` : "- Declared profiles: none (set them in settings.json `models`)",
+              this.sessionModelOverride
+                ? `- Session override: ${this.sessionModelOverride}`
+                : "- Session override: none",
+              ids.length
+                ? `- Declared profiles: ${ids.join(", ")}`
+                : "- Declared profiles: none (set them in settings.json `models`)",
               "- Usage: /model <name|profile> to override for this session",
               "- Usage: /model list to see profiles, /model default to clear the override",
             ].join("\n"),
@@ -1097,7 +1088,9 @@ export class QueryEngine {
           message: [
             "Model updated",
             `- Active model: ${nextModel}`,
-            matched ? `- Protocol: ${matched.protocol} · upstream model: ${matched.model}` : "- Protocol: anthropic (raw model name)",
+            matched
+              ? `- Protocol: ${matched.protocol} · upstream model: ${matched.model}`
+              : "- Protocol: anthropic (raw model name)",
             "- Source: session",
             `- Default model remains: ${this.defaultModel}`,
           ].join("\n"),
@@ -1114,7 +1107,13 @@ export class QueryEngine {
       case "compact": {
         const focus = args.join(" ").trim();
         const manualSystemPrompt = renderSystemPrompt(await this.promptContext.peekSystemParts());
-        const result = await compactMessages(this.messages, focus || undefined, { usage: this.lastCallUsage, usageAnchorIndex: this.usageAnchorIndex, systemPrompt: manualSystemPrompt, model: this.getActiveModel(), force: true });
+        const result = await compactMessages(this.messages, focus || undefined, {
+          usage: this.lastCallUsage,
+          usageAnchorIndex: this.usageAnchorIndex,
+          systemPrompt: manualSystemPrompt,
+          model: this.getActiveModel(),
+          force: true,
+        });
         this.messages = [...result.messages];
         if (result.didCompact) this.promptContext.reset();
         if (result.didCompact || result.didMicroCompact) {
@@ -1122,7 +1121,11 @@ export class QueryEngine {
         }
         yield { type: "messages_updated", messages: [...this.messages] };
         if (result.didCompact || result.didMicroCompact) {
-          yield { type: "compacted", summary: result.summary, trigger: focus ? "manual" : result.didCompact ? "manual" : "micro" };
+          yield {
+            type: "compacted",
+            summary: result.summary,
+            trigger: focus ? "manual" : result.didCompact ? "manual" : "micro",
+          };
         } else {
           yield { type: "command", kind: "info", message: "Conversation did not need compaction." };
         }
@@ -1198,10 +1201,7 @@ export class QueryEngine {
           next = { type: "enabled", budgetTokens: budget };
         }
         setSessionThinkingConfig(next);
-        const label =
-          next.type === "enabled"
-            ? `enabled (budget ${next.budgetTokens})`
-            : next.type;
+        const label = next.type === "enabled" ? `enabled (budget ${next.budgetTokens})` : next.type;
         yield { type: "command", kind: "info", message: `Extended thinking: ${label}` };
         return { handled: true };
       }
@@ -1288,5 +1288,4 @@ export class QueryEngine {
   async refreshPluginView(): Promise<PluginViewData> {
     return buildPluginView(this.commandContext().cwd);
   }
-
 }

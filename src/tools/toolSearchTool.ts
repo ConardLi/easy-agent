@@ -10,10 +10,7 @@
  */
 
 import { getMcpRegistry } from "../services/mcp/registry.js";
-import {
-  isDeferredTool,
-  TOOL_SEARCH_TOOL_NAME,
-} from "../utils/toolSearch.js";
+import { isDeferredTool, TOOL_SEARCH_TOOL_NAME } from "../utils/toolSearch.js";
 import { debugLog } from "../utils/log.js";
 import type { Tool, ToolContext, ToolResult } from "./Tool.js";
 
@@ -46,7 +43,10 @@ function parseToolName(name: string): ParsedToolName {
   if (name.startsWith("mcp__")) {
     const withoutPrefix = name.replace(/^mcp__/, "").toLowerCase();
     return {
-      parts: withoutPrefix.split("__").flatMap((p) => p.split("_")).filter(Boolean),
+      parts: withoutPrefix
+        .split("__")
+        .flatMap((p) => p.split("_"))
+        .filter(Boolean),
       full: withoutPrefix.replace(/__/g, " ").replace(/_/g, " "),
       isMcp: true,
     };
@@ -209,7 +209,10 @@ export function runToolSearch(
 
   const selectMatch = query.match(/^select:(.+)$/i);
   if (selectMatch) {
-    const requested = selectMatch[1]!.split(",").map((s) => s.trim()).filter(Boolean);
+    const requested = selectMatch[1]!
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
     const found: string[] = [];
     const missing: string[] = [];
     for (const name of requested) {
@@ -222,7 +225,12 @@ export function runToolSearch(
     }
     if (found.length === 0) {
       debugLog("toolsearch", `select failed — none found: ${missing.join(", ")}`);
-      return { matches: [], query, total_deferred_tools: deferredTools.length, ...(pendingMcpServers ? { pending_mcp_servers: pendingMcpServers } : {}) };
+      return {
+        matches: [],
+        query,
+        total_deferred_tools: deferredTools.length,
+        ...(pendingMcpServers ? { pending_mcp_servers: pendingMcpServers } : {}),
+      };
     }
     debugLog(
       "toolsearch",
@@ -280,9 +288,9 @@ export const toolSearchTool: Tool = {
 
     // Lazy import — tools/index.ts imports this file, so a static import
     // would be a cycle at module init. Resolved at call time instead.
-    const tools = context.availableTools ?? (await import("./index.js")).getToolsForMode(
-      context.getPermissionMode?.() === "plan" ? "plan" : "default",
-    );
+    const tools =
+      context.availableTools ??
+      (await import("./index.js")).getToolsForMode(context.getPermissionMode?.() === "plan" ? "plan" : "default");
     const output = runToolSearch(query.trim(), maxResults, tools, getPendingMcpServerNames());
     return toolSearchOutputToResult(output);
   },

@@ -36,12 +36,7 @@ import { readMcpResourceTool } from "../tools/readMcpResourceTool.js";
 import { powerShellTool } from "../tools/powerShellTool.js";
 import { validateFetchUrl } from "../tools/webFetch/urlValidation.js";
 import { isPreapprovedUrl } from "../tools/webFetch/preapproved.js";
-import {
-  createAdapter,
-  extractBingResults,
-  filterByDomains,
-  resolveBingUrl,
-} from "../tools/webSearch/adapters.js";
+import { createAdapter, extractBingResults, filterByDomains, resolveBingUrl } from "../tools/webSearch/adapters.js";
 import { getAllTools } from "../tools/index.js";
 import {
   checkPermission,
@@ -69,10 +64,7 @@ const settings = (over: Partial<PermissionSettings> = {}): PermissionSettings =>
 });
 
 // The file tools restrict writes to within cwd, so the temp dir IS the cwd.
-async function withTempFile(
-  contents: string,
-  fn: (file: string, cwd: string) => Promise<void>,
-): Promise<void> {
+async function withTempFile(contents: string, fn: (file: string, cwd: string) => Promise<void>): Promise<void> {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "easy-agent-stage31-"));
   const file = path.join(dir, "sample.txt");
   await fs.writeFile(file, contents, "utf-8");
@@ -93,7 +85,10 @@ async function main(): Promise<void> {
       { file_path: file, old_string: "foo", new_string: "bar", replace_all: true },
       { cwd },
     );
-    assert(!all.isError && (await fs.readFile(file, "utf-8")) === "bar bar bar", "Edit replace_all replaces every occurrence");
+    assert(
+      !all.isError && (await fs.readFile(file, "utf-8")) === "bar bar bar",
+      "Edit replace_all replaces every occurrence",
+    );
     assert(toolResultText(all.content).includes("3 occurrences"), "Edit replace_all reports the count");
   });
   await withTempFile("alpha beta", async (file, cwd) => {
@@ -275,14 +270,20 @@ async function main(): Promise<void> {
     ],
     { allowedDomains: ["example.com"] },
   );
-  assert(filtered.length === 1 && filtered[0].url.includes("example.com"), "filterByDomains honors allowedDomains (with subdomain)");
+  assert(
+    filtered.length === 1 && filtered[0].url.includes("example.com"),
+    "filterByDomains honors allowedDomains (with subdomain)",
+  );
 
   // Bing HTML parsing (offline — the source's keyless fallback path).
   const sampleHtml =
     '<ol id="b_results"><li class="b_algo"><h2><a href="https://docs.python.org/3/">Python &amp; Docs</a></h2>' +
     '<div class="b_caption"><p class="b_lineclamp2">The official <b>Python</b> documentation.</p></div></li></ol>';
   const bing = extractBingResults(sampleHtml);
-  assert(bing.length === 1 && bing[0].url === "https://docs.python.org/3/", "extractBingResults parses organic result URL");
+  assert(
+    bing.length === 1 && bing[0].url === "https://docs.python.org/3/",
+    "extractBingResults parses organic result URL",
+  );
   assert(bing[0].title === "Python & Docs", "extractBingResults decodes HTML entities in title");
   assert(bing[0].snippet?.includes("official Python documentation"), "extractBingResults extracts the snippet");
 
@@ -298,21 +299,33 @@ async function main(): Promise<void> {
   process.env.WEB_SEARCH_ADAPTER = "bing";
   assert((await createAdapter("anything")).name === "bing", "WEB_SEARCH_ADAPTER=bing forces Bing");
   process.env.WEB_SEARCH_ADAPTER = "api";
-  assert((await createAdapter("claude-x")).name === "anthropic", "WEB_SEARCH_ADAPTER=api forces Anthropic server-side search");
+  assert(
+    (await createAdapter("claude-x")).name === "anthropic",
+    "WEB_SEARCH_ADAPTER=api forces Anthropic server-side search",
+  );
   delete process.env.WEB_SEARCH_ADAPTER;
   if (savedOverride) process.env.WEB_SEARCH_ADAPTER = savedOverride;
 
   console.log("\n[9] MCP resource tools with no connected servers");
   const list = await listMcpResourcesTool.call({}, ctx);
-  assert(!list.isError && toolResultText(list.content).includes("No MCP resources"), "ListMcpResources: friendly message when no servers");
+  assert(
+    !list.isError && toolResultText(list.content).includes("No MCP resources"),
+    "ListMcpResources: friendly message when no servers",
+  );
   const read = await readMcpResourceTool.call({ server: "nope", uri: "x://y" }, ctx);
-  assert(read.isError === true && toolResultText(read.content).includes("not connected"), "ReadMcpResource: errors clearly when server missing");
+  assert(
+    read.isError === true && toolResultText(read.content).includes("not connected"),
+    "ReadMcpResource: errors clearly when server missing",
+  );
 
   console.log("\n[10] PowerShell Windows-gating + tool registry");
   assert(powerShellTool.isEnabled() === (process.platform === "win32"), "PowerShell only enabled on Windows");
   // WebFetch must serialize: its per-domain "ask" prompt would deadlock the
   // single-flight permission UI if two ran concurrently.
-  assert(webFetchTool.isConcurrencySafe?.() === false, "WebFetch is NOT concurrency-safe (serializes permission prompts)");
+  assert(
+    webFetchTool.isConcurrencySafe?.() === false,
+    "WebFetch is NOT concurrency-safe (serializes permission prompts)",
+  );
   const names = new Set(getAllTools().map((t) => t.name));
   for (const n of ["MultiEdit", "WebFetch", "WebSearch", "ListMcpResources", "ReadMcpResource"]) {
     assert(names.has(n), `tool registry includes ${n}`);

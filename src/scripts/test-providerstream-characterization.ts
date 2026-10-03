@@ -24,22 +24,12 @@
 import * as path from "node:path";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import assert from "node:assert";
-import {
-  streamViaProvider,
-  collectViaProvider,
-} from "../services/api/providers/providerStream.js";
+import { streamViaProvider, collectViaProvider } from "../services/api/providers/providerStream.js";
 import type { ModelProfile } from "../services/api/providers/profile.js";
 import type { StreamRequestParams } from "../services/api/streaming.js";
-import {
-  setSessionEffortLevel,
-  setSessionThinkingConfig,
-} from "../utils/thinking.js";
+import { setSessionEffortLevel, setSessionThinkingConfig } from "../utils/thinking.js";
 
-const GOLDEN_PATH = path.join(
-  import.meta.dirname,
-  "__golden__",
-  "providerstream-characterization.golden.txt",
-);
+const GOLDEN_PATH = path.join(import.meta.dirname, "__golden__", "providerstream-characterization.golden.txt");
 
 // ─── Mock fetch ──────────────────────────────────────────────────────────────
 
@@ -263,108 +253,150 @@ async function buildRecording(): Promise<string> {
   };
 
   // OpenAI Chat ---------------------------------------------------------------
-  push("openai-chat / text + stream", await record({
-    name: "openai-chat text",
-    profile: oai("openai-chat", "oai"),
-    params: params(TEXT_MSGS, { system: SYSTEM }),
-    chunks: OAI_TEXT_STREAM,
-  }));
-  push("openai-chat / finish=length → max_tokens", await record({
-    name: "openai-chat length",
-    profile: oai("openai-chat", "oai"),
-    params: params(TEXT_MSGS),
-    chunks: OAI_LENGTH_STREAM,
-  }));
-  push("openai-chat / tool history → messages[]", await record({
-    name: "openai-chat tool history",
-    profile: oai("openai-chat", "oai"),
-    params: params(TOOL_HISTORY_MSGS, { system: SYSTEM, tools: TOOLS }),
-    chunks: OAI_MINIMAL,
-  }));
-  push("openai-chat / image → image_url", await record({
-    name: "openai-chat image",
-    profile: oai("openai-chat", "oai"),
-    params: params(IMAGE_MSGS),
-    chunks: OAI_MINIMAL,
-  }));
+  push(
+    "openai-chat / text + stream",
+    await record({
+      name: "openai-chat text",
+      profile: oai("openai-chat", "oai"),
+      params: params(TEXT_MSGS, { system: SYSTEM }),
+      chunks: OAI_TEXT_STREAM,
+    }),
+  );
+  push(
+    "openai-chat / finish=length → max_tokens",
+    await record({
+      name: "openai-chat length",
+      profile: oai("openai-chat", "oai"),
+      params: params(TEXT_MSGS),
+      chunks: OAI_LENGTH_STREAM,
+    }),
+  );
+  push(
+    "openai-chat / tool history → messages[]",
+    await record({
+      name: "openai-chat tool history",
+      profile: oai("openai-chat", "oai"),
+      params: params(TOOL_HISTORY_MSGS, { system: SYSTEM, tools: TOOLS }),
+      chunks: OAI_MINIMAL,
+    }),
+  );
+  push(
+    "openai-chat / image → image_url",
+    await record({
+      name: "openai-chat image",
+      profile: oai("openai-chat", "oai"),
+      params: params(IMAGE_MSGS),
+      chunks: OAI_MINIMAL,
+    }),
+  );
 
   // OpenAI Responses ----------------------------------------------------------
-  push("openai-responses / tool history → input[]", await record({
-    name: "openai-responses tool history",
-    profile: oai("openai-responses", "oair"),
-    params: params(TOOL_HISTORY_MSGS, { system: SYSTEM, tools: TOOLS }),
-    chunks: OAI_MINIMAL,
-  }));
-  push("openai-responses / image → input_image", await record({
-    name: "openai-responses image",
-    profile: oai("openai-responses", "oair"),
-    params: params(IMAGE_MSGS),
-    chunks: OAI_MINIMAL,
-  }));
+  push(
+    "openai-responses / tool history → input[]",
+    await record({
+      name: "openai-responses tool history",
+      profile: oai("openai-responses", "oair"),
+      params: params(TOOL_HISTORY_MSGS, { system: SYSTEM, tools: TOOLS }),
+      chunks: OAI_MINIMAL,
+    }),
+  );
+  push(
+    "openai-responses / image → input_image",
+    await record({
+      name: "openai-responses image",
+      profile: oai("openai-responses", "oair"),
+      params: params(IMAGE_MSGS),
+      chunks: OAI_MINIMAL,
+    }),
+  );
 
   // Stage 34 regression coverage: /effort and /think must reach the wire
   // (request body) AND the reasoning-summary text must surface as `thinking`
   // events (response parsing) — see providerStream.ts's isThinkingActive +
   // openaiResponsesNative.ts.
   setSessionEffortLevel("high");
-  push("openai-responses / explicit effort → reasoning.effort + summary", await record({
-    name: "openai-responses effort=high",
-    profile: oai("openai-responses", "oair"),
-    params: params(TEXT_MSGS),
-    chunks: OAI_MINIMAL,
-  }));
+  push(
+    "openai-responses / explicit effort → reasoning.effort + summary",
+    await record({
+      name: "openai-responses effort=high",
+      profile: oai("openai-responses", "oair"),
+      params: params(TEXT_MSGS),
+      chunks: OAI_MINIMAL,
+    }),
+  );
   setSessionEffortLevel(undefined);
 
   setSessionThinkingConfig({ type: "disabled" });
-  push("openai-responses / think off → reasoning.effort=minimal, no summary", await record({
-    name: "openai-responses think off",
-    profile: oai("openai-responses", "oair"),
-    params: params(TEXT_MSGS),
-    chunks: OAI_MINIMAL,
-  }));
+  push(
+    "openai-responses / think off → reasoning.effort=minimal, no summary",
+    await record({
+      name: "openai-responses think off",
+      profile: oai("openai-responses", "oair"),
+      params: params(TEXT_MSGS),
+      chunks: OAI_MINIMAL,
+    }),
+  );
   setSessionThinkingConfig(undefined);
 
-  push("openai-responses / reasoning-summary stream → thinking events", await record({
-    name: "openai-responses reasoning summary",
-    profile: oai("openai-responses", "oair"),
-    params: params(TEXT_MSGS),
-    chunks: OAI_RESPONSES_REASONING_STREAM,
-  }));
+  push(
+    "openai-responses / reasoning-summary stream → thinking events",
+    await record({
+      name: "openai-responses reasoning summary",
+      profile: oai("openai-responses", "oair"),
+      params: params(TEXT_MSGS),
+      chunks: OAI_RESPONSES_REASONING_STREAM,
+    }),
+  );
 
   setSessionEffortLevel("high");
-  push("openai-chat / explicit effort → reasoning_effort (top-level)", await record({
-    name: "openai-chat effort=high",
-    profile: oai("openai-chat", "oai"),
-    params: params(TEXT_MSGS),
-    chunks: OAI_MINIMAL,
-  }));
+  push(
+    "openai-chat / explicit effort → reasoning_effort (top-level)",
+    await record({
+      name: "openai-chat effort=high",
+      profile: oai("openai-chat", "oai"),
+      params: params(TEXT_MSGS),
+      chunks: OAI_MINIMAL,
+    }),
+  );
   setSessionEffortLevel(undefined);
 
   // Gemini --------------------------------------------------------------------
-  push("gemini / tool history → contents[]", await record({
-    name: "gemini tool history",
-    profile: gem,
-    params: params(TOOL_HISTORY_MSGS, { system: SYSTEM, tools: TOOLS }),
-    chunks: GEMINI_MINIMAL,
-  }));
-  push("gemini / image → inlineData", await record({
-    name: "gemini image",
-    profile: gem,
-    params: params(IMAGE_MSGS),
-    chunks: GEMINI_MINIMAL,
-  }));
-  push("gemini / rich stream (thinking + text + tool_use)", await record({
-    name: "gemini rich stream",
-    profile: gem,
-    params: params(TEXT_MSGS, { system: SYSTEM }),
-    chunks: GEMINI_RICH_STREAM,
-  }));
-  push("gemini / finish=MAX_TOKENS → max_tokens", await record({
-    name: "gemini maxtokens",
-    profile: gem,
-    params: params(TEXT_MSGS),
-    chunks: GEMINI_MAXTOK_STREAM,
-  }));
+  push(
+    "gemini / tool history → contents[]",
+    await record({
+      name: "gemini tool history",
+      profile: gem,
+      params: params(TOOL_HISTORY_MSGS, { system: SYSTEM, tools: TOOLS }),
+      chunks: GEMINI_MINIMAL,
+    }),
+  );
+  push(
+    "gemini / image → inlineData",
+    await record({
+      name: "gemini image",
+      profile: gem,
+      params: params(IMAGE_MSGS),
+      chunks: GEMINI_MINIMAL,
+    }),
+  );
+  push(
+    "gemini / rich stream (thinking + text + tool_use)",
+    await record({
+      name: "gemini rich stream",
+      profile: gem,
+      params: params(TEXT_MSGS, { system: SYSTEM }),
+      chunks: GEMINI_RICH_STREAM,
+    }),
+  );
+  push(
+    "gemini / finish=MAX_TOKENS → max_tokens",
+    await record({
+      name: "gemini maxtokens",
+      profile: gem,
+      params: params(TEXT_MSGS),
+      chunks: GEMINI_MAXTOK_STREAM,
+    }),
+  );
 
   // collectViaProvider --------------------------------------------------------
   {
@@ -430,13 +462,11 @@ async function main(): Promise<void> {
       process.stderr.write(`  actual ${i + 1}: ${JSON.stringify(a[i])}\n`);
     }
   }
-  process.stderr.write(
-    `\nIf this change is INTENTIONAL, re-run with --update. Otherwise it's a regression.\n`,
-  );
+  process.stderr.write(`\nIf this change is INTENTIONAL, re-run with --update. Otherwise it's a regression.\n`);
   assert.strictEqual(recording, golden, "providerStream characterization mismatch");
 }
 
 main().catch((err: unknown) => {
-  process.stderr.write(`Fatal: ${err instanceof Error ? err.stack ?? err.message : String(err)}\n`);
+  process.stderr.write(`Fatal: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}\n`);
   process.exit(1);
 });

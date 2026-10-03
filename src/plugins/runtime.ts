@@ -31,10 +31,7 @@ import { setAgents } from "../agents/registry.js";
 import { loadAllUserCommands } from "../commands/userCommands/loadCommandsDir.js";
 import { setUserCommands } from "../commands/userCommands/registry.js";
 import { loadAllOutputStyles } from "../styles/loadOutputStylesDir.js";
-import {
-  ensureActiveOutputStyleAvailable,
-  setCustomOutputStyles,
-} from "../styles/registry.js";
+import { ensureActiveOutputStyleAvailable, setCustomOutputStyles } from "../styles/registry.js";
 import { isProjectTrusted } from "../config/globalState.js";
 import type { HooksSettings } from "../hooks/types.js";
 import type { ScopedMcpServerConfig } from "../types/mcp.js";
@@ -116,7 +113,10 @@ export function _resetPluginRuntimeForTesting(): void {
  * A single plugin that fails to load contributes its `errors` but never aborts
  * the others.
  */
-async function discoverPlugins(cwd: string, pluginDirs: string[]): Promise<{
+async function discoverPlugins(
+  cwd: string,
+  pluginDirs: string[],
+): Promise<{
   plugins: LoadedPlugin[];
   trustedById: Map<string, boolean>;
   errors: PluginError[];
@@ -162,8 +162,7 @@ async function discoverPlugins(cwd: string, pluginDirs: string[]): Promise<{
           pluginId,
           scope: "manifest",
           message:
-            `Plugin name "${loaded.name}" conflicts with ${previous.pluginId}; ` +
-            "the first enabled plugin wins.",
+            `Plugin name "${loaded.name}" conflicts with ${previous.pluginId}; ` + "the first enabled plugin wins.",
         });
         continue;
       }
@@ -214,7 +213,11 @@ async function discoverPlugins(cwd: string, pluginDirs: string[]): Promise<{
 }
 
 function devName(dir: string): string {
-  const base = dir.replace(/[\\/]+$/, "").split(/[\\/]/).pop() ?? "plugin";
+  const base =
+    dir
+      .replace(/[\\/]+$/, "")
+      .split(/[\\/]/)
+      .pop() ?? "plugin";
   return base.replace(/[^a-zA-Z0-9_-]/g, "-") || "plugin";
 }
 
@@ -224,10 +227,7 @@ function devName(dir: string): string {
  * Reconcile the live registries with the current install/enable state. Safe to
  * call repeatedly. Returns the loaded plugins + a summary of MCP churn.
  */
-export async function refreshActivePlugins(
-  cwd: string,
-  opts: RefreshOptions = {},
-): Promise<RefreshResult> {
+export async function refreshActivePlugins(cwd: string, opts: RefreshOptions = {}): Promise<RefreshResult> {
   if (opts.pluginDirs !== undefined) {
     sessionPluginDirs = [...new Set(opts.pluginDirs.map((dir) => path.resolve(cwd, dir)))];
   }
@@ -259,24 +259,15 @@ export async function refreshActivePlugins(
   return result;
 }
 
-async function performRefresh(
-  cwd: string,
-  opts: RefreshOptions,
-): Promise<{ completion: Promise<RefreshResult> }> {
+async function performRefresh(cwd: string, opts: RefreshOptions): Promise<{ completion: Promise<RefreshResult> }> {
   const {
     plugins,
     trustedById,
     errors: discoveryErrors,
     enabledCount,
     disabledCount,
-  } = await discoverPlugins(
-    cwd,
-    opts.pluginDirs ?? [],
-  );
-  const nextErrors = [
-    ...discoveryErrors,
-    ...plugins.flatMap((plugin) => plugin.errors),
-  ];
+  } = await discoverPlugins(cwd, opts.pluginDirs ?? []);
+  const nextErrors = [...discoveryErrors, ...plugins.flatMap((plugin) => plugin.errors)];
 
   // Build the complete prospective snapshot first. A loader exception leaves
   // every currently active registry untouched.
@@ -326,10 +317,7 @@ async function performRefresh(
   activeErrors = nextErrors;
   activeHooks = nextHooks;
 
-  const makeResult = (
-    mcpStarted: string[] = [],
-    mcpStopped: string[] = [],
-  ): RefreshResult => ({
+  const makeResult = (mcpStarted: string[] = [], mcpStopped: string[] = []): RefreshResult => ({
     plugins: [...plugins],
     errors: [...nextErrors],
     mcpStarted,
@@ -349,8 +337,11 @@ async function performRefresh(
   });
 
   if (opts.applyMcp !== false) {
-    const lspErrors = await applyLspServers(plugins.filter((plugin) => trustedById.get(plugin.pluginId)).flatMap((plugin) =>
-      (plugin.lspServers ?? []).map((server) => ({ ...server, cwd }))));
+    const lspErrors = await applyLspServers(
+      plugins
+        .filter((plugin) => trustedById.get(plugin.pluginId))
+        .flatMap((plugin) => (plugin.lspServers ?? []).map((server) => ({ ...server, cwd }))),
+    );
     nextErrors.push(...lspErrors.map((message) => ({ pluginId: "lsp", scope: "io" as const, message })));
     activeErrors = nextErrors;
     const generation = ++refreshGeneration;
@@ -371,10 +362,7 @@ async function performRefresh(
 }
 
 /** Collect trust-gated plugin hooks into the executor's HooksSettings shape. */
-function buildPluginHooksSettings(
-  plugins: LoadedPlugin[],
-  trustedById: Map<string, boolean>,
-): HooksSettings {
+function buildPluginHooksSettings(plugins: LoadedPlugin[], trustedById: Map<string, boolean>): HooksSettings {
   const settings: HooksSettings = {};
   for (const p of plugins) {
     if (!trustedById.get(p.pluginId)) continue;

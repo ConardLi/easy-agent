@@ -40,39 +40,36 @@ export const grepTool: Tool = {
       return { content: "Error: pattern is required", isError: true };
     }
 
-    const respectGitignore = (await readMergedBooleanSetting(context.cwd, "respectGitignore").catch(() => undefined)) !== false;
+    const respectGitignore =
+      (await readMergedBooleanSetting(context.cwd, "respectGitignore").catch(() => undefined)) !== false;
 
     try {
-      return await withValidatedWorkspacePath(
-        input.path ?? ".",
-        context.cwd,
-        async (targetPath, stats) => {
-          if (await hasCommand("rg")) {
-            const args = ["-n", "--hidden"];
-            if (!respectGitignore) args.push("--no-ignore");
-            if (input.include) {
-              args.push("-g", input.include);
-            }
-            const targetIsDirectory = stats.isDirectory();
-            args.push(input.pattern, targetIsDirectory ? "." : targetPath);
-            const { stdout } = await execFileAsync("rg", args, {
-              cwd: targetIsDirectory ? targetPath : undefined,
-              maxBuffer: 1024 * 1024,
-            });
-            const output = stdout.trim();
-            return {
-              content: output ? output : `No matches found for pattern: ${input.pattern}`,
-            };
+      return await withValidatedWorkspacePath(input.path ?? ".", context.cwd, async (targetPath, stats) => {
+        if (await hasCommand("rg")) {
+          const args = ["-n", "--hidden"];
+          if (!respectGitignore) args.push("--no-ignore");
+          if (input.include) {
+            args.push("-g", input.include);
           }
-
-          const grepArgs = ["-RIn", input.pattern, targetPath];
-          const { stdout } = await execFileAsync("grep", grepArgs, { maxBuffer: 1024 * 1024 });
+          const targetIsDirectory = stats.isDirectory();
+          args.push(input.pattern, targetIsDirectory ? "." : targetPath);
+          const { stdout } = await execFileAsync("rg", args, {
+            cwd: targetIsDirectory ? targetPath : undefined,
+            maxBuffer: 1024 * 1024,
+          });
           const output = stdout.trim();
           return {
             content: output ? output : `No matches found for pattern: ${input.pattern}`,
           };
         }
-      );
+
+        const grepArgs = ["-RIn", input.pattern, targetPath];
+        const { stdout } = await execFileAsync("grep", grepArgs, { maxBuffer: 1024 * 1024 });
+        const output = stdout.trim();
+        return {
+          content: output ? output : `No matches found for pattern: ${input.pattern}`,
+        };
+      });
     } catch (error: unknown) {
       if (error instanceof WorkspacePathError) {
         return { content: `Error: ${error.message}`, isError: true };

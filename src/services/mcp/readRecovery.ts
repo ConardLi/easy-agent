@@ -8,7 +8,8 @@ export async function withMcpReadRecovery<T>(
   try {
     return await read(server);
   } catch (error) {
-    if (server.config.type !== "http" || !server.sessionId?.() || (error as { code?: number }).code !== 404) throw error;
+    if (server.config.type !== "http" || !server.sessionId?.() || (error as { code?: number }).code !== 404)
+      throw error;
     const rebuilt = await requestMcpReconnect(server.name);
     if (rebuilt?.type !== "connected") throw error;
     return read(rebuilt);

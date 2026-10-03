@@ -13,10 +13,7 @@ await loadEnv(process.cwd(), { allowProject: true });
 
 import { checkPermission, type PermissionSettings } from "../src/permissions/permissions.js";
 import { findToolByName } from "../src/tools/index.js";
-import {
-  isDangerousAutoModeRule,
-  stripDangerousAllowRules,
-} from "../src/permissions/dangerousPatterns.js";
+import { isDangerousAutoModeRule, stripDangerousAllowRules } from "../src/permissions/dangerousPatterns.js";
 import {
   recordClassifierDenial,
   recordClassifierSuccess,
@@ -63,12 +60,20 @@ async function main() {
   console.log("\n[B] denial + failure thresholds");
   resetAutoModeState();
   recordClassifierDenial();
-  check("1 denial → no fallback", !shouldFallbackToPrompting(), `consecutive=${getAutoModeStateSnapshot().consecutiveDenials}`);
+  check(
+    "1 denial → no fallback",
+    !shouldFallbackToPrompting(),
+    `consecutive=${getAutoModeStateSnapshot().consecutiveDenials}`,
+  );
   recordClassifierDenial();
   recordClassifierDenial();
   check("3 denials → fallback to prompting", shouldFallbackToPrompting());
   recordClassifierSuccess();
-  check("success clears consecutive streak", !shouldFallbackToPrompting(), `consecutive=${getAutoModeStateSnapshot().consecutiveDenials}`);
+  check(
+    "success clears consecutive streak",
+    !shouldFallbackToPrompting(),
+    `consecutive=${getAutoModeStateSnapshot().consecutiveDenials}`,
+  );
 
   resetAutoModeState();
   recordClassifierFailure();

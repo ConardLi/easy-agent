@@ -12,11 +12,7 @@
  * path all key off the category returned here rather than re-parsing errors.
  */
 
-import {
-  APIConnectionError,
-  APIConnectionTimeoutError,
-  APIError,
-} from "@anthropic-ai/sdk";
+import { APIConnectionError, APIConnectionTimeoutError, APIError } from "@anthropic-ai/sdk";
 import { redactUrlForDisplay } from "../../config/redaction.js";
 
 // ─── Categories ────────────────────────────────────────────────────
@@ -43,11 +39,9 @@ export const INVALID_API_KEY_MESSAGE =
   "Invalid or missing API key. Set ANTHROPIC_AUTH_TOKEN (and ANTHROPIC_BASE_URL if using a custom endpoint) and try again.";
 export const CREDIT_BALANCE_TOO_LOW_MESSAGE =
   "Credit balance is too low. Top up your account or switch to a different key.";
-export const API_TIMEOUT_MESSAGE =
-  "Request timed out. This is usually transient — try again.";
+export const API_TIMEOUT_MESSAGE = "Request timed out. This is usually transient — try again.";
 export const PROMPT_TOO_LONG_MESSAGE = "Prompt is too long";
-export const SERVER_OVERLOAD_MESSAGE =
-  "The API is temporarily overloaded (529). Please try again in a moment.";
+export const SERVER_OVERLOAD_MESSAGE = "The API is temporarily overloaded (529). Please try again in a moment.";
 
 // ─── Predicates ────────────────────────────────────────────────────
 
@@ -57,10 +51,7 @@ export const SERVER_OVERLOAD_MESSAGE =
  */
 export function is529Error(error: unknown): boolean {
   if (!(error instanceof APIError)) return false;
-  return (
-    error.status === 529 ||
-    (error.message?.includes('"type":"overloaded_error"') ?? false)
-  );
+  return error.status === 529 || (error.message?.includes('"type":"overloaded_error"') ?? false);
 }
 
 /**
@@ -70,10 +61,7 @@ export function is529Error(error: unknown): boolean {
  */
 export function isPromptTooLongError(error: unknown): boolean {
   if (error instanceof APIError && error.status === 413) return true;
-  return (
-    error instanceof Error &&
-    error.message.toLowerCase().includes("prompt is too long")
-  );
+  return error instanceof Error && error.message.toLowerCase().includes("prompt is too long");
 }
 
 /**
@@ -85,9 +73,7 @@ export function parsePromptTooLongTokenCounts(rawMessage: string): {
   actualTokens: number | undefined;
   limitTokens: number | undefined;
 } {
-  const match = rawMessage.match(
-    /prompt is too long[^0-9]*(\d+)\s*tokens?\s*>\s*(\d+)/i,
-  );
+  const match = rawMessage.match(/prompt is too long[^0-9]*(\d+)\s*tokens?\s*>\s*(\d+)/i);
   return {
     actualTokens: match ? parseInt(match[1]!, 10) : undefined,
     limitTokens: match ? parseInt(match[2]!, 10) : undefined,
@@ -120,19 +106,14 @@ export function getRetryAfterMs(error: unknown): number | null {
  */
 export function classifyAPIError(error: unknown): APIErrorCategory {
   if (error instanceof Error && error.name === "AbortError") return "aborted";
-  if (
-    error instanceof Error &&
-    (error.message === "Request was aborted." ||
-      error.message.includes("aborted"))
-  ) {
+  if (error instanceof Error && (error.message === "Request was aborted." || error.message.includes("aborted"))) {
     // APIUserAbortError-style messages
     if (error.name.includes("Abort")) return "aborted";
   }
 
   if (
     error instanceof APIConnectionTimeoutError ||
-    (error instanceof APIConnectionError &&
-      error.message.toLowerCase().includes("timeout"))
+    (error instanceof APIConnectionError && error.message.toLowerCase().includes("timeout"))
   ) {
     return "api_timeout";
   }
@@ -141,17 +122,11 @@ export function classifyAPIError(error: unknown): APIErrorCategory {
 
   if (isPromptTooLongError(error)) return "prompt_too_long";
 
-  if (
-    error instanceof Error &&
-    error.message.toLowerCase().includes("credit balance is too low")
-  ) {
+  if (error instanceof Error && error.message.toLowerCase().includes("credit balance is too low")) {
     return "credit_balance";
   }
 
-  if (
-    error instanceof Error &&
-    error.message.toLowerCase().includes("x-api-key")
-  ) {
+  if (error instanceof Error && error.message.toLowerCase().includes("x-api-key")) {
     return "auth_error";
   }
 
@@ -203,13 +178,9 @@ export function isRetryableError(error: unknown): boolean {
  * model sees. Maps each category to a concrete, actionable message; falls
  * back to the raw error text prefixed with "API Error".
  */
-export function getUserFacingErrorMessage(
-  error: unknown,
-  model?: string,
-): string {
+export function getUserFacingErrorMessage(error: unknown, model?: string): string {
   const category = classifyAPIError(error);
-  const rawMessage =
-    error instanceof Error ? error.message : String(error);
+  const rawMessage = error instanceof Error ? error.message : String(error);
 
   switch (category) {
     case "auth_error":

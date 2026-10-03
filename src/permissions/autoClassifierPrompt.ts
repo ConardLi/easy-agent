@@ -102,8 +102,6 @@ function formatUserRules(options: AutoClassifierPromptOptions): string {
   return sections.join("\n\n");
 }
 
-export function buildAutoClassifierSystemPrompt(
-  options: AutoClassifierPromptOptions = {},
-): string {
+export function buildAutoClassifierSystemPrompt(options: AutoClassifierPromptOptions = {}): string {
   return BASE_PROMPT.replace(PERMISSIONS_SLOT, formatUserRules(options));
 }

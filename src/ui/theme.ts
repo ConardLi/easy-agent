@@ -51,10 +51,7 @@ export const glyph = {
  * mode looks. The symbol prefixes the label as a quick visual cue; the color
  * makes a non-default mode pop out of the otherwise muted chrome.
  */
-export const modeStyle: Record<
-  string,
-  { label: string; color: string; symbol: string }
-> = {
+export const modeStyle: Record<string, { label: string; color: string; symbol: string }> = {
   // ⏵ caret pair = "running through" confirmations; ⏸ = paused (read-only).
   default: { label: "default", color: theme.muted, symbol: "" },
   plan: { label: "plan", color: theme.info, symbol: "\u23F8" }, // ⏸

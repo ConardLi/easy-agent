@@ -28,17 +28,9 @@
 
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import {
-  getEasyAgentPath,
-  getProjectEasyAgentDir,
-} from "../utils/paths.js";
+import { getEasyAgentPath, getProjectEasyAgentDir } from "../utils/paths.js";
 import { splitFrontmatter } from "../services/skills/parseFrontmatter.js";
-import type {
-  AgentDefinition,
-  AgentIsolation,
-  AgentPermissionMode,
-  AgentSource,
-} from "./types.js";
+import type { AgentDefinition, AgentIsolation, AgentPermissionMode, AgentSource } from "./types.js";
 
 /** ~/.easy-agent/agents */
 export function getUserAgentsDir(): string {
@@ -66,12 +58,13 @@ function asString(value: unknown): string | undefined {
 
 function asStringArray(value: unknown): string[] {
   if (Array.isArray(value)) {
-    return value
-      .map((v) => (typeof v === "string" ? v.trim() : undefined))
-      .filter((v): v is string => Boolean(v));
+    return value.map((v) => (typeof v === "string" ? v.trim() : undefined)).filter((v): v is string => Boolean(v));
   }
   if (typeof value === "string") {
-    return value.split(",").map((s) => s.trim()).filter(Boolean);
+    return value
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
   }
   return [];
 }
@@ -103,9 +96,7 @@ async function loadFromOneDir(dir: string, source: AgentSource): Promise<LoadedF
   let entries: string[];
   try {
     const dirents = await fs.readdir(dir, { withFileTypes: true });
-    entries = dirents
-      .filter((d) => d.isFile() && d.name.toLowerCase().endsWith(".md"))
-      .map((d) => d.name);
+    entries = dirents.filter((d) => d.isFile() && d.name.toLowerCase().endsWith(".md")).map((d) => d.name);
   } catch (error: unknown) {
     const err = error as NodeJS.ErrnoException;
     if (err?.code === "ENOENT") return { agents: [], warnings: [] };
@@ -147,16 +138,12 @@ async function loadFromOneDir(dir: string, source: AgentSource): Promise<LoadedF
 
     const systemPrompt = split.body.trim();
     if (!systemPrompt) {
-      warnings.push(
-        `[agents] Skipping ${fileName}: empty body — agent definition needs a system prompt`,
-      );
+      warnings.push(`[agents] Skipping ${fileName}: empty body — agent definition needs a system prompt`);
       continue;
     }
 
     const tools = asStringArray(split.raw["tools"]);
-    const disallowedTools = asStringArray(
-      split.raw["disallowedTools"] ?? split.raw["disallowed_tools"],
-    );
+    const disallowedTools = asStringArray(split.raw["disallowedTools"] ?? split.raw["disallowed_tools"]);
     const model = asString(split.raw["model"]);
     const maxTurns = asPositiveInt(split.raw["maxTurns"] ?? split.raw["max_turns"]);
     const rawPermissionMode = split.raw["permissionMode"] ?? split.raw["permission_mode"];
@@ -166,9 +153,7 @@ async function loadFromOneDir(dir: string, source: AgentSource): Promise<LoadedF
     if (source === "plugin") {
       for (const field of ["permissionMode", "permission_mode", "hooks", "mcpServers"] as const) {
         if (split.raw[field] !== undefined) {
-          warnings.push(
-            `[agents] Plugin agent ${fileName} sets '${field}', which is ignored for plugin agents`,
-          );
+          warnings.push(`[agents] Plugin agent ${fileName} sets '${field}', which is ignored for plugin agents`);
         }
       }
     }
@@ -201,10 +186,7 @@ export interface LoadAllAgentsResult {
  * plugin's `agents/` dir), reusing the exact same frontmatter parser and
  * field validation as the user/project scopes.
  */
-export async function loadAgentsFromDir(
-  dir: string,
-  source: AgentSource,
-): Promise<LoadAllAgentsResult> {
+export async function loadAgentsFromDir(dir: string, source: AgentSource): Promise<LoadAllAgentsResult> {
   const { agents, warnings } = await loadFromOneDir(dir, source);
   return { agents, warnings };
 }

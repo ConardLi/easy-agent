@@ -12,11 +12,7 @@ import { redactSettingValue } from "../../../config/redaction.js";
 import { validateSettings, SettingsSchema } from "../../../config/schema.js";
 import { loadFeatureSettings } from "../../../config/features.js";
 import { SETTING_RELOAD } from "../../../config/catalog.js";
-import {
-  updateUserSettings,
-  updateProjectSettings,
-  updateLocalSettings,
-} from "../../../utils/settings.js";
+import { updateUserSettings, updateProjectSettings, updateLocalSettings } from "../../../utils/settings.js";
 import {
   getActiveOutputStyleName,
   getAllOutputStyles,
@@ -45,8 +41,7 @@ export async function* handleConfigCommand(
       (s) =>
         s.raw &&
         s.raw[key] !== undefined &&
-        ((s.source !== "project" && s.source !== "local") ||
-          (workspaceTrusted && !alwaysRestricted)),
+        ((s.source !== "project" && s.source !== "local") || (workspaceTrusted && !alwaysRestricted)),
     );
     if (defs.length === 0) return null;
     const allArrays = defs.every((s) => Array.isArray(s.raw![key]));
@@ -91,11 +86,7 @@ export async function* handleConfigCommand(
         lines.push("", "No effective settings configured for this workspace.");
       }
     }
-    lines.push(
-      "",
-      "Usage: /config get <key>",
-      "Usage: /config set <key> <value> [--user|--project|--local]",
-    );
+    lines.push("", "Usage: /config get <key>", "Usage: /config set <key> <value> [--user|--project|--local]");
     yield { type: "command", kind: "info", message: lines.join("\n") };
     return { handled: true };
   }
@@ -108,7 +99,11 @@ export async function* handleConfigCommand(
     }
     if (key === "toolSearch" || key === "toolSearchAutoThreshold" || key === "modelRoles") {
       const features = await loadFeatureSettings(cwd);
-      yield { type: "command", kind: "info", message: `${key} = ${fmt(key, features[key])} [${features.sources[key]}]` };
+      yield {
+        type: "command",
+        kind: "info",
+        message: `${key} = ${fmt(key, features[key])} [${features.sources[key]}]`,
+      };
       return { handled: true };
     }
     const sources = await loadSettingSources(cwd);
@@ -152,7 +147,11 @@ export async function* handleConfigCommand(
 
     const validation = validateSettings({ [key]: value }, scope);
     if (validation.errors.length || (!Object.hasOwn(SettingsSchema.shape, key) && key !== "sandbox")) {
-      yield { type: "command", kind: "error", message: `Setting not written: ${validation.errors.join("; ") || "unsupported key"}` };
+      yield {
+        type: "command",
+        kind: "error",
+        message: `Setting not written: ${validation.errors.join("; ") || "unsupported key"}`,
+      };
       return { handled: true };
     }
     try {
@@ -221,7 +220,9 @@ export async function* handleOutputStyleCommand(
 
   const resolved = resolveOutputStyle(target);
   if (!resolved) {
-    const names = getAllOutputStyles().map((s) => s.name).join(", ");
+    const names = getAllOutputStyles()
+      .map((s) => s.name)
+      .join(", ");
     yield {
       type: "command",
       kind: "error",

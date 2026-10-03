@@ -41,20 +41,11 @@ import {
 } from "../../../sandbox/index.js";
 import { loadSettingsDiagnostics } from "../../../utils/settings.js";
 import { getEnvironmentLoadReport } from "../../../config/environment.js";
-import {
-  getGlobalStateDiagnostics,
-  isProjectTrusted,
-} from "../../../config/globalState.js";
+import { getGlobalStateDiagnostics, isProjectTrusted } from "../../../config/globalState.js";
 import { redactUrlForDisplay } from "../../../config/redaction.js";
-import {
-  getActivePluginErrors,
-  getActivePlugins,
-} from "../../../plugins/runtime.js";
+import { getActivePluginErrors, getActivePlugins } from "../../../plugins/runtime.js";
 import { loadPluginStateDiagnostics } from "../../../plugins/state.js";
-import {
-  getLastPrivateDataSecurityReport,
-  inspectPrivateDataSecurity,
-} from "../../../utils/privateData.js";
+import { getLastPrivateDataSecurityReport, inspectPrivateDataSecurity } from "../../../utils/privateData.js";
 import type { QueryEngineEvent } from "../types.js";
 import type { CommandContext } from "./context.js";
 
@@ -75,8 +66,7 @@ export async function* handleStatusCommand(
     `- cwd: ${ctx.cwd}`,
     `- Session id: ${ctx.sessionId ?? "(none)"}`,
     `- Model: ${ctx.getActiveModel()} (source: ${ctx.getModelSource()}; default: ${ctx.defaultModel})`,
-    `- Permission mode: ${ctx.getPermissionMode()}` +
-      (prePlanMode ? ` (restores to ${prePlanMode} on plan exit)` : ""),
+    `- Permission mode: ${ctx.getPermissionMode()}` + (prePlanMode ? ` (restores to ${prePlanMode} on plan exit)` : ""),
     `- Task system: ${taskModeLabel} (${taskMode})`,
     `- Output style: ${getActiveOutputStyleName()}`,
     `- Messages in context: ${ctx.getMessages().length}`,
@@ -119,7 +109,11 @@ export async function* handleContextCommand(
     tools: getToolsForMode(ctx.getPermissionMode()),
     messages,
     model: profile.model,
-    env: { protocol: profile.protocol, baseURL: profile.baseURL ?? process.env.ANTHROPIC_BASE_URL, settings: await loadFeatureSettings(cwd) },
+    env: {
+      protocol: profile.protocol,
+      baseURL: profile.baseURL ?? process.env.ANTHROPIC_BASE_URL,
+      settings: await loadFeatureSettings(cwd),
+    },
     hasPendingMcpServers: hasPendingMcpServers(),
     source: "context",
   });
@@ -186,9 +180,7 @@ export async function* handleContextCommand(
 }
 
 /** Best-effort reachability probe for the API endpoint (5s timeout). */
-async function probeEndpoint(
-  baseURL: string,
-): Promise<{ ok: boolean; status?: number; error?: string }> {
+async function probeEndpoint(baseURL: string): Promise<{ ok: boolean; status?: number; error?: string }> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 5000);
   try {
@@ -203,7 +195,12 @@ async function probeEndpoint(
     await res.body?.cancel();
     return { ok: true, status: res.status };
   } catch {
-    return { ok: false, error: controller.signal.aborted ? "probe timed out after 5s" : "probe failed; check endpoint, network and TLS configuration" };
+    return {
+      ok: false,
+      error: controller.signal.aborted
+        ? "probe timed out after 5s"
+        : "probe failed; check endpoint, network and TLS configuration",
+    };
   } finally {
     clearTimeout(timer);
   }
@@ -242,7 +239,7 @@ export async function* handleDoctorCommand(
     defaultModelSource: undefined,
   }));
   const declaredProfile = loadedProfiles.profiles[activeHandle];
-  const profile = declaredProfile ?? await resolveProfile(activeHandle, cwd);
+  const profile = declaredProfile ?? (await resolveProfile(activeHandle, cwd));
   const fieldSources = declaredProfile
     ? [...new Set(Object.values(loadedProfiles.provenance[activeHandle] ?? {}))]
     : [];
@@ -252,11 +249,14 @@ export async function* handleDoctorCommand(
   const defaultSource = effectiveSources.find((source) => typeof source.raw?.defaultModel === "string");
   const selected = modelSource ?? defaultSource;
   const selectedValue = modelSource?.raw?.model ?? defaultSource?.raw?.defaultModel;
-  const selectionSource = ctx.getModelSource() === "session"
-    ? "session override"
-    : selectedValue === activeHandle
-      ? selected!.source
-      : process.env.ANTHROPIC_MODEL === activeHandle ? "ANTHROPIC_MODEL" : "runtime default";
+  const selectionSource =
+    ctx.getModelSource() === "session"
+      ? "session override"
+      : selectedValue === activeHandle
+        ? selected!.source
+        : process.env.ANTHROPIC_MODEL === activeHandle
+          ? "ANTHROPIC_MODEL"
+          : "runtime default";
   lines.push(
     `${ICON.ok} Active model: ${activeHandle}${profile.model !== activeHandle ? ` → ${profile.model}` : ""}`,
     `  Provider: ${profile.protocol}`,
@@ -266,33 +266,41 @@ export async function* handleDoctorCommand(
   );
   for (const warning of loadedProfiles.warnings) lines.push(`  ${ICON.warn} ${warning}`);
 
-  const profileKeySource = declaredProfile
-    ? loadedProfiles.provenance[activeHandle]?.apiKey
-    : undefined;
+  const profileKeySource = declaredProfile ? loadedProfiles.provenance[activeHandle]?.apiKey : undefined;
   const envKeyName = process.env.ANTHROPIC_AUTH_TOKEN
     ? "ANTHROPIC_AUTH_TOKEN"
     : !profile.baseURL && process.env.ANTHROPIC_API_KEY
       ? "ANTHROPIC_API_KEY"
       : undefined;
   const usesAnthropicEnvironmentKey = profile.protocol === "anthropic" && !!envKeyName;
-  const authHeaderNames = profile.protocol === "gemini"
-    ? ["x-goog-api-key", "authorization"]
-    : profile.protocol === "anthropic" ? ["x-api-key", "authorization"] : ["authorization"];
-  const hasAuthHeader = Object.entries(profile.headers ?? {}).some(([name, value]) =>
-    authHeaderNames.includes(name.toLowerCase()) && value.trim().length > 0,
+  const authHeaderNames =
+    profile.protocol === "gemini"
+      ? ["x-goog-api-key", "authorization"]
+      : profile.protocol === "anthropic"
+        ? ["x-api-key", "authorization"]
+        : ["authorization"];
+  const hasAuthHeader = Object.entries(profile.headers ?? {}).some(
+    ([name, value]) => authHeaderNames.includes(name.toLowerCase()) && value.trim().length > 0,
   );
   if (hasAuthHeader) {
-    lines.push(`${ICON.ok} API auth configured (active profile headers, source: ${loadedProfiles.provenance[activeHandle]?.headers ?? "unknown"})`);
+    lines.push(
+      `${ICON.ok} API auth configured (active profile headers, source: ${loadedProfiles.provenance[activeHandle]?.headers ?? "unknown"})`,
+    );
   } else if (profile.apiKey) {
-    lines.push(`${ICON.ok} API auth configured (active profile${profileKeySource ? `, source: ${profileKeySource}` : ""})`);
+    lines.push(
+      `${ICON.ok} API auth configured (active profile${profileKeySource ? `, source: ${profileKeySource}` : ""})`,
+    );
   } else if (usesAnthropicEnvironmentKey) {
     lines.push(`${ICON.ok} API auth configured (${envKeyName})`);
   } else if (profile.baseURL) {
-    lines.push(`${ICON.warn} No API auth configured for the active profile; the custom endpoint must allow keyless access.`);
+    lines.push(
+      `${ICON.warn} No API auth configured for the active profile; the custom endpoint must allow keyless access.`,
+    );
   } else {
-    const hint = profile.protocol === "anthropic"
-      ? "set ANTHROPIC_AUTH_TOKEN or configure apiKey on the active profile"
-      : `configure apiKey on profile '${activeHandle}'`;
+    const hint =
+      profile.protocol === "anthropic"
+        ? "set ANTHROPIC_AUTH_TOKEN or configure apiKey on the active profile"
+        : `configure apiKey on profile '${activeHandle}'`;
     lines.push(`${ICON.fail} No API auth configured for the active ${profile.protocol} provider — ${hint}.`);
   }
 
@@ -301,8 +309,10 @@ export async function* handleDoctorCommand(
   lines.push("  Credential presence only; authentication has not been verified.");
   const baseURL = getProfileBaseURL(profile);
   const endpointSource = profile.baseURL
-    ? loadedProfiles.provenance[activeHandle]?.baseURL ?? "profile"
-    : profile.protocol === "anthropic" && process.env.ANTHROPIC_BASE_URL ? "ANTHROPIC_BASE_URL" : "provider default";
+    ? (loadedProfiles.provenance[activeHandle]?.baseURL ?? "profile")
+    : profile.protocol === "anthropic" && process.env.ANTHROPIC_BASE_URL
+      ? "ANTHROPIC_BASE_URL"
+      : "provider default";
   lines.push(`  Endpoint: ${redactUrlForDisplay(baseURL)} (source: ${endpointSource})`);
   const reach = await probeEndpoint(baseURL);
   if (reach.ok) lines.push(`${ICON.ok} Endpoint reachable (HTTP ${reach.status})`);
@@ -389,10 +399,7 @@ export async function* handleDoctorCommand(
 
   const privateData = await inspectPrivateDataSecurity(cwd);
   const startupPrivateData = getLastPrivateDataSecurityReport();
-  const privateDataIssues = [
-    ...privateData.issues,
-    ...(startupPrivateData?.issues ?? []),
-  ].filter(
+  const privateDataIssues = [...privateData.issues, ...(startupPrivateData?.issues ?? [])].filter(
     (issue, index, all) =>
       all.findIndex((candidate) => candidate.path === issue.path && candidate.message === issue.message) === index,
   );
@@ -434,8 +441,7 @@ export async function* handleDoctorCommand(
     lines.push(`${ICON.ok} Plugins: ${plugins.length} active, no load errors`);
   } else {
     lines.push(
-      `${ICON.fail} Plugins: ${plugins.length} active, ` +
-        `${pluginErrors.length + pluginStateErrors.length} issue(s)`,
+      `${ICON.fail} Plugins: ${plugins.length} active, ` + `${pluginErrors.length + pluginStateErrors.length} issue(s)`,
     );
     for (const issue of pluginErrors) {
       lines.push(`    - ${issue.pluginId} [${issue.scope}]: ${issue.message}`);
@@ -444,9 +450,10 @@ export async function* handleDoctorCommand(
   }
 
   const { describeConfiguration } = await import("../../../config/catalog.js");
-  lines.push("", ...await describeConfiguration(cwd));
+  lines.push("", ...(await describeConfiguration(cwd)));
   const { getLspStatus } = await import("../../../services/lsp/runtime.js");
-  for (const server of getLspStatus()) lines.push(`LSP ${server.name}: ${server.status}${server.error ? ` (${server.error})` : ""}`);
+  for (const server of getLspStatus())
+    lines.push(`LSP ${server.name}: ${server.status}${server.error ? ` (${server.error})` : ""}`);
 
   yield { type: "command", kind: "info", message: lines.join("\n") };
   return { handled: true };

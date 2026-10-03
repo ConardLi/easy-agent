@@ -115,10 +115,7 @@ export async function getAgentMdFiles(cwd: string): Promise<string[]> {
 }
 
 export async function loadAgentMdContext(cwd: string): Promise<string> {
-  const [allFiles, excludes] = await Promise.all([
-    getAgentMdFiles(cwd),
-    loadAgentMdExcludes(cwd),
-  ]);
+  const [allFiles, excludes] = await Promise.all([getAgentMdFiles(cwd), loadAgentMdExcludes(cwd)]);
   const files = allFiles.filter((filePath) => !isAgentMdExcluded(filePath, excludes));
   const loaded = await Promise.all(
     files.map(async (filePath) => {

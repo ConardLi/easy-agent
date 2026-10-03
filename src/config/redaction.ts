@@ -45,9 +45,7 @@ function redactNested(value: unknown, key: string): unknown {
   if (normalized === "hooks" || normalized === "statusline") return "[configured]";
   if (normalized === "mcpservers") {
     if (!value || typeof value !== "object" || Array.isArray(value)) return "[configured]";
-    return Object.fromEntries(
-      Object.keys(value as Record<string, unknown>).map((name) => [name, "[configured]"]),
-    );
+    return Object.fromEntries(Object.keys(value as Record<string, unknown>).map((name) => [name, "[configured]"]));
   }
 
   if (normalized === "env" || normalized === "headers") {
@@ -55,10 +53,7 @@ function redactNested(value: unknown, key: string): unknown {
     return Object.fromEntries(Object.keys(value as Record<string, unknown>).map((name) => [name, REDACTED]));
   }
 
-  if (
-    typeof value === "string" &&
-    (normalized === "endpoint" || normalized.endsWith("url"))
-  ) {
+  if (typeof value === "string" && (normalized === "endpoint" || normalized.endsWith("url"))) {
     return redactUrlForDisplay(value);
   }
   if (Array.isArray(value)) return value.map((item) => redactNested(item, ""));

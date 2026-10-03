@@ -16,11 +16,7 @@
 
 import { chmodSync, existsSync, renameSync, statSync, unlinkSync } from "node:fs";
 import { redactSettingValue } from "../config/redaction.js";
-import {
-  appendPrivateFileSync,
-  ensurePrivateDirectorySync,
-  PRIVATE_FILE_MODE,
-} from "./privateData.js";
+import { appendPrivateFileSync, ensurePrivateDirectorySync, PRIVATE_FILE_MODE } from "./privateData.js";
 import { getEasyAgentHome, getStreamDebugLogPath } from "./paths.js";
 
 const DEBUG_STREAM = process.env.EASY_AGENT_DEBUG_STREAM === "1";

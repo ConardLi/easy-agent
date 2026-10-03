@@ -1,16 +1,7 @@
 import type { Tool, ToolContext, ToolResult } from "./Tool.js";
-import {
-  resolveSafePath,
-  updateWorkspaceTextFile,
-  WorkspacePathError,
-} from "./pathUtils.js";
+import { resolveSafePath, updateWorkspaceTextFile, WorkspacePathError } from "./pathUtils.js";
 import { ConcurrentFileModificationError } from "../utils/atomicFile.js";
-import {
-  applyEditToContent,
-  buildEditPreview,
-  EditError,
-  normalizeQuotes,
-} from "./editCore.js";
+import { applyEditToContent, buildEditPreview, EditError, normalizeQuotes } from "./editCore.js";
 
 interface FileEditInput {
   file_path: string;
@@ -33,7 +24,10 @@ export const fileEditTool: Tool = {
     type: "object" as const,
     properties: {
       file_path: { type: "string", description: "File path to edit" },
-      old_string: { type: "string", description: "Existing text to replace; must match uniquely unless replace_all is true" },
+      old_string: {
+        type: "string",
+        description: "Existing text to replace; must match uniquely unless replace_all is true",
+      },
       new_string: { type: "string", description: "Replacement text" },
       replace_all: {
         type: "boolean",

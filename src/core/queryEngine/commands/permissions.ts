@@ -9,14 +9,8 @@
  * method signatures are untouched.
  */
 
-import {
-  loadPermissionSettings,
-} from "../../../permissions/permissions.js";
-import {
-  updateUserSettings,
-  updateProjectSettings,
-  updateLocalSettings,
-} from "../../../utils/settings.js";
+import { loadPermissionSettings } from "../../../permissions/permissions.js";
+import { updateUserSettings, updateProjectSettings, updateLocalSettings } from "../../../utils/settings.js";
 import { loadSettingSources, type SettingSource } from "../../../config/sources.js";
 import type { QueryEngineEvent, PermissionsViewData, PermissionRuleRow } from "../types.js";
 import type { CommandContext } from "./context.js";
@@ -28,9 +22,7 @@ export function readScopeRules(
   key: "allow" | "deny",
 ): string[] {
   const arr = sources.find((s) => s.source === scope)?.raw?.[key];
-  return Array.isArray(arr)
-    ? arr.filter((x): x is string => typeof x === "string")
-    : [];
+  return Array.isArray(arr) ? arr.filter((x): x is string => typeof x === "string") : [];
 }
 
 /**

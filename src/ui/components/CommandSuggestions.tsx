@@ -25,21 +25,18 @@ export function CommandSuggestions({ items }: CommandSuggestionsProps): React.Re
   }
 
   const columns = stdout?.columns ?? 80;
-  const selected = Math.max(0, items.findIndex((i) => i.isSelected));
+  const selected = Math.max(
+    0,
+    items.findIndex((i) => i.isSelected),
+  );
 
   // Window the list, keeping the selection roughly centered.
-  const start = Math.max(
-    0,
-    Math.min(selected - Math.floor(MAX_VISIBLE / 2), items.length - MAX_VISIBLE),
-  );
+  const start = Math.max(0, Math.min(selected - Math.floor(MAX_VISIBLE / 2), items.length - MAX_VISIBLE));
   const end = Math.min(start + MAX_VISIBLE, items.length);
   const visible = items.slice(start, end);
 
   // Fixed name column so descriptions line up; capped at 40% of the width.
-  const nameWidth = Math.min(
-    Math.max(...items.map((i) => i.name.length)),
-    Math.floor(columns * 0.4),
-  );
+  const nameWidth = Math.min(Math.max(...items.map((i) => i.name.length)), Math.floor(columns * 0.4));
 
   return (
     <Box marginTop={1} flexDirection="column" paddingX={1}>

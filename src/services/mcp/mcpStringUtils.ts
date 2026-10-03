@@ -22,9 +22,7 @@ export function isMcpToolName(name: string): boolean {
  * Parse an MCP tool name back into server / tool components.
  * Returns null if the string isn't `mcp__server__tool`-shaped.
  */
-export function parseMcpToolName(
-  fullName: string,
-): { serverName: string; toolName: string } | null {
+export function parseMcpToolName(fullName: string): { serverName: string; toolName: string } | null {
   const parts = fullName.split("__");
   if (parts.length < 3 || parts[0] !== "mcp" || !parts[1]) return null;
   return {

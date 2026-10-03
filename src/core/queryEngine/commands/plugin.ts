@@ -64,16 +64,15 @@ function progress(title: string, message: string, spinnerLabel = title): QueryEn
  * `owner/repo` is also a valid relative path, so an existing local directory
  * always wins — only a non-existent path falls through to the GitHub shorthand.
  */
-async function marketplaceSourceFor(
-  target: string,
-  cwd: string,
-  ref?: string,
-): Promise<MarketplaceSource> {
+async function marketplaceSourceFor(target: string, cwd: string, ref?: string): Promise<MarketplaceSource> {
   if (/^[a-z]+:\/\//i.test(target) || /^git@/.test(target)) {
     return { kind: "git", url: target, ...(ref ? { ref } : {}) };
   }
   const local = path.resolve(cwd, target);
-  const existsLocally = await fs.stat(local).then(() => true).catch(() => false);
+  const existsLocally = await fs
+    .stat(local)
+    .then(() => true)
+    .catch(() => false);
   if (!existsLocally && /^[\w.-]+\/[\w.-]+$/.test(target)) {
     return { kind: "git", url: `https://github.com/${target}.git`, ...(ref ? { ref } : {}) };
   }
@@ -96,16 +95,12 @@ function scopeFromFlags(args: string[]): { scope: PluginScope; rest: string[] } 
       }
       scope = value;
       i += 1;
-    }
-    else rest.push(a);
+    } else rest.push(a);
   }
   return { scope, rest };
 }
 
-export async function* handlePluginCommand(
-  ctx: CommandContext,
-  args: string[],
-): Yield {
+export async function* handlePluginCommand(ctx: CommandContext, args: string[]): Yield {
   const [sub, ...rest] = args;
 
   try {
@@ -198,10 +193,7 @@ export type PluginMutation =
  * visible immediately. Returns the rebuilt view; errors propagate to the caller
  * so the overlay can surface them without closing.
  */
-export async function mutatePlugin(
-  ctx: CommandContext,
-  action: PluginMutation,
-): Promise<PluginViewData> {
+export async function mutatePlugin(ctx: CommandContext, action: PluginMutation): Promise<PluginViewData> {
   switch (action.op) {
     case "enable":
     case "disable":
@@ -314,10 +306,7 @@ async function* handleMarketplace(ctx: CommandContext, args: string[]): Yield {
         yield error("Usage: /plugin marketplace add <local-path|git-url> [--ref <ref>]");
         return { handled: true };
       }
-      yield progress(
-        "Adding marketplace",
-        `${target}\nValidating the catalog and saving its source…`,
-      );
+      yield progress("Adding marketplace", `${target}\nValidating the catalog and saving its source…`);
       const entry = await addMarketplace(await marketplaceSourceFor(target, ctx.cwd, ref));
       yield info(`Marketplace added: ${entry.name} (${entry.source.kind}).`);
       return { handled: true };
@@ -329,10 +318,7 @@ async function* handleMarketplace(ctx: CommandContext, args: string[]): Yield {
           yield info("No marketplaces registered.");
           return { handled: true };
         }
-        yield progress(
-          "Updating marketplaces",
-          `Fetching and validating ${all.length} registered marketplace(s)…`,
-        );
+        yield progress("Updating marketplaces", `Fetching and validating ${all.length} registered marketplace(s)…`);
         const updated = [];
         for (const marketplace of all) {
           updated.push(await updateMarketplace(marketplace.name));
@@ -341,10 +327,7 @@ async function* handleMarketplace(ctx: CommandContext, args: string[]): Yield {
         yield info(`Updated ${updated.length} marketplace(s): ${updated.map((entry) => entry.name).join(", ")}.`);
         return { handled: true };
       }
-      yield progress(
-        "Updating marketplace",
-        `${rest[0]}\nFetching and validating the latest catalog…`,
-      );
+      yield progress("Updating marketplace", `${rest[0]}\nFetching and validating the latest catalog…`);
       const entry = await updateMarketplace(rest[0]);
       await refreshActivePlugins(ctx.cwd);
       yield info(`Marketplace updated: ${entry.name} (${entry.lastUpdated}).`);
@@ -383,10 +366,7 @@ async function* validate(ctx: CommandContext, args: string[]): Yield {
   // conventional dir, so try the catalog shape first and fall back to plugin.
   try {
     const { manifest } = await readMarketplaceManifest(root);
-    const lines = [
-      `Marketplace OK: ${manifest.name}`,
-      `  ${manifest.plugins.length} plugin entr(ies)`,
-    ];
+    const lines = [`Marketplace OK: ${manifest.name}`, `  ${manifest.plugins.length} plugin entr(ies)`];
     for (const entry of manifest.plugins) {
       lines.push(`    - ${entry.name}  ${entry.source}${entry.strict === false ? "  (strict:false)" : ""}`);
     }
@@ -411,9 +391,7 @@ async function* validate(ctx: CommandContext, args: string[]): Yield {
     `${loaded.lspServers?.length ?? 0} lsp server(s)`,
   ];
   const lines = [
-    loaded.errors.length === 0
-      ? `Plugin OK: ${loaded.name} v${loaded.version}`
-      : `Plugin INVALID: ${loaded.name}`,
+    loaded.errors.length === 0 ? `Plugin OK: ${loaded.name} v${loaded.version}` : `Plugin INVALID: ${loaded.name}`,
     `  components: ${parts.join(", ")}`,
   ];
   for (const e of loaded.errors) lines.push(`  error [${e.scope}] ${e.message}`);
@@ -461,25 +439,14 @@ async function* toggle(ctx: CommandContext, args: string[], on: boolean): Yield 
   const { scope, rest } = scopeFromFlags(args);
   const id = rest[0];
   if (!id) {
-    yield error(
-      `Usage: /plugin ${on ? "enable" : "disable"} <id> [--scope user|project|local]`,
-    );
+    yield error(`Usage: /plugin ${on ? "enable" : "disable"} <id> [--scope user|project|local]`);
     return { handled: true };
   }
-  yield progress(
-    on ? "Enabling plugin" : "Disabling plugin",
-    `${id} (${scope})\nRebuilding extension registries…`,
-  );
+  yield progress(on ? "Enabling plugin" : "Disabling plugin", `${id} (${scope})\nRebuilding extension registries…`);
   await setPluginEnabled(ctx.cwd, id, on, scope);
   const summary = await refreshActivePlugins(ctx.cwd);
-  const churn = [
-    ...summary.mcpStarted.map((n) => `+mcp ${n}`),
-    ...summary.mcpStopped.map((n) => `-mcp ${n}`),
-  ];
-  yield info(
-    `${on ? "Enabled" : "Disabled"} ${id} (${scope}).` +
-      (churn.length ? `\n  ${churn.join(", ")}` : ""),
-  );
+  const churn = [...summary.mcpStarted.map((n) => `+mcp ${n}`), ...summary.mcpStopped.map((n) => `-mcp ${n}`)];
+  yield info(`${on ? "Enabled" : "Disabled"} ${id} (${scope}).` + (churn.length ? `\n  ${churn.join(", ")}` : ""));
   return { handled: true };
 }
 
@@ -500,15 +467,10 @@ async function* uninstall(ctx: CommandContext, args: string[]): Yield {
   const keepData = args.includes("--keep-data");
   const { scope, rest } = scopeFromFlags(args.filter((a) => a !== "--keep-data"));
   if (!rest[0]) {
-    yield error(
-      "Usage: /plugin uninstall <id> [--scope user|project|local] [--keep-data]",
-    );
+    yield error("Usage: /plugin uninstall <id> [--scope user|project|local] [--keep-data]");
     return { handled: true };
   }
-  yield progress(
-    "Uninstalling plugin",
-    `${rest[0]} (${scope})\nRemoving the installation and reloading extensions…`,
-  );
+  yield progress("Uninstalling plugin", `${rest[0]} (${scope})\nRemoving the installation and reloading extensions…`);
   await uninstallPlugin(rest[0], { keepData, scope, cwd: ctx.cwd });
   await refreshActivePlugins(ctx.cwd);
   yield info(`Uninstalled ${rest[0]}${keepData ? " (data kept)" : ""}.`);

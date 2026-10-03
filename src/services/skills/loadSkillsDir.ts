@@ -13,15 +13,8 @@
 
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import {
-  getEasyAgentPath,
-  getProjectEasyAgentDir,
-} from "../../utils/paths.js";
-import {
-  extractFallbackDescription,
-  normalizeFrontmatter,
-  splitFrontmatter,
-} from "./parseFrontmatter.js";
+import { getEasyAgentPath, getProjectEasyAgentDir } from "../../utils/paths.js";
+import { extractFallbackDescription, normalizeFrontmatter, splitFrontmatter } from "./parseFrontmatter.js";
 import type { Skill, SkillSource } from "../../types/types.js";
 
 const SKILL_FILE = "SKILL.md";
@@ -131,10 +124,7 @@ export interface LoadAllSkillsResult {
  * `skills/` dir). Reuses the same parser + realpath dedupe as the built-in
  * user/project scopes — the Plugin Loader must never re-implement parsing.
  */
-export async function loadSkillsFromDir(
-  dir: string,
-  source: SkillSource,
-): Promise<LoadAllSkillsResult> {
+export async function loadSkillsFromDir(dir: string, source: SkillSource): Promise<LoadAllSkillsResult> {
   const { skills, warnings } = await loadFromOneDir(dir, source);
   return { skills, warnings };
 }

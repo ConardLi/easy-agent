@@ -144,23 +144,16 @@ async function git(args: string[], cwd: string): Promise<ExecResult> {
  * Throws on failure. Caller (AgentTool) catches and falls back to "no
  * isolation" with a warning rather than aborting the whole sub-agent.
  */
-export async function createAgentWorktree(
-  slug: string,
-  cwd: string,
-): Promise<WorktreeInfo> {
+export async function createAgentWorktree(slug: string, cwd: string): Promise<WorktreeInfo> {
   const gitRoot = await findGitRoot(cwd);
   if (!gitRoot) {
-    throw new Error(
-      `Cannot create worktree: ${cwd} is not inside a git repository.`,
-    );
+    throw new Error(`Cannot create worktree: ${cwd} is not inside a git repository.`);
   }
 
   // Capture baseline HEAD before we touch anything.
   const head = await git(["rev-parse", "HEAD"], gitRoot);
   if (head.code !== 0) {
-    throw new Error(
-      `Failed to read HEAD in ${gitRoot}: ${head.stderr.trim() || "git rev-parse HEAD failed"}`,
-    );
+    throw new Error(`Failed to read HEAD in ${gitRoot}: ${head.stderr.trim() || "git rev-parse HEAD failed"}`);
   }
   const headCommit = head.stdout.trim();
 
@@ -171,14 +164,9 @@ export async function createAgentWorktree(
   // its target, but the *parent* must exist on some platforms.
   await fs.mkdir(path.dirname(worktreePath), { recursive: true });
 
-  const add = await git(
-    ["worktree", "add", "-B", worktreeBranch, worktreePath, "HEAD"],
-    gitRoot,
-  );
+  const add = await git(["worktree", "add", "-B", worktreeBranch, worktreePath, "HEAD"], gitRoot);
   if (add.code !== 0) {
-    throw new Error(
-      `git worktree add failed: ${add.stderr.trim() || `exit ${add.code}`}`,
-    );
+    throw new Error(`git worktree add failed: ${add.stderr.trim() || `exit ${add.code}`}`);
   }
 
   return { worktreePath, worktreeBranch, headCommit, gitRoot };
@@ -196,18 +184,12 @@ export async function createAgentWorktree(
  * Fail-closed: any git error returns true. Better to leave a redundant
  * worktree behind than to delete unsaved work.
  */
-export async function hasWorktreeChanges(
-  worktreePath: string,
-  headCommit: string,
-): Promise<boolean> {
+export async function hasWorktreeChanges(worktreePath: string, headCommit: string): Promise<boolean> {
   const status = await git(["status", "--porcelain"], worktreePath);
   if (status.code !== 0) return true;
   if (status.stdout.trim().length > 0) return true;
 
-  const revList = await git(
-    ["rev-list", "--count", `${headCommit}..HEAD`],
-    worktreePath,
-  );
+  const revList = await git(["rev-list", "--count", `${headCommit}..HEAD`], worktreePath);
   if (revList.code !== 0) return true;
   const count = Number.parseInt(revList.stdout.trim(), 10);
   if (Number.isFinite(count) && count > 0) return true;
@@ -227,18 +209,12 @@ export async function removeAgentWorktree(
 ): Promise<{ ok: boolean; error?: string }> {
   const errors: string[] = [];
 
-  const remove = await git(
-    ["worktree", "remove", "--force", info.worktreePath],
-    info.gitRoot,
-  );
+  const remove = await git(["worktree", "remove", "--force", info.worktreePath], info.gitRoot);
   if (remove.code !== 0) {
     errors.push(`worktree remove: ${remove.stderr.trim() || `exit ${remove.code}`}`);
   }
 
-  const branchDelete = await git(
-    ["branch", "-D", info.worktreeBranch],
-    info.gitRoot,
-  );
+  const branchDelete = await git(["branch", "-D", info.worktreeBranch], info.gitRoot);
   if (branchDelete.code !== 0) {
     errors.push(`branch -D: ${branchDelete.stderr.trim() || `exit ${branchDelete.code}`}`);
   }

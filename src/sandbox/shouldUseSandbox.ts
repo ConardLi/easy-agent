@@ -15,10 +15,7 @@ export interface SandboxExecutionDecision {
   reason?: string;
 }
 
-export function matchesExcludedPattern(
-  command: string,
-  pattern: string,
-): boolean {
+export function matchesExcludedPattern(command: string, pattern: string): boolean {
   const trimmedPattern = pattern.trim();
   if (!trimmedPattern) return false;
 
@@ -29,7 +26,10 @@ export function matchesExcludedPattern(
 
   if (trimmedPattern.includes("*")) {
     const re = new RegExp(
-      `^${trimmedPattern.split("*").map((part) => part.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join(".*")}$`,
+      `^${trimmedPattern
+        .split("*")
+        .map((part) => part.replace(/[.+?^${}()|[\]\\]/g, "\\$&"))
+        .join(".*")}$`,
     );
     return re.test(command);
   }
@@ -37,10 +37,7 @@ export function matchesExcludedPattern(
   return command === trimmedPattern || command.startsWith(`${trimmedPattern} `);
 }
 
-export function containsExcludedCommand(
-  command: string,
-  excluded: string[],
-): boolean {
+export function containsExcludedCommand(command: string, excluded: string[]): boolean {
   if (excluded.length === 0) return false;
   // Exclusions may bypass an OS boundary, so only a single command is
   // eligible. Compound syntax and substitutions remain sandboxed even when
@@ -51,10 +48,7 @@ export function containsExcludedCommand(
   return excluded.some((pattern) => matchesExcludedPattern(command.trim(), pattern));
 }
 
-export function shouldUseSandbox(
-  input: ShouldUseSandboxInput,
-  settings: ResolvedSandboxSettings,
-): boolean {
+export function shouldUseSandbox(input: ShouldUseSandboxInput, settings: ResolvedSandboxSettings): boolean {
   return decideSandboxExecution(input, settings).mode === "sandbox";
 }
 
@@ -64,10 +58,7 @@ export function decideSandboxExecution(
   capability: SandboxCapability = getSandboxCapability(),
 ): SandboxExecutionDecision {
   if (!settings.enabled || !input.command) return { mode: "disabled" };
-  if (
-    input.dangerouslyDisableSandbox === true &&
-    settings.allowUnsandboxedCommands
-  ) {
+  if (input.dangerouslyDisableSandbox === true && settings.allowUnsandboxedCommands) {
     return { mode: "bypass", reason: "explicit per-command bypass" };
   }
   if (containsExcludedCommand(input.command, settings.excludedCommands)) {

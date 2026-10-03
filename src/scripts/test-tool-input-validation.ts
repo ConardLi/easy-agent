@@ -25,27 +25,51 @@ const fixture: Tool = {
       action: { type: "string", enum: ["read", "write"] },
       count: { type: "number", minimum: 1, maximum: 10 },
       label: { type: "string", minLength: 2, maxLength: 8 },
-      items: { type: "array", items: { type: "object", properties: { value: { type: "string" } }, required: ["value"], additionalProperties: false } },
+      items: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: { value: { type: "string" } },
+          required: ["value"],
+          additionalProperties: false,
+        },
+      },
     },
     required: ["action"],
     additionalProperties: false,
   },
-  isReadOnly: () => { permissionChecks += 1; return true; },
+  isReadOnly: () => {
+    permissionChecks += 1;
+    return true;
+  },
   isEnabled: () => true,
-  isConcurrencySafe: () => { concurrencyChecks += 1; return true; },
-  async call() { calls += 1; return { content: "called" }; },
+  isConcurrencySafe: () => {
+    concurrencyChecks += 1;
+    return true;
+  },
+  async call() {
+    calls += 1;
+    return { content: "called" };
+  },
 };
 
 try {
   const settingsDir = path.join(cwd, ".easy-agent");
   await mkdir(settingsDir);
   const marker = path.join(cwd, "hook-marker");
-  const hookShellAvailable = process.platform !== "win32" &&
-    spawnSync("bash", ["-c", "printf ready"], { encoding: "utf8" }).stdout === "ready";
+  const hookShellAvailable =
+    process.platform !== "win32" && spawnSync("bash", ["-c", "printf ready"], { encoding: "utf8" }).stdout === "ready";
   if (hookShellAvailable) {
-    await writeFile(path.join(settingsDir, "settings.json"), JSON.stringify({
-      hooks: { PreToolUse: [{ matcher: fixture.name, hooks: [{ type: "command", command: "printf 'hit\\n' >> hook-marker" }] }] },
-    }));
+    await writeFile(
+      path.join(settingsDir, "settings.json"),
+      JSON.stringify({
+        hooks: {
+          PreToolUse: [
+            { matcher: fixture.name, hooks: [{ type: "command", command: "printf 'hit\\n' >> hook-marker" }] },
+          ],
+        },
+      }),
+    );
   }
   _resetHooksSettingsCache();
 
@@ -84,7 +108,14 @@ try {
   if (hookShellAvailable) await assert.rejects(readFile(marker), { code: "ENOENT" });
 
   const validResult = await runTools(
-    [{ type: "tool_use", id: "valid", name: fixture.name, input: { action: "read", count: 2, label: "okay", items: [{ value: "ok" }] } }],
+    [
+      {
+        type: "tool_use",
+        id: "valid",
+        name: fixture.name,
+        input: { action: "read", count: 2, label: "okay", items: [{ value: "ok" }] },
+      },
+    ],
     { cwd },
     { availableTools: [fixture] },
   );
@@ -110,33 +141,82 @@ try {
   const cyclic: Record<string, unknown> = { action: "read" };
   cyclic.self = cyclic;
   assert.equal(validateToolInput(fixture, cyclic).ok, false);
-  const accessor = { action: "read", get token() { throw new Error("getter executed"); } };
+  const accessor = {
+    action: "read",
+    get token() {
+      throw new Error("getter executed");
+    },
+  };
   assert.equal(validateToolInput(fixture, accessor).ok, false);
-  const throwingProxy = new Proxy({}, { ownKeys() { throw new Error("proxy executed"); } });
+  const throwingProxy = new Proxy(
+    {},
+    {
+      ownKeys() {
+        throw new Error("proxy executed");
+      },
+    },
+  );
   assert.equal(validateToolInput(fixture, throwingProxy).ok, false);
   assert.equal(({} as Record<string, unknown>).polluted, undefined);
 
   let seed = 0x12345678;
   for (let index = 0; index < 200; index++) {
     seed = (seed * 1664525 + 1013904223) >>> 0;
-    const input = { action: `invalid-${seed % 37}`, count: seed % 20 - 5, items: [{ value: index % 2 ? 1 : "ok" }] };
+    const input = { action: `invalid-${seed % 37}`, count: (seed % 20) - 5, items: [{ value: index % 2 ? 1 : "ok" }] };
     assert.equal(validateToolInput(fixture, input).ok, false);
   }
 
-  const invalidSchema: Tool = { ...fixture, name: "InvalidSchema", inputSchema: { type: "object", required: "not-an-array" } as never };
+  const invalidSchema: Tool = {
+    ...fixture,
+    name: "InvalidSchema",
+    inputSchema: { type: "object", required: "not-an-array" } as never,
+  };
   assert.equal(hasValidToolInputSchema(invalidSchema), false);
   assert.equal(validateToolInput(invalidSchema, { action: "read" }).ok, false);
   const sharedSchemaId = "https://example.test/tool-schema";
-  const firstMcpTool: Tool = { ...fixture, name: "mcp__first__action", isMcp: true, inputSchema: { $id: sharedSchemaId, type: "object", properties: { action: { type: "string" } }, required: ["action"] } as never };
-  const secondMcpTool: Tool = { ...fixture, name: "mcp__second__action", isMcp: true, inputSchema: { $id: sharedSchemaId, type: "object", properties: { action: { type: "number" } }, required: ["action"] } as never };
+  const firstMcpTool: Tool = {
+    ...fixture,
+    name: "mcp__first__action",
+    isMcp: true,
+    inputSchema: {
+      $id: sharedSchemaId,
+      type: "object",
+      properties: { action: { type: "string" } },
+      required: ["action"],
+    } as never,
+  };
+  const secondMcpTool: Tool = {
+    ...fixture,
+    name: "mcp__second__action",
+    isMcp: true,
+    inputSchema: {
+      $id: sharedSchemaId,
+      type: "object",
+      properties: { action: { type: "number" } },
+      required: ["action"],
+    } as never,
+  };
   assert.equal(hasValidToolInputSchema(firstMcpTool), true);
   assert.equal(hasValidToolInputSchema(secondMcpTool), true);
   assert.equal(validateToolInput(firstMcpTool, { action: "read" }).ok, true);
   assert.equal(validateToolInput(secondMcpTool, { action: 2 }).ok, true);
-  const draft2020Tool: Tool = { ...fixture, name: "mcp__fixture__draft2020", isMcp: true, inputSchema: { $schema: "https://json-schema.org/draft/2020-12/schema", type: "object", properties: { action: { type: "string" } }, required: ["action"] } as never };
+  const draft2020Tool: Tool = {
+    ...fixture,
+    name: "mcp__fixture__draft2020",
+    isMcp: true,
+    inputSchema: {
+      $schema: "https://json-schema.org/draft/2020-12/schema",
+      type: "object",
+      properties: { action: { type: "string" } },
+      required: ["action"],
+    } as never,
+  };
   assert.equal(hasValidToolInputSchema(draft2020Tool), true);
   assert.equal(validateToolInput(draft2020Tool, { action: "read" }).ok, true);
-  registerMcpTools([{ ...fixture, name: "mcp__fixture__valid", isMcp: true }, { ...invalidSchema, name: "mcp__fixture__invalid", isMcp: true }]);
+  registerMcpTools([
+    { ...fixture, name: "mcp__fixture__valid", isMcp: true },
+    { ...invalidSchema, name: "mcp__fixture__invalid", isMcp: true },
+  ]);
   assert.ok(getAllTools().some((tool) => tool.name === "mcp__fixture__valid"));
   assert.ok(!getAllTools().some((tool) => tool.name === "mcp__fixture__invalid"));
 
@@ -161,7 +241,9 @@ try {
     EnterPlanMode: { reason: "plan" },
     ExitPlanMode: { summary: "done" },
     Skill: { skill: "fixture" },
-    AskUserQuestion: { questions: [{ question: "Continue?", header: "Next", options: [{ label: "Yes" }, { label: "No" }] }] },
+    AskUserQuestion: {
+      questions: [{ question: "Continue?", header: "Next", options: [{ label: "Yes" }, { label: "No" }] }],
+    },
     Agent: { prompt: "Review this file", description: "review" },
     ToolSearch: { query: "read files" },
   };
@@ -173,6 +255,7 @@ try {
 } finally {
   registerMcpTools([]);
   _resetHooksSettingsCache();
-  if (originalHome === undefined) delete process.env.HOME; else process.env.HOME = originalHome;
+  if (originalHome === undefined) delete process.env.HOME;
+  else process.env.HOME = originalHome;
   await rm(cwd, { recursive: true, force: true });
 }

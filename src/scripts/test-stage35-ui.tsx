@@ -85,11 +85,7 @@ function check(label: string, condition: boolean): void {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-function PromptPaletteHarness({
-  onSubmit,
-}: {
-  onSubmit: (text: string) => void;
-}): React.ReactNode {
+function PromptPaletteHarness({ onSubmit }: { onSubmit: (text: string) => void }): React.ReactNode {
   const prompt = usePromptInput({
     isLoading: false,
     hasPermissionPrompt: false,
@@ -108,11 +104,7 @@ function PromptPaletteHarness({
   });
   return (
     <>
-      <InputPrompt
-        isLoading={false}
-        inputValue={prompt.inputValue}
-        cursor={prompt.cursor}
-      />
+      <InputPrompt isLoading={false} inputValue={prompt.inputValue} cursor={prompt.cursor} />
       <CommandSuggestions items={prompt.commandSuggestions} />
     </>
   );
@@ -130,8 +122,7 @@ async function main(): Promise<void> {
   const filteredPluginActions = getNestedCommandSuggestions("/plugin ma");
   check(
     "second-level palette filters incrementally",
-    filteredPluginActions?.length === 1 &&
-      filteredPluginActions[0]?.name === "/plugin marketplace",
+    filteredPluginActions?.length === 1 && filteredPluginActions[0]?.name === "/plugin marketplace",
   );
   const marketplaceActions = getNestedCommandSuggestions("/plugin marketplace ");
   check(
@@ -160,22 +151,16 @@ async function main(): Promise<void> {
     unref: () => {},
   });
   const submitted: string[] = [];
-  const paletteInstance = render(
-    <PromptPaletteHarness onSubmit={(text) => submitted.push(text)} />,
-    {
-      stdin: paletteStdin as unknown as NodeJS.ReadStream,
-      stdout: paletteStdout as unknown as NodeJS.WriteStream,
-      debug: true,
-      exitOnCtrlC: false,
-    },
-  );
+  const paletteInstance = render(<PromptPaletteHarness onSubmit={(text) => submitted.push(text)} />, {
+    stdin: paletteStdin as unknown as NodeJS.ReadStream,
+    stdout: paletteStdout as unknown as NodeJS.WriteStream,
+    debug: true,
+    exitOnCtrlC: false,
+  });
   await sleep(30);
   paletteStdin.write("/plugin ma");
   await sleep(40);
-  check(
-    "real prompt renders filtered /plugin suggestions",
-    paletteCaptured.includes("/plugin marketplace"),
-  );
+  check("real prompt renders filtered /plugin suggestions", paletteCaptured.includes("/plugin marketplace"));
   paletteStdin.write("\r");
   await sleep(30);
   paletteStdin.write("a");
@@ -184,8 +169,7 @@ async function main(): Promise<void> {
   await sleep(30);
   check(
     "Enter drills down and completes marketplace add without premature submit",
-    paletteCaptured.includes("/plugin marketplace add ") &&
-      submitted.length === 0,
+    paletteCaptured.includes("/plugin marketplace add ") && submitted.length === 0,
   );
   paletteInstance.unmount();
   paletteInstance.cleanup();
@@ -258,8 +242,7 @@ async function main(): Promise<void> {
   await sleep(80);
   check(
     "preflights update before confirmation",
-    captured.includes("Update demo@team to v2.0.0?") &&
-      captured.includes("Hooks/MCP may execute local processes"),
+    captured.includes("Update demo@team to v2.0.0?") && captured.includes("Hooks/MCP may execute local processes"),
   );
 
   stdin.write("n");

@@ -36,10 +36,7 @@ import type {
 import { resolveAgentTools } from "./resolveAgentTools.js";
 import type { AgentDefinition, AgentRunResult } from "./types.js";
 import type { ContentBlock, Usage } from "../types/message.js";
-import {
-  drainUnreadMessages,
-  formatMailboxAttachment,
-} from "../utils/teammateMailbox.js";
+import { drainUnreadMessages, formatMailboxAttachment } from "../utils/teammateMailbox.js";
 
 export const DEFAULT_AGENT_MAX_TURNS = 30;
 
@@ -141,7 +138,10 @@ function extractFinalAssistantText(messages: MessageParam[]): string {
     const textBlocks = (content as ContentBlock[]).filter(
       (b): b is Extract<ContentBlock, { type: "text" }> => b.type === "text",
     );
-    const joined = textBlocks.map((b) => b.text).join("\n").trim();
+    const joined = textBlocks
+      .map((b) => b.text)
+      .join("\n")
+      .trim();
     if (joined) return joined;
   }
   return "(Sub-agent completed but produced no text output.)";
@@ -176,8 +176,7 @@ export async function runChildAgent(params: RunChildAgentParams): Promise<AgentR
       ? `${params.parentToolContext.sessionId}/agent-${def.agentType}-${Date.now().toString(36)}`
       : `agent-${def.agentType}-${Date.now().toString(36)}`);
 
-  const subPermissionMode: PermissionMode =
-    def.permissionMode ?? params.permissionMode ?? "default";
+  const subPermissionMode: PermissionMode = def.permissionMode ?? params.permissionMode ?? "default";
 
   const subToolContext: ToolContext = {
     // When isolation: "worktree" is requested, the AgentTool
@@ -192,9 +191,7 @@ export async function runChildAgent(params: RunChildAgentParams): Promise<AgentR
     getPermissionMode: () => subPermissionMode,
     // Thread teammate identity into the sub-agent's tool
     // context so SendMessage's `from` resolves correctly.
-    ...(params.teammateIdentity
-      ? { teammateIdentity: params.teammateIdentity }
-      : {}),
+    ...(params.teammateIdentity ? { teammateIdentity: params.teammateIdentity } : {}),
   };
 
   // Pre-loop mailbox drain.
@@ -211,10 +208,7 @@ export async function runChildAgent(params: RunChildAgentParams): Promise<AgentR
   // conversation shape simple and saves us a round trip.
   const initialMessages: MessageParam[] = [];
   if (params.teammateIdentity) {
-    const unread = await drainUnreadMessages(
-      params.teammateIdentity.agentName,
-      params.teammateIdentity.teamName,
-    );
+    const unread = await drainUnreadMessages(params.teammateIdentity.agentName, params.teammateIdentity.teamName);
     if (unread.length > 0) {
       initialMessages.push({
         role: "user",
@@ -243,12 +237,17 @@ export async function runChildAgent(params: RunChildAgentParams): Promise<AgentR
     abortSignal: params.abortSignal,
     toolContext: subToolContext,
     maxTurns: def.maxTurns ?? DEFAULT_AGENT_MAX_TURNS,
-    ...(params.teammateIdentity ? {
-      beforeModelCall: async (): Promise<MessageParam[]> => {
-        const unread = await drainUnreadMessages(params.teammateIdentity!.agentName, params.teammateIdentity!.teamName);
-        return unread.length > 0 ? [{ role: "user", content: formatMailboxAttachment(unread) }] : [];
-      },
-    } : {}),
+    ...(params.teammateIdentity
+      ? {
+          beforeModelCall: async (): Promise<MessageParam[]> => {
+            const unread = await drainUnreadMessages(
+              params.teammateIdentity!.agentName,
+              params.teammateIdentity!.teamName,
+            );
+            return unread.length > 0 ? [{ role: "user", content: formatMailboxAttachment(unread) }] : [];
+          },
+        }
+      : {}),
     permissionMode: subPermissionMode,
     permissionSettings: params.permissionSettings,
     sessionPermissionRules: params.sessionPermissionRules,
@@ -297,7 +296,10 @@ export async function runChildAgent(params: RunChildAgentParams): Promise<AgentR
           params.onProgress({ type: "turn_complete", reason: value.reason });
           break;
         case "tool_result_message":
-          if (Array.isArray(value.message.content) && value.message.content.some((block) => block.type === "tool_result")) {
+          if (
+            Array.isArray(value.message.content) &&
+            value.message.content.some((block) => block.type === "tool_result")
+          ) {
             params.onProgress({ type: "tool_batch_done" });
           }
           break;

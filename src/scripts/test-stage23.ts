@@ -40,16 +40,9 @@ import {
 import { loadAllOutputStyles } from "../styles/loadOutputStylesDir.js";
 import { bootstrapOutputStyles } from "../styles/bootstrap.js";
 import { buildSystemPrompt, renderSystemPrompt } from "../context/systemPrompt.js";
-import {
-  parseArguments,
-  substituteArguments,
-} from "../commands/userCommands/argumentSubstitution.js";
+import { parseArguments, substituteArguments } from "../commands/userCommands/argumentSubstitution.js";
 import { loadAllUserCommands } from "../commands/userCommands/loadCommandsDir.js";
-import {
-  clearUserCommands,
-  findUserCommand,
-  setUserCommands,
-} from "../commands/userCommands/registry.js";
+import { clearUserCommands, findUserCommand, setUserCommands } from "../commands/userCommands/registry.js";
 import { bootstrapUserCommands } from "../commands/userCommands/bootstrap.js";
 import { updateUserSettings, readMergedStringSetting } from "../utils/settings.js";
 import { trustProjectForSession } from "../config/globalState.js";
@@ -71,9 +64,7 @@ function assert(condition: unknown, label: string): void {
  * sandboxed. Resets the in-memory registries afterwards so tests don't
  * leak state into each other.
  */
-async function withTempEnv(
-  fn: (tmpHome: string, tmpCwd: string) => Promise<void>,
-): Promise<void> {
+async function withTempEnv(fn: (tmpHome: string, tmpCwd: string) => Promise<void>): Promise<void> {
   const tmpHome = await fs.mkdtemp(path.join(os.tmpdir(), "stage23-home-"));
   const tmpCwd = await fs.mkdtemp(path.join(os.tmpdir(), "stage23-cwd-"));
   const prevHome = process.env["HOME"];
@@ -106,19 +97,10 @@ async function main(): Promise<void> {
     builtins.map((s) => s.name).join(",") === "default,Explanatory,Learning",
     "built-in order: default, Explanatory, Learning",
   );
-  assert(
-    getActiveOutputStyleName() === DEFAULT_OUTPUT_STYLE_NAME,
-    "active style starts as default",
-  );
-  assert(
-    getActiveOutputStyleConfig() === null,
-    "default style → getActiveOutputStyleConfig() is null (no section)",
-  );
+  assert(getActiveOutputStyleName() === DEFAULT_OUTPUT_STYLE_NAME, "active style starts as default");
+  assert(getActiveOutputStyleConfig() === null, "default style → getActiveOutputStyleConfig() is null (no section)");
 
-  assert(
-    resolveOutputStyle("explanatory")?.name === "Explanatory",
-    "resolveOutputStyle is case-insensitive",
-  );
+  assert(resolveOutputStyle("explanatory")?.name === "Explanatory", "resolveOutputStyle is case-insensitive");
   assert(getOutputStyle("explanatory") === undefined, "getOutputStyle is case-sensitive");
 
   assert(setActiveOutputStyle("Explanatory") === true, "switch to Explanatory succeeds");
@@ -128,10 +110,7 @@ async function main(): Promise<void> {
     "Explanatory config carries the Insight prompt",
   );
   assert(setActiveOutputStyle("nope") === false, "switch to unknown style fails");
-  assert(
-    getActiveOutputStyleName() === "Explanatory",
-    "failed switch leaves the active style untouched",
-  );
+  assert(getActiveOutputStyleName() === "Explanatory", "failed switch leaves the active style untouched");
   clearOutputStyles();
 
   // ─── [2] Output style dir loader ───────────────────────────────
@@ -149,32 +128,20 @@ async function main(): Promise<void> {
       `---\nname: Terse\ndescription: Project terse\n---\nProject-scoped terse prompt.`,
     );
     // project-only style, no frontmatter name → filename is the name
-    await writeFileEnsuringDir(
-      path.join(cwd, ".easy-agent", "output-styles", "Pirate.md"),
-      `Answer like a pirate.`,
-    );
+    await writeFileEnsuringDir(path.join(cwd, ".easy-agent", "output-styles", "Pirate.md"), `Answer like a pirate.`);
 
     const { styles, warnings } = await loadAllOutputStyles(cwd);
     assert(warnings.length === 0, "no warnings for valid styles");
     const byName = new Map(styles.map((s) => [s.name, s]));
     assert(byName.size === 2, "Terse + Pirate loaded (Terse de-duped to one)");
-    assert(
-      byName.get("Terse")?.source === "project",
-      "project Terse overrides user Terse",
-    );
-    assert(
-      byName.get("Terse")?.description === "Project terse",
-      "winning Terse carries project description",
-    );
+    assert(byName.get("Terse")?.source === "project", "project Terse overrides user Terse");
+    assert(byName.get("Terse")?.description === "Project terse", "winning Terse carries project description");
     assert(
       byName.get("Terse")?.keepCodingInstructions === true,
       "project Terse defaults keepCodingInstructions=true (no frontmatter flag)",
     );
     assert(byName.get("Pirate")?.name === "Pirate", "filename becomes style name");
-    assert(
-      byName.get("Pirate")?.prompt === "Answer like a pirate.",
-      "body becomes the style prompt",
-    );
+    assert(byName.get("Pirate")?.prompt === "Answer like a pirate.", "body becomes the style prompt");
 
     // Register them and confirm a custom keep-coding-instructions:false style
     setCustomOutputStyles([
@@ -212,10 +179,7 @@ async function main(): Promise<void> {
       JSON.stringify({ outputStyle: "Ghost" }, null, 2),
     );
     const result2 = await bootstrapOutputStyles(cwd);
-    assert(
-      result2.activeStyle === DEFAULT_OUTPUT_STYLE_NAME,
-      "unknown persisted style → falls back to default",
-    );
+    assert(result2.activeStyle === DEFAULT_OUTPUT_STYLE_NAME, "unknown persisted style → falls back to default");
   });
 
   // ─── [4] System prompt injection ───────────────────────────────
@@ -225,14 +189,8 @@ async function main(): Promise<void> {
     // default → no output-style section, coding instructions present
     clearOutputStyles();
     const defaultPrompt = renderSystemPrompt(await buildSystemPrompt({ cwd }));
-    assert(
-      !defaultPrompt.includes("# Output Style:"),
-      "default style → no output-style section",
-    );
-    assert(
-      defaultPrompt.includes("When solving coding tasks"),
-      "default style → coding instructions present",
-    );
+    assert(!defaultPrompt.includes("# Output Style:"), "default style → no output-style section");
+    assert(defaultPrompt.includes("When solving coding tasks"), "default style → coding instructions present");
 
     // Explanatory (keepCodingInstructions:true) → section present + coding kept
     setActiveOutputStyle("Explanatory");
@@ -241,10 +199,7 @@ async function main(): Promise<void> {
       explanatoryPrompt.includes("# Output Style: Explanatory"),
       "Explanatory → labelled output-style section present",
     );
-    assert(
-      explanatoryPrompt.includes("Insight"),
-      "Explanatory → Insight instruction injected",
-    );
+    assert(explanatoryPrompt.includes("Insight"), "Explanatory → Insight instruction injected");
     assert(
       explanatoryPrompt.includes("When solving coding tasks"),
       "Explanatory (keepCodingInstructions=true) → coding instructions kept",
@@ -262,18 +217,12 @@ async function main(): Promise<void> {
     ]);
     setActiveOutputStyle("Terse");
     const tersePrompt = renderSystemPrompt(await buildSystemPrompt({ cwd }));
-    assert(
-      tersePrompt.includes("# Output Style: Terse"),
-      "Terse → output-style section present",
-    );
+    assert(tersePrompt.includes("# Output Style: Terse"), "Terse → output-style section present");
     assert(
       !tersePrompt.includes("When solving coding tasks"),
       "Terse (keepCodingInstructions=false) → coding instructions dropped",
     );
-    assert(
-      tersePrompt.includes("You are Easy Agent"),
-      "Terse → identity framing still present",
-    );
+    assert(tersePrompt.includes("You are Easy Agent"), "Terse → identity framing still present");
   });
 
   // ─── [5] Argument substitution ─────────────────────────────────
@@ -283,10 +232,7 @@ async function main(): Promise<void> {
     parseArguments('foo "hello world" bar').join("|") === "foo|hello world|bar",
     "parseArguments honours double quotes",
   );
-  assert(
-    parseArguments("a 'b c' d").join("|") === "a|b c|d",
-    "parseArguments honours single quotes",
-  );
+  assert(parseArguments("a 'b c' d").join("|") === "a|b c|d", "parseArguments honours single quotes");
   assert(parseArguments("").length === 0, "empty args → empty token list");
 
   assert(
@@ -297,19 +243,12 @@ async function main(): Promise<void> {
     substituteArguments("First $1 second $2", "alpha beta") === "First alpha second beta",
     "$1/$2 positional substitution",
   );
+  assert(substituteArguments("Idx $ARGUMENTS[1]", "alpha beta") === "Idx beta", "$ARGUMENTS[n] indexed substitution");
   assert(
-    substituteArguments("Idx $ARGUMENTS[1]", "alpha beta") === "Idx beta",
-    "$ARGUMENTS[n] indexed substitution",
-  );
-  assert(
-    substituteArguments("no placeholder here", "extra args") ===
-      "no placeholder here\n\nARGUMENTS: extra args",
+    substituteArguments("no placeholder here", "extra args") === "no placeholder here\n\nARGUMENTS: extra args",
     "no placeholder + args → ARGUMENTS appended",
   );
-  assert(
-    substituteArguments("no placeholder", undefined) === "no placeholder",
-    "undefined args → content unchanged",
-  );
+  assert(substituteArguments("no placeholder", undefined) === "no placeholder", "undefined args → content unchanged");
   assert(
     substituteArguments("missing $2 here", "only-one") === "missing  here",
     "out-of-range positional → empty string",
@@ -340,14 +279,8 @@ async function main(): Promise<void> {
     const byName = new Map(commands.map((c) => [c.name, c]));
     assert(byName.has("review"), "review.md → /review");
     assert(byName.has("team:standup"), "team/standup.md → /team:standup");
-    assert(
-      byName.get("review")?.source === "project",
-      "project review overrides user review",
-    );
-    assert(
-      byName.get("review")?.description === "Project review",
-      "winning review carries project description",
-    );
+    assert(byName.get("review")?.source === "project", "project review overrides user review");
+    assert(byName.get("review")?.description === "Project review", "winning review carries project description");
 
     // The user-scope command's frontmatter is parsed correctly when loaded alone
     setUserCommands([
@@ -364,10 +297,7 @@ async function main(): Promise<void> {
     ]);
     const cmd = findUserCommand("review");
     assert(cmd?.model === "claude-sonnet", "model frontmatter parsed");
-    assert(
-      cmd?.allowedTools.join(",") === "Read,Grep",
-      "allowed-tools CSV parsed into array",
-    );
+    assert(cmd?.allowedTools.join(",") === "Read,Grep", "allowed-tools CSV parsed into array");
     assert(cmd?.argumentHint === "<file>", "argument-hint parsed");
     assert(findUserCommand("nope") === undefined, "missing command → undefined");
 
@@ -389,9 +319,7 @@ async function main(): Promise<void> {
     );
     await updateUserSettings({ outputStyle: "Explanatory" });
 
-    const written = JSON.parse(
-      await fs.readFile(path.join(home, ".easy-agent", "settings.json"), "utf-8"),
-    );
+    const written = JSON.parse(await fs.readFile(path.join(home, ".easy-agent", "settings.json"), "utf-8"));
     assert(written.outputStyle === "Explanatory", "outputStyle persisted");
     assert(written.existing === "keep-me", "existing keys preserved (shallow merge)");
 

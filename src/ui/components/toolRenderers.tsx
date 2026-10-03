@@ -74,26 +74,18 @@ export function firstLine(text: string): string {
  * Column of output lines (no gutter) — meant to sit inside a <ResultLine>,
  * which supplies the dimmed `⎿` corner. Caps at `max` with a "+N more" footer.
  */
-function OutputBody({
-  text,
-  color,
-  max = Infinity,
-}: {
-  text: string;
-  color?: string;
-  max?: number;
-}): React.ReactNode {
+function OutputBody({ text, color, max = Infinity }: { text: string; color?: string; max?: number }): React.ReactNode {
   const lines = text.split("\n");
   const shown = Number.isFinite(max) ? lines.slice(0, max) : lines;
   const hidden = lines.length - shown.length;
   return (
     <>
       {shown.map((line, i) => (
-        <Text key={i} color={color ?? theme.muted}>{line || " "}</Text>
+        <Text key={i} color={color ?? theme.muted}>
+          {line || " "}
+        </Text>
       ))}
-      {hidden > 0 ? (
-        <Text color={theme.muted}>{`… +${hidden} more line${hidden === 1 ? "" : "s"}`}</Text>
-      ) : null}
+      {hidden > 0 ? <Text color={theme.muted}>{`… +${hidden} more line${hidden === 1 ? "" : "s"}`}</Text> : null}
     </>
   );
 }
@@ -103,22 +95,16 @@ function OutputBody({
  * `… +N lines (ctrl+o to expand)` footer when truncated. Designed to sit
  * inside a single `<ResultLine>` so stdout and stderr stack under one corner.
  */
-function CappedLines({
-  text,
-  color,
-  max,
-}: {
-  text: string;
-  color: string;
-  max: number;
-}): React.ReactNode {
+function CappedLines({ text, color, max }: { text: string; color: string; max: number }): React.ReactNode {
   const lines = text.split("\n");
   const shown = lines.slice(0, max);
   const hidden = lines.length - shown.length;
   return (
     <>
       {shown.map((line, i) => (
-        <Text key={i} color={color} wrap="truncate-end">{line || " "}</Text>
+        <Text key={i} color={color} wrap="truncate-end">
+          {line || " "}
+        </Text>
       ))}
       {hidden > 0 ? (
         <Text key="more" color={theme.muted}>

@@ -93,7 +93,12 @@ const TESTS: TestDefinition[] = [
   { id: "plugin-manager", group: "ui", file: "src/scripts/test-stage35-ui.tsx" },
 
   { id: "sandbox-host", group: "platform", file: "src/scripts/smoke-sandbox.ts", platforms: ["darwin", "linux"] },
-  { id: "bash-sandbox-host", group: "platform", file: "src/scripts/smoke-bash-sandbox.ts", platforms: ["darwin", "linux"] },
+  {
+    id: "bash-sandbox-host",
+    group: "platform",
+    file: "src/scripts/smoke-bash-sandbox.ts",
+    platforms: ["darwin", "linux"],
+  },
 
   { id: "anthropic-stream", group: "live", file: "src/scripts/test-streaming.ts" },
   { id: "tool-search-live", group: "live", file: "src/scripts/test-toolsearch-live.ts" },
@@ -145,8 +150,8 @@ function isolatedEnvironment(home: string, live: boolean): NodeJS.ProcessEnv {
       const upper = key.toUpperCase();
       if (
         /(?:^|_)(?:API_KEY|AUTH_TOKEN|ACCESS_TOKEN|TOKEN|SECRET|PASSWORD|CREDENTIALS?)$/.test(upper) ||
-        ["ANTHROPIC_", "OPENAI_", "GEMINI_", "GOOGLE_", "EASY_AGENT_", "WEB_SEARCH_", "MCP_"].some(
-          (prefix) => upper.startsWith(prefix),
+        ["ANTHROPIC_", "OPENAI_", "GEMINI_", "GOOGLE_", "EASY_AGENT_", "WEB_SEARCH_", "MCP_"].some((prefix) =>
+          upper.startsWith(prefix),
         ) ||
         ["EDITOR", "VISUAL", "NODE_OPTIONS", "NODE_PATH", "LIVE"].includes(upper)
       ) {
@@ -302,6 +307,6 @@ async function main(): Promise<void> {
 }
 
 void main().catch((error: unknown) => {
-  process.stderr.write(`${error instanceof Error ? error.stack ?? error.message : String(error)}\n`);
+  process.stderr.write(`${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`);
   process.exitCode = 1;
 });

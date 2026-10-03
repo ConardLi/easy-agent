@@ -10,11 +10,7 @@ import {
   getStreamDebugLogPath,
   getUserSettingsPath,
 } from "./paths.js";
-import {
-  atomicWriteFile,
-  atomicWriteFileSync,
-  syncDirectory,
-} from "./atomicFile.js";
+import { atomicWriteFile, atomicWriteFileSync, syncDirectory } from "./atomicFile.js";
 
 export const PRIVATE_DIRECTORY_MODE = 0o700;
 export const PRIVATE_FILE_MODE = 0o600;
@@ -104,10 +100,7 @@ export function writePrivateFileSync(filePath: string, data: string | Uint8Array
   });
 }
 
-export async function appendPrivateFile(
-  filePath: string,
-  data: string | Uint8Array,
-): Promise<void> {
+export async function appendPrivateFile(filePath: string, data: string | Uint8Array): Promise<void> {
   await ensurePrivateDirectory(path.dirname(filePath));
   const handle = await fsp.open(
     filePath,
@@ -139,10 +132,7 @@ export function appendPrivateFileSync(filePath: string, data: string | Uint8Arra
   }
 }
 
-export async function createPrivateFileIfMissing(
-  filePath: string,
-  data = "",
-): Promise<boolean> {
+export async function createPrivateFileIfMissing(filePath: string, data = ""): Promise<boolean> {
   await ensurePrivateDirectory(path.dirname(filePath));
   let handle: fsp.FileHandle;
   try {
@@ -196,20 +186,13 @@ async function hardenExistingPath(
   }
   if (!POSIX_PERMISSIONS) return;
   try {
-    await fsp.chmod(
-      target,
-      expectedType === "directory" ? PRIVATE_DIRECTORY_MODE : PRIVATE_FILE_MODE,
-    );
+    await fsp.chmod(target, expectedType === "directory" ? PRIVATE_DIRECTORY_MODE : PRIVATE_FILE_MODE);
   } catch (error) {
     issues.push({ path: target, message: (error as Error).message });
   }
 }
 
-async function hardenTree(
-  root: string,
-  issues: PrivateDataIssue[],
-  options: { files: boolean },
-): Promise<void> {
+async function hardenTree(root: string, issues: PrivateDataIssue[], options: { files: boolean }): Promise<void> {
   let entries: fs.Dirent[];
   try {
     entries = await fsp.readdir(root, { withFileTypes: true });
@@ -232,10 +215,9 @@ async function hardenTree(
   }
 }
 
-export async function hardenPrivateDataStorage(options: {
-  forceMigration?: boolean;
-  projectCwd?: string;
-} = {}): Promise<PrivateDataSecurityReport> {
+export async function hardenPrivateDataStorage(
+  options: { forceMigration?: boolean; projectCwd?: string } = {},
+): Promise<PrivateDataSecurityReport> {
   const issues: PrivateDataIssue[] = [];
   const home = getEasyAgentHome();
 
@@ -263,12 +245,7 @@ export async function hardenPrivateDataStorage(options: {
     "plugins",
     path.join("plugins", "data"),
   ].map((entry) => getEasyAgentPath(entry));
-  const directFiles = [
-    getUserSettingsPath(),
-    getStatePath(),
-    getStreamDebugLogPath(),
-    getGlobalAgentMdPath(),
-  ];
+  const directFiles = [getUserSettingsPath(), getStatePath(), getStreamDebugLogPath(), getGlobalAgentMdPath()];
 
   for (const dir of directDirectories) await hardenExistingPath(dir, "directory", issues);
   for (const file of directFiles) await hardenExistingPath(file, "file", issues);
@@ -277,7 +254,10 @@ export async function hardenPrivateDataStorage(options: {
   }
 
   const marker = getEasyAgentPath(MIGRATION_MARKER);
-  const alreadyMigrated = await fsp.access(marker).then(() => true, () => false);
+  const alreadyMigrated = await fsp.access(marker).then(
+    () => true,
+    () => false,
+  );
   let migrated = alreadyMigrated && !options.forceMigration;
   if (!migrated) {
     for (const name of ["projects", "tasks", "teams", "plans"]) {
@@ -331,23 +311,13 @@ async function inspectMode(
   }
 }
 
-export async function inspectPrivateDataSecurity(
-  projectCwd?: string,
-): Promise<PrivateDataSecurityReport> {
+export async function inspectPrivateDataSecurity(projectCwd?: string): Promise<PrivateDataSecurityReport> {
   if (!POSIX_PERMISSIONS) {
     return { supported: false, migrated: false, issues: [] };
   }
   const issues: PrivateDataIssue[] = [];
   await inspectMode(getEasyAgentHome(), "directory", issues);
-  for (const dir of [
-    "projects",
-    "tasks",
-    "teams",
-    "plans",
-    "file-history",
-    "plugins",
-    path.join("plugins", "data"),
-  ]) {
+  for (const dir of ["projects", "tasks", "teams", "plans", "file-history", "plugins", path.join("plugins", "data")]) {
     await inspectMode(getEasyAgentPath(dir), "directory", issues);
   }
   for (const file of [
@@ -364,7 +334,10 @@ export async function inspectPrivateDataSecurity(
   }
   return {
     supported: true,
-    migrated: await fsp.access(getEasyAgentPath(MIGRATION_MARKER)).then(() => true, () => false),
+    migrated: await fsp.access(getEasyAgentPath(MIGRATION_MARKER)).then(
+      () => true,
+      () => false,
+    ),
     issues,
   };
 }

@@ -19,9 +19,7 @@ import { promisify } from "node:util";
 const execFileAsync = promisify(execFile);
 const PRIVATE_IMAGE_MODE = 0o600;
 
-export type ClipboardImageResult =
-  | { ok: true; path: string }
-  | { ok: false; error: string };
+export type ClipboardImageResult = { ok: true; path: string } | { ok: false; error: string };
 
 function tempImagePath(): string {
   const name = `easy-agent-clip-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`;

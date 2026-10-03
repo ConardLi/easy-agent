@@ -56,10 +56,7 @@ function summarise(agent: AsyncAgentEntry, now: number): string {
   return parts.length > 0 ? `(${parts.join(", ")})` : "";
 }
 
-export function TeammatePicker({
-  agents,
-  selectedAgentId,
-}: TeammatePickerProps): React.ReactNode {
+export function TeammatePicker({ agents, selectedAgentId }: TeammatePickerProps): React.ReactNode {
   // Picker only includes still-running agents — completed / failed /
   // killed transcripts are still readable via `Read <output_file>` for
   // power users, but cluttering the picker with stale entries is bad UX.
@@ -70,18 +67,11 @@ export function TeammatePicker({
 
   return (
     <Box flexDirection="column" marginTop={1}>
-      <Text dimColor>
-        {"─── Select teammate (↑↓ navigate · Enter view · Esc cancel · k kill) "
-          .padEnd(80, "─")}
-      </Text>
+      <Text dimColor>{"─── Select teammate (↑↓ navigate · Enter view · Esc cancel · k kill) ".padEnd(80, "─")}</Text>
       {running.map((agent) => {
         const isSelected = agent.agentId === selectedAgentId;
-        const label = agent.teammateName
-          ? `${agent.teammateName} · ${agent.agentType}`
-          : agent.agentType;
-        const lastTool = agent.lastToolName
-          ? `  last: ${agent.lastToolName}`
-          : "";
+        const label = agent.teammateName ? `${agent.teammateName} · ${agent.agentType}` : agent.agentType;
+        const lastTool = agent.lastToolName ? `  last: ${agent.lastToolName}` : "";
         const prefix = isSelected ? "▶ " : "  ";
         return (
           <Box key={agent.agentId}>
@@ -89,9 +79,7 @@ export function TeammatePicker({
               {prefix}
               {label}
             </Text>
-            <Text dimColor>
-              {`  ${summarise(agent, now)}${lastTool}`}
-            </Text>
+            <Text dimColor>{`  ${summarise(agent, now)}${lastTool}`}</Text>
           </Box>
         );
       })}

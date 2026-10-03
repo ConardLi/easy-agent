@@ -19,8 +19,8 @@ const edit: PermissionPromptState = {
   ruleHint: "Edit(src/ui/theme.ts)",
   input: {
     file_path: `${process.cwd()}/src/ui/theme.ts`,
-    old_string: "  brand: \"#D77757\",\n  brandLight: \"#F59575\",",
-    new_string: "  brand: \"#E07A5F\",\n  brandLight: \"#F2A07B\",\n  accent: \"#7AA2D6\",",
+    old_string: '  brand: "#D77757",\n  brandLight: "#F59575",',
+    new_string: '  brand: "#E07A5F",\n  brandLight: "#F2A07B",\n  accent: "#7AA2D6",',
   },
 };
 
@@ -31,7 +31,7 @@ const write: PermissionPromptState = {
   ruleHint: "Write(src/ui/newFile.ts)",
   input: {
     file_path: `${process.cwd()}/src/ui/newFile.ts`,
-    content: "export function hello(): string {\n  return \"hi\";\n}\n",
+    content: 'export function hello(): string {\n  return "hi";\n}\n',
   },
 };
 

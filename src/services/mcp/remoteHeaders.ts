@@ -6,7 +6,11 @@ type RemoteConfig = McpHTTPServerConfig | McpSSEServerConfig;
 
 function mergeHeaders(target: Headers, values: Record<string, string>): void {
   for (const [name, value] of Object.entries(values)) {
-    try { target.set(name, value); } catch { throw new Error(`Invalid MCP header ${name}`); }
+    try {
+      target.set(name, value);
+    } catch {
+      throw new Error(`Invalid MCP header ${name}`);
+    }
   }
 }
 
@@ -29,8 +33,17 @@ export async function resolveMcpHeaders(config: RemoteConfig): Promise<Headers> 
       throw new Error("MCP headers helper failed or exceeded its output limit");
     }
     let values: unknown;
-    try { values = JSON.parse(result.stdout); } catch { throw new Error("MCP headers helper must return a JSON object"); }
-    if (!values || typeof values !== "object" || Array.isArray(values) || Object.values(values).some((value) => typeof value !== "string")) {
+    try {
+      values = JSON.parse(result.stdout);
+    } catch {
+      throw new Error("MCP headers helper must return a JSON object");
+    }
+    if (
+      !values ||
+      typeof values !== "object" ||
+      Array.isArray(values) ||
+      Object.values(values).some((value) => typeof value !== "string")
+    ) {
       throw new Error("MCP headers helper must return a string-to-string JSON object");
     }
     mergeHeaders(headers, values as Record<string, string>);

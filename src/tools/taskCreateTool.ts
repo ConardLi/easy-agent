@@ -63,9 +63,10 @@ export const taskCreateTool: Tool = {
     const subject = pickString(input, "subject")?.trim();
     const description = pickString(input, "description")?.trim();
     const activeForm = pickString(input, "activeForm")?.trim();
-    const metadata = input.metadata && typeof input.metadata === "object" && !Array.isArray(input.metadata)
-      ? (input.metadata as Record<string, unknown>)
-      : undefined;
+    const metadata =
+      input.metadata && typeof input.metadata === "object" && !Array.isArray(input.metadata)
+        ? (input.metadata as Record<string, unknown>)
+        : undefined;
 
     if (!subject) return { content: "Error: `subject` must be a non-empty string.", isError: true };
     if (!description) return { content: "Error: `description` must be a non-empty string.", isError: true };
@@ -73,15 +74,17 @@ export const taskCreateTool: Tool = {
     const taskListId = resolveTaskScope(context).listId;
     let id: string;
     try {
-      id = await withActiveTaskActor(context, () => createTask(taskListId, {
-        subject,
-        description,
-        activeForm: activeForm || undefined,
-        status: "pending",
-        blocks: [],
-        blockedBy: [],
-        metadata,
-      }));
+      id = await withActiveTaskActor(context, () =>
+        createTask(taskListId, {
+          subject,
+          description,
+          activeForm: activeForm || undefined,
+          status: "pending",
+          blocks: [],
+          blockedBy: [],
+          metadata,
+        }),
+      );
     } catch (error) {
       return { content: `Error: ${error instanceof Error ? error.message : String(error)}`, isError: true };
     }

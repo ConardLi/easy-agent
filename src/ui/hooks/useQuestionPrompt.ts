@@ -35,10 +35,7 @@ export interface QuestionPromptView {
   textInput: string;
 }
 
-export function useQuestionPrompt({
-  request,
-  onResolve,
-}: UseQuestionPromptOptions): QuestionPromptView {
+export function useQuestionPrompt({ request, onResolve }: UseQuestionPromptOptions): QuestionPromptView {
   const [questionIndex, setQuestionIndex] = useState(0);
   const [highlight, setHighlight] = useState(0);
   const [selected, setSelected] = useState<Set<number>>(new Set());

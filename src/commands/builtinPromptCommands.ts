@@ -83,9 +83,7 @@ const PROMPTS: Record<string, string> = {
  * otherwise `null`. Extra arguments after the command name are appended to the
  * prompt so callers can pass instructions (e.g. `/init focus on the CLI`).
  */
-export function tryExpandBuiltinPromptCommand(
-  input: string,
-): BuiltinPromptExpansion | null {
+export function tryExpandBuiltinPromptCommand(input: string): BuiltinPromptExpansion | null {
   const trimmed = input.trim();
   if (!trimmed.startsWith("/")) return null;
 
@@ -101,10 +99,7 @@ export function tryExpandBuiltinPromptCommand(
 
   const prompt = args ? `${base}\n\nAdditional instructions: ${args}` : base;
 
-  const markerLines = [
-    `<command-message>${name}</command-message>`,
-    `<command-name>/${name}</command-name>`,
-  ];
+  const markerLines = [`<command-message>${name}</command-message>`, `<command-name>/${name}</command-name>`];
   if (args) {
     markerLines.push(`<command-args>${args}</command-args>`);
   }

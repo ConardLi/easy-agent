@@ -252,11 +252,7 @@ function mcpListStat(result: string): string | undefined {
  * the result body are simply omitted there and fill in once the card lands in
  * history. Edit's `+N -N` is derived from the input alone, so it shows live.
  */
-export function summarizeTool(
-  name: string,
-  input: Record<string, unknown> | undefined,
-  result?: string,
-): ToolLine {
+export function summarizeTool(name: string, input: Record<string, unknown> | undefined, result?: string): ToolLine {
   const inp = input ?? {};
   switch (name) {
     case "Edit": {
@@ -273,16 +269,16 @@ export function summarizeTool(
       const target = displayPath(asString(inp.file_path));
       const content = asString(inp.content) ?? "";
       const n = content ? content.split("\n").length : 0;
-      const verb = result?.startsWith("Created")
-        ? "created"
-        : result?.startsWith("Updated")
-          ? "updated"
-          : undefined;
+      const verb = result?.startsWith("Created") ? "created" : result?.startsWith("Updated") ? "updated" : undefined;
       const stat = `${verb ? `${verb}, ` : ""}${n} line${n === 1 ? "" : "s"}`;
       return { label: "Write", target, stat };
     }
     case "Read":
-      return { label: "Read", target: displayPath(asString(inp.file_path)), stat: result ? readStat(result) : undefined };
+      return {
+        label: "Read",
+        target: displayPath(asString(inp.file_path)),
+        stat: result ? readStat(result) : undefined,
+      };
     case "Grep": {
       const pat = asString(inp.pattern);
       return { label: "Grep", target: pat ? `"${pat}"` : undefined, stat: result ? grepStat(result) : undefined };
@@ -325,7 +321,11 @@ export function summarizeTool(
       return { label: "Skill", target, stat: result ? skillStat(result) : undefined };
     }
     case "ListMcpResources":
-      return { label: "ListMcpResources", target: asString(inp.server) ?? "all servers", stat: result ? mcpListStat(result) : undefined };
+      return {
+        label: "ListMcpResources",
+        target: asString(inp.server) ?? "all servers",
+        stat: result ? mcpListStat(result) : undefined,
+      };
     case "ReadMcpResource":
       return { label: "ReadMcpResource", target: asString(inp.uri), stat: asString(inp.server) };
     default:
@@ -470,9 +470,7 @@ export function toolUseTag(
  * Build a compact one-line preview of a tool's input for debug display.
  * Keeps the first ~120 characters of each value and truncates long strings.
  */
-export function formatToolInputPreview(
-  input: Record<string, unknown> | undefined | null,
-): string | undefined {
+export function formatToolInputPreview(input: Record<string, unknown> | undefined | null): string | undefined {
   if (!input || typeof input !== "object") return undefined;
   const entries = Object.entries(input);
   if (entries.length === 0) return undefined;

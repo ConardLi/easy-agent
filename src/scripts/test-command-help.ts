@@ -33,10 +33,16 @@ function runHelp(): Promise<string> {
     });
     let stdout = "";
     let stderr = "";
-    child.stdout.on("data", (chunk: Buffer) => { stdout += chunk.toString("utf8"); });
-    child.stderr.on("data", (chunk: Buffer) => { stderr += chunk.toString("utf8"); });
+    child.stdout.on("data", (chunk: Buffer) => {
+      stdout += chunk.toString("utf8");
+    });
+    child.stderr.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString("utf8");
+    });
     child.once("error", reject);
-    child.once("close", (code) => (code === 0 ? resolve(stdout) : reject(new Error(`--help exited ${code}: ${stderr}`))));
+    child.once("close", (code) =>
+      code === 0 ? resolve(stdout) : reject(new Error(`--help exited ${code}: ${stderr}`)),
+    );
   });
 }
 
@@ -67,7 +73,10 @@ await check("--help lists every command in the REPL section, in order", () => {
     BUILTIN_COMMAND_HELP.map(({ usage }) => usage),
   );
   for (const { description } of BUILTIN_COMMAND_HELP) {
-    assert.ok(replSection.some((line) => line.endsWith(description)), `--help describes: ${description}`);
+    assert.ok(
+      replSection.some((line) => line.endsWith(description)),
+      `--help describes: ${description}`,
+    );
   }
 });
 

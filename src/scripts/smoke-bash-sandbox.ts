@@ -20,10 +20,7 @@ if (!isSandboxRuntimeReady()) {
 const work = fs.mkdtempSync(path.join(os.tmpdir(), "easy-agent-bash-sb-"));
 const easyDir = getProjectEasyAgentDir(work);
 fs.mkdirSync(easyDir, { recursive: true });
-fs.writeFileSync(
-  path.join(easyDir, "settings.json"),
-  JSON.stringify({ sandbox: { enabled: true } }, null, 2),
-);
+fs.writeFileSync(path.join(easyDir, "settings.json"), JSON.stringify({ sandbox: { enabled: true } }, null, 2));
 
 const failures: string[] = [];
 function expect(label: string, condition: unknown, evidence?: string): void {
@@ -38,20 +35,14 @@ async function main(): Promise<void> {
   await trustProjectForSession(work);
 
   console.log(`\n[1] BashTool runs an allowed command (sandbox engaged)`);
-  const ok = await bashTool.call(
-    { command: "echo hello-from-sandbox" },
-    { cwd: work },
-  );
+  const ok = await bashTool.call({ command: "echo hello-from-sandbox" }, { cwd: work });
   const okText = toolResultText(ok.content);
   expect("not an error", !ok.isError, okText);
   expect("output mentions Sandbox: enabled", okText.includes("Sandbox: enabled"));
   expect("stdout contains expected echo", okText.includes("hello-from-sandbox"));
 
   console.log(`\n[2] BashTool blocks a write to /etc and tags violation`);
-  const denied = await bashTool.call(
-    { command: "echo hijack > /etc/easy-agent-bash-test 2>&1" },
-    { cwd: work },
-  );
+  const denied = await bashTool.call({ command: "echo hijack > /etc/easy-agent-bash-test 2>&1" }, { cwd: work });
   const deniedText = toolResultText(denied.content);
   expect("is an error", denied.isError === true, deniedText);
   expect("violation tag present in tool result", deniedText.includes("<sandbox_violations>"));
@@ -73,30 +64,18 @@ async function main(): Promise<void> {
     JSON.stringify({ sandbox: { enabled: true, unsupportedSetting: true } }, null, 2),
   );
   const invalidCanary = path.join(work, "invalid-config-ran.txt");
-  const invalid = await bashTool.call(
-    { command: `echo ran > '${invalidCanary}'` },
-    { cwd: work },
-  );
+  const invalid = await bashTool.call({ command: `echo ran > '${invalidCanary}'` }, { cwd: work });
   const invalidText = toolResultText(invalid.content);
   expect("invalid configuration returns an error", invalid.isError === true, invalidText);
   expect("invalid configuration names the unsupported key", invalidText.includes("unsupportedSetting"), invalidText);
   expect("command was not executed", !fs.existsSync(invalidCanary));
 
-  fs.writeFileSync(
-    path.join(easyDir, "settings.json"),
-    JSON.stringify({ sandbox: { enabled: true } }, null, 2),
-  );
+  fs.writeFileSync(path.join(easyDir, "settings.json"), JSON.stringify({ sandbox: { enabled: true } }, null, 2));
 
   console.log(`\n[4] dangerouslyDisableSandbox + allowUnsandboxedCommands → bypass`);
-  const escaped = await bashTool.call(
-    { command: "echo escape", dangerouslyDisableSandbox: true },
-    { cwd: work },
-  );
+  const escaped = await bashTool.call({ command: "echo escape", dangerouslyDisableSandbox: true }, { cwd: work });
   expect("not an error", !escaped.isError);
-  expect(
-    "output marks Sandbox: disabled",
-    toolResultText(escaped.content).includes("Sandbox: disabled"),
-  );
+  expect("output marks Sandbox: disabled", toolResultText(escaped.content).includes("Sandbox: disabled"));
 
   console.log("");
   if (failures.length === 0) {

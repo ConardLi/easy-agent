@@ -94,8 +94,14 @@ async function main(): Promise<void> {
   let after = captured.slice(mark);
   assert(count(after, CLEAR_TERMINAL) === 1, "width change wipes screen + scrollback once");
   const repaint = after.slice(after.lastIndexOf(CLEAR_TERMINAL));
-  assert(count(repaint, "WELCOME") === 1 && count(repaint, "USER_FIRST") === 1, "history reprinted once after the wipe");
-  assert(count(repaint.slice(repaint.lastIndexOf("USER_FIRST")), "USAGE_LINE") === 1, "live frame drawn once below the history");
+  assert(
+    count(repaint, "WELCOME") === 1 && count(repaint, "USER_FIRST") === 1,
+    "history reprinted once after the wipe",
+  );
+  assert(
+    count(repaint.slice(repaint.lastIndexOf("USER_FIRST")), "USAGE_LINE") === 1,
+    "live frame drawn once below the history",
+  );
 
   mark = captured.length;
   for (const columns of [70, 60, 50, 60, 80]) {

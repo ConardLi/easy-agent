@@ -34,17 +34,8 @@ import {
 } from "./paths.js";
 import { applyNamespace, mcpServerNamespace } from "./namespace.js";
 import { resolveInsidePlugin } from "./pathSafety.js";
-import {
-  PluginManifestSchema,
-  type PluginComponentPaths,
-  type PluginError,
-  type PluginManifest,
-} from "./schemas.js";
-import type {
-  LoadedPlugin,
-  PluginHookEntry,
-  PluginMcpServer,
-} from "./loadedTypes.js";
+import { PluginManifestSchema, type PluginComponentPaths, type PluginError, type PluginManifest } from "./schemas.js";
+import type { LoadedPlugin, PluginHookEntry, PluginMcpServer } from "./loadedTypes.js";
 
 export interface LoadPluginOptions {
   /** Absolute plugin root directory. */
@@ -85,10 +76,7 @@ function asPathList(value: unknown): string[] {
  * Normalized via `resolve` so `"./"` and a trailing slash de-dupe correctly.
  */
 function componentDirs(root: string, defaultDir: string, ...pathSources: unknown[]): string[] {
-  const dirs = [
-    path.resolve(root, defaultDir),
-    ...pathSources.flatMap(asPathList).map((p) => path.resolve(root, p)),
-  ];
+  const dirs = [path.resolve(root, defaultDir), ...pathSources.flatMap(asPathList).map((p) => path.resolve(root, p))];
   // De-dupe while preserving order (a manifest may redundantly list the default).
   return [...new Set(dirs)];
 }
@@ -183,9 +171,21 @@ async function readManifest(opts: LoadPluginOptions): Promise<ManifestResult> {
 
   // Forward-compat: warn about unknown top-level keys but keep loading.
   const known = new Set([
-    "name", "version", "description", "author", "homepage", "repository",
-    "license", "keywords", "skills", "agents", "commands", "outputStyles",
-    "hooks", "mcpServers", "lspServers",
+    "name",
+    "version",
+    "description",
+    "author",
+    "homepage",
+    "repository",
+    "license",
+    "keywords",
+    "skills",
+    "agents",
+    "commands",
+    "outputStyles",
+    "hooks",
+    "mcpServers",
+    "lspServers",
   ]);
   for (const key of Object.keys(parsedJson as Record<string, unknown>)) {
     if (!known.has(key)) warnings.push(`unknown plugin.json field "${key}" (ignored)`);
@@ -258,9 +258,10 @@ function normalizeHookGroup(
     if ((entry.type ?? "command") !== "command") continue;
     if (typeof entry.command !== "string" || !entry.command) continue;
     const timeout = typeof entry.timeout === "number" && entry.timeout > 0 ? entry.timeout : 60;
-    const shell = entry.shell === "sh" || entry.shell === "bash" || entry.shell === "powershell" || entry.shell === "pwsh"
-      ? entry.shell
-      : undefined;
+    const shell =
+      entry.shell === "sh" || entry.shell === "bash" || entry.shell === "powershell" || entry.shell === "pwsh"
+        ? entry.shell
+        : undefined;
     const command = substitutePluginVars(entry.command, vars);
     hooks.push({
       type: "command",
@@ -286,10 +287,7 @@ async function loadPluginMcp(
   errors: PluginError[],
 ): Promise<PluginMcpServer[]> {
   const out: PluginMcpServer[] = [];
-  const files = [
-    path.resolve(root, ".mcp.json"),
-    ...pathSources.flatMap(asPathList).map((p) => path.resolve(root, p)),
-  ];
+  const files = [path.resolve(root, ".mcp.json"), ...pathSources.flatMap(asPathList).map((p) => path.resolve(root, p))];
   for (const file of [...new Set(files)]) {
     const check = await resolveInsidePlugin(root, file);
     if (!check.ok) {
@@ -328,18 +326,12 @@ async function loadPluginMcp(
   return out;
 }
 
-function normalizeMcpServer(
-  raw: unknown,
-  vars: { root: string; data: string },
-): ScopedMcpServerConfig | null {
+function normalizeMcpServer(raw: unknown, vars: { root: string; data: string }): ScopedMcpServerConfig | null {
   if (!raw || typeof raw !== "object") return null;
   const obj = raw as Record<string, unknown>;
   const type = obj.type;
   const sub = (s: string) => substitutePluginVars(s, vars);
-  const subRecord = (
-    env: unknown,
-    includePluginEnv = false,
-  ): Record<string, string> | undefined => {
+  const subRecord = (env: unknown, includePluginEnv = false): Record<string, string> | undefined => {
     const out: Record<string, string> = includePluginEnv
       ? {
           EASY_AGENT_PLUGIN_ROOT: vars.root,
@@ -361,9 +353,7 @@ function normalizeMcpServer(
   }
   // stdio (default)
   if (typeof obj.command !== "string" || !obj.command) return null;
-  const args = Array.isArray(obj.args)
-    ? obj.args.filter((a): a is string => typeof a === "string").map(sub)
-    : [];
+  const args = Array.isArray(obj.args) ? obj.args.filter((a): a is string => typeof a === "string").map(sub) : [];
   const env = subRecord(obj.env, true);
   return {
     type: "stdio",
@@ -388,8 +378,7 @@ export async function loadPlugin(opts: LoadPluginOptions): Promise<LoadedPlugin>
   const manifest = manifestResult.manifest ?? ({ name } as PluginManifest);
   const dataDir = getPluginDataDir(opts.pluginId);
   const vars = { root: opts.root, data: dataDir };
-  const version =
-    (typeof manifest.version === "string" && manifest.version) || "unknown";
+  const version = (typeof manifest.version === "string" && manifest.version) || "unknown";
 
   // A hard manifest failure in strict mode → return the shell with errors,
   // no components (nothing trustworthy to load).
@@ -416,7 +405,13 @@ export async function loadPlugin(opts: LoadPluginOptions): Promise<LoadedPlugin>
   if (manifestFatal) return emptyPlugin;
 
   // ── Skills ──
-  for (const dir of await validatedDirs(opts.root, componentDirs(opts.root, "skills", manifest.skills, opts.overlay?.skills), opts.pluginId, "skills", errors)) {
+  for (const dir of await validatedDirs(
+    opts.root,
+    componentDirs(opts.root, "skills", manifest.skills, opts.overlay?.skills),
+    opts.pluginId,
+    "skills",
+    errors,
+  )) {
     const { skills, warnings: w } = await loadSkillsFromDir(dir, "plugin");
     warnings.push(...w);
     for (const s of skills) {
@@ -426,9 +421,7 @@ export async function loadPlugin(opts: LoadPluginOptions): Promise<LoadedPlugin>
         body: substitutePluginVars(s.body, vars),
         frontmatter: {
           ...s.frontmatter,
-          allowedTools: s.frontmatter.allowedTools.map((tool) =>
-            substitutePluginVars(tool, vars),
-          ),
+          allowedTools: s.frontmatter.allowedTools.map((tool) => substitutePluginVars(tool, vars)),
         },
         source: "plugin",
         pluginId: opts.pluginId,
@@ -438,7 +431,13 @@ export async function loadPlugin(opts: LoadPluginOptions): Promise<LoadedPlugin>
   }
 
   // ── Agents ──
-  for (const dir of await validatedDirs(opts.root, componentDirs(opts.root, "agents", manifest.agents, opts.overlay?.agents), opts.pluginId, "agents", errors)) {
+  for (const dir of await validatedDirs(
+    opts.root,
+    componentDirs(opts.root, "agents", manifest.agents, opts.overlay?.agents),
+    opts.pluginId,
+    "agents",
+    errors,
+  )) {
     const { agents, warnings: w } = await loadAgentsFromDir(dir, "plugin");
     warnings.push(...w);
     for (const a of agents) {
@@ -446,14 +445,10 @@ export async function loadPlugin(opts: LoadPluginOptions): Promise<LoadedPlugin>
       emptyPlugin.agents.push({
         ...a,
         agentType: applyNamespace(name, a.agentType),
-        ...(a.tools
-          ? { tools: a.tools.map((tool) => substitutePluginVars(tool, vars)) }
-          : {}),
+        ...(a.tools ? { tools: a.tools.map((tool) => substitutePluginVars(tool, vars)) } : {}),
         ...(a.disallowedTools
           ? {
-              disallowedTools: a.disallowedTools.map((tool) =>
-                substitutePluginVars(tool, vars),
-              ),
+              disallowedTools: a.disallowedTools.map((tool) => substitutePluginVars(tool, vars)),
             }
           : {}),
         getSystemPrompt: () => substitutePluginVars(originalPrompt(), vars),
@@ -465,7 +460,13 @@ export async function loadPlugin(opts: LoadPluginOptions): Promise<LoadedPlugin>
   }
 
   // ── Commands ──
-  for (const dir of await validatedDirs(opts.root, componentDirs(opts.root, "commands", manifest.commands, opts.overlay?.commands), opts.pluginId, "commands", errors)) {
+  for (const dir of await validatedDirs(
+    opts.root,
+    componentDirs(opts.root, "commands", manifest.commands, opts.overlay?.commands),
+    opts.pluginId,
+    "commands",
+    errors,
+  )) {
     const { commands, warnings: w } = await loadCommandsFromDir(dir, "plugin");
     warnings.push(...w);
     for (const c of commands) {
@@ -482,7 +483,13 @@ export async function loadPlugin(opts: LoadPluginOptions): Promise<LoadedPlugin>
   }
 
   // ── Output styles ──
-  for (const dir of await validatedDirs(opts.root, componentDirs(opts.root, "output-styles", manifest.outputStyles, opts.overlay?.outputStyles), opts.pluginId, "outputStyles", errors)) {
+  for (const dir of await validatedDirs(
+    opts.root,
+    componentDirs(opts.root, "output-styles", manifest.outputStyles, opts.overlay?.outputStyles),
+    opts.pluginId,
+    "outputStyles",
+    errors,
+  )) {
     const { styles, warnings: w } = await loadOutputStylesFromDir(dir, "plugin");
     warnings.push(...w);
     for (const st of styles) {
@@ -498,30 +505,74 @@ export async function loadPlugin(opts: LoadPluginOptions): Promise<LoadedPlugin>
   }
 
   // ── Hooks & MCP (executable — gated by trust at apply time) ──
-  emptyPlugin.hooks = await loadPluginHooks(opts.root, opts.pluginId, vars, [manifest.hooks, opts.overlay?.hooks], errors);
-  emptyPlugin.mcpServers = await loadPluginMcp(opts.root, opts.pluginId, name, vars, [manifest.mcpServers, opts.overlay?.mcpServers], errors);
+  emptyPlugin.hooks = await loadPluginHooks(
+    opts.root,
+    opts.pluginId,
+    vars,
+    [manifest.hooks, opts.overlay?.hooks],
+    errors,
+  );
+  emptyPlugin.mcpServers = await loadPluginMcp(
+    opts.root,
+    opts.pluginId,
+    name,
+    vars,
+    [manifest.mcpServers, opts.overlay?.mcpServers],
+    errors,
+  );
   const lspMaps: unknown[] = [];
-  if (manifest.lspServers && typeof manifest.lspServers === "object" && !Array.isArray(manifest.lspServers)) lspMaps.push(manifest.lspServers);
-  const lspFiles = [path.join(opts.root, ".lsp.json"), ...[manifest.lspServers, opts.overlay?.lspServers].flatMap(asPathList).map((file) => path.resolve(opts.root, file))];
+  if (manifest.lspServers && typeof manifest.lspServers === "object" && !Array.isArray(manifest.lspServers))
+    lspMaps.push(manifest.lspServers);
+  const lspFiles = [
+    path.join(opts.root, ".lsp.json"),
+    ...[manifest.lspServers, opts.overlay?.lspServers].flatMap(asPathList).map((file) => path.resolve(opts.root, file)),
+  ];
   for (const file of new Set(lspFiles)) {
     const check = await resolveInsidePlugin(opts.root, file);
-    if (!check.ok) { errors.push({ pluginId: opts.pluginId, scope: "manifest", message: "Rejected LSP configuration path outside plugin" }); continue; }
+    if (!check.ok) {
+      errors.push({
+        pluginId: opts.pluginId,
+        scope: "manifest",
+        message: "Rejected LSP configuration path outside plugin",
+      });
+      continue;
+    }
     try {
       const json = JSON.parse(await fs.readFile(check.resolved, "utf8"));
       lspMaps.push(json.lspServers ?? json);
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") errors.push({ pluginId: opts.pluginId, scope: "manifest", message: "Invalid LSP configuration file" });
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT")
+        errors.push({ pluginId: opts.pluginId, scope: "manifest", message: "Invalid LSP configuration file" });
     }
   }
   const lspByName = new Map<string, import("../services/lsp/runtime.js").LspRegistration>();
   for (const map of lspMaps) {
     const parsed = LspServersSchema.safeParse(map);
-    if (!parsed.success) { errors.push({ pluginId: opts.pluginId, scope: "manifest", message: `Invalid lspServers: ${parsed.error.issues.map((issue) => issue.path.join(".")).join(", ")}; expected stdio command, args and extensionToLanguage` }); continue; }
+    if (!parsed.success) {
+      errors.push({
+        pluginId: opts.pluginId,
+        scope: "manifest",
+        message: `Invalid lspServers: ${parsed.error.issues.map((issue) => issue.path.join(".")).join(", ")}; expected stdio command, args and extensionToLanguage`,
+      });
+      continue;
+    }
     for (const [serverName, config] of Object.entries(parsed.data)) {
       const sub = (value: string) => substitutePluginVars(value, vars);
       const name = `plugin:${emptyPlugin.name}:${serverName}`;
-      lspByName.set(name, { name, cwd: opts.root, config: { ...config, command: sub(config.command), args: config.args.map(sub),
-        env: { ...Object.fromEntries(Object.entries(config.env ?? {}).map(([key, value]) => [key, sub(value)])), EASY_AGENT_PLUGIN_ROOT: opts.root, EASY_AGENT_PLUGIN_DATA: dataDir } } });
+      lspByName.set(name, {
+        name,
+        cwd: opts.root,
+        config: {
+          ...config,
+          command: sub(config.command),
+          args: config.args.map(sub),
+          env: {
+            ...Object.fromEntries(Object.entries(config.env ?? {}).map(([key, value]) => [key, sub(value)])),
+            EASY_AGENT_PLUGIN_ROOT: opts.root,
+            EASY_AGENT_PLUGIN_DATA: dataDir,
+          },
+        },
+      });
     }
   }
   emptyPlugin.lspServers = [...lspByName.values()];

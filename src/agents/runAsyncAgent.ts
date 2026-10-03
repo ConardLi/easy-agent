@@ -31,19 +31,9 @@ import {
   updateAsyncAgentProgress,
   type AsyncAgentEntry,
 } from "../state/asyncAgentStore.js";
-import {
-  enqueuePendingNotification,
-  formatTaskNotification,
-} from "../state/notificationStore.js";
-import {
-  appendTaskOutput,
-  type TaskOutputEvent,
-} from "../utils/taskOutput.js";
-import {
-  hasWorktreeChanges,
-  removeAgentWorktree,
-  type WorktreeInfo,
-} from "../utils/worktree.js";
+import { enqueuePendingNotification, formatTaskNotification } from "../state/notificationStore.js";
+import { appendTaskOutput, type TaskOutputEvent } from "../utils/taskOutput.js";
+import { hasWorktreeChanges, removeAgentWorktree, type WorktreeInfo } from "../utils/worktree.js";
 import type { Tool, ToolContext } from "../tools/Tool.js";
 import type {
   PermissionDecision,
@@ -117,9 +107,7 @@ async function cleanupWorktreeIfNeeded(
   return removed.ok ? {} : { worktreePath: info.worktreePath, worktreeBranch: info.worktreeBranch };
 }
 
-export async function runAsyncAgentLifecycle(
-  params: RunAsyncAgentLifecycleParams,
-): Promise<void> {
+export async function runAsyncAgentLifecycle(params: RunAsyncAgentLifecycleParams): Promise<void> {
   try {
     await runAsyncAgentLifecycleInner(params);
   } catch (error) {
@@ -149,9 +137,7 @@ export async function runAsyncAgentLifecycle(
   }
 }
 
-async function runAsyncAgentLifecycleInner(
-  params: RunAsyncAgentLifecycleParams,
-): Promise<void> {
+async function runAsyncAgentLifecycleInner(params: RunAsyncAgentLifecycleParams): Promise<void> {
   const { entry } = params;
   const startTime = Date.now();
   let notificationText: string | undefined;
@@ -160,9 +146,11 @@ async function runAsyncAgentLifecycleInner(
   let pendingOutput = Promise.resolve();
   let outputError: unknown;
   const queueOutput = (event: TaskOutputEvent): void => {
-    pendingOutput = pendingOutput.then(() => appendTaskOutput(entry.outputFile, event)).catch((error: unknown) => {
-      outputError ??= error;
-    });
+    pendingOutput = pendingOutput
+      .then(() => appendTaskOutput(entry.outputFile, event))
+      .catch((error: unknown) => {
+        outputError ??= error;
+      });
   };
 
   try {
@@ -180,12 +168,8 @@ async function runAsyncAgentLifecycleInner(
       parentToolContext: params.parentToolContext,
       ...(params.permissionMode ? { permissionMode: params.permissionMode } : {}),
       ...(params.permissionSettings ? { permissionSettings: params.permissionSettings } : {}),
-      ...(params.sessionPermissionRules
-        ? { sessionPermissionRules: params.sessionPermissionRules }
-        : {}),
-      ...(params.onPermissionRequest
-        ? { onPermissionRequest: params.onPermissionRequest }
-        : {}),
+      ...(params.sessionPermissionRules ? { sessionPermissionRules: params.sessionPermissionRules } : {}),
+      ...(params.onPermissionRequest ? { onPermissionRequest: params.onPermissionRequest } : {}),
       // Headless mode for backgrounded sub-agents.
       // The agentic loop honours this by short-circuiting any "ask"
       // permission decision into an auto-deny with workaround
@@ -199,9 +183,7 @@ async function runAsyncAgentLifecycleInner(
       abortSignal: entry.abortController.signal,
       // Route the worktree path into the sub-agent's tool
       // context if isolation is on.
-      ...(params.worktreeInfo
-        ? { cwdOverride: params.worktreeInfo.worktreePath }
-        : {}),
+      ...(params.worktreeInfo ? { cwdOverride: params.worktreeInfo.worktreePath } : {}),
       // Pin the sub-session-id to the public agentId so on-disk
       // transcripts and TodoWrite scopes are addressable by the same
       // string the model gets back in `async_launched`.
@@ -209,9 +191,7 @@ async function runAsyncAgentLifecycleInner(
       // Forward teammate identity so SendMessage's `from`
       // resolves correctly inside this sub-agent, and so the pre-loop
       // mailbox drain in runChildAgent picks up any pending messages.
-      ...(params.teammateIdentity
-        ? { teammateIdentity: params.teammateIdentity }
-        : {}),
+      ...(params.teammateIdentity ? { teammateIdentity: params.teammateIdentity } : {}),
 
       onProgress: (event) => {
         // Mirror progress to BOTH the JSONL output file (for the parent's
@@ -303,16 +283,16 @@ async function runAsyncAgentLifecycleInner(
       result.reason === "aborted" ? "killed" : result.reason === "completed" ? "completed" : "failed";
     terminalStatus = status === "killed" ? "aborted" : status;
     notificationText = formatTaskNotification({
-        agentId: entry.agentId,
-        agentType: entry.agentType,
-        status,
-        ...(entry.description ? { description: entry.description } : {}),
-        outputFile: entry.outputFile,
-        finalText: result.finalText,
-        durationMs,
-        totalTokens: result.totalTokens,
-        toolUseCount: result.totalToolUseCount,
-        ...worktreeFinal,
+      agentId: entry.agentId,
+      agentType: entry.agentType,
+      status,
+      ...(entry.description ? { description: entry.description } : {}),
+      outputFile: entry.outputFile,
+      finalText: result.finalText,
+      durationMs,
+      totalTokens: result.totalTokens,
+      toolUseCount: result.totalToolUseCount,
+      ...worktreeFinal,
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
@@ -325,21 +305,31 @@ async function runAsyncAgentLifecycleInner(
     const worktreeFinal = await cleanupWorktreeIfNeeded(params.worktreeInfo);
 
     const aborted = entry.abortController.signal.aborted;
-    await appendTaskOutput(entry.outputFile, aborted
-      ? { type: "completed", reason: "aborted", finalText: "", durationMs, totalTokens: 0, toolUseCount: entry.toolUseCount }
-      : { type: "failed", error: message, durationMs });
+    await appendTaskOutput(
+      entry.outputFile,
+      aborted
+        ? {
+            type: "completed",
+            reason: "aborted",
+            finalText: "",
+            durationMs,
+            totalTokens: 0,
+            toolUseCount: entry.toolUseCount,
+          }
+        : { type: "failed", error: message, durationMs },
+    );
     if (!aborted) failAsyncAgent(entry.agentId, message, durationMs);
 
     terminalStatus = aborted ? "aborted" : "failed";
     notificationText = formatTaskNotification({
-        agentId: entry.agentId,
-        agentType: entry.agentType,
-        status: aborted ? "killed" : "failed",
-        ...(entry.description ? { description: entry.description } : {}),
-        outputFile: entry.outputFile,
-        error: message,
-        durationMs,
-        ...worktreeFinal,
+      agentId: entry.agentId,
+      agentType: entry.agentType,
+      status: aborted ? "killed" : "failed",
+      ...(entry.description ? { description: entry.description } : {}),
+      outputFile: entry.outputFile,
+      error: message,
+      durationMs,
+      ...worktreeFinal,
     });
   } finally {
     // Regardless of how this lifecycle ended (success,
@@ -363,16 +353,21 @@ async function runAsyncAgentLifecycleInner(
           await releaseMemberTasks(params.teammateIdentity.teamName, params.teammateIdentity.agentName);
           await setMemberActive(params.teammateIdentity.teamName, params.teammateIdentity.agentName, false);
         }
-        if (finalized) await markTerminalControlMessagesAsRead(params.teammateIdentity.agentName, params.teammateIdentity.teamName);
+        if (finalized)
+          await markTerminalControlMessagesAsRead(params.teammateIdentity.agentName, params.teammateIdentity.teamName);
         const requestId = finalized ? getAsyncAgent(entry.agentId)?.shutdownRequestId : undefined;
         if (requestId) {
-          await writeToMailbox(TEAM_LEAD_NAME, {
-            from: params.teammateIdentity.agentName,
-            text: `Teammate stopped with status ${terminalStatus}.`,
-            timestamp: new Date().toISOString(),
-            type: "shutdown_response",
-            requestId,
-          }, params.teammateIdentity.teamName);
+          await writeToMailbox(
+            TEAM_LEAD_NAME,
+            {
+              from: params.teammateIdentity.agentName,
+              text: `Teammate stopped with status ${terminalStatus}.`,
+              timestamp: new Date().toISOString(),
+              type: "shutdown_response",
+              requestId,
+            },
+            params.teammateIdentity.teamName,
+          );
         }
       } catch {
         // The team file may have been removed after the run ended.

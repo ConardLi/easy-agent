@@ -101,7 +101,15 @@ try {
   const switched = await commandOutput(configured, "/doctor");
   assert.match(switched, /Provider: anthropic/);
   assert.match(switched, /Profile: raw model name \(source: session\)/);
-  setFlagSettings({ models: { header: { protocol: "openai-responses", model: "header-model", headers: { Authorization: "Bearer header-secret" } } } });
+  setFlagSettings({
+    models: {
+      header: {
+        protocol: "openai-responses",
+        model: "header-model",
+        headers: { Authorization: "Bearer header-secret" },
+      },
+    },
+  });
   const headerEngine = new QueryEngine({ model: "header", toolContext: { cwd } });
   const headerDoctor = await commandOutput(headerEngine, "/doctor");
   assert.match(headerDoctor, /active profile headers, source: flag/);

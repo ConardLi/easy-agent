@@ -1,18 +1,11 @@
 import * as path from "node:path";
 import type { MessageParam } from "@anthropic-ai/sdk/resources/messages.js";
 import type { Tool } from "../tools/Tool.js";
-import {
-  analyzeBashCommand,
-  type BashReadOnlyAnalysis,
-} from "../tools/bashReadOnlyAnalysis.js";
+import { analyzeBashCommand, type BashReadOnlyAnalysis } from "../tools/bashReadOnlyAnalysis.js";
 import { getPlanFilePath } from "../context/plans.js";
 import { loadSettingSources, isTrustedScopeForSensitiveKeys } from "../config/sources.js";
 import { isProjectTrusted } from "../config/globalState.js";
-import {
-  loadSandboxSettings,
-  shouldUseSandbox,
-  splitCommand,
-} from "../sandbox/index.js";
+import { loadSandboxSettings, shouldUseSandbox, splitCommand } from "../sandbox/index.js";
 import { classifyAutoModeAction } from "./autoClassifier.js";
 import { stripDangerousAllowRules } from "./dangerousPatterns.js";
 import { isPreapprovedUrl } from "../tools/webFetch/preapproved.js";
@@ -90,14 +83,7 @@ const DEFAULT_PERMISSION_SETTINGS: PermissionSettings = {
 // trio plus the read-only web/MCP tools (WebSearch and the MCP resource
 // readers). WebFetch is intentionally NOT here — it is gated
 // per-domain by resolveWebFetchDecision, which runs before this branch.
-const PLAN_ALLOWED_TOOLS = new Set([
-  "Read",
-  "Grep",
-  "Glob",
-  "WebSearch",
-  "ListMcpResources",
-  "ReadMcpResource",
-]);
+const PLAN_ALLOWED_TOOLS = new Set(["Read", "Grep", "Glob", "WebSearch", "ListMcpResources", "ReadMcpResource"]);
 
 // Coordination-only tools — their side effects are confined to Easy Agent's
 // own ~/.easy-agent state directory (planning state, team file + mailbox) and
@@ -161,7 +147,10 @@ const DANGEROUS_BASH_PREFIXES = [
 
 function normalizeRuleList(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
-  return value.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean);
+  return value
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim())
+    .filter(Boolean);
 }
 
 function normalizeMode(value: unknown): PermissionMode | undefined {
@@ -309,11 +298,7 @@ function matchesAnyRule(rules: string[], toolName: string, input: Record<string,
   return rules.some((rule) => matchesPermissionRule(rule, toolName, input));
 }
 
-function findFirstMatchingRule(
-  rules: string[],
-  toolName: string,
-  input: Record<string, unknown>,
-): string | undefined {
+function findFirstMatchingRule(rules: string[], toolName: string, input: Record<string, unknown>): string | undefined {
   return rules.find((rule) => matchesPermissionRule(rule, toolName, input));
 }
 
@@ -426,11 +411,7 @@ export function buildPermissionRuleHint(toolName: string, input: Record<string, 
   return toolName;
 }
 
-function getRiskLabel(
-  tool: Tool,
-  input: Record<string, unknown>,
-  bashAnalysis?: BashReadOnlyAnalysis,
-): string {
+function getRiskLabel(tool: Tool, input: Record<string, unknown>, bashAnalysis?: BashReadOnlyAnalysis): string {
   if (tool.name === "Bash") {
     const command = extractBashCommand(input);
     if (isDangerousBashCommand(command)) {
@@ -597,9 +578,7 @@ export async function checkPermission(params: PermissionCheckParams): Promise<Pe
   const settings = params.settings ?? (await loadPermissionSettings(params.cwd));
   const mode = params.mode ?? settings.mode;
   const sessionRules = params.sessionRules ?? { allow: [], deny: [] };
-  const bashAnalysis = params.tool.name === "Bash"
-    ? analyzeBashCommand(extractBashCommand(params.input))
-    : undefined;
+  const bashAnalysis = params.tool.name === "Bash" ? analyzeBashCommand(extractBashCommand(params.input)) : undefined;
   const request: PermissionRequest = {
     toolName: params.tool.name,
     input: params.input,
@@ -618,8 +597,7 @@ export async function checkPermission(params: PermissionCheckParams): Promise<Pe
   // including Plan Mode and Auto Mode.
   if (
     params.tool.name === "Bash" &&
-    (matchesAnyRule(sessionRules.deny, "Bash", params.input) ||
-      matchesAnyRule(settings.deny, "Bash", params.input))
+    (matchesAnyRule(sessionRules.deny, "Bash", params.input) || matchesAnyRule(settings.deny, "Bash", params.input))
   ) {
     return { behavior: "deny", reason: "matched deny rule", request };
   }
@@ -690,11 +668,17 @@ export async function checkPermission(params: PermissionCheckParams): Promise<Pe
     return { behavior: "allow", reason: "read-only tool", request };
   }
 
-  if (matchesAnyRule(sessionRules.deny, params.tool.name, params.input) || matchesAnyRule(settings.deny, params.tool.name, params.input)) {
+  if (
+    matchesAnyRule(sessionRules.deny, params.tool.name, params.input) ||
+    matchesAnyRule(settings.deny, params.tool.name, params.input)
+  ) {
     return { behavior: "deny", reason: "matched deny rule", request };
   }
 
-  if (matchesAnyRule(sessionRules.allow, params.tool.name, params.input) || matchesAnyRule(settings.allow, params.tool.name, params.input)) {
+  if (
+    matchesAnyRule(sessionRules.allow, params.tool.name, params.input) ||
+    matchesAnyRule(settings.allow, params.tool.name, params.input)
+  ) {
     return { behavior: "allow", reason: "matched allow rule", request };
   }
 
@@ -716,17 +700,12 @@ export async function checkPermission(params: PermissionCheckParams): Promise<Pe
       shouldUseSandbox(
         {
           command,
-          dangerouslyDisableSandbox:
-            params.input.dangerouslyDisableSandbox === true,
+          dangerouslyDisableSandbox: params.input.dangerouslyDisableSandbox === true,
         },
         sandboxSettings,
       )
     ) {
-      const decision = checkSandboxAutoAllow(
-        command,
-        { allow: settings.allow, deny: settings.deny },
-        sessionRules,
-      );
+      const decision = checkSandboxAutoAllow(command, { allow: settings.allow, deny: settings.deny }, sessionRules);
       return { behavior: decision.behavior, reason: decision.reason, request };
     }
   }

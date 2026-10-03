@@ -22,7 +22,7 @@ const STAR_FRAME_MS = 120;
 // 80ms — fast enough to read as a clear sweep, slow enough to stay calm.
 const SHIMMER_STEP_MS = 80;
 const SHIMMER_HALF_WIDTH = 1; // 3-char window: [glimmer-1, glimmer+1]
-const REST_PADDING = 10;      // ticks the shimmer rests off each side
+const REST_PADDING = 10; // ticks the shimmer rests off each side
 
 // Theme colors (utils/theme.ts → dark theme `claude` / `claudeShimmer`).
 const COLOR_BASE = "#D77757";
@@ -67,9 +67,7 @@ export function Spinner({ label, showHint = true }: SpinnerProps): React.ReactNo
   // `(12s · esc to interrupt)`. Shows the timer only past 1s so a quick turn
   // doesn't flash "0s"; the interrupt hint is always useful while running.
   const seconds = Math.floor(time / 1000);
-  const hint = showHint
-    ? `  (${seconds >= 1 ? `${seconds}s \u00b7 ` : ""}esc to interrupt)`
-    : "";
+  const hint = showHint ? `  (${seconds >= 1 ? `${seconds}s \u00b7 ` : ""}esc to interrupt)` : "";
 
   return (
     <Text>
@@ -85,10 +83,7 @@ export function Spinner({ label, showHint = true }: SpinnerProps): React.ReactNo
 // Right-to-left sweep, source `bridgeStatusUtil.ts::computeGlimmerIndex`:
 //   cycleLength  = len + 2 * REST_PADDING
 //   glimmerIndex = len + REST_PADDING - (tick % cycleLength)
-function sliceShimmer(
-  text: string,
-  time: number,
-): { before: string; shimmer: string; after: string } {
+function sliceShimmer(text: string, time: number): { before: string; shimmer: string; after: string } {
   const len = text.length;
   if (len === 0) return { before: "", shimmer: "", after: "" };
 

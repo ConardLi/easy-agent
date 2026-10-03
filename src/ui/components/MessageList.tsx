@@ -29,7 +29,9 @@ function MessageItem({ message }: { message: MessageParam }): React.ReactNode {
     if (typeof message.content === "string") {
       return (
         <Box marginTop={1}>
-          <Text color="cyan" bold>❯ </Text>
+          <Text color="cyan" bold>
+            {"❯ "}
+          </Text>
           <Text>{message.content}</Text>
         </Box>
       );

@@ -25,13 +25,7 @@ import {
   type ToolResultInfo,
 } from "../components/ConversationView.js";
 import { computeDiffLines } from "./diffFormat.js";
-import {
-  formatErrorBody,
-  parseBashResult,
-  summarizeTool,
-  toolUseTag,
-  type ToolLine,
-} from "./toolCardFormat.js";
+import { formatErrorBody, parseBashResult, summarizeTool, toolUseTag, type ToolLine } from "./toolCardFormat.js";
 import { isSilentBashCommand } from "./toolClassify.js";
 
 const paint = {
@@ -64,7 +58,12 @@ function toolSummary(line: ToolLine): string {
   return paint.muted(CORNER + (line.stat ?? "done"));
 }
 
-function pushToolLines(out: string[], name: string, input: Record<string, unknown> | undefined, result: ToolResultInfo): void {
+function pushToolLines(
+  out: string[],
+  name: string,
+  input: Record<string, unknown> | undefined,
+  result: ToolResultInfo,
+): void {
   const line = summarizeTool(name, input, result.content);
   out.push(toolHeader(line, result.isError, toolUseTag(name, input, result.content)));
 

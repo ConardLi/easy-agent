@@ -35,7 +35,9 @@ export function ModeSelector({ items, title }: ModeSelectorProps): React.ReactNo
           <Box key={item.mode}>
             <Text color={item.isSelected ? "yellow" : "gray"}>{pointer} </Text>
             <Text color="gray">{item.key}. </Text>
-            <Text color={color} bold={bold}>{item.mode}</Text>
+            <Text color={color} bold={bold}>
+              {item.mode}
+            </Text>
             <Text dimColor> — {item.description}</Text>
             {item.isCurrent && <Text color="green"> (current)</Text>}
           </Box>

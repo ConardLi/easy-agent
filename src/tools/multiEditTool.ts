@@ -1,15 +1,7 @@
 import type { Tool, ToolContext, ToolResult } from "./Tool.js";
-import {
-  resolveSafePath,
-  updateWorkspaceTextFile,
-  WorkspacePathError,
-} from "./pathUtils.js";
+import { resolveSafePath, updateWorkspaceTextFile, WorkspacePathError } from "./pathUtils.js";
 import { ConcurrentFileModificationError } from "../utils/atomicFile.js";
-import {
-  applyEditsToContent,
-  EditError,
-  type SingleEdit,
-} from "./editCore.js";
+import { applyEditsToContent, EditError, type SingleEdit } from "./editCore.js";
 
 /**
  * MultiEdit — apply several find/replace edits to a single file in one call.

@@ -15,11 +15,7 @@
 
 import type { MessageParam } from "@anthropic-ai/sdk/resources/messages.js";
 import type { Usage } from "../../../types/message.js";
-import type {
-  PermissionMode,
-  PermissionSettings,
-  PermissionRuleSet,
-} from "../../../permissions/permissions.js";
+import type { PermissionMode, PermissionSettings, PermissionRuleSet } from "../../../permissions/permissions.js";
 
 export interface CommandContext {
   /** Working directory for this session (mirrors toolContext.cwd). */

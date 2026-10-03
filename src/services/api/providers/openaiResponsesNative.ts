@@ -64,10 +64,7 @@ async function* parseOpenAIResponsesNative(
   const activeFunctionCalls = new Map<number, string>();
   let lastFunctionCallId: string | undefined;
 
-  const handleEvent = function* (
-    name: string | undefined,
-    payload: string,
-  ): Generator<OpenAIResponsesNativeEvent> {
+  const handleEvent = function* (name: string | undefined, payload: string): Generator<OpenAIResponsesNativeEvent> {
     if (!payload || payload === "[DONE]") return;
     let data: Record<string, unknown>;
     try {
@@ -109,7 +106,8 @@ async function* parseOpenAIResponsesNative(
       }
       case "response.function_call_arguments.delta": {
         const outputIndex = typeof data.output_index === "number" ? data.output_index : undefined;
-        const callId = (outputIndex !== undefined ? activeFunctionCalls.get(outputIndex) : undefined) || lastFunctionCallId;
+        const callId =
+          (outputIndex !== undefined ? activeFunctionCalls.get(outputIndex) : undefined) || lastFunctionCallId;
         if (callId) {
           yield { type: "tool_call_delta", id: callId, argumentsDelta: (data.delta as string) || "" };
         }
@@ -142,8 +140,10 @@ async function* parseOpenAIResponsesNative(
                 usage: {
                   input_tokens: typeof usage.input_tokens === "number" ? usage.input_tokens : undefined,
                   output_tokens: typeof usage.output_tokens === "number" ? usage.output_tokens : undefined,
-                  reasoning_tokens: typeof details?.reasoning_tokens === "number" ? details.reasoning_tokens : undefined,
-                  cached_tokens: typeof inputDetails?.cached_tokens === "number" ? inputDetails.cached_tokens : undefined,
+                  reasoning_tokens:
+                    typeof details?.reasoning_tokens === "number" ? details.reasoning_tokens : undefined,
+                  cached_tokens:
+                    typeof inputDetails?.cached_tokens === "number" ? inputDetails.cached_tokens : undefined,
                 },
               }
             : {}),

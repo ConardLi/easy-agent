@@ -9,10 +9,7 @@
 
 import { bashTool } from "../tools/bashTool.js";
 import { toolResultText } from "../tools/Tool.js";
-import {
-  subscribeBashProgress,
-  type BashProgress,
-} from "../state/bashProgressStore.js";
+import { subscribeBashProgress, type BashProgress } from "../state/bashProgressStore.js";
 
 const TOOL_USE_ID = "smoke-stream-1";
 

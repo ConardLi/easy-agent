@@ -39,12 +39,7 @@ function readInput(input: Record<string, unknown>): SkillInput {
  * inside an environment variable reference would still work — though in
  * practice that case should never appear.
  */
-function substituteVariables(
-  body: string,
-  skill: Skill,
-  args: string,
-  sessionId: string,
-): string {
+function substituteVariables(body: string, skill: Skill, args: string, sessionId: string): string {
   // Posix-style separator on all platforms so skill bodies can join paths
   // with `/` regardless of the host OS.
   const dir = skill.baseDir.split(/[\\/]/).join("/");

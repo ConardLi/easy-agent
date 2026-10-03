@@ -214,9 +214,7 @@ function isLiveCollapsible(tc: ToolCallInfo): boolean {
  */
 function LiveGroupedCard({ members }: { members: ToolCallInfo[] }): React.ReactNode {
   const anyPending = members.some((m) => m.resultLength === undefined);
-  const { counts, targets } = computeCollapsedCounts(
-    members.map((m) => ({ name: m.name, input: m.input })),
-  );
+  const { counts, targets } = computeCollapsedCounts(members.map((m) => ({ name: m.name, input: m.input })));
   const label = getCollapsedSummaryText(counts, anyPending);
   const state: ToolState = anyPending ? "running" : "ok";
   const hint = targets.length > 0 ? targets[targets.length - 1] : undefined;
@@ -229,7 +227,9 @@ function LiveGroupedCard({ members }: { members: ToolCallInfo[] }): React.ReactN
       </Box>
       {hint ? (
         <ResultLine>
-          <Text color={theme.muted} wrap="truncate-end">{hint}</Text>
+          <Text color={theme.muted} wrap="truncate-end">
+            {hint}
+          </Text>
         </ResultLine>
       ) : null}
     </Box>

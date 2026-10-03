@@ -9,12 +9,7 @@
  */
 
 import type { ContentBlock } from "../types/message.js";
-import {
-  formatImageSizeError,
-  imageBufferAsBlock,
-  isImagePath,
-  MAX_IMAGE_BYTES,
-} from "../tools/imageUtils.js";
+import { formatImageSizeError, imageBufferAsBlock, isImagePath, MAX_IMAGE_BYTES } from "../tools/imageUtils.js";
 import {
   readWorkspaceFile,
   resolveSafePath,
@@ -39,10 +34,7 @@ function cleanToken(raw: string): string {
   return raw.replace(/[)\].,;:!?]+$/, "");
 }
 
-export async function buildUserMessageContent(
-  prompt: string,
-  cwd: string,
-): Promise<BuiltUserContent> {
+export async function buildUserMessageContent(prompt: string, cwd: string): Promise<BuiltUserContent> {
   const candidates = new Set<string>();
   for (const match of prompt.matchAll(IMAGE_TOKEN_RE)) {
     const ref = cleanToken(match[1] ?? "");

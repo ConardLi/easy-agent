@@ -25,8 +25,7 @@ const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
 export function getContextWindowForModel(model: string): number {
   // EASY_AGENT_MAX_CONTEXT_TOKENS is the project name; CLAUDE_CODE_MAX_CONTEXT_TOKENS
   // is honored too for parity with source (matches getMaxRetries' alias pattern).
-  const envOverride =
-    process.env.EASY_AGENT_MAX_CONTEXT_TOKENS ?? process.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS;
+  const envOverride = process.env.EASY_AGENT_MAX_CONTEXT_TOKENS ?? process.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS;
   if (envOverride) {
     const parsed = parseInt(envOverride, 10);
     if (!Number.isNaN(parsed) && parsed > 0) return parsed;
@@ -78,9 +77,10 @@ function estimateContentBlockTokens(content: MessageParam["content"]): number {
           estimateUnknownObjectTokens(block.input)
         );
       case "tool_result": {
-        const serialized = typeof block.content === "string" ? block.content : JSON.stringify(
-          block.content?.filter((item) => (item as { type: string }).type !== "tool_reference"),
-        );
+        const serialized =
+          typeof block.content === "string"
+            ? block.content
+            : JSON.stringify(block.content?.filter((item) => (item as { type: string }).type !== "tool_reference"));
         return total + TOOL_BLOCK_OVERHEAD_TOKENS + roughTokenCountEstimation(serialized, JSON_CHARS_PER_TOKEN);
       }
       case "image":
@@ -177,7 +177,13 @@ export function buildTokenBudgetSnapshot(
     estimatedConversationTokens,
     contextWindow,
     effectiveContextWindow,
-    autoCompactThreshold: Math.max(0, effectiveContextWindow - scaleBuffer(AUTOCOMPACT_BUFFER_TOKENS, effectiveContextWindow)),
-    manualCompactThreshold: Math.max(0, effectiveContextWindow - scaleBuffer(MANUAL_COMPACT_BUFFER_TOKENS, effectiveContextWindow)),
+    autoCompactThreshold: Math.max(
+      0,
+      effectiveContextWindow - scaleBuffer(AUTOCOMPACT_BUFFER_TOKENS, effectiveContextWindow),
+    ),
+    manualCompactThreshold: Math.max(
+      0,
+      effectiveContextWindow - scaleBuffer(MANUAL_COMPACT_BUFFER_TOKENS, effectiveContextWindow),
+    ),
   };
 }

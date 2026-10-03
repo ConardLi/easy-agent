@@ -122,10 +122,7 @@ export function extractFallbackDescription(body: string): string {
  * untouched in `frontmatter.raw` so callers can read them without
  * re-parsing the file.
  */
-export function normalizeFrontmatter(
-  raw: Record<string, unknown>,
-  body: string,
-): SkillFrontmatter {
+export function normalizeFrontmatter(raw: Record<string, unknown>, body: string): SkillFrontmatter {
   const allowedTools = asStringArray(raw["allowed-tools"] ?? raw["allowedTools"]);
   const paths = asStringArray(raw["paths"]);
   const effortRaw = asString(raw["effort"])?.toLowerCase();
@@ -140,9 +137,7 @@ export function normalizeFrontmatter(
     allowedTools,
     argumentHint: asString(raw["argument-hint"] ?? raw["argumentHint"]),
     effort,
-    disableModelInvocation: asBoolean(
-      raw["disable-model-invocation"] ?? raw["disableModelInvocation"],
-    ),
+    disableModelInvocation: asBoolean(raw["disable-model-invocation"] ?? raw["disableModelInvocation"]),
     paths: paths.length > 0 ? paths : undefined,
     hasForkContext: asString(raw["context"]) === "fork",
     raw,

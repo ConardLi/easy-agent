@@ -174,12 +174,9 @@ async function main(): Promise<void> {
     await expectPersistentDataError(() => updateUserSettings({ safe: true }));
     assert.equal(await fs.readFile(settingsPath, "utf8"), invalidSettings);
 
-    const {
-      getGlobalState,
-      getGlobalStateDiagnostics,
-      resetGlobalStateCache,
-      saveGlobalState,
-    } = await import("../config/globalState.js");
+    const { getGlobalState, getGlobalStateDiagnostics, resetGlobalStateCache, saveGlobalState } = await import(
+      "../config/globalState.js"
+    );
     const statePath = path.join(home, ".easy-agent", "state.json");
     await fs.writeFile(statePath, '{"version":0,"prefs":{"legacy":true},"projects":{}}\n');
     resetGlobalStateCache();
@@ -189,9 +186,11 @@ async function main(): Promise<void> {
     resetGlobalStateCache();
     assert.deepEqual((await getGlobalState()).prefs, {});
     assert.equal(getGlobalStateDiagnostics().length, 1);
-    await expectPersistentDataError(() => saveGlobalState((state) => {
-      state.prefs.changed = true;
-    }));
+    await expectPersistentDataError(() =>
+      saveGlobalState((state) => {
+        state.prefs.changed = true;
+      }),
+    );
     assert.equal(await fs.readFile(statePath, "utf8"), invalidState);
 
     const { getInstalledPluginsPath } = await import("../plugins/paths.js");
@@ -200,24 +199,22 @@ async function main(): Promise<void> {
     await fs.mkdir(path.dirname(pluginStatePath), { recursive: true });
     const invalidPluginState = "{ invalid plugin state\n";
     await fs.writeFile(pluginStatePath, invalidPluginState);
-    await expectPersistentDataError(() => updateInstalledPlugins((state) => {
-      state.plugins.example = {
-        pluginId: "example",
-        name: "example",
-        marketplace: "test",
-        version: "1.0.0",
-        installPath: "/tmp/example",
-        installedAt: new Date(0).toISOString(),
-        updatedAt: new Date(0).toISOString(),
-      };
-    }));
+    await expectPersistentDataError(() =>
+      updateInstalledPlugins((state) => {
+        state.plugins.example = {
+          pluginId: "example",
+          name: "example",
+          marketplace: "test",
+          version: "1.0.0",
+          installPath: "/tmp/example",
+          installedAt: new Date(0).toISOString(),
+          updatedAt: new Date(0).toISOString(),
+        };
+      }),
+    );
     assert.equal(await fs.readFile(pluginStatePath, "utf8"), invalidPluginState);
 
-    const {
-      createTask,
-      getTask,
-      getTaskPath,
-    } = await import("../state/taskStore.js");
+    const { createTask, getTask, getTaskPath } = await import("../state/taskStore.js");
     const taskListId = "persistence-test";
     const taskId = await createTask(taskListId, {
       subject: "original subject",
@@ -240,11 +237,7 @@ async function main(): Promise<void> {
     await expectPersistentDataError(() => getTask(taskListId, taskId));
     assert.equal(await fs.readFile(taskPath, "utf8"), invalidTask);
 
-    const {
-      getTeamFilePath,
-      readTeamFileAsync,
-      writeTeamFileAsync,
-    } = await import("../utils/teamHelpers.js");
+    const { getTeamFilePath, readTeamFileAsync, writeTeamFileAsync } = await import("../utils/teamHelpers.js");
     const teamName = "persistence-team";
     await writeTeamFileAsync(teamName, {
       name: teamName,
@@ -263,26 +256,23 @@ async function main(): Promise<void> {
     await expectPersistentDataError(() => readTeamFileAsync(teamName));
     assert.equal(await fs.readFile(teamPath, "utf8"), invalidTeam);
 
-    const {
-      getInboxPath,
-      readMailbox,
-      writeToMailbox,
-    } = await import("../utils/teammateMailbox.js");
-    await writeToMailbox("recipient", {
-      from: "sender",
-      text: "hello",
-      timestamp: new Date().toISOString(),
-    }, "mailbox-team");
+    const { getInboxPath, readMailbox, writeToMailbox } = await import("../utils/teammateMailbox.js");
+    await writeToMailbox(
+      "recipient",
+      {
+        from: "sender",
+        text: "hello",
+        timestamp: new Date().toISOString(),
+      },
+      "mailbox-team",
+    );
     const inboxPath = getInboxPath("recipient", "mailbox-team");
     const invalidMailbox = "{ invalid mailbox\n";
     await fs.writeFile(inboxPath, invalidMailbox);
     await expectPersistentDataError(() => readMailbox("recipient", "mailbox-team"));
     assert.equal(await fs.readFile(inboxPath, "utf8"), invalidMailbox);
 
-    const {
-      initSessionStorage,
-      restoreSession,
-    } = await import("../session/storage.js");
+    const { initSessionStorage, restoreSession } = await import("../session/storage.js");
     const sessionId = "persistence-session";
     const sessionPaths = await initSessionStorage({
       sessionId,

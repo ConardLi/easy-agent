@@ -70,21 +70,32 @@ const SYSTEM = [
 const TOOLS = [
   { name: "Read", description: "Read a file", input_schema: { type: "object" as const, properties: {} } },
   { name: "Bash", description: "Run a command", input_schema: { type: "object" as const, properties: {} } },
-  { name: "mcp__deferred", description: "Deferred", input_schema: { type: "object" as const, properties: {} }, defer_loading: true },
+  {
+    name: "mcp__deferred",
+    description: "Deferred",
+    input_schema: { type: "object" as const, properties: {} },
+    defer_loading: true,
+  },
 ];
 
 const TOOL_LOOP: MessageParam[] = [
   { role: "user", content: "List the files" },
-  { role: "assistant", content: [
-    { type: "thinking", thinking: "plan", signature: "sig" },
-    { type: "tool_use", id: "toolu_1", name: "Bash", input: { command: "ls" } },
-  ] },
+  {
+    role: "assistant",
+    content: [
+      { type: "thinking", thinking: "plan", signature: "sig" },
+      { type: "tool_use", id: "toolu_1", name: "Bash", input: { command: "ls" } },
+    ],
+  },
   { role: "user", content: [{ type: "tool_result", tool_use_id: "toolu_1", content: "a.txt" }] },
   { role: "assistant", content: [{ type: "tool_use", id: "toolu_2", name: "Read", input: { file_path: "a.txt" } }] },
-  { role: "user", content: [
-    { type: "tool_result", tool_use_id: "toolu_2", content: "hello" },
-    { type: "text", text: "" },
-  ] },
+  {
+    role: "user",
+    content: [
+      { type: "tool_result", tool_use_id: "toolu_2", content: "hello" },
+      { type: "text", text: "" },
+    ],
+  },
 ];
 
 console.log("\n[1] Anthropic breakpoint placement");
@@ -94,7 +105,10 @@ await check("the system prompt splits after the static block and both blocks are
   assert.equal(blocks.length, 2);
   assert.ok(blocks[0]!.text.endsWith(SYSTEM_PROMPT_STATIC_END));
   assert.ok(blocks[1]!.text.startsWith(SYSTEM_PROMPT_DYNAMIC_START));
-  assert.deepEqual(blocks.map((block) => block.cache_control), [EPHEMERAL, EPHEMERAL]);
+  assert.deepEqual(
+    blocks.map((block) => block.cache_control),
+    [EPHEMERAL, EPHEMERAL],
+  );
   assert.equal(`${blocks[0]!.text}\n\n${blocks[1]!.text}`, SYSTEM, "the text sent is unchanged");
 });
 
@@ -154,8 +168,10 @@ await check("string content becomes a marked text block and thinking blocks are 
 });
 
 await check("the compatibility switch accepts the usual truthy spellings", () => {
-  for (const value of ["1", "true", "YES", " on "]) assert.equal(isPromptCachingDisabled({ EASY_AGENT_DISABLE_PROMPT_CACHING: value }), true);
-  for (const value of [undefined, "", "0", "false"]) assert.equal(isPromptCachingDisabled({ EASY_AGENT_DISABLE_PROMPT_CACHING: value }), false);
+  for (const value of ["1", "true", "YES", " on "])
+    assert.equal(isPromptCachingDisabled({ EASY_AGENT_DISABLE_PROMPT_CACHING: value }), true);
+  for (const value of [undefined, "", "0", "false"])
+    assert.equal(isPromptCachingDisabled({ EASY_AGENT_DISABLE_PROMPT_CACHING: value }), false);
 });
 
 console.log("\n[2] Anthropic request on the wire");
@@ -175,24 +191,55 @@ const server = createServer((request, response) => {
     const usage = { input_tokens: 7, output_tokens: 1, cache_creation_input_tokens: 40, cache_read_input_tokens: 2000 };
     if (body.stream !== true) {
       response.writeHead(200, { "content-type": "application/json" });
-      response.end(JSON.stringify({
-        id: "msg_once", type: "message", role: "assistant", model: "claude-fixture",
-        content: [{ type: "text", text: "done" }], stop_reason: "end_turn", stop_sequence: null, usage,
-      }));
+      response.end(
+        JSON.stringify({
+          id: "msg_once",
+          type: "message",
+          role: "assistant",
+          model: "claude-fixture",
+          content: [{ type: "text", text: "done" }],
+          stop_reason: "end_turn",
+          stop_sequence: null,
+          usage,
+        }),
+      );
       return;
     }
     response.writeHead(200, { "content-type": "text/event-stream" });
-    response.end([
-      sse("message_start", { type: "message_start", message: {
-        id: "msg_cache", type: "message", role: "assistant", model: "claude-fixture", content: [],
-        stop_reason: null, stop_sequence: null, usage: { ...usage, output_tokens: 0 },
-      } }),
-      sse("content_block_start", { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } }),
-      sse("content_block_delta", { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "done" } }),
-      sse("content_block_stop", { type: "content_block_stop", index: 0 }),
-      sse("message_delta", { type: "message_delta", delta: { stop_reason: "end_turn", stop_sequence: null }, usage: { output_tokens: 1 } }),
-      sse("message_stop", { type: "message_stop" }),
-    ].join(""));
+    response.end(
+      [
+        sse("message_start", {
+          type: "message_start",
+          message: {
+            id: "msg_cache",
+            type: "message",
+            role: "assistant",
+            model: "claude-fixture",
+            content: [],
+            stop_reason: null,
+            stop_sequence: null,
+            usage: { ...usage, output_tokens: 0 },
+          },
+        }),
+        sse("content_block_start", {
+          type: "content_block_start",
+          index: 0,
+          content_block: { type: "text", text: "" },
+        }),
+        sse("content_block_delta", {
+          type: "content_block_delta",
+          index: 0,
+          delta: { type: "text_delta", text: "done" },
+        }),
+        sse("content_block_stop", { type: "content_block_stop", index: 0 }),
+        sse("message_delta", {
+          type: "message_delta",
+          delta: { stop_reason: "end_turn", stop_sequence: null },
+          usage: { output_tokens: 1 },
+        }),
+        sse("message_stop", { type: "message_stop" }),
+      ].join(""),
+    );
   });
 });
 await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -218,7 +265,10 @@ try {
     const { body } = await send();
     assert.equal(countMarkers(body), 4, "the API accepts at most four cache_control markers");
     const system = body.system as Array<Record<string, unknown>>;
-    assert.deepEqual(system.map((block) => block.cache_control), [EPHEMERAL, EPHEMERAL]);
+    assert.deepEqual(
+      system.map((block) => block.cache_control),
+      [EPHEMERAL, EPHEMERAL],
+    );
     assert.equal(countMarkers(body.tools), 0);
     assert.equal(countMarkers(body.messages), 2);
     assert.equal(body.prompt_cache_key, undefined, "prompt_cache_key is an OpenAI field");
@@ -253,7 +303,12 @@ try {
       assert.equal(countMarkers(body), 0);
       assert.equal(body.system, SYSTEM);
       assert.deepEqual(body.tools, TOOLS);
-      await createMessage({ model: "claude-fixture", messages: [{ role: "user", content: "x" }], system: "S", cacheStablePrefix: true });
+      await createMessage({
+        model: "claude-fixture",
+        messages: [{ role: "user", content: "x" }],
+        system: "S",
+        cacheStablePrefix: true,
+      });
       assert.equal(countMarkers(anthropicBodies.at(-1)), 0);
     } finally {
       delete process.env.EASY_AGENT_DISABLE_PROMPT_CACHING;
@@ -273,12 +328,15 @@ globalThis.fetch = (async (_url: string, init: { body?: string }) => {
   const encoder = new TextEncoder();
   // Small chunks so usage lines are split across reads.
   const bytes = encoder.encode(providerChunks.join(""));
-  return new Response(new ReadableStream<Uint8Array>({
-    start(controller) {
-      for (let i = 0; i < bytes.length; i += 7) controller.enqueue(bytes.slice(i, i + 7));
-      controller.close();
-    },
-  }), { status: 200, headers: { "content-type": "text/event-stream" } });
+  return new Response(
+    new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (let i = 0; i < bytes.length; i += 7) controller.enqueue(bytes.slice(i, i + 7));
+        controller.close();
+      },
+    }),
+    { status: 200, headers: { "content-type": "text/event-stream" } },
+  );
 }) as typeof fetch;
 
 async function runProvider(profile: ModelProfile, chunks: string[], promptCacheKey?: string) {
@@ -313,8 +371,13 @@ const GEMINI_WITH_CACHE = [
   `data: {"responseId":"g1","candidates":[{"content":{"parts":[{"text":"ok"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":5000,"candidatesTokenCount":3,"cachedContentTokenCount":4096}}\n\n`,
 ];
 
-const openai = (protocol: "openai-chat" | "openai-responses", extra: Partial<ModelProfile> = {}): ModelProfile =>
-  ({ id: "p", protocol, model: "gpt-fixture", apiKey: "k", ...extra });
+const openai = (protocol: "openai-chat" | "openai-responses", extra: Partial<ModelProfile> = {}): ModelProfile => ({
+  id: "p",
+  protocol,
+  model: "gpt-fixture",
+  apiKey: "k",
+  ...extra,
+});
 
 try {
   await check("Chat Completions cached_tokens become cache_read_input_tokens", async () => {
@@ -341,21 +404,34 @@ try {
   });
 
   await check("prompt_cache_key goes to api.openai.com by default and elsewhere only on opt-in", async () => {
-    assert.equal((await runProvider(openai("openai-chat"), CHAT_WITHOUT_CACHE, "session-1")).body.prompt_cache_key, "session-1");
-    assert.equal((await runProvider(openai("openai-responses"), RESPONSES_WITH_CACHE, "session-1")).body.prompt_cache_key, "session-1");
+    assert.equal(
+      (await runProvider(openai("openai-chat"), CHAT_WITHOUT_CACHE, "session-1")).body.prompt_cache_key,
+      "session-1",
+    );
+    assert.equal(
+      (await runProvider(openai("openai-responses"), RESPONSES_WITH_CACHE, "session-1")).body.prompt_cache_key,
+      "session-1",
+    );
     const gateway = openai("openai-chat", { baseURL: "https://gateway.example/v1" });
     assert.equal((await runProvider(gateway, CHAT_WITHOUT_CACHE, "session-1")).body.prompt_cache_key, undefined);
     const optedIn = openai("openai-chat", { baseURL: "https://gateway.example/v1", promptCacheKey: true });
     assert.equal((await runProvider(optedIn, CHAT_WITHOUT_CACHE, "session-1")).body.prompt_cache_key, "session-1");
     const optedOut = openai("openai-responses", { promptCacheKey: false });
     assert.equal(shouldSendPromptCacheKey(optedOut), false);
-    assert.equal((await runProvider(openai("openai-chat"), CHAT_WITHOUT_CACHE)).body.prompt_cache_key, undefined, "no key without a session");
+    assert.equal(
+      (await runProvider(openai("openai-chat"), CHAT_WITHOUT_CACHE)).body.prompt_cache_key,
+      undefined,
+      "no key without a session",
+    );
   });
 
   await check("the compatibility switch also stops prompt_cache_key", async () => {
     process.env.EASY_AGENT_DISABLE_PROMPT_CACHING = "1";
     try {
-      assert.equal((await runProvider(openai("openai-chat"), CHAT_WITHOUT_CACHE, "session-1")).body.prompt_cache_key, undefined);
+      assert.equal(
+        (await runProvider(openai("openai-chat"), CHAT_WITHOUT_CACHE, "session-1")).body.prompt_cache_key,
+        undefined,
+      );
     } finally {
       delete process.env.EASY_AGENT_DISABLE_PROMPT_CACHING;
     }
@@ -375,7 +451,12 @@ await check("/cost output is unchanged without cache activity", () => {
 });
 
 await check("/cost reports cache reads, writes, hit rate, and a total that includes them", () => {
-  const usage = { input_tokens: 100, output_tokens: 50, cache_read_input_tokens: 800, cache_creation_input_tokens: 100 };
+  const usage = {
+    input_tokens: 100,
+    output_tokens: 50,
+    cache_read_input_tokens: 800,
+    cache_creation_input_tokens: 100,
+  };
   assert.equal(
     formatSessionUsage(usage),
     "Session usage\n- Input tokens: 100\n- Cache read tokens: 800\n- Cache write tokens: 100\n- Cache hit rate: 80%\n- Output tokens: 50\n- Total tokens: 1050",

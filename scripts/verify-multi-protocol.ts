@@ -95,10 +95,7 @@ async function main(): Promise<void> {
   const loaded = await loadProfiles(projDir);
   assert(loaded.profiles.gpt5?.apiKey === "sk-from-env-123", "${ENV} apiKey interpolated");
   assert(loaded.profiles.gpt5?.protocol === "openai-chat", "protocol parsed");
-  assert(
-    loaded.profiles.leaky?.apiKey === "sk-inline-should-be-ignored",
-    "trusted project inline apiKey is loaded",
-  );
+  assert(loaded.profiles.leaky?.apiKey === "sk-inline-should-be-ignored", "trusted project inline apiKey is loaded");
   assert(
     loaded.provenance.gpt5?.apiKey === "project",
     "profile field provenance records its source without the credential value",
@@ -137,18 +134,9 @@ async function main(): Promise<void> {
 
   assert(Array.isArray(openaiBody.messages), "OpenAI body has messages[]");
   assert(Array.isArray(openaiBody.tools), "OpenAI body has tools[]");
-  assert(
-    JSON.stringify(openaiBody).includes("get_weather"),
-    "OpenAI body preserves the tool name",
-  );
-  assert(
-    Array.isArray((geminiBody as { contents?: unknown }).contents),
-    "Gemini body has contents[]",
-  );
-  assert(
-    JSON.stringify(geminiBody).includes("get_weather"),
-    "Gemini body preserves the function declaration",
-  );
+  assert(JSON.stringify(openaiBody).includes("get_weather"), "OpenAI body preserves the tool name");
+  assert(Array.isArray((geminiBody as { contents?: unknown }).contents), "Gemini body has contents[]");
+  assert(JSON.stringify(geminiBody).includes("get_weather"), "Gemini body preserves the function declaration");
 
   // ── [3] Stream mapping (mocked OpenAI SSE → StreamEvent) ───────────────────
   section("[3] Stream mapping: mocked OpenAI tool-call stream");
@@ -175,20 +163,17 @@ async function main(): Promise<void> {
     const events: string[] = [];
     let toolName = "";
     let assembledInput = "";
-    const gen = streamViaProvider(
-      { id: "gpt5", protocol: "openai-chat", model: "gpt-5.1", apiKey: "x" },
-      {
-        messages: [{ role: "user", content: "weather?" }],
-        model: "gpt5",
-        tools: [
-          {
-            name: "get_weather",
-            description: "Get weather",
-            input_schema: { type: "object", properties: { location: { type: "string" } } },
-          },
-        ],
-      } as never,
-    );
+    const gen = streamViaProvider({ id: "gpt5", protocol: "openai-chat", model: "gpt-5.1", apiKey: "x" }, {
+      messages: [{ role: "user", content: "weather?" }],
+      model: "gpt5",
+      tools: [
+        {
+          name: "get_weather",
+          description: "Get weather",
+          input_schema: { type: "object", properties: { location: { type: "string" } } },
+        },
+      ],
+    } as never);
     let next = await gen.next();
     while (!next.done) {
       const ev = next.value;
@@ -209,14 +194,10 @@ async function main(): Promise<void> {
     const toolBlock = result.assistantMessage.content.find((b) => b.type === "tool_use");
     assert(!!toolBlock, "assembled message contains a tool_use block");
     assert(
-      toolBlock?.type === "tool_use" &&
-        JSON.stringify(toolBlock.input) === '{"location":"SF"}',
+      toolBlock?.type === "tool_use" && JSON.stringify(toolBlock.input) === '{"location":"SF"}',
       "assembled tool_use.input parsed from streamed args",
     );
-    assert(
-      result.stopReason === "tool_use",
-      "stopReason forced to 'tool_use' so the agentic loop executes tools",
-    );
+    assert(result.stopReason === "tool_use", "stopReason forced to 'tool_use' so the agentic loop executes tools");
     assert(result.usage.input_tokens === 12 && result.usage.output_tokens === 7, "usage mapped");
   } finally {
     globalThis.fetch = originalFetch;
@@ -233,10 +214,10 @@ async function main(): Promise<void> {
     })) as typeof fetch;
   try {
     const { streamViaProvider } = await import("../src/services/api/providers/providerStream.js");
-    const gen = streamViaProvider(
-      { id: "gpt5", protocol: "openai-chat", model: "gpt-5.1", apiKey: "x" },
-      { messages: [{ role: "user", content: "hi" }], model: "gpt5" } as never,
-    );
+    const gen = streamViaProvider({ id: "gpt5", protocol: "openai-chat", model: "gpt-5.1", apiKey: "x" }, {
+      messages: [{ role: "user", content: "hi" }],
+      model: "gpt5",
+    } as never);
     let threw: unknown;
     try {
       await gen.next();
@@ -261,10 +242,10 @@ async function main(): Promise<void> {
   try {
     const { streamViaProvider } = await import("../src/services/api/providers/providerStream.js");
     const { classifyAPIError, isRetryableError } = await import("../src/services/api/errors.js");
-    const gen = streamViaProvider(
-      { id: "gpt5", protocol: "openai-chat", model: "gpt-5.1", apiKey: "x" },
-      { messages: [{ role: "user", content: "hi" }], model: "gpt5" } as never,
-    );
+    const gen = streamViaProvider({ id: "gpt5", protocol: "openai-chat", model: "gpt-5.1", apiKey: "x" }, {
+      messages: [{ role: "user", content: "hi" }],
+      model: "gpt5",
+    } as never);
     let threw: unknown;
     const emitted: string[] = [];
     try {
@@ -307,7 +288,11 @@ async function main(): Promise<void> {
     { role: "user", content: [{ type: "tool_result", tool_use_id: "call_1", content: "Sunny" }] },
   ];
   const toolDefs = [
-    { name: "get_weather", description: "w", input_schema: { type: "object", properties: { location: { type: "string" } } } },
+    {
+      name: "get_weather",
+      description: "w",
+      input_schema: { type: "object", properties: { location: { type: "string" } } },
+    },
   ];
 
   /** Mock fetch: record the outgoing request body, reply with a tiny valid stream. */
@@ -332,7 +317,9 @@ async function main(): Promise<void> {
   try {
     // openai-chat: tool_result must become a role:"tool" message with tool_call_id;
     // the assistant must carry tool_calls; NO leaked "_original" junk text.
-    let cap = captureFetch(`data: {"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}]}\n\n` + `data: [DONE]\n\n`);
+    let cap = captureFetch(
+      `data: {"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}]}\n\n` + `data: [DONE]\n\n`,
+    );
     await drain({ id: "gpt5", protocol: "openai-chat", model: "gpt-5.1", apiKey: "x" });
     const chatMsgs = cap.body().messages as Array<Record<string, unknown>>;
     assert(
@@ -360,7 +347,9 @@ async function main(): Promise<void> {
     );
 
     // gemini: the model functionCall part must carry the replayed thoughtSignature.
-    cap = captureFetch(`data: {"candidates":[{"content":{"parts":[{"text":"ok"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":1,"candidatesTokenCount":1}}\n\n`);
+    cap = captureFetch(
+      `data: {"candidates":[{"content":{"parts":[{"text":"ok"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":1,"candidatesTokenCount":1}}\n\n`,
+    );
     await drain({ id: "gemini", protocol: "gemini", model: "gemini-3.5-flash", apiKey: "x" });
     const contents = cap.body().contents as Array<Record<string, unknown>>;
     const modelParts = contents
@@ -428,7 +417,12 @@ async function main(): Promise<void> {
 
     const history = [
       { role: "user", content: "weather?" },
-      { role: "assistant", content: [{ type: "tool_use", id: "c1", name: "get_weather", input: { location: "SF" }, thoughtSignature: "AY89bad" }] },
+      {
+        role: "assistant",
+        content: [
+          { type: "tool_use", id: "c1", name: "get_weather", input: { location: "SF" }, thoughtSignature: "AY89bad" },
+        ],
+      },
       { role: "user", content: [{ type: "tool_result", tool_use_id: "c1", content: "Sunny" }] },
     ];
     const gen = svp(
@@ -447,8 +441,12 @@ async function main(): Promise<void> {
     // First attempt sent the real functionCall; the retry flattened it to text.
     const firstContents = sentBodies[0].contents as Array<Record<string, unknown>>;
     const retryContents = sentBodies[1].contents as Array<Record<string, unknown>>;
-    const firstHasFc = firstContents.some((c) => (c.parts as Array<Record<string, unknown>>).some((p) => p.functionCall));
-    const retryHasFc = retryContents.some((c) => (c.parts as Array<Record<string, unknown>>).some((p) => p.functionCall));
+    const firstHasFc = firstContents.some((c) =>
+      (c.parts as Array<Record<string, unknown>>).some((p) => p.functionCall),
+    );
+    const retryHasFc = retryContents.some((c) =>
+      (c.parts as Array<Record<string, unknown>>).some((p) => p.functionCall),
+    );
     assert(firstHasFc, "gemini: first attempt used structured functionCall");
     assert(!retryHasFc, "gemini: retry flattened tool history to text (no functionCall → no signature)");
   } finally {
@@ -482,12 +480,8 @@ async function main(): Promise<void> {
   // ── [10] Reasoning params on the wire (/effort + /think) ──────────────────
   section("[10] /effort + /think reach the provider request body (Stage 34)");
   {
-    const { setSessionEffortLevel, setSessionThinkingConfig } = await import(
-      "../src/utils/thinking.js"
-    );
-    const { streamViaProvider: svp2 } = await import(
-      "../src/services/api/providers/providerStream.js"
-    );
+    const { setSessionEffortLevel, setSessionThinkingConfig } = await import("../src/utils/thinking.js");
+    const { streamViaProvider: svp2 } = await import("../src/services/api/providers/providerStream.js");
 
     let capturedBody: Record<string, unknown> = {};
     function capture(chunk: string): void {
@@ -499,16 +493,18 @@ async function main(): Promise<void> {
         });
       }) as typeof fetch;
     }
-    const chatDone =
-      `data: {"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}]}\n\n` + `data: [DONE]\n\n`;
+    const chatDone = `data: {"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}]}\n\n` + `data: [DONE]\n\n`;
     const respDone = `data: [DONE]\n\n`;
     const gemDone = `data: {"candidates":[{"content":{"parts":[{"text":"ok"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":1,"candidatesTokenCount":1}}\n\n`;
     async function run(profile: Record<string, unknown>, chunk: string): Promise<void> {
       capture(chunk);
-      const gen = svp2(profile as never, {
-        messages: [{ role: "user", content: "hi" }],
-        model: String(profile.id),
-      } as never);
+      const gen = svp2(
+        profile as never,
+        {
+          messages: [{ role: "user", content: "hi" }],
+          model: String(profile.id),
+        } as never,
+      );
       let n = await gen.next();
       while (!n.done) n = await gen.next();
     }
@@ -561,8 +557,7 @@ async function main(): Promise<void> {
       setSessionThinkingConfig({ type: "disabled" });
       await run(gem, gemDone);
       assert(
-        (capturedBody.generationConfig as { thinkingConfig?: unknown } | undefined)?.thinkingConfig ===
-          undefined,
+        (capturedBody.generationConfig as { thinkingConfig?: unknown } | undefined)?.thinkingConfig === undefined,
         "gemini: /think off → no thinkingConfig",
       );
     } finally {
@@ -575,12 +570,8 @@ async function main(): Promise<void> {
   // ── [11] Anthropic custom-endpoint client (baseURL /v1 + keyless) ─────────
   section("[11] Anthropic baseURL normalization + keyless custom endpoint");
   {
-    const {
-      CUSTOM_ENDPOINT_USER_AGENT,
-      getAnthropicClientForProfile,
-      normalizeAnthropicBaseURL,
-      resetClient,
-    } = await import("../src/services/api/client.js");
+    const { CUSTOM_ENDPOINT_USER_AGENT, getAnthropicClientForProfile, normalizeAnthropicBaseURL, resetClient } =
+      await import("../src/services/api/client.js");
     assert(
       normalizeAnthropicBaseURL("https://token.mmh1.top/v1") === "https://token.mmh1.top",
       "strips a trailing /v1 (SDK re-adds /v1/messages → no double /v1)",
@@ -589,10 +580,7 @@ async function main(): Promise<void> {
       normalizeAnthropicBaseURL("https://api.minimaxi.com/anthropic") === "https://api.minimaxi.com/anthropic",
       "leaves a non-/v1 baseURL untouched (MiniMax stays correct)",
     );
-    assert(
-      normalizeAnthropicBaseURL("https://host/v1/") === "https://host",
-      "strips trailing slash then /v1",
-    );
+    assert(normalizeAnthropicBaseURL("https://host/v1/") === "https://host", "strips trailing slash then /v1");
 
     // The Anthropic SDK adds `User-Agent: Anthropic/JS <version>`. Some
     // compatible gateways block that SDK fingerprint while accepting the same
@@ -631,20 +619,14 @@ async function main(): Promise<void> {
         capturedHeaders.get("user-agent") === CUSTOM_ENDPOINT_USER_AGENT,
         "custom Anthropic endpoint uses Easy Agent user-agent (avoids SDK-fingerprint WAF blocks)",
       );
-      assert(
-        capturedHeaders.get("x-profile-header") === "present",
-        "Anthropic profile headers reach the SDK request",
-      );
+      assert(capturedHeaders.get("x-profile-header") === "present", "Anthropic profile headers reach the SDK request");
 
       const overridden = getAnthropicClientForProfile({
         baseURL: "https://gateway.test/v1",
         apiKey: "test-key",
         headers: { "User-Agent": "gateway-required-agent" },
       });
-      assert(
-        overridden !== client,
-        "Anthropic client cache separates profiles with different headers",
-      );
+      assert(overridden !== client, "Anthropic client cache separates profiles with different headers");
       await overridden.messages.create({
         model: "claude-test",
         max_tokens: 1,
@@ -664,9 +646,7 @@ async function main(): Promise<void> {
   // minors instead of treating every post-4.6 Opus/Sonnet as legacy.
   section("[12] Claude 4.7 adaptive-thinking / effort capability detection");
   {
-    const { modelSupportsAdaptiveThinking, modelSupportsEffort } = await import(
-      "../src/utils/thinking.js"
-    );
+    const { modelSupportsAdaptiveThinking, modelSupportsEffort } = await import("../src/utils/thinking.js");
     assert(modelSupportsAdaptiveThinking("claude-opus-4-7"), "Opus 4.7 supports adaptive thinking");
     assert(modelSupportsEffort("claude-opus-4-7"), "Opus 4.7 supports effort");
     assert(modelSupportsAdaptiveThinking("claude-sonnet-4-7"), "Sonnet 4.7 supports adaptive thinking");

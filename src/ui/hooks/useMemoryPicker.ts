@@ -30,14 +30,7 @@ interface UseMemoryPickerParams {
   onCancel: () => void;
 }
 
-export function useMemoryPicker({
-  items,
-  index,
-  disabled,
-  onMove,
-  onSelect,
-  onCancel,
-}: UseMemoryPickerParams): void {
+export function useMemoryPicker({ items, index, disabled, onMove, onSelect, onCancel }: UseMemoryPickerParams): void {
   const active = !disabled && !!items && items.length > 0;
 
   const handleInput = useCallback(

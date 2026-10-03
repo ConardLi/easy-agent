@@ -11,10 +11,7 @@ import { readClipboardImage } from "../utils/screenshotClipboard.js";
 import { parsePastedImagePath, readImageAsBlock } from "../../tools/imageUtils.js";
 import { addPastedImage, imageRefToken } from "../../core/pastedImages.js";
 import type { ImageBlock } from "../../types/message.js";
-import {
-  buildDefaultThinkingConfig,
-  getSessionEffortLevel,
-} from "../../utils/thinking.js";
+import { buildDefaultThinkingConfig, getSessionEffortLevel } from "../../utils/thinking.js";
 import { getNestedCommandSuggestions } from "../commandPalette.js";
 
 export interface ModeSuggestion {
@@ -161,10 +158,7 @@ function isLargePaste(input: string): boolean {
  * only when it starts with `@`. Returns the token's start offset and the query
  * (everything after the `@`), or null when the cursor isn't on a reference.
  */
-function findFileToken(
-  value: string,
-  cursor: number,
-): { start: number; query: string } | null {
+function findFileToken(value: string, cursor: number): { start: number; query: string } | null {
   let start = cursor;
   while (start > 0 && !/\s/.test(value[start - 1] ?? "")) start--;
   const token = value.slice(start, cursor);
@@ -337,10 +331,7 @@ export function usePromptInput({
 
   // `@` file-reference typeahead. Recomputed whenever the buffer or cursor
   // moves; a fresh readdir per keystroke is cheap for a local CLI.
-  const fileToken = useMemo(
-    () => findFileToken(inputValue, cursorPos),
-    [inputValue, cursorPos],
-  );
+  const fileToken = useMemo(() => findFileToken(inputValue, cursorPos), [inputValue, cursorPos]);
   const fileSuggestionsRaw = useMemo(() => {
     if (!fileToken) return [];
     return computeFileSuggestions(fileToken.query, cwd ?? process.cwd());
@@ -511,13 +502,7 @@ export function usePromptInput({
     }
     // Esc interrupts the running turn ("esc to interrupt"). Only while
     // loading and when no overlay owns the keyboard — those handle Esc first.
-    if (
-      key.escape &&
-      isLoading &&
-      !hasPermissionPrompt &&
-      !hasQuestionPrompt &&
-      !hasTranscript
-    ) {
+    if (key.escape && isLoading && !hasPermissionPrompt && !hasQuestionPrompt && !hasTranscript) {
       onInterrupt();
       return;
     }
@@ -667,9 +652,7 @@ export function usePromptInput({
     // /mode and /tasks, which complete-then-open their dedicated selectors.
     if (showCommandSuggestions) {
       const eff =
-        selectedCommandIndex < 0 || selectedCommandIndex >= filteredCommands.length
-          ? 0
-          : selectedCommandIndex;
+        selectedCommandIndex < 0 || selectedCommandIndex >= filteredCommands.length ? 0 : selectedCommandIndex;
       if (key.upArrow) {
         setSelectedCommandIndex(eff <= 0 ? filteredCommands.length - 1 : eff - 1);
         return;
@@ -956,9 +939,7 @@ export function usePromptInput({
     }
     // Auto-select the first match so Enter/Tab work without arrowing first.
     const effective =
-      selectedCommandIndex < 0 || selectedCommandIndex >= filteredCommands.length
-        ? 0
-        : selectedCommandIndex;
+      selectedCommandIndex < 0 || selectedCommandIndex >= filteredCommands.length ? 0 : selectedCommandIndex;
     return filteredCommands.map((item, i) => ({
       ...item,
       isSelected: i === effective,
@@ -1016,8 +997,7 @@ export function usePromptInput({
       if (selectedFileIndex !== 0) setSelectedFileIndex(0);
       return [];
     }
-    const clamped =
-      selectedFileIndex >= fileSuggestionsRaw.length ? 0 : selectedFileIndex;
+    const clamped = selectedFileIndex >= fileSuggestionsRaw.length ? 0 : selectedFileIndex;
     return fileSuggestionsRaw.map((item, i) => ({ ...item, isSelected: i === clamped }));
   }, [showFileSuggestions, fileSuggestionsRaw, selectedFileIndex]);
 

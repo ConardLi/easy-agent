@@ -148,8 +148,7 @@ export function DiffView({ data }: DiffViewProps): React.ReactNode {
           <>
             <Text color={theme.muted}>
               {`${data.fileHistory.filesChanged.length} file${data.fileHistory.filesChanged.length === 1 ? "" : "s"}, `}
-              <Text color={theme.ok}>{`+${data.fileHistory.insertions}`}</Text>
-              {" "}
+              <Text color={theme.ok}>{`+${data.fileHistory.insertions}`}</Text>{" "}
               <Text color={theme.error}>{`-${data.fileHistory.deletions}`}</Text>
             </Text>
             {data.fileHistory.filesChanged.map((f) => (

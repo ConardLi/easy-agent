@@ -63,14 +63,11 @@ export const PluginManifestSchema = z.looseObject({
     .trim()
     .min(1)
     .regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/, {
-      message:
-        "plugin name must start alphanumeric and contain only letters, digits, '-' or '_'",
+      message: "plugin name must start alphanumeric and contain only letters, digits, '-' or '_'",
     }),
   version: z.string().trim().min(1).optional(),
   description: z.string().trim().optional(),
-  author: z
-    .union([z.string(), z.looseObject({ name: z.string().optional() })])
-    .optional(),
+  author: z.union([z.string(), z.looseObject({ name: z.string().optional() })]).optional(),
   homepage: z.string().trim().optional(),
   repository: z.string().trim().optional(),
   license: z.string().trim().optional(),
@@ -172,9 +169,7 @@ export interface PluginComponentPaths {
 export const PLUGIN_STATE_VERSION = 1;
 
 /** Where a marketplace's plugin directory ultimately came from. */
-export type MarketplaceSource =
-  | { kind: "local"; path: string }
-  | { kind: "git"; url: string; ref?: string };
+export type MarketplaceSource = { kind: "local"; path: string } | { kind: "git"; url: string; ref?: string };
 
 export interface KnownMarketplace {
   name: string;

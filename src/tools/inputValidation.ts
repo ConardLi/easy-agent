@@ -27,9 +27,7 @@ interface CompiledSchema {
 const compiledSchemas = new WeakMap<Tool, CompiledSchema>();
 
 function fieldPath(base: string, name: string): string {
-  const segment = /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name)
-    ? `.${name}`
-    : `[${JSON.stringify(name.slice(0, 60))}]`;
+  const segment = /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name) ? `.${name}` : `[${JSON.stringify(name.slice(0, 60))}]`;
   return `${base}${segment}`.slice(0, 200);
 }
 
@@ -92,18 +90,23 @@ function compileSchema(tool: Tool): CompiledSchema {
   compiledSchemas.set(tool, compiled);
   const schema = tool.inputSchema as unknown;
   let schemaError: string | undefined;
-  try { schemaError = inspectJson(schema, MAX_SCHEMA_BYTES, MAX_SCHEMA_NODES); } catch { schemaError = "invalid schema"; }
+  try {
+    schemaError = inspectJson(schema, MAX_SCHEMA_BYTES, MAX_SCHEMA_NODES);
+  } catch {
+    schemaError = "invalid schema";
+  }
   if (!schema || typeof schema !== "object" || Array.isArray(schema) || schemaError) {
     logWarn(`Tool '${tool.name}' has an invalid input schema and is unavailable`);
     return compiled;
   }
   try {
     const dialect = (schema as { $schema?: unknown }).$schema;
-    const Validator = typeof dialect === "string" && dialect.includes("2020-12")
-      ? Ajv2020
-      : typeof dialect === "string" && dialect.includes("2019-09")
-        ? Ajv2019
-        : Ajv;
+    const Validator =
+      typeof dialect === "string" && dialect.includes("2020-12")
+        ? Ajv2020
+        : typeof dialect === "string" && dialect.includes("2019-09")
+          ? Ajv2019
+          : Ajv;
     const ajv = new Validator(ajvOptions);
     const validate = ajv.compile(schema);
     compiled.validate = (validate as ValidateFunction & { $async?: boolean }).$async ? undefined : validate;
@@ -120,10 +123,13 @@ export function hasValidToolInputSchema(tool: Tool): boolean {
 
 function pointerPath(pointer: string): string {
   if (!pointer) return "$";
-  return pointer.split("/").slice(1).reduce((path, token) => {
-    const part = token.replace(/~1/g, "/").replace(/~0/g, "~");
-    return /^\d+$/.test(part) ? `${path}[${part}]`.slice(0, 200) : fieldPath(path, part);
-  }, "$");
+  return pointer
+    .split("/")
+    .slice(1)
+    .reduce((path, token) => {
+      const part = token.replace(/~1/g, "/").replace(/~0/g, "~");
+      return /^\d+$/.test(part) ? `${path}[${part}]`.slice(0, 200) : fieldPath(path, part);
+    }, "$");
 }
 
 function describeError(error: ErrorObject): string {
@@ -165,7 +171,11 @@ export function validateToolInput(tool: Tool, input: unknown): ToolInputValidati
     return { ok: false, message: "$ must be an object" };
   }
   let structuralError: string | undefined;
-  try { structuralError = inspectJson(input, MAX_INPUT_BYTES, MAX_INPUT_NODES); } catch { structuralError = "$ must be a JSON object"; }
+  try {
+    structuralError = inspectJson(input, MAX_INPUT_BYTES, MAX_INPUT_NODES);
+  } catch {
+    structuralError = "$ must be a JSON object";
+  }
   if (structuralError) return { ok: false, message: structuralError };
   if (compiled.validate(input)) return { ok: true, input: input as Record<string, unknown> };
   const errors = (compiled.validate.errors ?? []).slice(0, 3).map(describeError);

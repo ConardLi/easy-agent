@@ -23,11 +23,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import lockfile from "proper-lockfile";
-import {
-  getInstalledPluginsPath,
-  getKnownMarketplacesPath,
-  getPluginsRoot,
-} from "./paths.js";
+import { getInstalledPluginsPath, getKnownMarketplacesPath, getPluginsRoot } from "./paths.js";
 import {
   PLUGIN_STATE_VERSION,
   type InstalledPluginRecord,
@@ -35,11 +31,7 @@ import {
   type KnownMarketplace,
   type KnownMarketplacesFile,
 } from "./schemas.js";
-import {
-  createPrivateFileIfMissing,
-  ensurePrivateDirectory,
-  writePrivateFile,
-} from "../utils/privateData.js";
+import { createPrivateFileIfMissing, ensurePrivateDirectory, writePrivateFile } from "../utils/privateData.js";
 import { parsePersistedJson, PersistentDataError } from "../utils/atomicFile.js";
 
 // ─── low-level atomic IO ──────────────────────────────────────────────
@@ -62,10 +54,7 @@ async function readJsonSoft<T>(filePath: string): Promise<T | null> {
   }
 }
 
-async function diagnoseStateFile(
-  filePath: string,
-  collectionKey: "marketplaces" | "plugins",
-): Promise<string | null> {
+async function diagnoseStateFile(filePath: string, collectionKey: "marketplaces" | "plugins"): Promise<string | null> {
   let text: string;
   try {
     text = await fs.readFile(filePath, "utf-8");
@@ -195,10 +184,7 @@ export async function updateKnownMarketplaces(
   });
 }
 
-export function upsertMarketplace(
-  draft: KnownMarketplacesFile,
-  entry: KnownMarketplace,
-): void {
+export function upsertMarketplace(draft: KnownMarketplacesFile, entry: KnownMarketplace): void {
   draft.marketplaces[entry.name] = entry;
 }
 
@@ -254,10 +240,7 @@ export async function updateInstalledPlugins(
   });
 }
 
-export function upsertInstalledPlugin(
-  draft: InstalledPluginsFile,
-  record: InstalledPluginRecord,
-): void {
+export function upsertInstalledPlugin(draft: InstalledPluginsFile, record: InstalledPluginRecord): void {
   draft.plugins[record.pluginId] = record;
 }
 

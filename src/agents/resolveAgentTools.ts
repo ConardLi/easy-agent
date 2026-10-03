@@ -47,8 +47,7 @@ export function resolveAgentTools(
   const afterDisallow = noAgentTool.filter((t) => !disallowed.has(t.name));
 
   const tools = agentDefinition.tools;
-  const hasWildcard =
-    !tools || tools.length === 0 || (tools.length === 1 && tools[0] === "*");
+  const hasWildcard = !tools || tools.length === 0 || (tools.length === 1 && tools[0] === "*");
   if (hasWildcard) {
     return { hasWildcard: true, resolvedTools: afterDisallow, invalidTools: [] };
   }

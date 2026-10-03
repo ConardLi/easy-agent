@@ -1,4 +1,3 @@
-
 import { PassThrough } from "node:stream";
 import { Box, Text, render } from "ink";
 import chalk from "chalk";
@@ -58,7 +57,12 @@ async function frame(label: string, toolCalls: ToolCallInfo[]): Promise<void> {
   instance.unmount();
   instance.cleanup();
   // Print only the first stable frame.
-  process.stdout.write(captured.split("\n").slice(0, toolCalls.length + 4).join("\n") + "\n\n");
+  process.stdout.write(
+    captured
+      .split("\n")
+      .slice(0, toolCalls.length + 4)
+      .join("\n") + "\n\n",
+  );
 }
 
 async function main(): Promise<void> {

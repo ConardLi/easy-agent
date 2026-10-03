@@ -33,11 +33,7 @@ import * as path from "node:path";
 import { getEasyAgentHome, getStatePath } from "../utils/paths.js";
 import { findGitRoot } from "../utils/worktree.js";
 import { ensurePrivateDirectory, writePrivateFile } from "../utils/privateData.js";
-import {
-  parsePersistedJson,
-  PersistentDataError,
-  withFileLock,
-} from "../utils/atomicFile.js";
+import { parsePersistedJson, PersistentDataError, withFileLock } from "../utils/atomicFile.js";
 
 interface ProjectState {
   trusted?: boolean;
@@ -95,8 +91,7 @@ async function readGlobalStateFromDisk(): Promise<GlobalState> {
     return {
       version: typeof parsed.version === "number" ? parsed.version : CURRENT_VERSION,
       prefs: parsed.prefs && typeof parsed.prefs === "object" ? parsed.prefs : {},
-      projects:
-        parsed.projects && typeof parsed.projects === "object" ? parsed.projects : {},
+      projects: parsed.projects && typeof parsed.projects === "object" ? parsed.projects : {},
     };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return emptyState();
@@ -127,9 +122,7 @@ export function getGlobalStateDiagnostics(): string[] {
  * receives a mutable draft; return value is ignored (mutate in place or
  * reassign fields). The in-memory cache is updated to the written value.
  */
-export async function saveGlobalState(
-  update: (draft: GlobalState) => void,
-): Promise<void> {
+export async function saveGlobalState(update: (draft: GlobalState) => void): Promise<void> {
   const filePath = getStatePath();
   await ensurePrivateDirectory(getEasyAgentHome());
   await withFileLock(filePath, async () => {

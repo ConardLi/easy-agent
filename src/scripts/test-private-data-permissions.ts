@@ -66,9 +66,7 @@ try {
     await fs.chmod(localSettings, 0o644);
   }
 
-  const { hardenPrivateDataStorage, inspectPrivateDataSecurity } = await import(
-    "../utils/privateData.js"
-  );
+  const { hardenPrivateDataStorage, inspectPrivateDataSecurity } = await import("../utils/privateData.js");
   const report = await hardenPrivateDataStorage({ forceMigration: true, projectCwd: workspace });
   if (process.platform === "win32") {
     assert.equal(report.supported, false);
@@ -102,11 +100,7 @@ try {
   }
   assert.equal(await fs.readFile(legacyFiles[3]!, "utf8"), "legacy:legacy.jsonl\n");
 
-  const {
-    updateLocalSettings,
-    updateProjectSettings,
-    updateUserSettings,
-  } = await import("../utils/settings.js");
+  const { updateLocalSettings, updateProjectSettings, updateUserSettings } = await import("../utils/settings.js");
   await updateUserSettings({ models: { secure: { apiKey: "top-secret" } } });
   await updateProjectSettings(workspace, { language: "en" });
   await updateLocalSettings(workspace, { env: { PRIVATE_TOKEN: "local-secret" } });

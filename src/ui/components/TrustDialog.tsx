@@ -51,13 +51,7 @@ export function TrustDialog({ cwd, risks, onDecision }: TrustDialogProps): React
   });
 
   return (
-    <Box
-      flexDirection="column"
-      borderStyle="round"
-      borderColor={theme.brand}
-      paddingX={1}
-      marginY={1}
-    >
+    <Box flexDirection="column" borderStyle="round" borderColor={theme.brand} paddingX={1} marginY={1}>
       <Text bold color={theme.brandLight}>
         Do you trust the files in this folder?
       </Text>
@@ -66,9 +60,8 @@ export function TrustDialog({ cwd, risks, onDecision }: TrustDialogProps): React
       </Box>
       <Box marginTop={1}>
         <Text>
-          This folder may contain settings that change environment variables,
-          provider endpoints, credentials, filesystem access, or commands on
-          your machine. Only continue if you trust its source.
+          This folder may contain settings that change environment variables, provider endpoints, credentials,
+          filesystem access, or commands on your machine. Only continue if you trust its source.
         </Text>
       </Box>
       {risks.length > 0 ? (

@@ -78,15 +78,11 @@ function summariseAgent(agent: AsyncAgentEntry, now: number): string {
   if (agent.lastToolName) {
     parts.push(`last: ${agent.lastToolName}`);
   }
-  const label = agent.teammateName
-    ? `${agent.teammateName} · ${agent.agentType}`
-    : agent.agentType;
+  const label = agent.teammateName ? `${agent.teammateName} · ${agent.agentType}` : agent.agentType;
   return `${label}${parts.length > 0 ? ` (${parts.join(", ")})` : ""}`;
 }
 
-export function BackgroundAgentBar({
-  agents,
-}: BackgroundAgentBarProps): React.ReactNode {
+export function BackgroundAgentBar({ agents }: BackgroundAgentBarProps): React.ReactNode {
   const running = agents.filter((a) => a.status === "running");
   if (running.length === 0) return null;
 
@@ -99,7 +95,7 @@ export function BackgroundAgentBar({
       <Box>
         <Text color="yellow">{"⚡ "}</Text>
         <Text color="yellow">{`${running.length} running`}</Text>
-        <Text dimColor>  ·  </Text>
+        <Text dimColor>{"  ·  "}</Text>
         <Text>{running.map((a) => summariseAgent(a, now)).join("  ·  ")}</Text>
       </Box>
     </Box>

@@ -45,12 +45,7 @@ export function SystemPanel({ notice }: SystemPanelProps): React.ReactNode {
   // the right and wrap with a hanging indent — the name never breaks.
   const nameCol = Math.min(
     24,
-    Math.max(
-      0,
-      ...parsed
-        .filter((p) => p.kind === "item")
-        .map((p) => (p.indent ?? "").length + (p.name ?? "").length),
-    ),
+    Math.max(0, ...parsed.filter((p) => p.kind === "item").map((p) => (p.indent ?? "").length + (p.name ?? "").length)),
   );
   const leftWidth = 2 + nameCol + 2; // base indent + name + gap
 

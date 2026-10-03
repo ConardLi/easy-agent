@@ -79,20 +79,19 @@ async function main(): Promise<void> {
     "403 → permission_denied",
   );
   assert(classifyAPIError(apiError(404, "no model")) === "model_not_found", "404 → model_not_found");
+  assert(classifyAPIError(apiError(413, "request too large")) === "prompt_too_long", "413 → prompt_too_long");
   assert(
-    classifyAPIError(apiError(413, "request too large")) === "prompt_too_long",
-    "413 → prompt_too_long",
-  );
-  assert(
-    classifyAPIError(apiError(400, "prompt is too long: 200000 tokens > 199000 maximum")) ===
-      "prompt_too_long",
+    classifyAPIError(apiError(400, "prompt is too long: 200000 tokens > 199000 maximum")) === "prompt_too_long",
     "400 'prompt is too long' → prompt_too_long",
   );
   assert(
     classifyAPIError(new Error("Your credit balance is too low")) === "credit_balance",
     "credit balance → credit_balance",
   );
-  assert(classifyAPIError(new APIConnectionError({ message: "ECONNRESET" })) === "connection_error", "conn error → connection_error");
+  assert(
+    classifyAPIError(new APIConnectionError({ message: "ECONNRESET" })) === "connection_error",
+    "conn error → connection_error",
+  );
   assert(classifyAPIError(abortError()) === "aborted", "AbortError → aborted");
   assert(classifyAPIError(new Error("weird")) === "unknown", "unknown → unknown");
 
@@ -157,15 +156,27 @@ async function main(): Promise<void> {
   }
   // first (MAX_529_RETRIES - 1) retry true, then false once count hits the cap
   const trueCount = fgDecisions.filter(Boolean).length;
-  assert(trueCount === MAX_529_RETRIES - 1, `foreground 529 retries ${MAX_529_RETRIES - 1}× then bails (cap ${MAX_529_RETRIES})`);
+  assert(
+    trueCount === MAX_529_RETRIES - 1,
+    `foreground 529 retries ${MAX_529_RETRIES - 1}× then bails (cap ${MAX_529_RETRIES})`,
+  );
   // deterministic error → never retried regardless of source
   assert(decideRetry(apiError(401, "x"), 1, { maxRetries: 10 }).retry === false, "decideRetry: 401 → no retry");
   // exhausted attempts
-  assert(decideRetry(apiError(500, "x"), 11, { maxRetries: 10 }).retry === false, "decideRetry: attempt > maxRetries → no retry");
-  assert(decideRetry(apiError(500, "x"), 1, { maxRetries: 10 }).retry === true, "decideRetry: 500 within budget → retry");
+  assert(
+    decideRetry(apiError(500, "x"), 11, { maxRetries: 10 }).retry === false,
+    "decideRetry: attempt > maxRetries → no retry",
+  );
+  assert(
+    decideRetry(apiError(500, "x"), 1, { maxRetries: 10 }).retry === true,
+    "decideRetry: 500 within budget → retry",
+  );
 
   section("[5] prompt-too-long parsing");
-  assert(isPromptTooLongError(apiError(400, "prompt is too long: 5 tokens > 4 maximum")), "isPromptTooLongError true for 400 msg");
+  assert(
+    isPromptTooLongError(apiError(400, "prompt is too long: 5 tokens > 4 maximum")),
+    "isPromptTooLongError true for 400 msg",
+  );
   assert(isPromptTooLongError(apiError(413, "too big")), "isPromptTooLongError true for 413");
   const parsed = parsePromptTooLongTokenCounts("prompt is too long: 137500 tokens > 135000 maximum");
   assert(parsed.actualTokens === 137500 && parsed.limitTokens === 135000, "parse token counts 137500 > 135000");
@@ -180,7 +191,10 @@ async function main(): Promise<void> {
   const forbiddenMessage = getUserFacingErrorMessage(apiError(403, "Your request was blocked."));
   assert(forbiddenMessage.includes("Your request was blocked."), "403 message preserves upstream block reason");
   assert(!forbiddenMessage.includes("API key"), "403 message is not mislabeled as an API-key failure");
-  assert(getUserFacingErrorMessage(apiError(404, "x"), "claude-foo").includes("claude-foo"), "model_not_found message includes model");
+  assert(
+    getUserFacingErrorMessage(apiError(404, "x"), "claude-foo").includes("claude-foo"),
+    "model_not_found message includes model",
+  );
   assert(getUserFacingErrorMessage(apiError(529, "x")).includes("overloaded"), "529 message mentions overloaded");
 
   section("[7] callWithRetry — real re-invocation behavior");

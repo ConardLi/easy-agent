@@ -1,5 +1,16 @@
 import { randomBytes } from "node:crypto";
-import { constants, closeSync, fchmodSync, fsyncSync, lstatSync, mkdirSync, openSync, renameSync, unlinkSync, writeSync } from "node:fs";
+import {
+  constants,
+  closeSync,
+  fchmodSync,
+  fsyncSync,
+  lstatSync,
+  mkdirSync,
+  openSync,
+  renameSync,
+  unlinkSync,
+  writeSync,
+} from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import lockfile from "proper-lockfile";
@@ -59,11 +70,7 @@ async function atomicReplaceFile(
   let handle: fs.FileHandle | undefined;
 
   try {
-    handle = await fs.open(
-      tempPath,
-      constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | NO_FOLLOW,
-      mode,
-    );
+    handle = await fs.open(tempPath, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | NO_FOLLOW, mode);
     if (enforceMode && process.platform !== "win32") await handle.chmod(mode);
     await write(handle);
     await handle.sync();
@@ -133,7 +140,10 @@ export async function syncDirectory(dirPath: string): Promise<void> {
     await handle.sync();
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
-    if (process.platform === "win32" && ["EACCES", "EBADF", "EINVAL", "EISDIR", "ENOTSUP", "EPERM"].includes(code ?? "")) {
+    if (
+      process.platform === "win32" &&
+      ["EACCES", "EBADF", "EINVAL", "EISDIR", "ENOTSUP", "EPERM"].includes(code ?? "")
+    ) {
       return;
     }
     throw error;
@@ -149,7 +159,10 @@ export function syncDirectorySync(dirPath: string): void {
     fsyncSync(fd);
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
-    if (process.platform === "win32" && ["EACCES", "EBADF", "EINVAL", "EISDIR", "ENOTSUP", "EPERM"].includes(code ?? "")) {
+    if (
+      process.platform === "win32" &&
+      ["EACCES", "EBADF", "EINVAL", "EISDIR", "ENOTSUP", "EPERM"].includes(code ?? "")
+    ) {
       return;
     }
     throw error;
@@ -199,11 +212,7 @@ export function atomicWriteFileSync(
   let fd: number | undefined;
 
   try {
-    fd = openSync(
-      tempPath,
-      constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | NO_FOLLOW,
-      mode,
-    );
+    fd = openSync(tempPath, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | NO_FOLLOW, mode);
     if (enforceMode && process.platform !== "win32") fchmodSync(fd, mode);
     writeAllSync(fd, data);
     fsyncSync(fd);
@@ -222,10 +231,7 @@ export function atomicWriteFileSync(
   }
 }
 
-export async function withFileLock<T>(
-  filePath: string,
-  operation: () => Promise<T>,
-): Promise<T> {
+export async function withFileLock<T>(filePath: string, operation: () => Promise<T>): Promise<T> {
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   const release = await lockfile.lock(filePath, FILE_LOCK_OPTIONS);
   try {

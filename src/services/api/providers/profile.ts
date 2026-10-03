@@ -28,18 +28,10 @@
  * settings are ignored until workspace trust has been established.
  */
 
-import {
-  loadSettingSources,
-  isTrustedScopeForSensitiveKeys,
-  type SettingSource,
-} from "../../../config/sources.js";
+import { loadSettingSources, isTrustedScopeForSensitiveKeys, type SettingSource } from "../../../config/sources.js";
 import { isProjectTrusted } from "../../../config/globalState.js";
 
-export type ModelProtocol =
-  | "anthropic"
-  | "openai-chat"
-  | "openai-responses"
-  | "gemini";
+export type ModelProtocol = "anthropic" | "openai-chat" | "openai-responses" | "gemini";
 
 export interface ModelProfile {
   /** The map key / user-facing handle. */
@@ -137,9 +129,7 @@ export async function loadProfiles(cwd: string = process.cwd()): Promise<LoadedP
         const raw: RawProfile = { ...(value as RawProfile) };
 
         if (!trusted) {
-          warnings.push(
-            `models.${id}: profile from "${src.source}" scope ignored until the workspace is trusted`,
-          );
+          warnings.push(`models.${id}: profile from "${src.source}" scope ignored until the workspace is trusted`);
           continue;
         }
 
@@ -173,11 +163,7 @@ export async function loadProfiles(cwd: string = process.cwd()): Promise<LoadedP
   };
 }
 
-function buildProfile(
-  id: string,
-  raw: RawProfile,
-  warnings: string[],
-): ModelProfile | null {
+function buildProfile(id: string, raw: RawProfile, warnings: string[]): ModelProfile | null {
   const protocol = typeof raw.protocol === "string" ? raw.protocol.trim() : "";
   const model = typeof raw.model === "string" ? raw.model.trim() : "";
 
@@ -223,10 +209,7 @@ function buildProfile(
  * - Anything else → a synthetic Anthropic profile whose `model` is the handle
  *   verbatim (legacy / direct-model behavior, env-configured client).
  */
-export async function resolveProfile(
-  handle: string,
-  cwd: string = process.cwd(),
-): Promise<ModelProfile> {
+export async function resolveProfile(handle: string, cwd: string = process.cwd()): Promise<ModelProfile> {
   const { profiles } = await loadProfiles(cwd);
   const declared = profiles[handle];
   if (declared) return declared;

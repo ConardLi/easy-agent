@@ -13,8 +13,7 @@ import type { UserQuestion } from "../tools/Tool.js";
 chalk.level = 3;
 
 const single: UserQuestion = {
-  question:
-    "想创建哪种类型的测试文件？请结合现有项目的风格选择一个，我会照着它的约定来写。",
+  question: "想创建哪种类型的测试文件？请结合现有项目的风格选择一个，我会照着它的约定来写。",
   header: "测试类型",
   options: [
     {
@@ -40,13 +39,7 @@ const multi: UserQuestion = {
 function Demo(): React.ReactNode {
   return (
     <Box flexDirection="column" paddingX={1}>
-      <QuestionPrompt
-        questions={[single]}
-        questionIndex={0}
-        highlight={0}
-        selected={new Set()}
-        textInput=""
-      />
+      <QuestionPrompt questions={[single]} questionIndex={0} highlight={0} selected={new Set()} textInput="" />
       <QuestionPrompt
         questions={[multi]}
         questionIndex={0}

@@ -90,11 +90,7 @@ async function main() {
       toolInput: c.toolInput,
     });
 
-    const verdict = result.unavailable
-      ? "UNAVAILABLE"
-      : result.shouldBlock
-        ? "BLOCK"
-        : "ALLOW";
+    const verdict = result.unavailable ? "UNAVAILABLE" : result.shouldBlock ? "BLOCK" : "ALLOW";
     const ok = !result.unavailable && result.shouldBlock === c.expectBlock;
     if (ok) passed += 1;
 

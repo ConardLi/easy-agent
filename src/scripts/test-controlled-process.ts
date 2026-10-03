@@ -13,7 +13,11 @@ function nodeCommand(source: string, extraArgs: string[] = []) {
 async function waitForFile(filePath: string): Promise<string> {
   const deadline = Date.now() + 5_000;
   while (Date.now() < deadline) {
-    try { return await fs.readFile(filePath, "utf8"); } catch { /* Child has not written it yet. */ }
+    try {
+      return await fs.readFile(filePath, "utf8");
+    } catch {
+      /* Child has not written it yet. */
+    }
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
   throw new Error(`Timed out waiting for ${filePath}`);
@@ -40,8 +44,11 @@ async function waitForProcessExit(pid: number): Promise<void> {
 
 try {
   const normal = await runControlledProcess({
-    ...nodeCommand("process.stdin.on('data', d => process.stdout.write(d)); process.stdin.on('end', () => process.stderr.write('note'))"),
-    stdin: "input", timeoutMs: 2_000,
+    ...nodeCommand(
+      "process.stdin.on('data', d => process.stdout.write(d)); process.stdin.on('end', () => process.stderr.write('note'))",
+    ),
+    stdin: "input",
+    timeoutMs: 2_000,
   });
   assert.equal(normal.reason, "completed");
   assert.equal(normal.exitCode, 0);
@@ -49,21 +56,27 @@ try {
   assert.equal(normal.stderr, "note");
 
   const nonzero = await runControlledProcess({
-    ...nodeCommand("process.stderr.write('failure'); process.exit(7)"), timeoutMs: 2_000,
+    ...nodeCommand("process.stderr.write('failure'); process.exit(7)"),
+    timeoutMs: 2_000,
   });
   assert.equal(nonzero.reason, "completed");
   assert.equal(nonzero.exitCode, 7);
   assert.equal(nonzero.stderr, "failure");
 
   const missing = await runControlledProcess({
-    executable: path.join(ROOT, "missing-executable"), args: [], cwd: ROOT, timeoutMs: 2_000,
+    executable: path.join(ROOT, "missing-executable"),
+    args: [],
+    cwd: ROOT,
+    timeoutMs: 2_000,
   });
   assert.equal(missing.reason, "spawn_error");
   assert.ok(missing.spawnError);
 
   const outputLimit = 4_096;
   const flood = await runControlledProcess({
-    ...nodeCommand("for (let i=0; i<1000; i++) { process.stdout.write('A'.repeat(10000)); process.stderr.write('B'.repeat(10000)); }"),
+    ...nodeCommand(
+      "for (let i=0; i<1000; i++) { process.stdout.write('A'.repeat(10000)); process.stderr.write('B'.repeat(10000)); }",
+    ),
     timeoutMs: 10_000,
     maxOutputBytes: outputLimit,
   });
@@ -77,21 +90,25 @@ try {
   assert.equal(flood.stderrTruncated, true);
 
   const idle = await runControlledProcess({
-    ...nodeCommand("setInterval(() => {}, 1000)"), timeoutMs: 2_000, idleTimeoutMs: 100,
+    ...nodeCommand("setInterval(() => {}, 1000)"),
+    timeoutMs: 2_000,
+    idleTimeoutMs: 100,
   });
   assert.equal(idle.reason, "idle_timeout");
   assert.ok(idle.durationMs < 2_000);
 
   const wall = await runControlledProcess({
     ...nodeCommand("setInterval(() => process.stdout.write('tick'), 10)"),
-    timeoutMs: 180, idleTimeoutMs: 1_000,
+    timeoutMs: 180,
+    idleTimeoutMs: 1_000,
   });
   assert.equal(wall.reason, "timeout");
   assert.ok(wall.stdoutBytes > 0);
 
   if (process.platform !== "win32") {
     const signalled = await runControlledProcess({
-      ...nodeCommand("setTimeout(() => process.kill(process.pid, 'SIGTERM'), 10)"), timeoutMs: 2_000,
+      ...nodeCommand("setTimeout(() => process.kill(process.pid, 'SIGTERM'), 10)"),
+      timeoutMs: 2_000,
     });
     assert.equal(signalled.reason, "completed");
     assert.equal(signalled.signal, "SIGTERM");
@@ -130,10 +147,13 @@ try {
       const { bashTool } = await import("../tools/bashTool.js");
       const { getBashProgress } = await import("../state/bashProgressStore.js");
       const toolUseId = "bounded-bash-test";
-      const bash = await bashTool.call({
-        command: `${JSON.stringify(process.execPath)} -e "process.stdout.write('x'.repeat(2000000))"`,
-        timeout: 5_000,
-      }, { cwd: ROOT, toolUseId });
+      const bash = await bashTool.call(
+        {
+          command: `${JSON.stringify(process.execPath)} -e "process.stdout.write('x'.repeat(2000000))"`,
+          timeout: 5_000,
+        },
+        { cwd: ROOT, toolUseId },
+      );
       assert.notEqual(bash.isError, true);
       assert.match(String(bash.content), /truncated/);
       assert.ok(String(bash.content).length < 40_000);
@@ -141,7 +161,10 @@ try {
 
       const { executeHookCommand } = await import("../hooks/executor.js");
       const hook = await executeHookCommand({
-        hook: { type: "command", command: `${JSON.stringify(process.execPath)} -e "process.stdout.write('x'.repeat(200000))"` },
+        hook: {
+          type: "command",
+          command: `${JSON.stringify(process.execPath)} -e "process.stdout.write('x'.repeat(200000))"`,
+        },
         hookEvent: "UserPromptSubmit",
         hookName: "bounded-hook",
         hookInput: { hook_event_name: "UserPromptSubmit", session_id: "test", cwd: ROOT, prompt: "test" },

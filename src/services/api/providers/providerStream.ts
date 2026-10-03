@@ -40,11 +40,7 @@ import type {
   Usage,
 } from "../../../types/message.js";
 import { writeStreamDebug } from "../../../utils/streamDebug.js";
-import {
-  buildDefaultThinkingConfig,
-  getSessionEffortLevel,
-  type EffortLevel,
-} from "../../../utils/thinking.js";
+import { buildDefaultThinkingConfig, getSessionEffortLevel, type EffortLevel } from "../../../utils/thinking.js";
 import { applyCachedPromptTokens, normalizeStopReason, observeOpenAIChatCachedTokens } from "./translateShared.js";
 import { renderToolReferencesAsText, stripDeferLoading } from "../../../utils/toolSearch.js";
 import {
@@ -53,19 +49,13 @@ import {
   flattenGeminiToolHistory,
   assembleGemini,
 } from "./geminiTranslate.js";
-import {
-  universalToOpenAIChatMessages,
-  universalToOpenAIResponsesInput,
-} from "./openaiTranslate.js";
+import { universalToOpenAIChatMessages, universalToOpenAIResponsesInput } from "./openaiTranslate.js";
 import { assembleOpenAIResponses } from "./openaiResponsesNative.js";
 import { isPromptCachingDisabled } from "../promptCache.js";
 
 // ─── Protocol → llm-bridge provider + endpoint defaults ────────────────────
 
-const LLM_BRIDGE_PROVIDER: Record<
-  Exclude<ModelProfile["protocol"], "anthropic">,
-  ProviderType
-> = {
+const LLM_BRIDGE_PROVIDER: Record<Exclude<ModelProfile["protocol"], "anthropic">, ProviderType> = {
   "openai-chat": "openai",
   "openai-responses": "openai-responses",
   gemini: "google",
@@ -189,8 +179,7 @@ export function prepareRequest(profile: ModelProfile, params: StreamRequestParam
     // Source: doc/CURL_EXAMPLES.md §3.
     const thinkingCfg = params.thinking ?? buildDefaultThinkingConfig();
     if (thinkingCfg.type !== "disabled" && !process.env.CLAUDE_CODE_DISABLE_THINKING) {
-      const genConfig =
-        (translated.generationConfig as Record<string, unknown>) ?? {};
+      const genConfig = (translated.generationConfig as Record<string, unknown>) ?? {};
       const thinkingConfig: Record<string, unknown> = { includeThoughts: true };
       const effort = params.effortLevel ?? getSessionEffortLevel();
       if (effort) {
@@ -359,12 +348,7 @@ export async function* streamViaProvider(
     }
     // Reuse the Anthropic SDK's APIError so the existing classify/retry logic
     // (429/5xx retryable, 401/404 deterministic, etc.) works unchanged.
-    throw APIError.generate(
-      response.status,
-      parsedBody,
-      bodyText || response.statusText,
-      response.headers,
-    );
+    throw APIError.generate(response.status, parsedBody, bodyText || response.statusText, response.headers);
   }
 
   // Guard: a 200 that is NOT an SSE stream is almost always a misrouted request
@@ -392,9 +376,7 @@ export async function* streamViaProvider(
       undefined,
       `Expected a streaming response from ${prepared.url} but received "${
         contentType || "an unknown content type"
-      }". This usually means the model's baseURL is wrong — ${hint}.${
-        snippet ? ` Response began: ${snippet}` : ""
-      }`,
+      }". This usually means the model's baseURL is wrong — ${hint}.${snippet ? ` Response began: ${snippet}` : ""}`,
       response.headers,
     );
   }

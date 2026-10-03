@@ -33,11 +33,7 @@ import type React from "react";
 import { useEffect, useState } from "react";
 import { Box, Text } from "ink";
 import type { AsyncAgentEntry } from "../../state/asyncAgentStore.js";
-import {
-  formatRecordLine,
-  readTaskOutputEvents,
-  type TaskOutputRecord,
-} from "../../utils/taskOutputReader.js";
+import { formatRecordLine, readTaskOutputEvents, type TaskOutputRecord } from "../../utils/taskOutputReader.js";
 
 interface TeammateViewerProps {
   agent: AsyncAgentEntry;
@@ -53,10 +49,7 @@ const MAX_RENDER_LINES = 40;
  * Returns [records, isLoading]. While loading, records is whatever has
  * been read so far (often [] on first paint).
  */
-function useTaskOutputLive(
-  filePath: string,
-  isAgentRunning: boolean,
-): [TaskOutputRecord[], boolean] {
+function useTaskOutputLive(filePath: string, isAgentRunning: boolean): [TaskOutputRecord[], boolean] {
   const [records, setRecords] = useState<TaskOutputRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -97,9 +90,7 @@ export function TeammateViewer({ agent }: TeammateViewerProps): React.ReactNode 
   const isRunning = agent.status === "running";
   const [records, isLoading] = useTaskOutputLive(agent.outputFile, isRunning);
 
-  const label = agent.teammateName
-    ? `${agent.teammateName} · ${agent.agentType}`
-    : agent.agentType;
+  const label = agent.teammateName ? `${agent.teammateName} · ${agent.agentType}` : agent.agentType;
 
   const statusColor =
     agent.status === "completed"
@@ -120,19 +111,13 @@ export function TeammateViewer({ agent }: TeammateViewerProps): React.ReactNode 
         <Text color={statusColor}>{agent.status}</Text>
         {` (Esc to return) `.padEnd(Math.max(0, 80 - 60 - label.length), "─")}
       </Text>
-      {agent.description ? (
-        <Text dimColor>{`  task: ${agent.description}`}</Text>
-      ) : null}
+      {agent.description ? <Text dimColor>{`  task: ${agent.description}`}</Text> : null}
       <Text dimColor>{`  output: ${agent.outputFile}`}</Text>
 
-      {droppedCount > 0 ? (
-        <Text dimColor>{`  … (${droppedCount} earlier events hidden)`}</Text>
-      ) : null}
+      {droppedCount > 0 ? <Text dimColor>{`  … (${droppedCount} earlier events hidden)`}</Text> : null}
 
       {records.length === 0 ? (
-        <Text dimColor>
-          {isLoading ? "  Waiting for first event…" : "  (no events yet)"}
-        </Text>
+        <Text dimColor>{isLoading ? "  Waiting for first event…" : "  (no events yet)"}</Text>
       ) : (
         visible.map((r, i) => (
           // Index key is OK: this list is append-only and we slice from

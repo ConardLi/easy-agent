@@ -40,13 +40,7 @@ interface QuestionPromptProps {
   textInput: string;
 }
 
-function Row({
-  highlighted,
-  children,
-}: {
-  highlighted: boolean;
-  children: React.ReactNode;
-}): React.ReactNode {
+function Row({ highlighted, children }: { highlighted: boolean; children: React.ReactNode }): React.ReactNode {
   return (
     <Box>
       <Text color={theme.brand}>{highlighted ? "› " : "  "}</Text>
@@ -82,21 +76,12 @@ export function QuestionPrompt({
     : "Enter to select · ↑/↓ to navigate · Esc to cancel";
 
   return (
-    <Box
-      marginTop={1}
-      width={width}
-      flexDirection="column"
-      borderStyle="round"
-      borderColor={theme.brand}
-      paddingX={1}
-    >
+    <Box marginTop={1} width={width} flexDirection="column" borderStyle="round" borderColor={theme.brand} paddingX={1}>
       <Box>
         <Text backgroundColor={theme.userBarBg} color={theme.brandLight}>
           {` ${question.header} `}
         </Text>
-        {total > 1 ? (
-          <Text color={theme.muted}>{`  question ${questionIndex + 1}/${total}`}</Text>
-        ) : null}
+        {total > 1 ? <Text color={theme.muted}>{`  question ${questionIndex + 1}/${total}`}</Text> : null}
         {multi ? <Text color={theme.muted}>{"  (multi-select)"}</Text> : null}
       </Box>
 
@@ -113,9 +98,7 @@ export function QuestionPrompt({
           return (
             <Box key={i} flexDirection="column">
               <Row highlighted={isHighlighted}>
-                {multi ? (
-                  <Text color={isChosen ? theme.brand : theme.muted}>{box}</Text>
-                ) : null}
+                {multi ? <Text color={isChosen ? theme.brand : theme.muted}>{box}</Text> : null}
                 <Text color={labelColor} bold={isHighlighted}>
                   {`${i + 1}. ${opt.label}`}
                 </Text>
@@ -131,9 +114,7 @@ export function QuestionPrompt({
 
         {/* Free-text input row — the user types their own answer here. */}
         <Row highlighted={highlight === inputRow}>
-          <Text color={highlight === inputRow ? theme.brandLight : undefined}>
-            {`${inputRow + 1}. `}
-          </Text>
+          <Text color={highlight === inputRow ? theme.brandLight : undefined}>{`${inputRow + 1}. `}</Text>
           {textInput ? (
             <Text>
               {textInput}

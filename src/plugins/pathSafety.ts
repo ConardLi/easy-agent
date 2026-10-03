@@ -66,10 +66,7 @@ export interface PathCheckResult {
  * that simply doesn't exist isn't treated as an attack — the loader will just
  * find nothing there.
  */
-export async function resolveInsidePlugin(
-  pluginRoot: string,
-  relOrAbs: string,
-): Promise<PathCheckResult> {
+export async function resolveInsidePlugin(pluginRoot: string, relOrAbs: string): Promise<PathCheckResult> {
   const lexical = path.resolve(pluginRoot, relOrAbs);
   if (!isContained(pluginRoot, lexical)) {
     return { ok: false, resolved: lexical, reason: "path escapes the plugin root" };

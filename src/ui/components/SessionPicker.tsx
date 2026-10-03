@@ -72,7 +72,9 @@ export function SessionPicker({ sessions, index }: SessionPickerProps): React.Re
         <Text color={theme.info} bold>
           Resume a session
         </Text>
-        <Text color={theme.muted}>{`  ${sessions.length} total · ↑↓ navigate · 1-9 quick · Enter resume · Esc cancel`}</Text>
+        <Text
+          color={theme.muted}
+        >{`  ${sessions.length} total · ↑↓ navigate · 1-9 quick · Enter resume · Esc cancel`}</Text>
       </Box>
 
       {above > 0 ? (

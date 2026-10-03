@@ -23,14 +23,7 @@ import type { ToolLine } from "../utils/toolCardFormat.js";
  *   - classifier         → Auto-mode safety check in flight (blinking dot)
  *   - ok / error         → resolved (solid green / red dot)
  */
-export type ToolState =
-  | "queued"
-  | "pending"
-  | "running"
-  | "waiting-permission"
-  | "classifier"
-  | "ok"
-  | "error";
+export type ToolState = "queued" | "pending" | "running" | "waiting-permission" | "classifier" | "ok" | "error";
 
 /** The three "in flight, working" states whose dot blinks. */
 function isActive(state: ToolState): boolean {
@@ -118,25 +111,20 @@ export function ResultLine({ children }: { children: React.ReactNode }): React.R
  * "3 matches in 2 files"), plus an optional `(ctrl+o to expand)` hint when a
  * fuller body is available behind verbose mode.
  */
-export function ToolResultSummary({
-  line,
-  expandable,
-}: {
-  line: ToolLine;
-  expandable?: boolean;
-}): React.ReactNode {
+export function ToolResultSummary({ line, expandable }: { line: ToolLine; expandable?: boolean }): React.ReactNode {
   const hasDiff = line.added !== undefined || line.removed !== undefined;
   return (
     <ResultLine>
       <Text>
         {hasDiff ? (
           <Text>
-            <Text color={theme.ok}>{`+${line.added ?? 0}`}</Text>
-            {" "}
+            <Text color={theme.ok}>{`+${line.added ?? 0}`}</Text>{" "}
             <Text color={theme.error}>{`-${line.removed ?? 0}`}</Text>
           </Text>
         ) : (
-          <Text color={theme.muted} wrap="truncate-end">{line.stat ?? "done"}</Text>
+          <Text color={theme.muted} wrap="truncate-end">
+            {line.stat ?? "done"}
+          </Text>
         )}
         {expandable ? <Text color={theme.muted}>{"  (ctrl+o to expand)"}</Text> : null}
       </Text>

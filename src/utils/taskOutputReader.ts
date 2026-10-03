@@ -40,9 +40,7 @@ export interface TaskOutputRecord {
 }
 
 /** Read every JSONL record from disk. Returns [] when the file is missing. */
-export async function readTaskOutputEvents(
-  filePath: string,
-): Promise<TaskOutputRecord[]> {
+export async function readTaskOutputEvents(filePath: string): Promise<TaskOutputRecord[]> {
   let text: string;
   try {
     text = await fs.readFile(filePath, "utf8");

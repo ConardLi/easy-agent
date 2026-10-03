@@ -51,11 +51,7 @@ import {
   peekPendingNotifications,
   subscribePendingNotifications,
 } from "../state/notificationStore.js";
-import {
-  appendTaskOutput,
-  ensureTaskOutputFile,
-  getTaskOutputPath,
-} from "../utils/taskOutput.js";
+import { appendTaskOutput, ensureTaskOutputFile, getTaskOutputPath } from "../utils/taskOutput.js";
 import {
   createAgentWorktree,
   findGitRoot,
@@ -72,10 +68,7 @@ import { setAgents } from "../agents/registry.js";
 import { getBuiltInAgents } from "../agents/builtIn/index.js";
 import { toolResultText, type ToolContext } from "../tools/Tool.js";
 import type { AgentRunResult } from "../agents/types.js";
-import type {
-  PermissionDecision,
-  PermissionRequest,
-} from "../permissions/permissions.js";
+import type { PermissionDecision, PermissionRequest } from "../permissions/permissions.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -89,10 +82,7 @@ function assert(condition: unknown, label: string): void {
   }
 }
 
-async function withTempDir(
-  fn: (dir: string) => Promise<void>,
-  prefix = "stage20-",
-): Promise<void> {
+async function withTempDir(fn: (dir: string) => Promise<void>, prefix = "stage20-"): Promise<void> {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
   try {
     await fn(tmp);
@@ -108,17 +98,15 @@ async function initGitRepo(dir: string): Promise<void> {
   await execFileAsync("git", ["config", "commit.gpgsign", "false"], { cwd: dir });
   await fs.writeFile(path.join(dir, "README.md"), "# test repo\n");
   await execFileAsync("git", ["add", "."], { cwd: dir });
-  await execFileAsync(
-    "git",
-    ["commit", "-q", "-m", "init"],
-    { cwd: dir, env: { ...process.env, GIT_COMMITTER_NAME: "Test", GIT_COMMITTER_EMAIL: "t@e" } },
-  );
+  await execFileAsync("git", ["commit", "-q", "-m", "init"], {
+    cwd: dir,
+    env: { ...process.env, GIT_COMMITTER_NAME: "Test", GIT_COMMITTER_EMAIL: "t@e" },
+  });
 }
 
 async function waitForAgentNotification(agentId: string): Promise<void> {
-  const matches = () => peekPendingNotifications().some(
-    (notification) => notification.text.includes(`<task_id>${agentId}</task_id>`),
-  );
+  const matches = () =>
+    peekPendingNotifications().some((notification) => notification.text.includes(`<task_id>${agentId}</task_id>`));
   if (matches()) return;
 
   await new Promise<void>((resolve, reject) => {
@@ -189,10 +177,7 @@ async function main(): Promise<void> {
 
     // Update after complete should be a no-op (only running entries change).
     updateAsyncAgentProgress("agent-1", { toolUseCount: 999 });
-    assert(
-      getAsyncAgent("agent-1")?.toolUseCount === 5,
-      "updateProgress is no-op on completed entry",
-    );
+    assert(getAsyncAgent("agent-1")?.toolUseCount === 5, "updateProgress is no-op on completed entry");
   }
 
   {
@@ -287,7 +272,10 @@ async function main(): Promise<void> {
     assert(xml.includes("<output_file>/tmp/foo.output</output_file>"), "contains <output_file>");
     assert(xml.includes("found 3 matches"), "contains finalText body");
     assert(xml.includes("<usage>tokens=5000 tools=7 duration_ms=2100</usage>"), "contains <usage> block");
-    assert(xml.includes("<worktree_path>/repo/.easy-agent/worktrees/agent-x</worktree_path>"), "contains <worktree_path>");
+    assert(
+      xml.includes("<worktree_path>/repo/.easy-agent/worktrees/agent-x</worktree_path>"),
+      "contains <worktree_path>",
+    );
     assert(xml.endsWith("</task-notification>"), "XML closes with </task-notification>");
   }
 
@@ -378,10 +366,7 @@ async function main(): Promise<void> {
     }
 
     // Path / branch naming convention
-    assert(
-      worktreeBranchName("agent-foo/bar") === "worktree-agent-foo+bar",
-      "worktreeBranchName flattens / to +",
-    );
+    assert(worktreeBranchName("agent-foo/bar") === "worktree-agent-foo+bar", "worktreeBranchName flattens / to +");
     const expectedPath = path.join(repoDir, ".easy-agent", "worktrees", "agent-x");
     assert(
       worktreePathFor(repoDir, "agent-x") === expectedPath,
@@ -391,7 +376,10 @@ async function main(): Promise<void> {
     // Create a worktree
     const info = await createAgentWorktree("agent-test", repoDir);
     assert(info.gitRoot === repoDir, "createAgentWorktree.gitRoot === repo root");
-    assert(info.worktreePath === path.join(repoDir, ".easy-agent", "worktrees", "agent-test"), "worktreePath matches convention");
+    assert(
+      info.worktreePath === path.join(repoDir, ".easy-agent", "worktrees", "agent-test"),
+      "worktreePath matches convention",
+    );
     assert(info.worktreeBranch === "worktree-agent-test", "worktreeBranch matches convention");
     assert(/^[0-9a-f]{40}$/.test(info.headCommit), "headCommit is a sha-1 hash");
 
@@ -417,11 +405,10 @@ async function main(): Promise<void> {
 
     await fs.writeFile(path.join(info.worktreePath, "new.txt"), "new\n");
     await execFileAsync("git", ["add", "."], { cwd: info.worktreePath });
-    await execFileAsync(
-      "git",
-      ["commit", "-q", "-m", "wt commit"],
-      { cwd: info.worktreePath, env: { ...process.env, GIT_COMMITTER_NAME: "Test", GIT_COMMITTER_EMAIL: "t@e" } },
-    );
+    await execFileAsync("git", ["commit", "-q", "-m", "wt commit"], {
+      cwd: info.worktreePath,
+      env: { ...process.env, GIT_COMMITTER_NAME: "Test", GIT_COMMITTER_EMAIL: "t@e" },
+    });
     const dirtyAfterCommit = await hasWorktreeChanges(info.worktreePath, info.headCommit);
     assert(dirtyAfterCommit === true, "new commit on top of base makes hasWorktreeChanges true");
 
@@ -548,11 +535,9 @@ async function main(): Promise<void> {
       // but if not we tidy up here).
       if (created) {
         try {
-          await execFileAsync(
-            "git",
-            ["worktree", "remove", "--force", path.join(worktreeDir, created)],
-            { cwd: repoDir },
-          );
+          await execFileAsync("git", ["worktree", "remove", "--force", path.join(worktreeDir, created)], {
+            cwd: repoDir,
+          });
         } catch {
           /* ignore */
         }
@@ -604,10 +589,7 @@ async function main(): Promise<void> {
         toolResultText(result.content).includes(all[0]!.agentId),
         "tool result references the same agentId stored in the registry",
       );
-      assert(
-        toolResultText(result.content).includes(all[0]!.outputFile),
-        "tool result references the outputFile path",
-      );
+      assert(toolResultText(result.content).includes(all[0]!.outputFile), "tool result references the outputFile path");
 
       // The .output file should exist on disk
       const stat = await fs.stat(all[0]!.outputFile);
@@ -687,7 +669,10 @@ Bad iso value should be silently dropped.`,
     const reviewer = agents.find((a) => a.agentType === "isolated-reviewer");
     assert(reviewer?.isolation === "worktree", "isolation: worktree is parsed off frontmatter");
     const vanilla = agents.find((a) => a.agentType === "no-iso-agent");
-    assert(vanilla !== undefined && vanilla.isolation === undefined, "missing isolation → undefined (sentinel for 'fallback')");
+    assert(
+      vanilla !== undefined && vanilla.isolation === undefined,
+      "missing isolation → undefined (sentinel for 'fallback')",
+    );
     const bad = agents.find((a) => a.agentType === "bad-iso");
     assert(bad !== undefined && bad.isolation === undefined, "invalid isolation value → silently dropped");
   });
@@ -729,9 +714,7 @@ Bad iso value should be silently dropped.`,
   //      a wall of XML in the conversation view.
   console.log("\n[10] UI: live snapshot + task-notification parser");
   {
-    const { extractTaskNotification } = await import(
-      "../ui/components/ConversationView.js"
-    );
+    const { extractTaskNotification } = await import("../ui/components/ConversationView.js");
 
     clearAllAsyncAgents();
     let notifyCount = 0;
@@ -783,9 +766,7 @@ Bad iso value should be silently dropped.`,
         outputTokens: 234,
         totalToolUseCount: 3,
       });
-      const stillRunning = getAllAsyncAgents().filter(
-        (a) => a.status === "running",
-      );
+      const stillRunning = getAllAsyncAgents().filter((a) => a.status === "running");
       assert(
         stillRunning.length === 0,
         "after completion the BackgroundAgentBar would render null (no running agents)",
@@ -816,10 +797,7 @@ Bad iso value should be silently dropped.`,
     assert(view?.status === "completed", "status parsed from <status>");
     assert(view?.agentType === "reviewer", "agentType parsed from <agent_type>");
     assert(view?.description === "audit auth flow", "description parsed from <description>");
-    assert(
-      view?.usage === "7 tools · 1.5k tokens · 4.3s",
-      `usage line formatted (got: ${view?.usage ?? "(missing)"})`,
-    );
+    assert(view?.usage === "7 tools · 1.5k tokens · 4.3s", `usage line formatted (got: ${view?.usage ?? "(missing)"})`);
 
     const failedView = extractTaskNotification(
       `[task-notification]\n${formatTaskNotification({
@@ -852,9 +830,7 @@ Bad iso value should be silently dropped.`,
       "plain user text returns null (no false-positive rendering)",
     );
     assert(
-      extractTaskNotification(
-        "[skill_invocation:foo]\n<task-notification></task-notification>",
-      ) === null,
+      extractTaskNotification("[skill_invocation:foo]\n<task-notification></task-notification>") === null,
       "messages without the [task-notification] prefix are ignored",
     );
   }
@@ -887,9 +863,7 @@ Bad iso value should be silently dropped.`,
     //     onPermissionRequest that flips a tripwire. Confirm the flag
     //     stays unset across the launch + a kill cycle.
     let parentPromptCalled = false;
-    const parentOnPermissionRequest = async (
-      _request: PermissionRequest,
-    ): Promise<PermissionDecision> => {
+    const parentOnPermissionRequest = async (_request: PermissionRequest): Promise<PermissionDecision> => {
       parentPromptCalled = true;
       return "deny";
     };
@@ -916,14 +890,8 @@ Bad iso value should be silently dropped.`,
         },
         ctx,
       );
-      assert(
-        result.isError !== true,
-        "background launch returned without error (got ok status)",
-      );
-      assert(
-        parentPromptCalled === false,
-        "parent's onPermissionRequest was NOT invoked during background launch",
-      );
+      assert(result.isError !== true, "background launch returned without error (got ok status)");
+      assert(parentPromptCalled === false, "parent's onPermissionRequest was NOT invoked during background launch");
 
       const m = toolResultText(result.content).match(/<agent_id>([^<]+)<\/agent_id>/);
       const launchedAgentId = m?.[1];
@@ -931,10 +899,7 @@ Bad iso value should be silently dropped.`,
       if (launchedAgentId) {
         killAsyncAgent(launchedAgentId);
         await new Promise<void>((r) => setTimeout(r, 50));
-        assert(
-          parentPromptCalled === false,
-          "parent's onPermissionRequest still not invoked after background kill",
-        );
+        assert(parentPromptCalled === false, "parent's onPermissionRequest still not invoked after background kill");
       }
     } finally {
       if (prevHome === undefined) {
@@ -971,9 +936,7 @@ Bad iso value should be silently dropped.`,
         },
       };
       let probeOnPermissionRequestCalled = false;
-      const probeOnPermissionRequest = async (
-        _request: PermissionRequest,
-      ): Promise<PermissionDecision> => {
+      const probeOnPermissionRequest = async (_request: PermissionRequest): Promise<PermissionDecision> => {
         probeOnPermissionRequestCalled = true;
         // A buggy implementation would invoke us and (e.g.) return allow.
         // The flag should make the loop ignore this entirely.
@@ -986,17 +949,13 @@ Bad iso value should be silently dropped.`,
         getPermissionMode: () => "default",
       };
 
-      const { toolResultsMessage } = await runTools(
-        [askProbeBlock] as never,
-        probeCtx,
-        {
-          permissionMode: "default",
-          permissionSettings: { mode: "default", allow: [], deny: [] },
-          sessionPermissionRules: { allow: [], deny: [] },
-          onPermissionRequest: probeOnPermissionRequest,
-          shouldAvoidPermissionPrompts: true,
-        },
-      );
+      const { toolResultsMessage } = await runTools([askProbeBlock] as never, probeCtx, {
+        permissionMode: "default",
+        permissionSettings: { mode: "default", allow: [], deny: [] },
+        sessionPermissionRules: { allow: [], deny: [] },
+        onPermissionRequest: probeOnPermissionRequest,
+        shouldAvoidPermissionPrompts: true,
+      });
 
       assert(
         probeOnPermissionRequestCalled === false,
@@ -1008,13 +967,8 @@ Bad iso value should be silently dropped.`,
         is_error?: boolean;
         content?: unknown;
       }>;
-      const bashResult = blocks.find(
-        (b) => b?.type === "tool_result" && b?.is_error === true,
-      );
-      assert(
-        bashResult !== undefined,
-        "Write 'ask' under headless mode produces an is_error tool_result",
-      );
+      const bashResult = blocks.find((b) => b?.type === "tool_result" && b?.is_error === true);
+      assert(bashResult !== undefined, "Write 'ask' under headless mode produces an is_error tool_result");
 
       // Pull text out — content can be string or array of blocks.
       let bodyText = "";
@@ -1027,14 +981,8 @@ Bad iso value should be silently dropped.`,
           .join("");
       }
 
-      assert(
-        bodyText.includes("Permission to use Write has been denied"),
-        "denial message names the blocked tool",
-      );
-      assert(
-        bodyText.includes("running in the background"),
-        "denial message explains WHY (no UI to ask)",
-      );
+      assert(bodyText.includes("Permission to use Write has been denied"), "denial message names the blocked tool");
+      assert(bodyText.includes("running in the background"), "denial message explains WHY (no UI to ask)");
       assert(
         bodyText.includes("STOP and report"),
         "denial message tells the model what to do when capability is essential",
@@ -1066,19 +1014,14 @@ Bad iso value should be silently dropped.`,
   // up the engine.
   console.log("\n[12] notification subscribe signal + empty-text guard");
   {
-    const { pendingNotificationCount: countFn } = await import(
-      "../state/notificationStore.js"
-    );
+    const { pendingNotificationCount: countFn } = await import("../state/notificationStore.js");
     clearPendingNotifications();
     let signalCount = 0;
     const unsubscribe = subscribePendingNotifications(() => {
       signalCount += 1;
     });
     try {
-      assert(
-        countFn() === 0,
-        "fresh queue starts empty (precondition)",
-      );
+      assert(countFn() === 0, "fresh queue starts empty (precondition)");
       enqueuePendingNotification({
         mode: "task-notification",
         text: "<task-notification><status>completed</status></task-notification>",
@@ -1125,10 +1068,7 @@ Bad iso value should be silently dropped.`,
       text: "<task-notification><status>completed</status></task-notification>",
     });
     const emptyButQueued = !"".trim() && countFn() === 0;
-    assert(
-      emptyButQueued === false,
-      "empty text + non-empty queue must NOT short-circuit (auto-resume entry)",
-    );
+    assert(emptyButQueued === false, "empty text + non-empty queue must NOT short-circuit (auto-resume entry)");
 
     // Cross-check that the predicate above is the same as the one
     // baked into the engine — so a future refactor can't accidentally

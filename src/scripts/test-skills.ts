@@ -99,10 +99,7 @@ async function runChecks(cwd: string): Promise<void> {
   check(Boolean(findSkill("hello-world")), "unconditional skill is loaded");
   check(Boolean(findSkill("test-reviewer")), "conditional skill is loaded");
   check(Boolean(findSkill("secret-handshake")), "user-only skill is loaded");
-  check(
-    !visibleToModel.some((skill) => skill.name === "secret-handshake"),
-    "user-only skill is hidden from the model",
-  );
+  check(!visibleToModel.some((skill) => skill.name === "secret-handshake"), "user-only skill is hidden from the model");
   check(
     !visibleToModel.some((skill) => skill.name === "test-reviewer"),
     "conditional skill is initially hidden from the model",
@@ -111,7 +108,10 @@ async function runChecks(cwd: string): Promise<void> {
     visibleToModel.some((skill) => skill.name === "hello-world"),
     "unconditional skill is visible to the model",
   );
-  check(conditional.some((skill) => skill.name === "test-reviewer"), "conditional registry is populated");
+  check(
+    conditional.some((skill) => skill.name === "test-reviewer"),
+    "conditional registry is populated",
+  );
 
   console.log("\n[3] System reminder");
   const reminder = formatSkillsSystemReminder(visibleToModel);
@@ -128,18 +128,12 @@ async function runChecks(cwd: string): Promise<void> {
   );
 
   console.log("\n[5] Permission matching");
-  check(
-    matchesPermissionRule("Skill(hello-world)", "Skill", { skill: "hello-world" }),
-    "exact skill rule matches",
-  );
+  check(matchesPermissionRule("Skill(hello-world)", "Skill", { skill: "hello-world" }), "exact skill rule matches");
   check(
     !matchesPermissionRule("Skill(hello-world)", "Skill", { skill: "test-reviewer" }),
     "exact skill rule rejects a different skill",
   );
-  check(
-    matchesPermissionRule("Skill(test-*)", "Skill", { skill: "test-reviewer" }),
-    "skill prefix rule matches",
-  );
+  check(matchesPermissionRule("Skill(test-*)", "Skill", { skill: "test-reviewer" }), "skill prefix rule matches");
 
   console.log("\n[6] Variable substitution");
   const sessionRules: string[] = [];
@@ -155,33 +149,21 @@ async function runChecks(cwd: string): Promise<void> {
   check(!okResult.isError, "skill call succeeds");
   check(okText.includes("Easy Agent"), "$ARGUMENTS is substituted");
   check(okText.includes("session-test-abc"), "session id is substituted");
-  check(
-    okText.includes(".easy-agent/skills/hello-world"),
-    "skill directory is substituted",
-  );
+  check(okText.includes(".easy-agent/skills/hello-world"), "skill directory is substituted");
   check(sessionRules.includes("Read"), "allowed tools are added to session rules");
 
   console.log("\n[7] Rejected invocations");
-  const hiddenResult = await skillTool.call(
-    { skill: "secret-handshake" },
-    { cwd, sessionId: "x" },
-  );
+  const hiddenResult = await skillTool.call({ skill: "secret-handshake" }, { cwd, sessionId: "x" });
   check(Boolean(hiddenResult.isError), "model invocation of a user-only skill is rejected");
   check(
     toolResultText(hiddenResult.content).includes("disable-model-invocation"),
     "rejection explains the invocation policy",
   );
 
-  const unknownResult = await skillTool.call(
-    { skill: "does-not-exist" },
-    { cwd, sessionId: "x" },
-  );
+  const unknownResult = await skillTool.call({ skill: "does-not-exist" }, { cwd, sessionId: "x" });
   check(Boolean(unknownResult.isError), "unknown skill is rejected");
 
-  const invalidNameResult = await skillTool.call(
-    { skill: "../../etc/passwd" },
-    { cwd, sessionId: "x" },
-  );
+  const invalidNameResult = await skillTool.call({ skill: "../../etc/passwd" }, { cwd, sessionId: "x" });
   check(Boolean(invalidNameResult.isError), "invalid skill name is rejected");
 }
 
@@ -220,6 +202,6 @@ async function main(): Promise<void> {
 }
 
 void main().catch((error: unknown) => {
-  console.error(error instanceof Error ? error.stack ?? error.message : String(error));
+  console.error(error instanceof Error ? (error.stack ?? error.message) : String(error));
   process.exitCode = 1;
 });

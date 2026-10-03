@@ -87,9 +87,7 @@ function App(): React.ReactNode {
       <Box marginTop={1}>
         <Text dimColor>— error panel —</Text>
       </Box>
-      <SystemPanel
-        notice={{ tone: "error", title: "Invalid mode: foo", body: "Must be default, plan, or auto." }}
-      />
+      <SystemPanel notice={{ tone: "error", title: "Invalid mode: foo", body: "Must be default, plan, or auto." }} />
     </Box>
   );
 }

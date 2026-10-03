@@ -74,11 +74,7 @@ function buildSparsePlanModeText(planFilePath: string): string {
 // ─── Exit attachment ───────────────────────────────────────────────
 
 function buildPlanModeExitText(planFilePath: string, planExists: boolean): string {
-  const lines = [
-    PLAN_EXIT_MARKER,
-    "",
-    "You have exited plan mode. Full tool access is now restored.",
-  ];
+  const lines = [PLAN_EXIT_MARKER, "", "You have exited plan mode. Full tool access is now restored."];
   if (planExists) {
     lines.push(
       `Your approved plan is at: ${planFilePath}`,
@@ -131,10 +127,7 @@ function countPlanAttachmentsSinceLastExit(messages: readonly MessageParam[]): n
  * Returns a plan mode reminder message if it's time for one,
  * or null if the throttle says to skip this turn.
  */
-export function getPlanModeAttachment(
-  messages: readonly MessageParam[],
-  planFilePath: string,
-): MessageParam | null {
+export function getPlanModeAttachment(messages: readonly MessageParam[], planFilePath: string): MessageParam | null {
   const turnsSince = countHumanTurnsSinceLastAttachment(messages);
 
   // First message in plan mode always gets a full attachment
@@ -152,9 +145,7 @@ export function getPlanModeAttachment(
   const attachmentCount = countPlanAttachmentsSinceLastExit(messages) + 1;
   const isFull = attachmentCount % FULL_REMINDER_EVERY_N === 1;
 
-  const text = isFull
-    ? buildFullPlanModeText(planFilePath)
-    : buildSparsePlanModeText(planFilePath);
+  const text = isFull ? buildFullPlanModeText(planFilePath) : buildSparsePlanModeText(planFilePath);
 
   return { role: "user", content: text };
 }
@@ -162,9 +153,6 @@ export function getPlanModeAttachment(
 /**
  * Returns a one-shot exit attachment, or null if not needed.
  */
-export function getPlanModeExitAttachment(
-  planFilePath: string,
-  planExists: boolean,
-): MessageParam {
+export function getPlanModeExitAttachment(planFilePath: string, planExists: boolean): MessageParam {
   return { role: "user", content: buildPlanModeExitText(planFilePath, planExists) };
 }

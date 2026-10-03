@@ -47,7 +47,7 @@ export async function storeMcpArtifact(data: string, mimeType: string): Promise<
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
+    ? (value as Record<string, unknown>)
     : null;
 }
 
@@ -67,13 +67,19 @@ export async function adaptMcpToolResult(raw: Record<string, unknown>): Promise<
     }
     if (block.type === "image" && typeof block.data === "string" && typeof block.mimeType === "string") {
       const mimeType = block.mimeType.toLowerCase();
-      const approxBytes = Math.floor(block.data.length * 3 / 4);
+      const approxBytes = Math.floor((block.data.length * 3) / 4);
       if (IMAGE_MIME_TYPES.has(mimeType) && approxBytes <= MAX_IMAGE_BYTES) {
         const bytes = decodeMcpBase64(block.data, MAX_IMAGE_BYTES);
-        content.push({ type: "image", source: { type: "base64", media_type: mimeType, data: bytes.toString("base64") } });
+        content.push({
+          type: "image",
+          source: { type: "base64", media_type: mimeType, data: bytes.toString("base64") },
+        });
       } else {
         const stored = await storeMcpArtifact(block.data, mimeType);
-        content.push({ type: "text", text: `MCP image saved to ${stored.filePath} (${stored.mimeType}, ${stored.bytes} bytes)` });
+        content.push({
+          type: "text",
+          text: `MCP image saved to ${stored.filePath} (${stored.mimeType}, ${stored.bytes} bytes)`,
+        });
       }
       continue;
     }
@@ -85,15 +91,24 @@ export async function adaptMcpToolResult(raw: Record<string, unknown>): Promise<
         content.push({ type: "text", text: resource.text });
       } else if (typeof resource?.blob === "string") {
         const stored = await storeMcpArtifact(resource.blob, mimeType ?? "application/octet-stream");
-        content.push({ type: "text", text: `${describeResource(uri, mimeType)} saved to ${stored.filePath} (${stored.bytes} bytes)` });
+        content.push({
+          type: "text",
+          text: `${describeResource(uri, mimeType)} saved to ${stored.filePath} (${stored.bytes} bytes)`,
+        });
       } else {
         content.push({ type: "text", text: JSON.stringify(block) });
       }
       continue;
     }
     if (block.type === "audio" && typeof block.data === "string") {
-      const stored = await storeMcpArtifact(block.data, typeof block.mimeType === "string" ? block.mimeType : "application/octet-stream");
-      content.push({ type: "text", text: `MCP audio saved to ${stored.filePath} (${stored.mimeType}, ${stored.bytes} bytes)` });
+      const stored = await storeMcpArtifact(
+        block.data,
+        typeof block.mimeType === "string" ? block.mimeType : "application/octet-stream",
+      );
+      content.push({
+        type: "text",
+        text: `MCP audio saved to ${stored.filePath} (${stored.mimeType}, ${stored.bytes} bytes)`,
+      });
       continue;
     }
     content.push({ type: "text", text: JSON.stringify(block) });
@@ -102,9 +117,10 @@ export async function adaptMcpToolResult(raw: Record<string, unknown>): Promise<
     content.push({ type: "text", text: `MCP structured content:\n${JSON.stringify(raw.structuredContent, null, 2)}` });
   }
   return {
-    content: content.every((block) => block.type === "text") && raw.structuredContent === undefined
-      ? content.map((block) => block.type === "text" ? block.text : "").join("\n")
-      : content,
+    content:
+      content.every((block) => block.type === "text") && raw.structuredContent === undefined
+        ? content.map((block) => (block.type === "text" ? block.text : "")).join("\n")
+        : content,
     isError: raw.isError === true,
     mcpResult: raw,
   };
@@ -117,7 +133,10 @@ export async function adaptMcpResourceResult(raw: Record<string, unknown>): Prom
     const resource = asRecord(item);
     if (!resource || typeof resource.uri !== "string") throw new Error("Invalid MCP resource content");
     if (typeof resource.blob === "string") {
-      const stored = await storeMcpArtifact(resource.blob, typeof resource.mimeType === "string" ? resource.mimeType : "application/octet-stream");
+      const stored = await storeMcpArtifact(
+        resource.blob,
+        typeof resource.mimeType === "string" ? resource.mimeType : "application/octet-stream",
+      );
       contents.push({ uri: resource.uri, mimeType: stored.mimeType, filePath: stored.filePath, bytes: stored.bytes });
     } else {
       contents.push(resource);

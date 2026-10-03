@@ -48,7 +48,9 @@ function licenseOf(manifest: PackageManifest): string {
   }
   if (Array.isArray(manifest.licenses)) {
     return manifest.licenses
-      .map((entry: unknown) => (entry && typeof entry === "object" && "type" in entry ? String(entry.type) : String(entry)))
+      .map((entry: unknown) =>
+        entry && typeof entry === "object" && "type" in entry ? String(entry.type) : String(entry),
+      )
       .join(" OR ");
   }
   return "UNKNOWN";

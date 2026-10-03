@@ -1,10 +1,6 @@
 import { getSettingsPaths } from "../utils/paths.js";
 import { logWarn } from "../utils/log.js";
-import {
-  loadTrustedSettingSources,
-  loadSettingSources,
-  type LoadedSource,
-} from "../config/sources.js";
+import { loadTrustedSettingSources, loadSettingSources, type LoadedSource } from "../config/sources.js";
 import {
   HOOK_EVENTS,
   isHookEvent,
@@ -26,10 +22,7 @@ function normalizeMatcherGroup(value: unknown): HookMatcherGroup | null {
   if (!value || typeof value !== "object") return null;
   const obj = value as Record<string, unknown>;
 
-  const matcher =
-    typeof obj.matcher === "string" && obj.matcher.length > 0
-      ? obj.matcher
-      : undefined;
+  const matcher = typeof obj.matcher === "string" && obj.matcher.length > 0 ? obj.matcher : undefined;
 
   if (!Array.isArray(obj.hooks)) return null;
   const hooks: HookCommand[] = [];
@@ -43,9 +36,8 @@ function normalizeMatcherGroup(value: unknown): HookMatcherGroup | null {
       typeof h.timeout === "number" && Number.isFinite(h.timeout) && h.timeout > 0
         ? h.timeout
         : DEFAULT_HOOK_TIMEOUT_SEC;
-    const shell = h.shell === "sh" || h.shell === "bash" || h.shell === "powershell" || h.shell === "pwsh"
-      ? h.shell
-      : undefined;
+    const shell =
+      h.shell === "sh" || h.shell === "bash" || h.shell === "powershell" || h.shell === "pwsh" ? h.shell : undefined;
     const entry: HookCommand = { type: "command", command: h.command, timeout };
     if (shell) entry.shell = shell;
     hooks.push(entry);
@@ -102,20 +94,29 @@ function hooksShapeError(raw: unknown): string | undefined {
     if (!isHookEvent(event)) continue;
     if (!Array.isArray(groups)) return `${event} must be an array`;
     for (const group of groups) {
-      if (!group || typeof group !== "object" || Array.isArray(group)) return `${event} contains an invalid matcher group`;
+      if (!group || typeof group !== "object" || Array.isArray(group))
+        return `${event} contains an invalid matcher group`;
       const entry = group as Record<string, unknown>;
       if (entry.matcher !== undefined && typeof entry.matcher !== "string") return `${event} has an invalid matcher`;
       if (typeof entry.matcher === "string" && entry.matcher !== "*" && isRegexMatcher(entry.matcher)) {
-        try { new RegExp(`^(?:${entry.matcher})$`); }
-        catch { return `${event} has an invalid matcher expression`; }
+        try {
+          new RegExp(`^(?:${entry.matcher})$`);
+        } catch {
+          return `${event} has an invalid matcher expression`;
+        }
       }
       if (!Array.isArray(entry.hooks) || entry.hooks.length === 0) return `${event} has an invalid hooks array`;
       for (const rawHook of entry.hooks) {
-        if (!rawHook || typeof rawHook !== "object" || Array.isArray(rawHook)) return `${event} contains an invalid hook`;
+        if (!rawHook || typeof rawHook !== "object" || Array.isArray(rawHook))
+          return `${event} contains an invalid hook`;
         const hook = rawHook as Record<string, unknown>;
         if (hook.type !== undefined && hook.type !== "command") return `${event} contains an unsupported hook type`;
-        if (typeof hook.command !== "string" || hook.command.length === 0) return `${event} contains a hook without a command`;
-        if (hook.timeout !== undefined && (typeof hook.timeout !== "number" || !Number.isFinite(hook.timeout) || hook.timeout <= 0)) {
+        if (typeof hook.command !== "string" || hook.command.length === 0)
+          return `${event} contains a hook without a command`;
+        if (
+          hook.timeout !== undefined &&
+          (typeof hook.timeout !== "number" || !Number.isFinite(hook.timeout) || hook.timeout <= 0)
+        ) {
           return `${event} contains an invalid timeout`;
         }
         if (hook.shell !== undefined && !["bash", "sh", "powershell", "pwsh"].includes(String(hook.shell))) {
@@ -129,8 +130,8 @@ function hooksShapeError(raw: unknown): string | undefined {
 
 function sourceHooks(src: LoadedSource): HooksSettings {
   const key = src.path ?? src.source;
-  const hookValidationError = src.validationErrors?.find((error) =>
-    error.includes('field "hooks"') || error.includes("settings root must be"),
+  const hookValidationError = src.validationErrors?.find(
+    (error) => error.includes('field "hooks"') || error.includes("settings root must be"),
   );
   const error = src.parseError ?? hookValidationError ?? hooksShapeError(src.raw?.["hooks"]);
   if (error) {
@@ -178,9 +179,7 @@ export interface HooksDiagnosticReport {
   globallyDisabled: boolean;
 }
 
-export async function loadHooksDiagnosticReport(
-  cwd: string,
-): Promise<HooksDiagnosticReport> {
+export async function loadHooksDiagnosticReport(cwd: string): Promise<HooksDiagnosticReport> {
   await refreshHookDisableFromSettings(cwd);
   const { user: userPath, project: projectPath } = getSettingsPaths(cwd);
   const sources = await loadSettingSources(cwd);
@@ -188,9 +187,13 @@ export async function loadHooksDiagnosticReport(
   const project = sources.find((source) => source.source === "project");
   const userHooks = user ? sourceHooks(user) : {};
   const projectHooks = project ? sourceHooks(project) : {};
-  const errors = [user, project].flatMap((source) => source
-    ? [source.parseError, ...(source.validationErrors ?? []), hooksShapeError(source.raw?.["hooks"])].filter((error): error is string => Boolean(error))
-    : []);
+  const errors = [user, project].flatMap((source) =>
+    source
+      ? [source.parseError, ...(source.validationErrors ?? []), hooksShapeError(source.raw?.["hooks"])].filter(
+          (error): error is string => Boolean(error),
+        )
+      : [],
+  );
   return {
     userPath,
     projectPath,
@@ -231,11 +234,7 @@ function matcherFires(matcher: string | undefined, matchField: string | undefine
  * label for SessionStart, undefined for the others). Returns a flat
  * list in the order they should execute.
  */
-export function findMatchingHooks(
-  settings: HooksSettings,
-  event: HookEvent,
-  matchField?: string,
-): HookCommand[] {
+export function findMatchingHooks(settings: HooksSettings, event: HookEvent, matchField?: string): HookCommand[] {
   const groups = settings[event];
   if (!groups || groups.length === 0) return [];
   const out: HookCommand[] = [];
@@ -253,11 +252,7 @@ export function findMatchingHooks(
  * but non-zero) JSON-stringify + spawn machinery when no user has any
  * hook in this slot — keeps the hot path free for the >99% case.
  */
-export function hasHookForEvent(
-  settings: HooksSettings,
-  event: HookEvent,
-  matchField?: string,
-): boolean {
+export function hasHookForEvent(settings: HooksSettings, event: HookEvent, matchField?: string): boolean {
   return findMatchingHooks(settings, event, matchField).length > 0;
 }
 
@@ -274,8 +269,8 @@ export async function refreshHookDisableFromSettings(cwd: string): Promise<void>
     let disabled = false;
     for (const src of sources) {
       const key = src.path ?? src.source;
-      const disableValidationError = src.validationErrors?.find((error) =>
-        error.includes('field "disableAllHooks"') || error.includes("settings root must be"),
+      const disableValidationError = src.validationErrors?.find(
+        (error) => error.includes('field "disableAllHooks"') || error.includes("settings root must be"),
       );
       const error = src.parseError ?? disableValidationError;
       if (error) reportSettingError(key, error);

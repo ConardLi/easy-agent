@@ -55,9 +55,7 @@ function notify(): void {
  */
 export function setActiveTeam(ctx: TeamContext): void {
   if (current !== null && current.teamName !== ctx.teamName) {
-    throw new Error(
-      `Already in team "${current.teamName}". Run TeamDelete before creating a new team.`,
-    );
+    throw new Error(`Already in team "${current.teamName}". Run TeamDelete before creating a new team.`);
   }
   if (heartbeatTimer) clearInterval(heartbeatTimer);
   current = ctx;

@@ -1,4 +1,3 @@
-
 import { renderToString } from "ink";
 import type { MessageParam } from "@anthropic-ai/sdk/resources/messages.js";
 import { flattenConversation, ConversationView } from "../ui/components/ConversationView.js";
@@ -26,9 +25,7 @@ const afterResult: MessageParam[] = [
   ...beforeResult,
   {
     role: "user",
-    content: [
-      { type: "tool_result", tool_use_id: "tool_1", content: "file contents here" },
-    ] as never,
+    content: [{ type: "tool_result", tool_use_id: "tool_1", content: "file contents here" }] as never,
   },
 ];
 

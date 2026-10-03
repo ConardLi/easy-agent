@@ -57,11 +57,7 @@ export function AssistantThinkingMessage({
  * render a non-expandable "✻ Thinking…" placeholder. Hidden entirely when
  * not verbose.
  */
-export function AssistantRedactedThinkingMessage({
-  verbose = false,
-}: {
-  verbose?: boolean;
-}): React.ReactNode {
+export function AssistantRedactedThinkingMessage({ verbose = false }: { verbose?: boolean }): React.ReactNode {
   if (!verbose) return null;
   return (
     <Box marginTop={1}>

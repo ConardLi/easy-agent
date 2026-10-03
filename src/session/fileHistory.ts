@@ -25,14 +25,7 @@
 
 import { createHash } from "node:crypto";
 import { constants, type Stats } from "node:fs";
-import {
-  type FileHandle,
-  open,
-  readdir,
-  readFile,
-  rm,
-  stat,
-} from "node:fs/promises";
+import { type FileHandle, open, readdir, readFile, rm, stat } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative } from "node:path";
 import { diffLines } from "diff";
 import { getEasyAgentHome } from "../utils/paths.js";
@@ -47,11 +40,7 @@ import {
   withValidatedWorkspacePath,
   writeWorkspaceFileFromHandle,
 } from "../tools/pathUtils.js";
-import {
-  DEFAULT_CLEANUP_PERIOD_DAYS,
-  recordFileHistorySnapshot,
-  type FileHistorySnapshotRecord,
-} from "./storage.js";
+import { DEFAULT_CLEANUP_PERIOD_DAYS, recordFileHistorySnapshot, type FileHistorySnapshotRecord } from "./storage.js";
 
 /** null backupFileName means "the file did not exist in this version". */
 export type BackupFileName = string | null;
@@ -109,10 +98,7 @@ function isEnvTruthy(value: string | undefined): boolean {
  * `checkpointingEnabled: false` or the `EASY_AGENT_DISABLE_CHECKPOINTING`
  * env var disables the whole feature.
  */
-export async function configureFileHistory(
-  projectCwd: string,
-  currentSessionId: string,
-): Promise<void> {
+export async function configureFileHistory(projectCwd: string, currentSessionId: string): Promise<void> {
   cwd = projectCwd;
   sessionId = currentSessionId;
   state = emptyState();
@@ -122,9 +108,7 @@ export async function configureFileHistory(
   } catch {
     setting = undefined;
   }
-  enabled =
-    setting !== false &&
-    !isEnvTruthy(process.env.EASY_AGENT_DISABLE_CHECKPOINTING);
+  enabled = setting !== false && !isEnvTruthy(process.env.EASY_AGENT_DISABLE_CHECKPOINTING);
 }
 
 export function fileHistoryEnabled(): boolean {
@@ -193,9 +177,7 @@ export function setFileHistoryState(next: FileHistoryState): void {
  * Since easy-agent reuses the session id on resume, the backup files already
  * live under the right directory — no migration needed.
  */
-export function restoreFileHistorySnapshots(
-  records: FileHistorySnapshotRecord[],
-): void {
+export function restoreFileHistorySnapshots(records: FileHistorySnapshotRecord[]): void {
   if (!enabled || records.length === 0) return;
   const trackedFiles = new Set<string>();
   const snapshots: FileHistorySnapshot[] = records.map((rec) => {
@@ -218,10 +200,7 @@ export function restoreFileHistorySnapshots(
  * the backup to the most-recent snapshot. No-op if the file is already tracked
  * in that snapshot (so repeat edits in the same turn never clobber v1).
  */
-export async function fileHistoryTrackEdit(
-  filePath: string,
-  messageId: string,
-): Promise<void> {
+export async function fileHistoryTrackEdit(filePath: string, messageId: string): Promise<void> {
   if (!enabled) return;
 
   let checkedPath: string;
@@ -288,11 +267,7 @@ export async function fileHistoryMakeSnapshot(messageId: string): Promise<void> 
         try {
           const resolution = await resolveWorkspacePathForWrite(filePath, cwd);
           if (resolution.exists) {
-            fileStats = await withValidatedWorkspacePath(
-              filePath,
-              cwd,
-              async (_resolvedPath, stats) => stats,
-            );
+            fileStats = await withValidatedWorkspacePath(filePath, cwd, async (_resolvedPath, stats) => stats);
           }
         } catch (e) {
           if (!isENOENT(e)) throw e;
@@ -390,10 +365,7 @@ export async function fileHistoryGetDiffStats(messageId: string): Promise<DiffSt
           : getBackupFileNameFirstVersion(trackingPath);
         if (backupFileName === undefined) return null;
 
-        const stats = await computeDiffStatsForFile(
-          filePath,
-          backupFileName === null ? undefined : backupFileName,
-        );
+        const stats = await computeDiffStatsForFile(filePath, backupFileName === null ? undefined : backupFileName);
         if (stats.insertions || stats.deletions) {
           return { filePath, stats };
         }
@@ -459,10 +431,7 @@ function resolveBackupPath(backupFileName: string): string {
   return join(getEasyAgentHome(), "file-history", sessionId, backupFileName);
 }
 
-async function createBackup(
-  filePath: string | null,
-  version: number,
-): Promise<FileHistoryBackup> {
+async function createBackup(filePath: string | null, version: number): Promise<FileHistoryBackup> {
   const backupTime = new Date().toISOString();
   if (filePath === null) {
     return { backupFileName: null, version, backupTime };
@@ -472,13 +441,9 @@ async function createBackup(
   const backupPath = resolveBackupPath(backupFileName);
 
   try {
-    await withValidatedWorkspaceFile(
-      filePath,
-      cwd,
-      async (sourceHandle, _resolution, sourceStats) => {
-        await writeBackupFile(backupPath, sourceHandle, sourceStats.mode);
-      },
-    );
+    await withValidatedWorkspaceFile(filePath, cwd, async (sourceHandle, _resolution, sourceStats) => {
+      await writeBackupFile(backupPath, sourceHandle, sourceStats.mode);
+    });
   } catch (e) {
     if (isENOENT(e)) return { backupFileName: null, version, backupTime };
     throw e;
@@ -501,11 +466,7 @@ async function restoreBackup(filePath: string, backupFileName: string): Promise<
   }
 }
 
-async function writeBackupFile(
-  filePath: string,
-  sourceHandle: FileHandle,
-  mode: number,
-): Promise<void> {
+async function writeBackupFile(filePath: string, sourceHandle: FileHandle, mode: number): Promise<void> {
   await ensurePrivateDirectory(dirname(filePath));
   await atomicWriteFileFromHandle(filePath, sourceHandle, { mode });
 }
@@ -551,11 +512,7 @@ export async function checkOriginFileChanged(
   let originalStats: Stats | null = originalStatsHint ?? null;
   if (!originalStats) {
     try {
-      originalStats = await withValidatedWorkspacePath(
-        originalFile,
-        cwd,
-        async (_resolvedPath, stats) => stats,
-      );
+      originalStats = await withValidatedWorkspacePath(originalFile, cwd, async (_resolvedPath, stats) => stats);
     } catch (e) {
       if (!isENOENT(e)) return true;
     }
@@ -587,11 +544,7 @@ export async function checkOriginFileChanged(
           ) {
             return true;
           }
-          return !(await fileHandlesEqual(
-            originalHandle,
-            backupHandle,
-            currentOriginalStats.size,
-          ));
+          return !(await fileHandlesEqual(originalHandle, backupHandle, currentOriginalStats.size));
         }),
     );
   } catch {
@@ -599,11 +552,7 @@ export async function checkOriginFileChanged(
   }
 }
 
-async function fileHandlesEqual(
-  left: FileHandle,
-  right: FileHandle,
-  size: number,
-): Promise<boolean> {
+async function fileHandlesEqual(left: FileHandle, right: FileHandle, size: number): Promise<boolean> {
   const leftBuffer = Buffer.allocUnsafe(64 * 1024);
   const rightBuffer = Buffer.allocUnsafe(64 * 1024);
   let offset = 0;
@@ -614,9 +563,7 @@ async function fileHandlesEqual(
       right.read(rightBuffer, 0, length, offset),
     ]);
     if (leftRead.bytesRead !== rightRead.bytesRead) return false;
-    if (!leftBuffer.subarray(0, leftRead.bytesRead).equals(
-      rightBuffer.subarray(0, rightRead.bytesRead),
-    )) {
+    if (!leftBuffer.subarray(0, leftRead.bytesRead).equals(rightBuffer.subarray(0, rightRead.bytesRead))) {
       return false;
     }
     if (leftRead.bytesRead === 0) return offset === size;

@@ -149,8 +149,7 @@ Settings keys (in ~/.easy-agent/settings.json or <cwd>/.easy-agent/settings.json
   const printIndex = process.argv.findIndex((a) => a === "--print" || a === "-p");
   const isPrintMode = printIndex !== -1;
   const printPromptCandidate = isPrintMode ? process.argv[printIndex + 1] : undefined;
-  const printPrompt =
-    printPromptCandidate && !printPromptCandidate.startsWith("-") ? printPromptCandidate : undefined;
+  const printPrompt = printPromptCandidate && !printPromptCandidate.startsWith("-") ? printPromptCandidate : undefined;
   // Bypass permissions (auto-approve `ask` prompts). Honored by the
   // headless callback; `deny` rules still apply. Currently only wired into
   // print mode.
@@ -166,9 +165,7 @@ Settings keys (in ~/.easy-agent/settings.json or <cwd>/.easy-agent/settings.json
     outputFormat !== "json" &&
     outputFormat !== "stream-json"
   ) {
-    console.error(
-      `[easy-agent] Unsupported --output-format: ${outputFormat}. Use 'text', 'json', or 'stream-json'.`,
-    );
+    console.error(`[easy-agent] Unsupported --output-format: ${outputFormat}. Use 'text', 'json', or 'stream-json'.`);
     process.exit(1);
   }
 
@@ -254,9 +251,10 @@ Settings keys (in ~/.easy-agent/settings.json or <cwd>/.easy-agent/settings.json
     }
   }
 
-  const protectedOverrides = Object.values(
-    environmentReport.protectedCredentialOverrides,
-  ).reduce((total, count) => total + (count ?? 0), 0);
+  const protectedOverrides = Object.values(environmentReport.protectedCredentialOverrides).reduce(
+    (total, count) => total + (count ?? 0),
+    0,
+  );
   if (protectedOverrides > 0) {
     console.warn(
       `[easy-agent] Ignored ${protectedOverrides} project credential environment override(s); ` +
@@ -444,12 +442,7 @@ Settings keys (in ~/.easy-agent/settings.json or <cwd>/.easy-agent/settings.json
       promptArg: printPrompt,
       permissionMode,
       bypassPermissions,
-      outputFormat:
-        outputFormat === "json"
-          ? "json"
-          : outputFormat === "stream-json"
-            ? "stream-json"
-            : "text",
+      outputFormat: outputFormat === "json" ? "json" : outputFormat === "stream-json" ? "stream-json" : "text",
     });
     return;
   }

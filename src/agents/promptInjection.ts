@@ -49,13 +49,13 @@ const CREATION_GUIDANCE = [
   "Template — copy verbatim and edit:",
   "```markdown",
   "---",
-  "name: \"my-agent\"",
-  "description: \"One-sentence whenToUse — the dispatching agent reads this to decide whether to delegate.\"",
-  "tools: \"Read,Grep,Glob\"",
-  "disallowedTools: \"Write,Edit\"",
-  "model: \"claude-sonnet-4-5\"",
+  'name: "my-agent"',
+  'description: "One-sentence whenToUse — the dispatching agent reads this to decide whether to delegate."',
+  'tools: "Read,Grep,Glob"',
+  'disallowedTools: "Write,Edit"',
+  'model: "claude-sonnet-4-5"',
   "maxTurns: 20",
-  "permissionMode: \"default\"",
+  'permissionMode: "default"',
   "---",
   "You are <role>. Your job is <one-sentence mission>.",
   "",
@@ -84,19 +84,14 @@ export function formatAgentsSystemReminder(agents: AgentDefinition[]): string {
   });
 
   const lines = sorted.map((a) => {
-    const tag =
-      a.source === "built-in"
-        ? "built-in"
-        : a.source === "project"
-          ? "project"
-          : "user";
+    const tag = a.source === "built-in" ? "built-in" : a.source === "project" ? "project" : "user";
     return `- ${a.agentType} [${tag}]: ${truncate(a.whenToUse, MAX_DESC_CHARS)}`;
   });
 
   return [
     "<system-reminder>",
     "Available sub-agents you can invoke via the `Agent` tool. Each sub-agent runs in its own context window with its own tool set and returns a concise summary.",
-    "Call `Agent(prompt=\"...\", description=\"3-5 word task name\", subagent_type=\"<name>\")` to delegate a focused subtask.",
+    'Call `Agent(prompt="...", description="3-5 word task name", subagent_type="<name>")` to delegate a focused subtask.',
     "Use sub-agents to keep the main conversation context clean — search-heavy or read-heavy work is a good fit. Do not delegate trivial single-step tasks.",
     "Sub-agents do NOT see the main conversation history, so the `prompt` must be self-contained.",
     "",

@@ -281,10 +281,7 @@ export async function* handleResumeCommand(
     type: "notice",
     tone: "info",
     title: `Switched to session ${targetId.slice(0, 8)}`,
-    body: [
-      `${restored.summary.messageCount} message(s) restored`,
-      `Model: ${restored.summary.model}`,
-    ].join("\n"),
+    body: [`${restored.summary.messageCount} message(s) restored`, `Model: ${restored.summary.model}`].join("\n"),
   };
   return { handled: true };
 }

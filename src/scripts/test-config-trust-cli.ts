@@ -94,16 +94,7 @@ async function runCli(
   return new Promise((resolve, reject) => {
     const child = spawn(
       process.execPath,
-      [
-        "--import",
-        TSX_IMPORT,
-        CLI_PATH,
-        "--print",
-        "reply",
-        "--model",
-        "fixture-model",
-        ...extraArgs,
-      ],
+      ["--import", TSX_IMPORT, CLI_PATH, "--print", "reply", "--model", "fixture-model", ...extraArgs],
       {
         cwd,
         env: {
@@ -161,9 +152,7 @@ try {
   assert.ok(!untrusted.stderr.includes(projectEndpoint.baseURL));
   assert.ok(!untrusted.stderr.includes("project-token"));
 
-  const explicitlyTrusted = await runCli(project, home, safe.baseURL, [
-    "--trust-project-config",
-  ]);
+  const explicitlyTrusted = await runCli(project, home, safe.baseURL, ["--trust-project-config"]);
   assert.equal(explicitlyTrusted.code, 0, explicitlyTrusted.stderr);
   assert.equal(explicitlyTrusted.stdout, "ok\n");
   assert.equal(safe.requests.length, 1);

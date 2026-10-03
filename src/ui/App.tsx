@@ -62,10 +62,7 @@ export function App({ model, permissionMode, shouldResume, resumeSessionId }: Ap
   // $VISUAL nor $EDITOR is set.
   const openEditor = React.useCallback(
     async (filePath: string): Promise<{ ok: boolean; error?: string }> => {
-      const editorCmd =
-        process.env.VISUAL ||
-        process.env.EDITOR ||
-        (process.platform === "win32" ? "notepad" : "vi");
+      const editorCmd = process.env.VISUAL || process.env.EDITOR || (process.platform === "win32" ? "notepad" : "vi");
       const [cmd, ...preArgs] = editorCmd.split(/\s+/).filter(Boolean);
       if (!cmd) return { ok: false, error: "No editor configured ($EDITOR/$VISUAL)." };
 
@@ -89,7 +86,14 @@ export function App({ model, permissionMode, shouldResume, resumeSessionId }: Ap
     [isRawModeSupported, setRawMode, writeStdout],
   );
 
-  const { state, actions } = useAgentSession({ model, onExit: exit, permissionMode, shouldResume, resumeSessionId, openEditor });
+  const { state, actions } = useAgentSession({
+    model,
+    onExit: exit,
+    permissionMode,
+    shouldResume,
+    resumeSessionId,
+    openEditor,
+  });
   const isPlanExitActive = Boolean(state.permissionPrompt?.isPlanExit);
 
   // Surface the current in-progress item's activeForm via the global
@@ -103,9 +107,10 @@ export function App({ model, permissionMode, shouldResume, resumeSessionId }: Ap
   // place at a time.
   const inProgressTodo = state.todos.find((t) => t.status === "in_progress");
   const inProgressTask = state.tasks.find((t) => t.status === "in_progress");
-  const effectiveSpinnerLabel = state.taskMode === "task"
-    ? (inProgressTask?.activeForm ?? inProgressTask?.subject ?? state.spinnerLabel)
-    : (inProgressTodo?.activeForm ?? state.spinnerLabel);
+  const effectiveSpinnerLabel =
+    state.taskMode === "task"
+      ? (inProgressTask?.activeForm ?? inProgressTask?.subject ?? state.spinnerLabel)
+      : (inProgressTodo?.activeForm ?? state.spinnerLabel);
   // Pull skill `/<name>` commands from the live registry on every render
   // so newly activated conditional skills (e.g. test-reviewer after the
   // model reads a *.test.ts file) appear in the suggestion list without
@@ -116,10 +121,7 @@ export function App({ model, permissionMode, shouldResume, resumeSessionId }: Ap
       getAllUserInvocableSkills().map((skill) => ({
         name: `/${skill.name}`,
         tag: "skill",
-        description:
-          skill.description.length > 80
-            ? `${skill.description.slice(0, 77)}…`
-            : skill.description,
+        description: skill.description.length > 80 ? `${skill.description.slice(0, 77)}…` : skill.description,
       })),
     // Re-derive whenever the message log grows — that's our cheap proxy
     // for "something happened that may have activated a skill". The list
@@ -134,18 +136,12 @@ export function App({ model, permissionMode, shouldResume, resumeSessionId }: Ap
       getAllUserCommands().map((cmd) => ({
         name: `/${cmd.name}`,
         tag: "local",
-        description:
-          cmd.description.length > 80
-            ? `${cmd.description.slice(0, 77)}…`
-            : cmd.description,
+        description: cmd.description.length > 80 ? `${cmd.description.slice(0, 77)}…` : cmd.description,
       })),
     [],
   );
 
-  const extraCommands = React.useMemo(
-    () => [...skillCommands, ...userCommands],
-    [skillCommands, userCommands],
-  );
+  const extraCommands = React.useMemo(() => [...skillCommands, ...userCommands], [skillCommands, userCommands]);
 
   // A slash-command result panel (dismissable notice) pins above the input,
   // blocks typing, and waits for Esc. The /diff colorized panel shares the same
@@ -157,8 +153,7 @@ export function App({ model, permissionMode, shouldResume, resumeSessionId }: Ap
   const memoryPickerActive = Boolean(state.memoryPicker);
   const permissionManagerActive = Boolean(state.permissionView);
   const pluginManagerActive = Boolean(state.pluginView);
-  const overlayActive =
-    resumePickerActive || memoryPickerActive || permissionManagerActive || pluginManagerActive;
+  const overlayActive = resumePickerActive || memoryPickerActive || permissionManagerActive || pluginManagerActive;
 
   const {
     inputValue,
@@ -200,9 +195,7 @@ export function App({ model, permissionMode, shouldResume, resumeSessionId }: Ap
     permissionMode: state.permissionMode,
     taskMode: state.taskMode,
     contextPercent: state.lastUsage?.contextPercent,
-    tokens: state.lastUsage
-      ? { input: state.lastUsage.input, output: state.lastUsage.output }
-      : undefined,
+    tokens: state.lastUsage ? { input: state.lastUsage.input, output: state.lastUsage.output } : undefined,
   });
 
   // Ctrl+O transcript overlay. Build the verbose, pre-wrapped
@@ -272,7 +265,7 @@ export function App({ model, permissionMode, shouldResume, resumeSessionId }: Ap
   });
   const viewedAgent =
     view.mode === "viewing" && view.viewingAgentId
-      ? state.asyncAgents.find((a) => a.agentId === view.viewingAgentId) ?? null
+      ? (state.asyncAgents.find((a) => a.agentId === view.viewingAgentId) ?? null)
       : null;
 
   // Committed conversation history, flattened into
@@ -292,9 +285,7 @@ export function App({ model, permissionMode, shouldResume, resumeSessionId }: Ap
   const staticItems = React.useMemo<ConversationItem[]>(() => {
     const banner: ConversationItem = {
       key: "welcome",
-      element: (
-        <WelcomeBanner model={model} version={VERSION} permissionMode={state.permissionMode} />
-      ),
+      element: <WelcomeBanner model={model} version={VERSION} permissionMode={state.permissionMode} />,
     };
     return [banner, ...conversationItems];
     // permissionMode is read for the startup chip only; <Static> never repaints
@@ -368,13 +359,8 @@ export function App({ model, permissionMode, shouldResume, resumeSessionId }: Ap
             <TeammateViewer agent={viewedAgent} />
           ) : (
             <>
-              {state.taskMode === "task"
-                ? <TaskList tasks={state.tasks} />
-                : <TodoList todos={state.todos} />}
-              <ToolCallList
-                toolCalls={state.toolCalls}
-                leadingMarginTop={state.toolCalls.length > 0 ? 1 : 0}
-              />
+              {state.taskMode === "task" ? <TaskList tasks={state.tasks} /> : <TodoList todos={state.todos} />}
+              <ToolCallList toolCalls={state.toolCalls} leadingMarginTop={state.toolCalls.length > 0 ? 1 : 0} />
             </>
           )}
           <SystemPanel notice={state.systemNotice} />
@@ -398,23 +384,11 @@ export function App({ model, permissionMode, shouldResume, resumeSessionId }: Ap
             onPlanDecision={actions.resolvePermission}
           />
           {view.mode === "selecting" ? (
-            <TeammatePicker
-              agents={state.asyncAgents}
-              selectedAgentId={view.selectedAgentId}
-            />
+            <TeammatePicker agents={state.asyncAgents} selectedAgentId={view.selectedAgentId} />
           ) : null}
-          {state.resumePicker ? (
-            <SessionPicker
-              sessions={state.resumePicker}
-              index={state.resumePickerIndex}
-            />
-          ) : null}
+          {state.resumePicker ? <SessionPicker sessions={state.resumePicker} index={state.resumePickerIndex} /> : null}
           {state.memoryPicker ? (
-            <MemoryPicker
-              items={state.memoryPicker}
-              index={state.memoryPickerIndex}
-              cwd={statusCwd}
-            />
+            <MemoryPicker items={state.memoryPicker} index={state.memoryPickerIndex} cwd={statusCwd} />
           ) : null}
           {state.pluginView ? (
             <PluginManager
@@ -436,7 +410,7 @@ export function App({ model, permissionMode, shouldResume, resumeSessionId }: Ap
           <StartupNotices />
           <BackgroundAgentBar agents={state.asyncAgents} />
           {state.asyncAgents.some((a) => a.status === "running") ? (
-            <Text color={theme.muted}>  Shift+↑/↓ inspect teammates</Text>
+            <Text color={theme.muted}>{"  Shift+↑/↓ inspect teammates"}</Text>
           ) : null}
           {/* Queued messages typed mid-turn — sent FIFO as the turn(s) end. */}
           {queued.length > 0 ? (
@@ -452,7 +426,13 @@ export function App({ model, permissionMode, shouldResume, resumeSessionId }: Ap
           ) : null}
           {/* Input stays visible during a turn so the user can queue messages;
               a permission / question dialog or a command result panel hides it. */}
-          <InputPrompt isLoading={Boolean(state.permissionPrompt) || Boolean(state.questionPrompt) || commandPanelActive || overlayActive} inputValue={inputValue} cursor={cursor} />
+          <InputPrompt
+            isLoading={
+              Boolean(state.permissionPrompt) || Boolean(state.questionPrompt) || commandPanelActive || overlayActive
+            }
+            inputValue={inputValue}
+            cursor={cursor}
+          />
           <CommandSuggestions items={commandPanelActive || overlayActive ? [] : commandSuggestions} />
           <FileSuggestions items={fileSuggestions} />
           <ModeSelector items={modeSuggestions} />

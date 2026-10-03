@@ -213,9 +213,7 @@ try {
   const { APIConnectionError } = await import("@anthropic-ai/sdk");
   const { getUserFacingErrorMessage } = await import("../services/api/errors.js");
   process.env.ANTHROPIC_BASE_URL = "https://user:pass@example.com/v1?token=secret";
-  const connectionMessage = getUserFacingErrorMessage(
-    new APIConnectionError({ message: "connection failed" }),
-  );
+  const connectionMessage = getUserFacingErrorMessage(new APIConnectionError({ message: "connection failed" }));
   assert.ok(connectionMessage.includes("https://example.com/…"));
   assert.ok(!connectionMessage.includes("user:pass"));
   assert.ok(!connectionMessage.includes("token=secret"));

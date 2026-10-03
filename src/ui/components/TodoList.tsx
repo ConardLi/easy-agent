@@ -32,7 +32,9 @@ function TodoListInner({ todos }: TodoListProps): React.ReactNode {
   return (
     <Box flexDirection="column" marginTop={1}>
       <Box marginLeft={2}>
-        <Text bold color="cyan">{"\u25A2 Todos "}</Text>
+        <Text bold color="cyan">
+          {"\u25A2 Todos "}
+        </Text>
         <Text dimColor>{`(${doneCount}/${todos.length} done)`}</Text>
       </Box>
       {todos.map((todo, index) => (
@@ -56,14 +58,19 @@ function TodoRow({ todo }: { todo: TodoItem }): React.ReactNode {
     return (
       <Box marginLeft={4}>
         <Text color="green">{"\u2713 "}</Text>
-        <Text strikethrough dimColor>{todo.content}</Text>
+        <Text strikethrough dimColor>
+          {todo.content}
+        </Text>
       </Box>
     );
   }
 
   return (
     <Box marginLeft={4}>
-      <Text dimColor>{"\u25CB "}{todo.content}</Text>
+      <Text dimColor>
+        {"\u25CB "}
+        {todo.content}
+      </Text>
     </Box>
   );
 }

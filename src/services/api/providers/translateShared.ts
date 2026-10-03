@@ -65,27 +65,30 @@ export function observeOpenAIChatCachedTokens(body: ReadableStream<Uint8Array>):
     const trimmed = line.trim();
     if (!trimmed.startsWith("data:") || !trimmed.includes("cached_tokens")) return;
     try {
-      const value = (JSON.parse(trimmed.slice(5)) as { usage?: { prompt_tokens_details?: { cached_tokens?: unknown } } })
-        .usage?.prompt_tokens_details?.cached_tokens;
+      const value = (
+        JSON.parse(trimmed.slice(5)) as { usage?: { prompt_tokens_details?: { cached_tokens?: unknown } } }
+      ).usage?.prompt_tokens_details?.cached_tokens;
       if (typeof value === "number") cached = value;
     } catch {
       /* not a JSON data line */
     }
   };
-  const stream = body.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
-    transform(chunk, controller) {
-      controller.enqueue(chunk);
-      pending += decoder.decode(chunk, { stream: true });
-      let newline: number;
-      while ((newline = pending.indexOf("\n")) >= 0) {
-        scan(pending.slice(0, newline));
-        pending = pending.slice(newline + 1);
-      }
-    },
-    flush() {
-      scan(pending + decoder.decode());
-    },
-  }));
+  const stream = body.pipeThrough(
+    new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        controller.enqueue(chunk);
+        pending += decoder.decode(chunk, { stream: true });
+        let newline: number;
+        while ((newline = pending.indexOf("\n")) >= 0) {
+          scan(pending.slice(0, newline));
+          pending = pending.slice(newline + 1);
+        }
+      },
+      flush() {
+        scan(pending + decoder.decode());
+      },
+    }),
+  );
   return { stream, cachedTokens: () => cached };
 }
 

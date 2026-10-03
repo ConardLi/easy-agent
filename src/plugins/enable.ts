@@ -20,11 +20,7 @@
  */
 
 import { loadSettingSources, loadTrustedSettingSources } from "../config/sources.js";
-import {
-  updateLocalSettings,
-  updateProjectSettings,
-  updateUserSettings,
-} from "../utils/settings.js";
+import { updateLocalSettings, updateProjectSettings, updateUserSettings } from "../utils/settings.js";
 import type { PluginScope } from "./schemas.js";
 
 /** The settings key we read/write. */

@@ -3,23 +3,21 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 
-const GOLDEN_PATH = path.join(
-  import.meta.dirname,
-  "__golden__",
-  "config-session-characterization.golden.txt",
-);
+const GOLDEN_PATH = path.join(import.meta.dirname, "__golden__", "config-session-characterization.golden.txt");
 const STARTED_AT = "2026-01-02T03:04:05.000Z";
 const UPDATED_AT = "2026-01-02T03:05:06.000Z";
 
 function stableJson(value: unknown): string {
-  return JSON.stringify(value, (_key, current) => {
-    if (!current || typeof current !== "object" || Array.isArray(current)) return current;
-    return Object.fromEntries(
-      Object.entries(current as Record<string, unknown>).sort(([left], [right]) =>
-        left.localeCompare(right),
-      ),
-    );
-  }, 2);
+  return JSON.stringify(
+    value,
+    (_key, current) => {
+      if (!current || typeof current !== "object" || Array.isArray(current)) return current;
+      return Object.fromEntries(
+        Object.entries(current as Record<string, unknown>).sort(([left], [right]) => left.localeCompare(right)),
+      );
+    },
+    2,
+  );
 }
 
 async function writeJson(filePath: string, value: unknown): Promise<void> {
@@ -67,9 +65,7 @@ async function buildRecording(): Promise<string> {
         model: sources.getScalarSetting(localSources, "model"),
         outputStyle: sources.getScalarSetting(localSources, "outputStyle"),
         allow: sources.getMergedStringArray(localSources, (raw) =>
-          Array.isArray(raw?.allow)
-            ? raw.allow.filter((value): value is string => typeof value === "string")
-            : [],
+          Array.isArray(raw?.allow) ? raw.allow.filter((value): value is string => typeof value === "string") : [],
         ),
       },
     };
@@ -166,11 +162,17 @@ async function main(): Promise<void> {
   }
 
   const golden = (await readFile(GOLDEN_PATH, "utf8")).replace(/\r\n?/g, "\n");
-  assert.equal(recording, golden, "Configuration/session characterization mismatch; use --update only for intentional changes");
-  process.stdout.write(`[pass] Configuration/session characterization matches golden (${recording.split("\n").length} lines).\n`);
+  assert.equal(
+    recording,
+    golden,
+    "Configuration/session characterization mismatch; use --update only for intentional changes",
+  );
+  process.stdout.write(
+    `[pass] Configuration/session characterization matches golden (${recording.split("\n").length} lines).\n`,
+  );
 }
 
 void main().catch((error: unknown) => {
-  process.stderr.write(`${error instanceof Error ? error.stack ?? error.message : String(error)}\n`);
+  process.stderr.write(`${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`);
   process.exitCode = 1;
 });

@@ -25,7 +25,12 @@ export async function validateTaskActor(context: ToolContext): Promise<string | 
   if (!identity) return null;
   const team = await readTeamFileAsync(identity.teamName);
   const member = team?.members.find((candidate) => candidate.name === identity.agentName);
-  if (!team || team.status === "shutting_down" || !member?.isActive || (identity.runId && member.runId !== identity.runId)) {
+  if (
+    !team ||
+    team.status === "shutting_down" ||
+    !member?.isActive ||
+    (identity.runId && member.runId !== identity.runId)
+  ) {
     return `Teammate "${identity.agentName}" is no longer active in team "${identity.teamName}"`;
   }
   return null;

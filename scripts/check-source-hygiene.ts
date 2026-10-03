@@ -32,7 +32,8 @@ const RULES: Rule[] = [
   },
   {
     id: "roadmap-plan",
-    pattern: /DEVELOPMENT-PLAN|\bplan §|§\s?\d{2}\.\d|\b(?:later|future|next|upcoming)\s+(?:stage|phase)s?\b|[Ww]ill be implemented in/,
+    pattern:
+      /DEVELOPMENT-PLAN|\bplan §|§\s?\d{2}\.\d|\b(?:later|future|next|upcoming)\s+(?:stage|phase)s?\b|[Ww]ill be implemented in/,
     hint: "track deferred work in an issue instead of a source comment",
   },
   {
@@ -84,7 +85,7 @@ const ALLOWED_MATCHES: AllowedMatch[] = [
   {
     file: "src/styles/registry.ts",
     rule: "teaching",
-    text: "the agent adds short \"Insight\" teaching blocks",
+    text: 'the agent adds short "Insight" teaching blocks',
     reason: "Describes the user-visible Explanatory output style.",
   },
   {
@@ -96,7 +97,7 @@ const ALLOWED_MATCHES: AllowedMatch[] = [
   {
     file: "src/styles/registry.ts",
     rule: "teaching",
-    text: "the \"Insight\" teaching block",
+    text: 'the "Insight" teaching block',
     reason: "Names the shared prompt block of the Explanatory and Learning output styles.",
   },
   {
@@ -190,7 +191,9 @@ function scanBundle(bundle: string, usedAllowances: Set<AllowedMatch>): { module
 
 function report(violations: readonly Violation[], location: (violation: Violation) => string): void {
   for (const violation of violations) {
-    process.stdout.write(`${location(violation)} [${violation.rule.id}] ${violation.text}\n  -> ${violation.rule.hint}\n`);
+    process.stdout.write(
+      `${location(violation)} [${violation.rule.id}] ${violation.text}\n  -> ${violation.rule.hint}\n`,
+    );
   }
 }
 
@@ -239,6 +242,6 @@ async function main(argv: string[]): Promise<void> {
 }
 
 void main(process.argv.slice(2)).catch((error: unknown) => {
-  process.stderr.write(`${error instanceof Error ? error.stack ?? error.message : String(error)}\n`);
+  process.stderr.write(`${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`);
   process.exitCode = 1;
 });

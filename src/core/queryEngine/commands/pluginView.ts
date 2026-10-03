@@ -36,9 +36,7 @@ import type {
  */
 const WRITABLE_SCOPES = new Set<string>(["user", "project", "local"]);
 function asPluginScope(source: string | undefined): PluginScope | undefined {
-  return source !== undefined && WRITABLE_SCOPES.has(source)
-    ? (source as PluginScope)
-    : undefined;
+  return source !== undefined && WRITABLE_SCOPES.has(source) ? (source as PluginScope) : undefined;
 }
 
 const EMPTY_COUNTS: PluginComponentCounts = {
@@ -63,11 +61,7 @@ const EMPTY_NAMES: PluginComponentNames = {
 
 function authorLabel(author: unknown): string | undefined {
   if (typeof author === "string") return author;
-  if (
-    author &&
-    typeof author === "object" &&
-    typeof (author as { name?: unknown }).name === "string"
-  ) {
+  if (author && typeof author === "object" && typeof (author as { name?: unknown }).name === "string") {
     return (author as { name: string }).name;
   }
   return undefined;
@@ -135,9 +129,7 @@ export async function buildPluginView(cwd: string): Promise<PluginViewData> {
               agents: loaded.agents.map((item) => item.agentType),
               commands: loaded.commands.map((item) => item.name),
               outputStyles: loaded.outputStyles.map((item) => item.name),
-              hooks: loaded.hooks.map((item) =>
-                `${item.event}${item.matcher ? `:${item.matcher}` : ""}`,
-              ),
+              hooks: loaded.hooks.map((item) => `${item.event}${item.matcher ? `:${item.matcher}` : ""}`),
               mcpServers: loaded.mcpServers.map((item) => item.namespacedName),
               lspServers: loaded.lspServers.map((item) => item.name),
             }
@@ -198,9 +190,7 @@ export async function buildPluginView(cwd: string): Promise<PluginViewData> {
     marketplaces: marketplaceRows,
     errors: [
       ...runtimeErrors,
-      ...[...inspected.values()]
-        .filter((plugin) => !active.has(plugin.pluginId))
-        .flatMap((plugin) => plugin.errors),
+      ...[...inspected.values()].filter((plugin) => !active.has(plugin.pluginId)).flatMap((plugin) => plugin.errors),
     ].map((e) => ({
       pluginId: e.pluginId,
       scope: e.scope,

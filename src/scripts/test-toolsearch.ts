@@ -111,12 +111,22 @@ function main(): void {
   withEnv(CLEAN_ENV, () => {
     assert(getToolSearchMode() === "tst", "unset → tst (default on)");
     withEnv({ EASY_AGENT_ENABLE_TOOL_SEARCH: "true" }, () => assert(getToolSearchMode() === "tst", "true → tst"));
-    withEnv({ EASY_AGENT_ENABLE_TOOL_SEARCH: "false" }, () => assert(getToolSearchMode() === "standard", "false → standard"));
-    withEnv({ EASY_AGENT_ENABLE_TOOL_SEARCH: "auto" }, () => assert(getToolSearchMode() === "tst-auto", "auto → tst-auto"));
-    withEnv({ EASY_AGENT_ENABLE_TOOL_SEARCH: "auto:25" }, () => assert(getToolSearchMode() === "tst-auto", "auto:25 → tst-auto"));
+    withEnv({ EASY_AGENT_ENABLE_TOOL_SEARCH: "false" }, () =>
+      assert(getToolSearchMode() === "standard", "false → standard"),
+    );
+    withEnv({ EASY_AGENT_ENABLE_TOOL_SEARCH: "auto" }, () =>
+      assert(getToolSearchMode() === "tst-auto", "auto → tst-auto"),
+    );
+    withEnv({ EASY_AGENT_ENABLE_TOOL_SEARCH: "auto:25" }, () =>
+      assert(getToolSearchMode() === "tst-auto", "auto:25 → tst-auto"),
+    );
     withEnv({ EASY_AGENT_ENABLE_TOOL_SEARCH: "auto:0" }, () => assert(getToolSearchMode() === "tst", "auto:0 → tst"));
-    withEnv({ EASY_AGENT_ENABLE_TOOL_SEARCH: "auto:100" }, () => assert(getToolSearchMode() === "standard", "auto:100 → standard"));
-    withEnv({ EASY_AGENT_ENABLE_TOOL_SEARCH: "auto:abc" }, () => assert(getToolSearchMode() === "tst-auto", "auto:abc → tst-auto (default 10%)"));
+    withEnv({ EASY_AGENT_ENABLE_TOOL_SEARCH: "auto:100" }, () =>
+      assert(getToolSearchMode() === "standard", "auto:100 → standard"),
+    );
+    withEnv({ EASY_AGENT_ENABLE_TOOL_SEARCH: "auto:abc" }, () =>
+      assert(getToolSearchMode() === "tst-auto", "auto:abc → tst-auto (default 10%)"),
+    );
     withEnv({ EASY_AGENT_DISABLE_EXPERIMENTAL_BETAS: "1", EASY_AGENT_ENABLE_TOOL_SEARCH: "true" }, () =>
       assert(getToolSearchMode() === "standard", "kill switch wins over explicit true"),
     );
@@ -135,7 +145,11 @@ function main(): void {
     assert(isToolSearchEnabled("claude-sonnet-4-5", pool, FIRST_PARTY), "sonnet + first-party → enabled");
     assert(!isToolSearchEnabled("claude-haiku-4-5", pool, FIRST_PARTY), "haiku → disabled");
     assert(
-      !isToolSearchEnabled("claude-sonnet-4-5", pool.filter((t) => t.name !== "ToolSearch"), FIRST_PARTY),
+      !isToolSearchEnabled(
+        "claude-sonnet-4-5",
+        pool.filter((t) => t.name !== "ToolSearch"),
+        FIRST_PARTY,
+      ),
       "ToolSearch disallowed → disabled",
     );
     const proxy = { protocol: "anthropic" as const, baseURL: "https://gateway.example.com/v1" };
@@ -171,10 +185,16 @@ function main(): void {
     });
     const names = first.tools.map((t) => t.name);
     assert(first.enabled, "enabled");
-    assert(names.includes("Read") && names.includes("Bash") && names.includes("ToolSearch"), "non-deferred + ToolSearch sent");
+    assert(
+      names.includes("Read") && names.includes("Bash") && names.includes("ToolSearch"),
+      "non-deferred + ToolSearch sent",
+    );
     assert(names.includes("mcp__pinned__status"), "alwaysLoad MCP sent on turn 1");
     assert(!names.includes("TaskCreate") && !names.includes("mcp__github__create_issue"), "deferred tools NOT sent");
-    assert(first.tools.every((t) => !t.defer_loading), "nothing sent carries defer_loading yet");
+    assert(
+      first.tools.every((t) => !t.defer_loading),
+      "nothing sent carries defer_loading yet",
+    );
     assert(first.betaHeaders.includes(TOOL_SEARCH_BETA_HEADER), "beta header added");
     const firstContent = first.messages[0]!.content as Array<{ type: string; text?: string }>;
     const announcement = firstContent[0]?.text ?? "";
@@ -185,7 +205,10 @@ function main(): void {
       ),
       "announcement lists every deferred tool",
     );
-    assert(!announcement.includes("mcp__pinned__status") && !announcement.includes("\nRead\n"), "announcement excludes loaded tools");
+    assert(
+      !announcement.includes("mcp__pinned__status") && !announcement.includes("\nRead\n"),
+      "announcement excludes loaded tools",
+    );
     assert(firstContent[1]?.text === "hello", "original user text preserved after announcement");
 
     console.log("\n[5] request shaping — after ToolSearch");
@@ -193,7 +216,10 @@ function main(): void {
       tools: pool,
       messages: [
         userMsg("hello"),
-        { role: "assistant", content: [{ type: "tool_use", id: "t1", name: "ToolSearch", input: { query: "select:TaskCreate,TaskList" } }] },
+        {
+          role: "assistant",
+          content: [{ type: "tool_use", id: "t1", name: "ToolSearch", input: { query: "select:TaskCreate,TaskList" } }],
+        },
         toolSearchResult("t1", ["TaskCreate", "TaskList"]),
       ],
       model: "claude-sonnet-4-5",
@@ -201,23 +227,67 @@ function main(): void {
     });
     const afterNames = after.tools.map((t) => t.name);
     assert(afterNames.includes("TaskCreate") && afterNames.includes("TaskList"), "discovered tools re-included");
-    assert(after.tools.filter((t) => t.defer_loading).map((t) => t.name).sort().join() === "TaskCreate,TaskList", "discovered deferred tools carry defer_loading");
+    assert(
+      after.tools
+        .filter((t) => t.defer_loading)
+        .map((t) => t.name)
+        .sort()
+        .join() === "TaskCreate,TaskList",
+      "discovered deferred tools carry defer_loading",
+    );
     assert(!afterNames.includes("NotebookEdit"), "undiscovered deferred tool still absent");
 
     console.log("\n[6] request shaping — disabled paths");
-    const haiku = prepareToolSearchRequest({ tools: pool, messages: [userMsg("hi")], model: "claude-haiku-4-5", env: FIRST_PARTY });
+    const haiku = prepareToolSearchRequest({
+      tools: pool,
+      messages: [userMsg("hi")],
+      model: "claude-haiku-4-5",
+      env: FIRST_PARTY,
+    });
     assert(!haiku.enabled, "haiku → disabled");
     assert(!haiku.tools.some((t) => t.name === "ToolSearch"), "ToolSearch removed when disabled");
-    assert(haiku.tools.some((t) => t.name === "TaskCreate") && haiku.tools.some((t) => t.name === "mcp__github__create_issue"), "all tools sent inline when disabled");
-    assert(haiku.betaHeaders.length === 0 && typeof haiku.messages[0]!.content === "string", "no beta header / no announcement when disabled");
+    assert(
+      haiku.tools.some((t) => t.name === "TaskCreate") &&
+        haiku.tools.some((t) => t.name === "mcp__github__create_issue"),
+      "all tools sent inline when disabled",
+    );
+    assert(
+      haiku.betaHeaders.length === 0 && typeof haiku.messages[0]!.content === "string",
+      "no beta header / no announcement when disabled",
+    );
 
-    const noDeferred = prepareToolSearchRequest({ tools: [read, bash, toolSearchTool], messages: [userMsg("hi")], model: "claude-sonnet-4-5", env: FIRST_PARTY });
-    assert(!noDeferred.enabled && !noDeferred.tools.some((t) => t.name === "ToolSearch"), "empty pool, no pending MCP → disabled");
-    const pending = prepareToolSearchRequest({ tools: [read, bash, toolSearchTool], messages: [userMsg("hi")], model: "claude-sonnet-4-5", env: FIRST_PARTY, hasPendingMcpServers: true });
-    assert(pending.enabled && pending.tools.some((t) => t.name === "ToolSearch"), "empty pool but pending MCP → ToolSearch kept");
+    const noDeferred = prepareToolSearchRequest({
+      tools: [read, bash, toolSearchTool],
+      messages: [userMsg("hi")],
+      model: "claude-sonnet-4-5",
+      env: FIRST_PARTY,
+    });
+    assert(
+      !noDeferred.enabled && !noDeferred.tools.some((t) => t.name === "ToolSearch"),
+      "empty pool, no pending MCP → disabled",
+    );
+    const pending = prepareToolSearchRequest({
+      tools: [read, bash, toolSearchTool],
+      messages: [userMsg("hi")],
+      model: "claude-sonnet-4-5",
+      env: FIRST_PARTY,
+      hasPendingMcpServers: true,
+    });
+    assert(
+      pending.enabled && pending.tools.some((t) => t.name === "ToolSearch"),
+      "empty pool but pending MCP → ToolSearch kept",
+    );
     withEnv({ EASY_AGENT_ENABLE_TOOL_SEARCH: "false" }, () => {
-      const off = prepareToolSearchRequest({ tools: pool, messages: [userMsg("hi")], model: "claude-sonnet-4-5", env: FIRST_PARTY });
-      assert(!off.enabled && off.tools.length === pool.length - 1, "EASY_AGENT_ENABLE_TOOL_SEARCH=false → standard, all but ToolSearch");
+      const off = prepareToolSearchRequest({
+        tools: pool,
+        messages: [userMsg("hi")],
+        model: "claude-sonnet-4-5",
+        env: FIRST_PARTY,
+      });
+      assert(
+        !off.enabled && off.tools.length === pool.length - 1,
+        "EASY_AGENT_ENABLE_TOOL_SEARCH=false → standard, all but ToolSearch",
+      );
     });
   });
 
@@ -225,24 +295,52 @@ function main(): void {
   const sel = runToolSearch("select:TaskCreate,TaskList", 5, pool);
   assert(sel.matches.join() === "TaskCreate,TaskList", "select two deferred tools");
   assert(sel.total_deferred_tools === 6, "total_deferred_tools counts the deferred pool (alwaysLoad excluded)");
-  assert(runToolSearch("select:Read", 5, pool).matches.join() === "Read", "select already-loaded tool → harmless no-op");
-  assert(runToolSearch("select:TaskGet,NoSuchTool,TaskList", 5, pool).matches.join() === "TaskList", "partial select returns found subset");
+  assert(
+    runToolSearch("select:Read", 5, pool).matches.join() === "Read",
+    "select already-loaded tool → harmless no-op",
+  );
+  assert(
+    runToolSearch("select:TaskGet,NoSuchTool,TaskList", 5, pool).matches.join() === "TaskList",
+    "partial select returns found subset",
+  );
   assert(runToolSearch("SELECT:tasklist", 5, pool).matches.join() === "TaskList", "select is case-insensitive");
   const miss = runToolSearch("select:Nope", 5, pool, ["slow-server"]);
-  assert(miss.matches.length === 0 && miss.pending_mcp_servers?.[0] === "slow-server", "empty select carries pending servers");
+  assert(
+    miss.matches.length === 0 && miss.pending_mcp_servers?.[0] === "slow-server",
+    "empty select carries pending servers",
+  );
   const missText = toolSearchOutputToResult(miss).content as string;
-  assert(missText.startsWith("No matching deferred tools found") && missText.includes("slow-server"), "empty result text mentions pending server");
+  assert(
+    missText.startsWith("No matching deferred tools found") && missText.includes("slow-server"),
+    "empty result text mentions pending server",
+  );
   const hit = toolSearchOutputToResult(sel).content as Array<{ type: string; tool_name: string }>;
   assert(hit.length === 2 && hit.every((b) => b.type === "tool_reference"), "hit → tool_reference blocks only");
 
   console.log("\n[8] keyword search");
   const deferred = pool.filter(isDeferredTool);
-  assert(searchToolsWithKeywords("jupyter", deferred, pool, 5)[0] === "NotebookEdit", "searchHint hit: jupyter → NotebookEdit");
-  assert(searchToolsWithKeywords("mcp__github", deferred, pool, 5).sort().join() === "mcp__github__create_issue,mcp__github__list_pull_requests", "mcp__ prefix → whole server");
-  assert(searchToolsWithKeywords("+slack send", deferred, pool, 5).join() === "mcp__slack__send_message", "+required term filters to slack");
+  assert(
+    searchToolsWithKeywords("jupyter", deferred, pool, 5)[0] === "NotebookEdit",
+    "searchHint hit: jupyter → NotebookEdit",
+  );
+  assert(
+    searchToolsWithKeywords("mcp__github", deferred, pool, 5).sort().join() ===
+      "mcp__github__create_issue,mcp__github__list_pull_requests",
+    "mcp__ prefix → whole server",
+  );
+  assert(
+    searchToolsWithKeywords("+slack send", deferred, pool, 5).join() === "mcp__slack__send_message",
+    "+required term filters to slack",
+  );
   const github = searchToolsWithKeywords("github issue", deferred, pool, 5);
-  assert(github[0] === "mcp__github__create_issue" && github[1] === "mcp__github__list_pull_requests", "scoring: two hits outrank one");
-  assert(searchToolsWithKeywords("taskcreate", deferred, pool, 5).join() === "TaskCreate", "exact name fast path (case-insensitive)");
+  assert(
+    github[0] === "mcp__github__create_issue" && github[1] === "mcp__github__list_pull_requests",
+    "scoring: two hits outrank one",
+  );
+  assert(
+    searchToolsWithKeywords("taskcreate", deferred, pool, 5).join() === "TaskCreate",
+    "exact name fast path (case-insensitive)",
+  );
   assert(searchToolsWithKeywords("task", deferred, pool, 1).length === 1, "max_results honoured");
   assert(searchToolsWithKeywords("zzzz", deferred, pool, 5).length === 0, "no hit → empty");
 
@@ -250,12 +348,33 @@ function main(): void {
   const history: MessageParam[] = [userMsg("hi"), toolSearchResult("t1", ["TaskCreate", "mcp__gone__tool"])];
   const off = normalizeToolReferencesForAPI(history, { toolSearchEnabled: false, availableToolNames: new Set() });
   const offBlock = (off[1]!.content as Array<{ content: Array<{ type: string; text?: string }> }>)[0]!;
-  assert(offBlock.content.length === 1 && offBlock.content[0]!.type === "text" && offBlock.content[0]!.text!.includes("not enabled"), "disabled → refs stripped, placeholder text");
-  const on = normalizeToolReferencesForAPI(history, { toolSearchEnabled: true, availableToolNames: new Set(["TaskCreate"]) });
-  const onContent = on[1]!.content as Array<{ type: string; text?: string; content?: Array<{ type: string; tool_name?: string }> }>;
-  assert(onContent[0]!.content!.length === 1 && onContent[0]!.content![0]!.tool_name === "TaskCreate", "enabled → only unavailable ref stripped");
-  assert(onContent[1]?.type === "text" && onContent[1].text === TOOL_REFERENCE_TURN_BOUNDARY, "enabled → 'Tool loaded.' sibling appended");
-  const twice = normalizeToolReferencesForAPI(on, { toolSearchEnabled: true, availableToolNames: new Set(["TaskCreate"]) });
+  assert(
+    offBlock.content.length === 1 &&
+      offBlock.content[0]!.type === "text" &&
+      offBlock.content[0]!.text!.includes("not enabled"),
+    "disabled → refs stripped, placeholder text",
+  );
+  const on = normalizeToolReferencesForAPI(history, {
+    toolSearchEnabled: true,
+    availableToolNames: new Set(["TaskCreate"]),
+  });
+  const onContent = on[1]!.content as Array<{
+    type: string;
+    text?: string;
+    content?: Array<{ type: string; tool_name?: string }>;
+  }>;
+  assert(
+    onContent[0]!.content!.length === 1 && onContent[0]!.content![0]!.tool_name === "TaskCreate",
+    "enabled → only unavailable ref stripped",
+  );
+  assert(
+    onContent[1]?.type === "text" && onContent[1].text === TOOL_REFERENCE_TURN_BOUNDARY,
+    "enabled → 'Tool loaded.' sibling appended",
+  );
+  const twice = normalizeToolReferencesForAPI(on, {
+    toolSearchEnabled: true,
+    availableToolNames: new Set(["TaskCreate"]),
+  });
   assert((twice[1]!.content as unknown[]).length === 2, "turn boundary is idempotent");
   assert(on[0] === history[0], "messages without refs untouched");
 
@@ -266,28 +385,56 @@ function main(): void {
   const rendered = renderToolReferencesAsText([toolSearchResult("t1", ["TaskCreate", "Ghost"])], apiTools);
   const rBlock = (rendered[0]!.content as Array<{ content: Array<{ type: string; text: string }> }>)[0]!;
   assert(rBlock.content.length === 1 && rBlock.content[0]!.type === "text", "refs collapsed to one text block");
-  assert(rBlock.content[0]!.text.startsWith("<functions>") && rBlock.content[0]!.text.includes('"name":"TaskCreate"') && rBlock.content[0]!.text.includes('"parameters"'), "schema rendered as <function> line");
-  assert(rBlock.content[0]!.text.includes('"name":"Ghost"') && rBlock.content[0]!.text.includes("no longer available"), "unknown ref rendered as unavailable");
-  assert(stripDeferLoading(apiTools).every((t) => !("defer_loading" in t)), "defer_loading stripped for providers");
+  assert(
+    rBlock.content[0]!.text.startsWith("<functions>") &&
+      rBlock.content[0]!.text.includes('"name":"TaskCreate"') &&
+      rBlock.content[0]!.text.includes('"parameters"'),
+    "schema rendered as <function> line",
+  );
+  assert(
+    rBlock.content[0]!.text.includes('"name":"Ghost"') && rBlock.content[0]!.text.includes("no longer available"),
+    "unknown ref rendered as unavailable",
+  );
+  assert(
+    stripDeferLoading(apiTools).every((t) => !("defer_loading" in t)),
+    "defer_loading stripped for providers",
+  );
 
   console.log("\n[11] compaction carry-over");
   const compacted: MessageParam[] = [
     userMsg("summary…"),
-    { role: "assistant", content: `[CompactBoundary] type=auto messages=40 ${COMPACT_DISCOVERED_TOOLS_KEY}=TaskCreate,mcp__github__create_issue` },
+    {
+      role: "assistant",
+      content: `[CompactBoundary] type=auto messages=40 ${COMPACT_DISCOVERED_TOOLS_KEY}=TaskCreate,mcp__github__create_issue`,
+    },
     userMsg("continue"),
   ];
   const carried = extractDiscoveredToolNames(compacted);
-  assert(carried.has("TaskCreate") && carried.has("mcp__github__create_issue") && carried.size === 2, "boundary marker restores discovered set");
+  assert(
+    carried.has("TaskCreate") && carried.has("mcp__github__create_issue") && carried.size === 2,
+    "boundary marker restores discovered set",
+  );
   withEnv(CLEAN_ENV, () => {
-    const post = prepareToolSearchRequest({ tools: pool, messages: compacted, model: "claude-sonnet-4-5", env: FIRST_PARTY });
-    assert(post.tools.some((t) => t.name === "TaskCreate" && t.defer_loading), "post-compact request still sends carried tool");
+    const post = prepareToolSearchRequest({
+      tools: pool,
+      messages: compacted,
+      model: "claude-sonnet-4-5",
+      env: FIRST_PARTY,
+    });
+    assert(
+      post.tools.some((t) => t.name === "TaskCreate" && t.defer_loading),
+      "post-compact request still sends carried tool",
+    );
   });
 
   console.log("\n[12] schema-not-sent hint");
   withEnv(CLEAN_ENV, () => {
     const hint = buildSchemaNotSentHint(taskCreate, [userMsg("hi")], pool);
     assert(hint !== null && hint.includes('ToolSearch("select:TaskCreate")'), "undiscovered deferred tool → hint");
-    assert(buildSchemaNotSentHint(taskCreate, [userMsg("hi"), toolSearchResult("t1", ["TaskCreate"])], pool) === null, "discovered → no hint");
+    assert(
+      buildSchemaNotSentHint(taskCreate, [userMsg("hi"), toolSearchResult("t1", ["TaskCreate"])], pool) === null,
+      "discovered → no hint",
+    );
     assert(buildSchemaNotSentHint(read, [userMsg("hi")], pool) === null, "non-deferred → no hint");
     assert(buildSchemaNotSentHint(taskCreate, [userMsg("hi")], [read]) === null, "ToolSearch unavailable → no hint");
     withEnv({ EASY_AGENT_ENABLE_TOOL_SEARCH: "false" }, () =>

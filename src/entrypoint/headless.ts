@@ -15,11 +15,7 @@
 import type { MessageParam } from "@anthropic-ai/sdk/resources/messages.js";
 import { QueryEngine } from "../core/queryEngine.js";
 import type { LoopTerminationReason } from "../core/agenticLoop.js";
-import {
-  loadPermissionSettings,
-  type PermissionDecision,
-  type PermissionMode,
-} from "../permissions/permissions.js";
+import { loadPermissionSettings, type PermissionDecision, type PermissionMode } from "../permissions/permissions.js";
 import type { ToolContext } from "../tools/Tool.js";
 import type { Usage } from "../types/message.js";
 import { createSessionId } from "../session/storage.js";
@@ -69,9 +65,7 @@ interface ResultMessage {
 
 const EMPTY_USAGE: Usage = { input_tokens: 0, output_tokens: 0 };
 
-function withSchemaVersion<T extends object>(
-  message: T,
-): T & { schema_version: typeof HEADLESS_SCHEMA_VERSION } {
+function withSchemaVersion<T extends object>(message: T): T & { schema_version: typeof HEADLESS_SCHEMA_VERSION } {
   return { ...message, schema_version: HEADLESS_SCHEMA_VERSION };
 }
 
@@ -137,17 +131,16 @@ function extractAssistantText(message: MessageParam): string {
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return "";
   return content
-    .filter((block): block is { type: "text"; text: string } =>
-      typeof block === "object" && block !== null && (block as { type?: string }).type === "text",
+    .filter(
+      (block): block is { type: "text"; text: string } =>
+        typeof block === "object" && block !== null && (block as { type?: string }).type === "text",
     )
     .map((block) => block.text)
     .join("");
 }
 
 /** Map how the loop ended to a `result.subtype`. */
-function subtypeForReason(
-  reason: LoopTerminationReason | undefined,
-): ResultMessage["subtype"] {
+function subtypeForReason(reason: LoopTerminationReason | undefined): ResultMessage["subtype"] {
   if (reason === "completed") return "success";
   if (reason === "max_turns") return "error_max_turns";
   // aborted / model_error / blocking_limit / undefined → generic execution error
@@ -168,9 +161,7 @@ export async function runHeadless(options: RunHeadlessOptions): Promise<void> {
   const input = mergeInput(stdin, options.promptArg ?? "");
 
   if (!input) {
-    process.stderr.write(
-      "Error: no input. Provide a prompt via `-p \"...\"` or pipe text on stdin.\n",
-    );
+    process.stderr.write('Error: no input. Provide a prompt via `-p "..."` or pipe text on stdin.\n');
     process.exit(1);
   }
 
@@ -208,8 +199,7 @@ export async function runHeadless(options: RunHeadlessOptions): Promise<void> {
   // i.e. only the explicit bypass flag auto-approves; `--auto` no longer means
   // "allow everything" (it means "let the classifier decide").
   const autoApprove = options.bypassPermissions === true;
-  const onPermissionRequest = async (): Promise<PermissionDecision> =>
-    autoApprove ? "allow_once" : "deny";
+  const onPermissionRequest = async (): Promise<PermissionDecision> => (autoApprove ? "allow_once" : "deny");
 
   const engine = new QueryEngine({
     model: resolvedModel,
