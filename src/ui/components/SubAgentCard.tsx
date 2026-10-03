@@ -22,7 +22,7 @@
  *   component keeps the simple card simple.
  */
 
-import React from "react";
+import type React from "react";
 import { Box, Text } from "ink";
 import type { ToolCallInfo } from "../types.js";
 import type { SubAgentStatus } from "../../state/subAgentProgressStore.js";
@@ -41,7 +41,6 @@ function statusGlyph(status: SubAgentStatus): { glyph: string; color: string } {
       return { glyph: "⚠", color: "yellow" };
     case "aborted":
       return { glyph: "⊘", color: "yellow" };
-    case "running":
     default:
       return { glyph: "⚡", color: "yellow" };
   }
@@ -57,7 +56,6 @@ function statusLabel(status: SubAgentStatus): string {
       return "Stopped (max turns)";
     case "aborted":
       return "Aborted";
-    case "running":
     default:
       return "Running";
   }

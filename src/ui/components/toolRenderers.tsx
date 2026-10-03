@@ -16,7 +16,7 @@
  * The registry is the extension point for adding per-tool renderers and is
  * consumed by `renderInlineToolCard` (history) below.
  */
-import React from "react";
+import type React from "react";
 import { Box, Text } from "ink";
 import {
   formatErrorBody,

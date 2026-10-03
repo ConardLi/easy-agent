@@ -1,4 +1,4 @@
-import React from "react";
+import type React from "react";
 import { Box, Text } from "ink";
 import type { ToolCallInfo } from "../types.js";
 import { computeCollapsedCounts, formatErrorBody, summarizeTool, toolUseTag } from "../utils/toolCardFormat.js";

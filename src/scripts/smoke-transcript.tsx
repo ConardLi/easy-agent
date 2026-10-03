@@ -1,12 +1,4 @@
-/**
- * Visual smoke for the Ctrl+O transcript overlay (stage 24.1). Builds the
- * verbose, pre-wrapped line array from a sample conversation and renders the
- * TranscriptOverlay at a chosen scroll offset so the windowing / styling can
- * be eyeballed without a TTY.
- *
- * Usage: SMOKE_COLS=90 SMOKE_ROWS=24 SMOKE_SCROLL=0 tsx src/scripts/smoke-transcript.tsx
- */
-import React from "react";
+
 import { PassThrough } from "node:stream";
 import { render } from "ink";
 import chalk from "chalk";

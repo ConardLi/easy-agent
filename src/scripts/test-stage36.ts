@@ -388,7 +388,7 @@ assert(!helpResult.stdout.includes("\n  agent [options]"), "help does not advert
 const productionSources = await collectProductionSources(path.join(PROJECT_ROOT, "src"));
 const hardcodedVersionFiles: string[] = [];
 for (const source of productionSources) {
-  if ((await fs.readFile(source, "utf-8")).includes(`\"${packageJson.version}\"`)) {
+  if ((await fs.readFile(source, "utf-8")).includes(`"${packageJson.version}"`)) {
     hardcodedVersionFiles.push(path.relative(PROJECT_ROOT, source));
   }
 }

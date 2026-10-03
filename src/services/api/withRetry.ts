@@ -68,7 +68,7 @@ export function getRetryDelay(
   if (retryAfterMs !== null && retryAfterMs !== undefined && retryAfterMs > 0) {
     return retryAfterMs;
   }
-  const base = Math.min(BASE_DELAY_MS * Math.pow(2, attempt - 1), maxDelayMs);
+  const base = Math.min(BASE_DELAY_MS * 2 ** (attempt - 1), maxDelayMs);
   const jitter = Math.random() * 0.25 * base;
   return Math.round(base + jitter);
 }

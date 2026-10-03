@@ -25,7 +25,7 @@
 
 import type { MessageParam } from "@anthropic-ai/sdk/resources/messages.js";
 import { query, type LoopTerminationReason } from "../core/agenticLoop.js";
-import { type Tool, type ToolContext } from "../tools/Tool.js";
+import type { Tool, ToolContext } from "../tools/Tool.js";
 import type {
   PermissionDecision,
   PermissionMode,

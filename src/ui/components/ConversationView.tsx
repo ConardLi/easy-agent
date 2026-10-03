@@ -519,7 +519,7 @@ export function flattenConversation(
             items.push({
               key: `tu${block.id}`,
               element: withToolLeadSpacing(
-                <>{renderInlineToolCard({ name: block.name, input: block.input, result, verbose })}</>,
+                renderInlineToolCard({ name: block.name, input: block.input, result, verbose }),
                 lastVisibleKind,
               ),
             });

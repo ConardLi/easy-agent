@@ -171,8 +171,6 @@ async function addMarketplaceUnlocked(source: MarketplaceSource): Promise<KnownM
       if (rollbackExists) await fs.rename(rollback, dest);
       throw error;
     }
-  } catch (error) {
-    throw error;
   } finally {
     await fs.rm(tmp, { recursive: true, force: true }).catch(() => {});
   }

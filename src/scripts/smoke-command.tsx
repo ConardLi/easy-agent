@@ -2,7 +2,7 @@
  * Visual smoke for the upgraded /command palette + post-command panel.
  * Run: ./node_modules/.bin/tsx src/scripts/smoke-command.tsx
  */
-import React from "react";
+import type React from "react";
 import { Box, Text, render } from "ink";
 import { CommandSuggestions } from "../ui/components/CommandSuggestions.js";
 import { SystemPanel } from "../ui/components/SystemPanel.js";

@@ -15,7 +15,7 @@
  *   - otherwise                      → Bing scrape fallback
  */
 
-import Anthropic from "@anthropic-ai/sdk";
+import type Anthropic from "@anthropic-ai/sdk";
 import he from "he";
 import { getAnthropicClientForProfile } from "../../services/api/client.js";
 import { resolveProfile } from "../../services/api/providers/profile.js";

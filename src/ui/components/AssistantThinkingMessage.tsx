@@ -1,4 +1,4 @@
-import React from "react";
+import type React from "react";
 import { Box, Text } from "ink";
 import { Markdown } from "../markdown/Markdown.js";
 import { theme } from "../theme.js";

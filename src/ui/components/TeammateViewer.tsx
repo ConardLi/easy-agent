@@ -29,7 +29,8 @@
  *   MAX_RENDER_LINES with an "…N earlier events" indicator at the top.
  */
 
-import React, { useEffect, useState } from "react";
+import type React from "react";
+import { useEffect, useState } from "react";
 import { Box, Text } from "ink";
 import type { AsyncAgentEntry } from "../../state/asyncAgentStore.js";
 import {

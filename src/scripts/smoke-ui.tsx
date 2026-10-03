@@ -5,7 +5,7 @@
  * then prints the captured frame so the layout / borders / full-width grey bars
  * can be eyeballed without a TTY.
  */
-import React from "react";
+import type React from "react";
 import { PassThrough } from "node:stream";
 import { Box, Static, Text, render } from "ink";
 import chalk from "chalk";

@@ -1,15 +1,4 @@
-/**
- * Audit for P0 #4 — default history is condensed; the Ctrl+O transcript holds
- * the full detail. Prints both views for Read / Grep / Glob / Edit / Write so
- * you can confirm:
- *   - Read/Grep/Glob  → summary line only, no body (both views)
- *   - Edit            → "+N -M" only by default; full diff in transcript
- *   - Write           → "created, N lines" by default; full content in transcript
- *
- * Assistant text is interleaved so the single Read/Grep/Glob calls don't
- * collapse into a read/search group (which would hide their per-tool summary).
- */
-import React from "react";
+
 import { PassThrough } from "node:stream";
 import { Box, render } from "ink";
 import chalk from "chalk";

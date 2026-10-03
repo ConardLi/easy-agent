@@ -40,10 +40,6 @@ function normalizeLine(value: string): string {
   return value.replace(/\s+/g, " ").trim();
 }
 
-function scoreTextMatch(haystack: string, terms: string[]): number {
-  return terms.reduce((total, term) => total + (haystack.includes(term) ? 1 : 0), 0);
-}
-
 async function findCanonicalGitRoot(cwd: string): Promise<string> {
   let current = path.resolve(cwd);
 

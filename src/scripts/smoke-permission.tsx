@@ -3,7 +3,7 @@
  * PermissionRequestCard for Edit / Write / Bash so the diff / content / command
  * previews can be eyeballed without a TTY.
  */
-import React from "react";
+import type React from "react";
 import { PassThrough } from "node:stream";
 import { Box, render } from "ink";
 import chalk from "chalk";

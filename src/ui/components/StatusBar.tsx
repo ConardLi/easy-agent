@@ -1,4 +1,4 @@
-import React from "react";
+import type React from "react";
 import { Box, Text } from "ink";
 import { Spinner } from "./Spinner.js";
 import { StreamingMarkdown } from "../markdown/Markdown.js";

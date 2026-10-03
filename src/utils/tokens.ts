@@ -29,7 +29,7 @@ export function getContextWindowForModel(model: string): number {
     process.env.EASY_AGENT_MAX_CONTEXT_TOKENS ?? process.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS;
   if (envOverride) {
     const parsed = parseInt(envOverride, 10);
-    if (!isNaN(parsed) && parsed > 0) return parsed;
+    if (!Number.isNaN(parsed) && parsed > 0) return parsed;
   }
 
   if (MODEL_CONTEXT_WINDOWS[model]) {
