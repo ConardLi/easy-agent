@@ -45,7 +45,7 @@ import {
   getSessionEffortLevel,
   type EffortLevel,
 } from "../../../utils/thinking.js";
-import { normalizeStopReason } from "./translateShared.js";
+import { applyCachedPromptTokens, normalizeStopReason, observeOpenAIChatCachedTokens } from "./translateShared.js";
 import { renderToolReferencesAsText, stripDeferLoading } from "../../../utils/toolSearch.js";
 import {
   buildGeminiContents,
@@ -58,6 +58,7 @@ import {
   universalToOpenAIResponsesInput,
 } from "./openaiTranslate.js";
 import { assembleOpenAIResponses } from "./openaiResponsesNative.js";
+import { isPromptCachingDisabled } from "../promptCache.js";
 
 // ─── Protocol → llm-bridge provider + endpoint defaults ────────────────────
 
@@ -120,6 +121,22 @@ function resolveOpenAIReasoningEffort(params: StreamRequestParams): string | und
 function isThinkingActive(params: StreamRequestParams): boolean {
   const thinkingCfg = params.thinking ?? buildDefaultThinkingConfig();
   return thinkingCfg.type !== "disabled";
+}
+
+/**
+ * Whether to send OpenAI `prompt_cache_key`. The official API documents it;
+ * OpenAI-compatible servers may reject unknown fields, so other endpoints
+ * opt in with the profile's `promptCacheKey: true`.
+ */
+export function shouldSendPromptCacheKey(profile: ModelProfile): boolean {
+  if (profile.protocol !== "openai-chat" && profile.protocol !== "openai-responses") return false;
+  if (isPromptCachingDisabled()) return false;
+  if (profile.promptCacheKey !== undefined) return profile.promptCacheKey;
+  try {
+    return new URL(getProfileBaseURL(profile)).hostname === "api.openai.com";
+  } catch {
+    return false;
+  }
 }
 
 interface PreparedRequest {
@@ -229,6 +246,7 @@ export function prepareRequest(profile: ModelProfile, params: StreamRequestParam
     body.stream_options = { include_usage: true };
     if (reasoningEffort) body.reasoning_effort = reasoningEffort;
   }
+  if (params.promptCacheKey && shouldSendPromptCacheKey(profile)) body.prompt_cache_key = params.promptCacheKey;
   return {
     provider,
     url: base + path,
@@ -395,6 +413,7 @@ export async function* streamViaProvider(
   }
 
   const parse = parserFor(prepared.provider);
+  const observed = prepared.provider === "openai" ? observeOpenAIChatCachedTokens(response.body) : null;
 
   // Accumulators — mirror streaming.ts so the assembled message is identical.
   const contentBlocks: ContentBlock[] = [];
@@ -406,7 +425,7 @@ export async function* streamViaProvider(
   let rawStopReason: string | undefined;
   const usage: Usage = { input_tokens: 0, output_tokens: 0 };
 
-  for await (const event of parse(response.body)) {
+  for await (const event of parse(observed?.stream ?? response.body)) {
     writeStreamDebug("provider_event", event);
     switch (event.type) {
       case "message_start": {
@@ -511,6 +530,7 @@ export async function* streamViaProvider(
   // content: any tool_use block forces a tool-execution turn.
   const hasToolUse = contentBlocks.some((b) => b.type === "tool_use");
   const stopReason = hasToolUse ? "tool_use" : normalizeStopReason(rawStopReason);
+  applyCachedPromptTokens(usage, observed?.cachedTokens());
 
   yield { type: "message_done", stopReason, usage };
 

@@ -29,7 +29,7 @@ import type {
   Usage,
 } from "../../../types/message.js";
 import { writeStreamDebug } from "../../../utils/streamDebug.js";
-import { normalizeStopReason } from "./translateShared.js";
+import { applyCachedPromptTokens, normalizeStopReason } from "./translateShared.js";
 
 type OpenAIResponsesNativeEvent =
   | { type: "message_start"; id: string; model: string }
@@ -41,7 +41,7 @@ type OpenAIResponsesNativeEvent =
   | {
       type: "message_end";
       stop_reason?: string;
-      usage?: { input_tokens?: number; output_tokens?: number; reasoning_tokens?: number };
+      usage?: { input_tokens?: number; output_tokens?: number; reasoning_tokens?: number; cached_tokens?: number };
     }
   | { type: "error"; message: string };
 
@@ -133,6 +133,7 @@ async function* parseOpenAIResponsesNative(
         const response = data.response as Record<string, unknown> | undefined;
         const usage = response?.usage as Record<string, unknown> | undefined;
         const details = usage?.output_tokens_details as Record<string, unknown> | undefined;
+        const inputDetails = usage?.input_tokens_details as Record<string, unknown> | undefined;
         yield {
           type: "message_end",
           stop_reason: (response?.status as string) || "completed",
@@ -142,6 +143,7 @@ async function* parseOpenAIResponsesNative(
                   input_tokens: typeof usage.input_tokens === "number" ? usage.input_tokens : undefined,
                   output_tokens: typeof usage.output_tokens === "number" ? usage.output_tokens : undefined,
                   reasoning_tokens: typeof details?.reasoning_tokens === "number" ? details.reasoning_tokens : undefined,
+                  cached_tokens: typeof inputDetails?.cached_tokens === "number" ? inputDetails.cached_tokens : undefined,
                 },
               }
             : {}),
@@ -290,6 +292,7 @@ export async function* assembleOpenAIResponses(
         if (event.usage) {
           if (typeof event.usage.input_tokens === "number") usage.input_tokens = event.usage.input_tokens;
           if (typeof event.usage.output_tokens === "number") usage.output_tokens = event.usage.output_tokens;
+          applyCachedPromptTokens(usage, event.usage.cached_tokens);
         }
         break;
       }

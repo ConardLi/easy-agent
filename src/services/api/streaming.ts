@@ -50,12 +50,7 @@ import {
   sleep,
   type QuerySource,
 } from "./withRetry.js";
-import {
-  buildCachedSystem,
-  isPromptCachingDisabled,
-  withMessageCacheBreakpoints,
-  withToolsCacheBreakpoint,
-} from "./promptCache.js";
+import { applyAnthropicPromptCache, isPromptCachingDisabled } from "./promptCache.js";
 
 // ─── Request Parameters ────────────────────────────────────────────
 
@@ -106,6 +101,17 @@ export interface StreamRequestParams {
    * Only honoured for Anthropic models that support it; ignored otherwise.
    */
   effortLevel?: EffortLevel;
+  /**
+   * Stable identifier (the session id) sent as OpenAI `prompt_cache_key` so
+   * requests sharing a prefix are routed to the same cache.
+   */
+  promptCacheKey?: string;
+  /**
+   * Single-shot calls only: mark the system prompt and tools for caching.
+   * Worth it for callers that send the same prefix repeatedly (the Auto Mode
+   * classifier); one-off calls would pay the cache write for nothing.
+   */
+  cacheStablePrefix?: boolean;
 }
 
 // ─── Streaming Result ──────────────────────────────────────────────
@@ -193,12 +199,14 @@ async function* streamOnce(
   const baseParams = {
     model,
     max_tokens: maxTokens,
-    messages: promptCaching ? withMessageCacheBreakpoints(normalizedMessages) : normalizedMessages,
     stream: true as const,
-    ...(params.system && { system: promptCaching ? buildCachedSystem(params.system) : params.system }),
-    ...(params.tools && params.tools.length > 0 && {
-      tools: promptCaching ? withToolsCacheBreakpoint(params.tools) : params.tools,
-    }),
+    ...(promptCaching
+      ? applyAnthropicPromptCache({ system: params.system, tools: params.tools, messages: normalizedMessages, markMessages: true })
+      : {
+          messages: normalizedMessages,
+          ...(params.system && { system: params.system }),
+          ...(params.tools && params.tools.length > 0 && { tools: params.tools }),
+        }),
     ...(params.toolChoice && { tool_choice: params.toolChoice }),
   };
   // Pass thinking / output_config as extra body entries to avoid strict-SDK
@@ -603,14 +611,19 @@ export async function createMessage(
       availableToolNames: new Set((params.tools ?? []).map((t) => t.name)),
     },
   );
+  const cachePrefix = params.cacheStablePrefix === true && !isPromptCachingDisabled();
   const response = await callWithRetry(
     () =>
       client.messages.create({
         model,
         max_tokens: maxTokens,
-        messages: bgMessages,
-        ...(params.system && { system: params.system }),
-        ...(params.tools && params.tools.length > 0 && { tools: params.tools }),
+        ...(cachePrefix
+          ? applyAnthropicPromptCache({ system: params.system, tools: params.tools, messages: bgMessages, markMessages: false })
+          : {
+              messages: bgMessages,
+              ...(params.system && { system: params.system }),
+              ...(params.tools && params.tools.length > 0 && { tools: params.tools }),
+            }),
         ...(params.toolChoice && { tool_choice: params.toolChoice }),
       }, params.betaHeaders?.length ? { headers: { "anthropic-beta": params.betaHeaders.join(",") } } : undefined),
     {

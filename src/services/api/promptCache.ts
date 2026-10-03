@@ -6,15 +6,20 @@
  * block marked with `cache_control`. A request may carry at most four
  * markers; this module places them on:
  *
- *   1. the last tool definition that is loaded into the prompt, so tool
- *      schemas stay cached when the system prompt changes;
- *   2. the end of the static system prompt section, which only changes
- *      when the binary or the output-style mode changes;
- *   3. the previous user message, which the preceding request marked as its
- *      last message — marking it again guarantees a cache read even when the
- *      newest turn added more content blocks than the API looks back over;
- *   4. the last message, so the next request of the same tool loop can read
- *      the whole conversation from cache.
+ *   1. the end of the static system prompt block, which changes only with
+ *      the binary or an output style that drops the coding instructions;
+ *   2. the end of the dynamic system prompt block, which the session prompt
+ *      context keeps fixed for the whole session;
+ *   3. the tail of the previous request — the user message right before the
+ *      latest assistant message. That request wrote its cache entry there,
+ *      so marking it again guarantees a read even when the newest turn added
+ *      more content blocks than the API looks back over;
+ *   4. the last message, so the next request can read the whole
+ *      conversation from cache.
+ *
+ * A system prompt without the static/dynamic split (custom agent prompts,
+ * single-shot callers) is one marked block, and the last loaded tool takes
+ * the spare marker so tool schemas stay cached on their own.
  *
  * Inputs are never mutated: marked messages and tools are shallow copies,
  * so session history and tool registries never contain cache markers.
@@ -29,15 +34,14 @@ const EPHEMERAL = { type: "ephemeral" } as const;
 /** Content block types that accept a `cache_control` marker. */
 const MARKABLE_BLOCK_TYPES = new Set(["text", "image", "document", "search_result", "tool_use", "tool_result"]);
 
-/** Compatibility switch for Anthropic-compatible endpoints that reject `cache_control`. */
+/** Compatibility switch for endpoints that reject `cache_control` or `prompt_cache_key`. */
 export function isPromptCachingDisabled(env: NodeJS.ProcessEnv = process.env): boolean {
   return /^(1|true|yes|on)$/i.test(env.EASY_AGENT_DISABLE_PROMPT_CACHING?.trim() ?? "");
 }
 
 /**
- * Split the rendered system prompt after its static section and mark that
- * section for caching. Prompts without the static section marker (custom
- * agent prompts, single-shot callers) are cached as one block.
+ * Split the rendered system prompt after its static block and mark both
+ * blocks. Prompts without the static block marker are one marked block.
  */
 export function buildCachedSystem(system: string): TextBlockParam[] {
   const end = system.indexOf(SYSTEM_PROMPT_STATIC_END);
@@ -46,7 +50,7 @@ export function buildCachedSystem(system: string): TextBlockParam[] {
   const staticText = system.slice(0, split);
   const dynamicText = system.slice(split).replace(/^\s+/, "");
   const blocks: TextBlockParam[] = [{ type: "text", text: staticText, cache_control: EPHEMERAL }];
-  if (dynamicText) blocks.push({ type: "text", text: dynamicText });
+  if (dynamicText) blocks.push({ type: "text", text: dynamicText, cache_control: EPHEMERAL });
   return blocks;
 }
 
@@ -62,12 +66,14 @@ export function withToolsCacheBreakpoint(tools: ApiToolParam[]): ApiToolParam[] 
   return tools;
 }
 
-/** Mark the last message and the user message before it. */
+/** Mark the last message and the previous request's last message. */
 export function withMessageCacheBreakpoints(messages: MessageParam[]): MessageParam[] {
   const last = messages.length - 1;
   if (last < 0) return messages;
   const targets = new Set([last]);
-  for (let index = last - 1; index >= 0; index--) {
+  let latestAssistant = last - 1;
+  while (latestAssistant >= 0 && messages[latestAssistant]!.role !== "assistant") latestAssistant--;
+  for (let index = latestAssistant - 1; index >= 0; index--) {
     if (messages[index]!.role === "user") {
       targets.add(index);
       break;
@@ -91,4 +97,26 @@ function markMessage(message: MessageParam): MessageParam {
     return { ...message, content };
   }
   return message;
+}
+
+/**
+ * Anthropic request fields with cache markers applied: the system blocks,
+ * the tools (marked only when the system prompt leaves a marker spare), and
+ * optionally the messages.
+ */
+export function applyAnthropicPromptCache(input: {
+  system?: string;
+  tools?: ApiToolParam[];
+  messages: MessageParam[];
+  markMessages: boolean;
+}): { system?: TextBlockParam[]; tools?: ApiToolParam[]; messages: MessageParam[] } {
+  const system = input.system ? buildCachedSystem(input.system) : undefined;
+  const markTools = (system?.length ?? 0) < 2;
+  return {
+    ...(system ? { system } : {}),
+    ...(input.tools && input.tools.length > 0
+      ? { tools: markTools ? withToolsCacheBreakpoint(input.tools) : input.tools }
+      : {}),
+    messages: input.markMessages ? withMessageCacheBreakpoints(input.messages) : input.messages,
+  };
 }

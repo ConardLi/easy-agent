@@ -55,6 +55,11 @@ export interface ModelProfile {
   maxTokens?: number;
   /** Extra HTTP headers merged into the upstream request. */
   headers?: Record<string, string>;
+  /**
+   * OpenAI protocols: send the session id as `prompt_cache_key`. Defaults to
+   * on for api.openai.com and off for other endpoints.
+   */
+  promptCacheKey?: boolean;
 }
 
 export const DEFAULT_PROVIDER_BASE_URLS: Readonly<Record<ModelProtocol, string>> = {
@@ -83,6 +88,7 @@ interface RawProfile {
   apiKey?: unknown;
   maxTokens?: unknown;
   headers?: unknown;
+  promptCacheKey?: unknown;
 }
 
 const VALID_PROTOCOLS: ReadonlySet<string> = new Set<ModelProtocol>([
@@ -205,6 +211,7 @@ function buildProfile(
     }
     if (Object.keys(out).length > 0) profile.headers = out;
   }
+  if (typeof raw.promptCacheKey === "boolean") profile.promptCacheKey = raw.promptCacheKey;
 
   return profile;
 }

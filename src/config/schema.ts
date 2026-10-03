@@ -46,6 +46,7 @@ export const SettingsSchema = z.looseObject({
         apiKey: z.string().optional(),
         maxTokens: z.number().optional(),
         headers: z.record(z.string(), z.string()).optional(),
+        promptCacheKey: z.boolean().optional(),
       }),
     )
     .optional(),
