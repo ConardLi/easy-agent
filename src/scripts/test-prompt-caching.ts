@@ -228,5 +228,7 @@ await check("/cost reports cache reads, writes, hit rate, and a total that inclu
   );
 });
 
+// Windows cannot remove the process's current directory.
+process.chdir(os.tmpdir());
 await rm(root, { recursive: true, force: true });
 console.log(`\nPrompt caching: ${passed} passed, 0 failed.`);
