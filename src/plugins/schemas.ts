@@ -1,5 +1,5 @@
 /**
- * Plugin & Marketplace schemas (stage 35).
+ * Plugin & Marketplace schemas.
  *
  * A "plugin" is a directory that bundles the six extension kinds Easy Agent
  * already supports — Skills / Agents / Commands / Output Styles / Hooks /
@@ -10,11 +10,10 @@
  *   - `marketplace.json`   → {@link MarketplaceManifest}
  *   - state files          → {@link InstalledPluginRecord} / {@link KnownMarketplace}
  *
- * Reference: claude-code-source-code/src/plugins/ (`pluginSchema`,
- * `marketplaceSchema`) — we mirror the field set that maps onto extension
- * kinds we actually ship, keep unknown top-level fields for forward-compat,
- * and drop the fields tied to features we don't build (userConfig, channels,
- * cross-marketplace dependency resolution, plugin signing).
+ * The schemas cover the fields that map onto supported extension kinds and
+ * keep unknown top-level fields for forward-compat. Fields for unsupported
+ * features (userConfig, channels, cross-marketplace dependency resolution,
+ * plugin signing) are not interpreted.
  */
 
 import { z } from "zod";
@@ -245,7 +244,7 @@ export interface InstalledPluginsFile {
 // ─── Loaded runtime shapes ────────────────────────────────────────────
 
 /**
- * A generic extension source descriptor (plan §35.2). Every loader-produced
+ * A generic extension source descriptor. Every loader-produced
  * component carries provenance so the runtime can namespace, diagnose, and
  * cleanly remove it on disable/uninstall.
  */

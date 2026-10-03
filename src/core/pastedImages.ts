@@ -8,8 +8,7 @@
  * base64 here, drop a compact `[Image #N]` chip into the input, and expand that
  * chip into a real image block at submit time (see `buildUserMessageContent`).
  *
- * This mirrors Claude Code's `pastedContents` map: the editor holds short
- * placeholders, the bytes ride alongside out of band.
+ * The editor holds short placeholders; the bytes ride alongside out of band.
  */
 
 import type { ImageBlock } from "../types/message.js";

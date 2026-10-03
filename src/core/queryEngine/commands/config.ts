@@ -190,7 +190,7 @@ export async function* handleConfigCommand(
 }
 
 /**
- * Stage 23: `/output-style [name]`.
+ * `/output-style [name]`.
  *   - no arg          → list available styles + show the active one
  *   - <name>          → switch the active style and persist it as the
  *                       default (`outputStyle` in ~/.easy-agent/settings.json)

@@ -10,10 +10,8 @@
  *      `Search`/`List`/`Test`/`Build`/`Git` instead of a bare `Bash`
  *      (`classifyBashLabel`).
  *
- * The Bash command buckets mirror claude-code-source-code's
- * `tools/BashTool/BashTool.tsx` (BASH_SEARCH/READ/LIST_COMMANDS +
- * `isSearchOrReadBashCommand`) so the collapse semantics line up with the
- * reference implementation.
+ * The Bash command buckets (search / read / list) decide which commands can
+ * fold into a collapsed read/search group.
  */
 
 // Search commands (grep, find, …) — pattern-matching across the tree.
@@ -58,7 +56,7 @@ const BASH_SEMANTIC_NEUTRAL_COMMANDS = new Set(["echo", "printf", "true", "false
 
 // Commands that typically produce no stdout on success — when they exit 0
 // with empty output the UI shows "Done" instead of the misleading "(No
-// output)". Mirrors source's BASH_SILENT_COMMANDS in BashTool.tsx.
+// output)".
 const BASH_SILENT_COMMANDS = new Set([
   "mv",
   "cp",
@@ -97,7 +95,7 @@ function baseCommandOf(segment: string): string {
 
 /**
  * Classify a Bash command as search / read / list for collapse purposes.
- * Mirrors source's `isSearchOrReadBashCommand`: every non-neutral segment
+ * Every non-neutral segment
  * of a pipeline must itself be a search/read/list command, otherwise the
  * whole command is treated as a regular (non-collapsible) action.
  */
@@ -178,7 +176,7 @@ export function mcpServerNameOf(name: string, input: Record<string, unknown> | u
  * which bucket it lands in. Returns null for non-collapsible tools (Edit,
  * Write, Bash actions like `npm test`, Agent, …), which break a run.
  *
- * Bucket precedence for Bash mirrors source's collapse chain: list → search
+ * Bucket precedence for Bash: list → search
  * → read (a `cat file | grep x` pipe is reported as a search).
  */
 export function classifyToolForCollapse(
@@ -226,9 +224,8 @@ export interface CollapsedCounts {
 }
 
 /**
- * Build the one-line summary for a collapsed read/search group. Mirrors source's
- * CollapsedReadSearchContent, which switches tense by whether the group is still
- * active:
+ * Build the one-line summary for a collapsed read/search group. The tense
+ * switches by whether the group is still active:
  *   - active (some calls in flight) → present participle + trailing "…",
  *     e.g. "Searching 3 patterns · Reading 5 files…"
  *   - done (all results landed)     → past tense,

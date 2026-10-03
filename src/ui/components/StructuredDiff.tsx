@@ -1,14 +1,12 @@
 /**
- * Colored line diff for Edit / Write tool cards (stage 24.4).
+ * Colored line diff for Edit / Write tool cards.
  *
  * Red `-` for removed lines, green `+` for added, dim for unchanged context.
  * Defaults to a CONDENSED view (first `maxLines` rows) with a "… +N more"
  * footer; pass `maxLines={undefined}` (verbose) to show the whole thing.
  *
- * Reference: claude-code-source-code's StructuredDiff (we keep the same
- * condensed-by-default / expand-on-demand information architecture, minus the
- * absolute line-number gutter — Edit only gives us the changed fragment, so a
- * file-absolute gutter would be misleading).
+ * There is no absolute line-number gutter: Edit only gives us the changed
+ * fragment, so a file-absolute gutter would be misleading.
  */
 import React from "react";
 import { Box, Text } from "ink";

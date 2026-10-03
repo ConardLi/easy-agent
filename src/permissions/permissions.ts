@@ -61,9 +61,8 @@ export interface PermissionCheckParams {
   settings?: PermissionSettings;
   /**
    * Conversation transcript before the proposed action. Threaded through so
-   * the Auto Mode AI classifier (Stage 29.2) can infer user intent. Optional
-   * and currently unused by the rule engine — existing callers are
-   * unaffected; the auto-mode branch will consume it in a later stage.
+   * the Auto Mode AI classifier can infer user intent. Optional; the
+   * rule engine ignores it and only the auto-mode branch reads it.
    */
   messages?: MessageParam[];
   /**
@@ -87,9 +86,9 @@ const DEFAULT_PERMISSION_SETTINGS: PermissionSettings = {
   mode: "default",
 };
 
-// Read-only tools that are safe to use while planning. Beyond the original
-// inspection trio, Stage 31 adds the read-only web/MCP tools (WebSearch and
-// the MCP resource readers). WebFetch is intentionally NOT here — it is gated
+// Read-only tools that are safe to use while planning: the local inspection
+// trio plus the read-only web/MCP tools (WebSearch and the MCP resource
+// readers). WebFetch is intentionally NOT here — it is gated
 // per-domain by resolveWebFetchDecision, which runs before this branch.
 const PLAN_ALLOWED_TOOLS = new Set([
   "Read",
@@ -103,8 +102,7 @@ const PLAN_ALLOWED_TOOLS = new Set([
 // Coordination-only tools — their side effects are confined to Easy Agent's
 // own ~/.easy-agent state directory (planning state, team file + mailbox) and
 // never touch the user's workspace. Auto-approved in every mode, including
-// Auto Mode (they never reach the classifier). Mirrors source's
-// `SAFE_YOLO_ALLOWLISTED_TOOLS` (classifierDecision.ts:78-83).
+// Auto Mode (they never reach the classifier).
 const COORDINATION_TOOLS = new Set([
   "TodoWrite",
   "TaskCreate",
@@ -280,7 +278,7 @@ export function matchesPermissionRule(rule: string, toolName: string, input: Rec
   }
 
   // WebFetch rules: `WebFetch(domain:example.com)` matches that host and any
-  // subdomain. Mirrors source's `domain:<hostname>` rule content. A bare
+  // subdomain. A bare
   // `WebFetch(example.com)` form is also accepted for convenience.
   if (toolName === "WebFetch") {
     const host = extractUrlHost(input);
@@ -293,8 +291,7 @@ export function matchesPermissionRule(rule: string, toolName: string, input: Rec
   }
 
   // Skill rules: `Skill(my-skill)` exact, `Skill(review:*)` prefix-glob.
-  // The argument is the skill `name` (NOT the dirname or any args). Mirrors
-  // source code's `ruleMatches()` for the SkillTool branch.
+  // The argument is the skill `name` (NOT the dirname or any args).
   if (toolName === "Skill") {
     const skillName = extractSkillName(input);
     if (!skillName) return false;
@@ -321,8 +318,7 @@ function findFirstMatchingRule(
 }
 
 /**
- * Sandbox auto-allow path. Mirrors source code's `checkSandboxAutoAllow`
- * in `bashPermissions.ts:1270`.
+ * Sandbox auto-allow path.
  *
  * Pre-condition: caller has confirmed the command WILL be sandboxed
  * (sandbox.enabled + autoAllowBashIfSandboxed + shouldUseSandbox).
@@ -467,12 +463,12 @@ function getRiskLabel(
  *   4. Bash hard-deny blacklist        → deny (never-safe; saves a classifier call)
  *   5. Read-only fast-path             → allow (saves a classifier call)
  *   6. Explicit allow rules            → allow
- *   7. AI classifier                   → allow / (block → ask) / (unavailable → ask)
+ *   7. AI classifier                   → allow / (block → deny) / (unavailable → ask)
  *
- * "block" and "unavailable" both degrade to `ask` here — i.e. fall back to the
- * normal confirmation UI. Stage 3 layers consecutive-denial tracking and a
- * failure circuit-breaker on top; this stage keeps the mapping simple and
- * never auto-allows on uncertainty.
+ * The classifier never auto-allows on uncertainty: an unavailable verdict
+ * falls back to the normal confirmation UI and feeds the failure circuit
+ * breaker. Consecutive blocks are tracked as well; once the threshold is
+ * reached, further blocks degrade to `ask` so the human decides instead.
  */
 async function resolveAutoModeDecision(
   params: PermissionCheckParams,
@@ -569,8 +565,7 @@ async function resolveAutoModeDecision(
  *   3. Domain allow rule (session/settings) → allow
  *   4. Otherwise                      → ask (first visit to this domain)
  *
- * Mirrors source's WebFetchTool.checkPermissions (preapproved → deny → allow →
- * ask), using `WebFetch(domain:<host>)` rule content.
+ * Rules use `WebFetch(domain:<host>)` content.
  */
 function resolveWebFetchDecision(
   params: PermissionCheckParams,
@@ -704,7 +699,7 @@ export async function checkPermission(params: PermissionCheckParams): Promise<Pe
   }
 
   // Sandbox auto-allow gate. If the user has the sandbox on AND policy
-  // says "auto-allow when sandboxed", we skip the confirmation dialog
+  // says "auto-allow when sandboxed", the confirmation dialog is skipped
   // for Bash — but only after running per-subcommand deny checks. The
   // sandbox is the ultimate safety net; explicit deny rules still apply.
   if (params.tool.name === "Bash") {

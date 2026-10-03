@@ -1,14 +1,11 @@
 /**
  * TaskCreate — add a task to the persistent task graph.
  *
- * Mirrors `claude-code-source-code/src/tools/TaskCreateTool`. Returns the
- * assigned id so the model can immediately reference the task in
- * TaskUpdate calls (e.g. to set blockedBy on follow-up tasks).
+ * Returns the assigned id so the model can immediately reference the task
+ * in TaskUpdate calls (e.g. to set blockedBy on follow-up tasks).
  *
- * Drops:
- *   - TaskCreated hooks (stage 22+)
- *   - teammate assignment notes (multi-agent)
- *   - app-state auto-expand (we always render TaskList when in task mode)
+ * No hook event fires on task creation, and the UI always renders
+ * TaskList while task mode is on, so there is nothing to auto-expand.
  */
 
 import { createTask } from "../state/taskStore.js";

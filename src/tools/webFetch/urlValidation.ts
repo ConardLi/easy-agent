@@ -1,12 +1,9 @@
 /**
  * WebFetch URL validation + SSRF guard.
  *
- * Reference: claude-code-source-code/src/tools/WebFetchTool/utils.ts
- * (`validateURL`). The reference additionally relies on an Anthropic-hosted
- * domain blocklist preflight (api.anthropic.com/api/web/domain_info) to catch
- * link-local / metadata endpoints. We have no such service, so we replace that
- * dependency with explicit private/loopback/link-local IP blocking — the
- * "解析后校验非私网 IP" step in the plan.
+ * There is no hosted domain-blocklist preflight. Link-local, metadata, and
+ * other internal endpoints are instead rejected by explicit
+ * private/loopback/link-local IP blocking after DNS resolution.
  */
 
 const MAX_URL_LENGTH = 2000;

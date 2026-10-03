@@ -60,16 +60,16 @@ export function isInternalMessage(message: MessageParam): boolean {
   if (content.startsWith("This session is being continued from a previous conversation")) return true;
   if (content.startsWith("[plan_mode_attachment]")) return true;
   if (content.startsWith("[plan_mode_exit]")) return true;
-  // `/<skill-name>` invocations expand into TWO user messages (mirroring
-  // source's processSlashCommand pattern): a visible "command bubble"
+  // `/<skill-name>` invocations expand into TWO user messages: a visible
+  // "command bubble"
   // marker (handled by extractCommandMarker below) and a hidden body
   // tagged with this prefix. The model receives the body as the real
   // prompt, but the user already sees the bubble + the assistant's
   // streaming reply, so the raw SKILL.md dump would just be noise here.
   if (content.startsWith("[skill_invocation:")) return true;
-  // Stage 34: the hidden ultrathink meta message (model-only nudge).
+  // The hidden ultrathink meta message (model-only nudge).
   if (content.startsWith("[ultrathink]")) return true;
-  // Stage 23: user-command invocations follow the same two-message pattern
+  // User-command invocations follow the same two-message pattern
   // as skills — a visible `<command-name>` bubble plus this hidden body that
   // carries the substituted prompt template to the model.
   if (content.startsWith("[command_invocation:")) return true;
@@ -77,13 +77,12 @@ export function isInternalMessage(message: MessageParam): boolean {
 }
 
 /**
- * Stage 20 — pull the human-relevant fields out of a `[task-notification]`
+ * Pull the human-relevant fields out of a `[task-notification]`
  * user message so the conversation can render a one-line status pill
  * instead of the raw XML the model gets. Returns null if the message is
  * not a task notification.
  *
- * Format reference: state/notificationStore.ts `formatTaskNotification`
- * (which mirrors source code's `<task-notification>` body).
+ * Format reference: state/notificationStore.ts `formatTaskNotification`.
  */
 export interface TaskNotificationView {
   status: "completed" | "failed" | "killed" | "unknown";
@@ -160,9 +159,8 @@ function taskNotificationStyle(
 /**
  * Detect a slash-command marker user message and pull the
  * `<command-name>` + `<command-args>` tags out for rendering. Returns null
- * for plain user text. The format mirrors source's `formatCommandInputTags`
- * in claude-code-source-code/src/utils/messages.ts so we stay
- * source-compatible (matters once we add /resume).
+ * for plain user text. The tags are persisted in session transcripts, so
+ * the format must stay stable for `/resume` to render old sessions.
  */
 export function extractCommandMarker(
   message: MessageParam,
@@ -239,7 +237,7 @@ function isCollapsibleMember(
  * The header is a semantic one-liner ("Searched 5 patterns · Read 12 files ·
  * Listed 3 directories"); the `⎿` line previews the first few targets so the
  * paths/patterns aren't lost. Full per-call detail still lives in the Ctrl+O
- * transcript. Mirrors source's collapseReadSearch — a turn that reads 6 files
+ * transcript. A turn that reads 6 files
  * + greps twice + lists a dir shouldn't print 9 separate cards.
  */
 function GroupedReadSearchCard({ members }: { members: GroupMember[] }): React.ReactNode {
@@ -273,7 +271,7 @@ function GroupedReadSearchCard({ members }: { members: GroupMember[] }): React.R
  * this is what lets us feed the history into Ink's `<Static>` (append-only,
  * never-repainted) without losing tool cards that gain their result later.
  *
- * Stage 24 foundation: previously the whole `messages` array was rendered
+ * Previously the whole `messages` array was rendered
  * inside the live React frame, so every streaming tick repainted the entire
  * conversation — that's the root cause of the terminal "refusing to scroll".
  * Flattening to append-only items lets the committed history move into
@@ -338,9 +336,8 @@ export function flattenConversation(
   const items: ConversationItem[] = [];
   let lastVisibleKind: VisibleItemKind | null = null;
 
-  // Stage 34: only the *current round's* thinking is shown; historical
-  // thinking is folded away (mirrors source's hidePastThinking /
-  // lastThinkingBlockId in Messages.tsx:455-477). We find the index of the
+  // Only the *current round's* thinking is shown; historical
+  // thinking is folded away. We find the index of the
   // last assistant message that carries a thinking/redacted_thinking block —
   // thinking blocks in any earlier assistant message are hidden entirely
   // (unless verbose, which shows everything for the Ctrl+O transcript).
@@ -434,7 +431,7 @@ export function flattenConversation(
             name?: string;
             input?: Record<string, unknown>;
           };
-          // Stage 34: thinking / redacted_thinking blocks. Only the current
+          // Thinking / redacted_thinking blocks. Only the current
           // round is shown by default; historical thinking is hidden unless
           // verbose (Ctrl+O transcript) is on.
           if (block?.type === "thinking") {

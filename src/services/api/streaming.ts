@@ -1,11 +1,10 @@
 /**
  * Streaming — AsyncGenerator wrapper over the Anthropic streaming API.
  *
- * Reference: claude-code-source-code/src/services/api/claude.ts
- * The original iterates `for await (const part of stream)` and switches
- * on `part.type` (message_start, content_block_start, content_block_delta,
- * content_block_stop, message_delta, message_stop). We replicate that
- * pattern but yield our own simplified StreamEvent union.
+ * Iterates `for await (const part of stream)` and switches on `part.type`
+ * (message_start, content_block_start, content_block_delta,
+ * content_block_stop, message_delta, message_stop), yielding the
+ * provider-neutral StreamEvent union consumed by the agentic loop.
  */
 
 import type Anthropic from "@anthropic-ai/sdk";
@@ -84,22 +83,21 @@ export interface StreamRequestParams {
   toolChoice?: Anthropic.MessageCreateParams["tool_choice"];
   signal?: AbortSignal;
   /**
-   * Stage 27: foreground (user waiting) vs background (summary / title).
+   * Foreground (user waiting) vs background (summary / title).
    * Controls whether a 529 capacity overload is retried. Defaults to
    * foreground when unset — conservative for untagged paths.
    */
   querySource?: QuerySource;
   /**
-   * Stage 34: extended thinking configuration.
+   * Extended thinking configuration.
    * When undefined the layer uses the session/default config
    * (`buildDefaultThinkingConfig()`). Pass `{ type: "disabled" }` to
    * suppress thinking for background / internal calls (compaction, etc.).
    */
   thinking?: ThinkingConfig;
   /**
-   * Stage 34: effort level for `output_config.effort`.
+   * Effort level for `output_config.effort`.
    * Only honoured for Anthropic models that support it; ignored otherwise.
-   * Source: claude-code-source-code/src/utils/effort.ts
    */
   effortLevel?: EffortLevel;
 }
@@ -123,7 +121,7 @@ export interface StreamResult {
 async function* streamOnce(
   params: StreamRequestParams,
 ): AsyncGenerator<StreamEvent, StreamResult> {
-  // Stage 30: resolve the model handle into a profile. Non-Anthropic protocols
+  // Resolve the model handle into a profile. Non-Anthropic protocols
   // (OpenAI Chat/Responses, Gemini) are translated at the edge via llm-bridge;
   // the Anthropic path below is unchanged except it sources its client/model
   // from the (possibly synthetic) profile.
@@ -136,7 +134,7 @@ async function* streamOnce(
   const model = profile.model;
   const maxTokens = profile.maxTokens ?? params.maxTokens ?? DEFAULT_MAX_TOKENS;
 
-  // ─── Stage 34: thinking + interleaved beta + effort ───────────────
+  // ─── Thinking + interleaved beta + effort ─────────────────────────
   const thinkingCfg: ThinkingConfig =
     params.thinking ?? buildDefaultThinkingConfig();
   const hasThinking =
@@ -176,8 +174,7 @@ async function* streamOnce(
   // Build the API request
   // When thinking is active, temperature must NOT be set (API requirement).
   // Endpoint identity = baseURL + model; thinking signatures are bound to the
-  // endpoint that issued them, so a change strips them (mirrors source's
-  // stripSignatureBlocks on credential change).
+  // endpoint that issued them, so a change strips them.
   const endpointKey = `${profile.baseURL ?? ""}|${model}`;
   const normalizedMessages = normalizeToolReferencesForAPI(
     normalizeMessagesForAPI(params.messages, model, thinkingParam !== undefined, endpointKey),
@@ -652,13 +649,10 @@ export async function createMessage(
   };
 }
 
-// ─── Stage 34: Historical normalization pipeline ──────────────────────
+// ─── Historical normalization pipeline ────────────────────────────────
 //
-// Mirrors the post-processing chain in source's normalizeMessagesForAPI
-// (claude-code-source-code/src/utils/messages.ts:2008-2348) that prevents
-// 400 errors when thinking blocks are in the conversation history.
-//
-// We only implement the subset needed to prevent the common errors:
+// Post-processing that prevents 400 errors when thinking blocks are in the
+// conversation history:
 //   1. Strip trailing thinking/redacted_thinking blocks from the last
 //      assistant message (API rejects them if they trail the content).
 //   2. Filter out "orphan" thinking-only assistant messages (a message
@@ -682,8 +676,7 @@ function isThinkingOnlyContent(content: unknown): boolean {
 // Module-level memo of the endpoint identity that issued the thinking
 // signatures currently in history. When the active endpoint changes
 // (different baseURL / model), the stored signatures are invalid — the API
-// rejects them with a 400 — so we strip them. Mirrors source's
-// stripSignatureBlocks-on-credential-change behavior.
+// rejects them with a 400 — so we strip them.
 let lastEndpointKey: string | undefined;
 
 /**

@@ -1,15 +1,12 @@
 /**
  * Tool-pool resolver for sub-agents.
  *
- * Reference: claude-code-source-code/src/tools/AgentTool/agentToolUtils.ts
  *   - filterToolsForAgent (drops Agent + DISALLOWED_TOOLS)
  *   - resolveAgentTools (intersects with `tools` allow-list)
  *
- * The source maintains separate constants for "tools every agent loses"
- * (`ALL_AGENT_DISALLOWED_TOOLS`) and "tools custom agents lose" (because
- * built-ins are trusted to use plan-mode tools etc). For stage 19 we keep
- * one rule that applies to everything: the Agent tool itself is stripped
- * unconditionally so a sub-agent can never spawn another sub-agent.
+ * Built-in and custom agents share one rule: the Agent tool itself is
+ * stripped unconditionally so a sub-agent can never spawn another
+ * sub-agent.
  */
 
 import type { Tool } from "../tools/Tool.js";
@@ -34,7 +31,7 @@ export interface ResolvedAgentTools {
  *
  * Algorithm (in order):
  *   1. Strip the `Agent` tool. Sub-agents must not spawn sub-sub-agents
- *      — this is the "no recursion" guarantee called out in §19.5.
+ *      — this is the "no recursion" guarantee.
  *   2. Apply `disallowedTools` (acts even when `tools` is wildcard).
  *   3. If `tools` is undefined or `['*']`, keep everything that survives.
  *   4. Otherwise, filter down to the named subset (in declaration order,

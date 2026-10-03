@@ -1,5 +1,5 @@
 /**
- * Unified plugin namespace + conflict rules (plan §35.3).
+ * Unified plugin namespace + conflict rules.
  *
  * Every component a plugin contributes is addressed under the plugin's name so
  * two plugins can both ship a `review` command without colliding, and so the

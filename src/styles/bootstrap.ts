@@ -1,5 +1,5 @@
 /**
- * Output styles startup orchestration (stage 23).
+ * Output styles startup orchestration.
  *
  * Called once from the CLI entrypoint before the React UI mounts:
  *   1. Load custom styles from disk and merge them into the registry.

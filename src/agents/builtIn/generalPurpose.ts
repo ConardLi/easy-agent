@@ -1,7 +1,6 @@
 /**
  * Built-in `general-purpose` agent — the default sub-agent type.
  *
- * Mirrors claude-code-source-code/src/tools/AgentTool/built-in/generalPurposeAgent.ts:
  *   tools: ['*']  (wildcard)
  *
  * Used when the parent calls Agent without specifying `subagent_type`.

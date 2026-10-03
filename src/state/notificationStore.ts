@@ -1,5 +1,5 @@
 /**
- * Pending-notification queue for cross-turn message injection (stage 20).
+ * Pending-notification queue for cross-turn message injection.
  *
  * Background sub-agents finish at unpredictable times. When the parent's
  * agentic loop is between turns (sitting at the prompt waiting for the
@@ -11,9 +11,7 @@
  * enqueues a `<task-notification>` block when its sub-agent terminates
  * (success / failure / kill). The QueryEngine's `submitInternal` drains
  * the queue at the very top of each new submission and prepends the
- * notifications as user messages — exactly how source's
- * `enqueuePendingNotification({ mode: 'task-notification' })` plus the
- * `useQueueProcessor` consumer cooperate.
+ * notifications as user messages.
  *
  * Why FIFO and not by-id keyed:
  *   Notifications are pure side-channel messages — once injected they're
@@ -40,9 +38,8 @@ const queue: PendingNotification[] = [];
 
 // ─── Signal subscription ─────────────────────────────────────────────
 //
-// Mirrors source's `messageQueueManager.ts` design: enqueue is a pure
-// push + signal pattern, no polling. `useQueueProcessor` (source) /
-// `useAgentSession` (here) subscribes to this signal so the moment a
+// Enqueue is a pure push + signal pattern, no polling. `useAgentSession`
+// subscribes to this signal so the moment a
 // background sub-agent finishes, the listener fires and — if the main
 // loop is idle — triggers a fresh turn that consumes the notification.
 // Without this signal, notifications would only be drained on the
@@ -101,10 +98,9 @@ export function clearPendingNotifications(): void {
 
 // ─── XML builder for task notifications ─────────────────────────────
 //
-// The format mirrors source code's `<task-notification>` block (see
-// LocalAgentTask.tsx → buildAgentTaskNotificationMessage). We keep the
-// same outer tag + key inner tags so anyone reading our docs against
-// the source can grok both at a glance.
+// A `<task-notification>` outer tag with one inner tag per field. The UI
+// (ConversationView) and the model both parse these tags, so the shape is
+// part of the contract.
 
 export interface TaskNotificationParts {
   agentId: string;

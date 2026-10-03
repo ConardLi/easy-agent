@@ -1,12 +1,12 @@
 /**
- * Markdown → ANSI string conversion for terminal rendering (stage 24).
+ * Markdown → ANSI string conversion for terminal rendering.
  *
  * The conversation used to render AI replies as raw `<Text>`, so headings,
  * lists, bold, links and code blocks all came through as plain characters.
  * Here we turn a Markdown string into an ANSI-styled string that Ink's
  * `<Text>` passes straight through to the terminal.
  *
- * Two performance designs carried over from the reference implementation:
+ * Two performance designs:
  *
  *   1. `hasMarkdownSyntax()` — a cheap fast path. Most streamed chunks are
  *      plain prose; sampling the first ~500 chars for Markdown markers lets
@@ -19,9 +19,6 @@
  * We deliberately cover the common token set (headings, paragraphs, lists,
  * code, blockquote, hr, inline strong/em/code/link, tables) rather than the
  * full CommonMark surface — enough to make agent output readable.
- *
- * Reference: claude-code-source-code/src/utils/markdown.ts (formatToken) +
- *            src/components/Markdown.tsx (fast path + token cache).
  */
 
 import chalk from "chalk";

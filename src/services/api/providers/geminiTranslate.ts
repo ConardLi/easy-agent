@@ -1,8 +1,6 @@
 /**
  * Gemini translation + native SSE parsing/assembly.
  *
- * Extracted verbatim from providerStream.ts (二期 A1); behavior is unchanged.
- *
  * Why Gemini gets bespoke code instead of leaning on llm-bridge:
  *   - llm-bridge's Gemini `contents` builder replays thinking blocks as
  *     fabricated unsigned `{thought:true}` parts (Gemini-3 rejects those) and

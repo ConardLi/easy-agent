@@ -10,12 +10,10 @@
  * Side effect: the skill's `allowed-tools` whitelist is appended to the
  * session-allow rules via `context.addSessionAllowRules`, so any tool
  * calls the skill makes during this session don't trigger another permission
- * prompt. Mirrors the source's `contextModifier.alwaysAllowRules` injection.
+ * prompt.
  *
  * Skills may request `context: fork`; those execute in a fresh sub-agent
  * context. `disable-model-invocation` remains enforced for model-originated calls.
- *
- * Reference: claude-code-source-code/src/tools/SkillTool/SkillTool.ts
  */
 
 import { findSkill } from "../services/skills/registry.js";
@@ -36,8 +34,7 @@ function readInput(input: Record<string, unknown>): SkillInput {
 }
 
 /**
- * Apply the three substitution variables documented in DEVELOPMENT-PLAN
- * §17.4. Order matters slightly: we substitute `${CLAUDE_SKILL_DIR}` and
+ * Apply the three supported substitution variables. Order matters slightly: we substitute `${CLAUDE_SKILL_DIR}` and
  * `${CLAUDE_SESSION_ID}` BEFORE `$ARGUMENTS` so a literal `$ARGUMENTS`
  * inside an environment variable reference would still work — though in
  * practice that case should never appear.
@@ -48,7 +45,8 @@ function substituteVariables(
   args: string,
   sessionId: string,
 ): string {
-  // Posix-style separator on all platforms; matches source `posixifyPath`.
+  // Posix-style separator on all platforms so skill bodies can join paths
+  // with `/` regardless of the host OS.
   const dir = skill.baseDir.split(/[\\/]/).join("/");
   return body
     .replaceAll("${CLAUDE_SKILL_DIR}", dir)
@@ -137,7 +135,7 @@ export const skillTool: Tool = {
 
   isReadOnly(): boolean {
     // A skill can do anything its body asks. Treat as a side-effecting tool
-    // so Plan Mode rejects it (matches source's `isReadOnly: false`).
+    // so Plan Mode rejects it.
     return false;
   },
 

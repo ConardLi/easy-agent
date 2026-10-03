@@ -1,9 +1,8 @@
 /**
- * The interactive permission prompt shown before a guarded tool runs
- * (stage 7 + 24.4 polish). For file-touching tools it now previews the actual
- * change — a colored diff for Edit and the new-file content for Write — the
- * same "show me what you're about to do" UX as Claude Code's
- * FilesystemPermissionRequest, instead of a bare `args: {...}` dump.
+ * The interactive permission prompt shown before a guarded tool runs. For
+ * file-touching tools it previews the actual change — a colored diff for
+ * Edit and the new-file content for Write — instead of a bare `args: {...}`
+ * dump.
  */
 import React from "react";
 import { Box, Text, useStdout } from "ink";

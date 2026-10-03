@@ -1,11 +1,6 @@
 /**
  * Tool Search — policy + request shaping for deferred tools.
  *
- * Reference: claude-code-source-code/src/utils/toolSearch.ts,
- *            claude-code-source-code/src/tools/ToolSearchTool/prompt.ts,
- *            claude-code-source-code/src/services/api/claude.ts (L1132–1387),
- *            claude-code-source-code/src/utils/messages.ts (tool_reference rules).
- *
  * When enabled, "deferred" tools (MCP tools and any tool flagged
  * `shouldDefer`) are not expanded in the request's `tools[]`. The model only
  * sees their names in an `<available-deferred-tools>` list and must call
@@ -73,7 +68,8 @@ function isEnvDefinedFalsy(value: string | undefined): boolean {
 }
 
 function getToolSearchEnvValue(): string | undefined {
-  // Project-prefixed name is canonical; the source's name is honored for parity.
+  // Project-prefixed name is canonical; the unprefixed name is honored for
+  // compatibility with existing shell setups.
   return process.env.EASY_AGENT_ENABLE_TOOL_SEARCH ?? process.env.ENABLE_TOOL_SEARCH;
 }
 
@@ -413,8 +409,7 @@ export interface PreparedToolSearchRequest {
 }
 
 /**
- * Shape one request's tools + messages for tool search. Mirrors the order in
- * the source's `claude.ts`:
+ * Shape one request's tools + messages for tool search, in this order:
  *   1. decide enablement (mode / model / availability / gateway / threshold)
  *   2. precompute the deferred set
  *   3. "empty pool" gate — no deferred tools and no pending MCP → off

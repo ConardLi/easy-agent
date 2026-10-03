@@ -1,8 +1,6 @@
 /**
  * Auto Mode classifier system prompt.
  *
- * Reference: claude-code-source-code/src/utils/permissions/yolo-classifier-prompts/auto_mode_system_prompt.txt
- *
  * The classifier reads a transcript of the conversation (user messages +
  * previous tool calls) followed by the single new action the agent wants to
  * take, then decides ALLOW (auto-approve) or BLOCK (require human

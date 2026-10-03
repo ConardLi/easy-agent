@@ -1,5 +1,5 @@
 /**
- * Component-path containment checks (plan §35.5).
+ * Component-path containment checks.
  *
  * A plugin manifest can declare component paths (skills/agents/commands/...)
  * and a Git-sourced plugin is untrusted code on disk. Before the loader reads

@@ -1,8 +1,6 @@
 /**
  * SendMessage — drop a text message into a teammate's inbox.
  *
- * Reference: claude-code-source-code/src/tools/SendMessageTool/SendMessageTool.ts
- *
  * Supports ordinary messages and teammate control requests:
  *   - `to: "<name>"`  — write to one teammate's inbox
  *   - `to: "*"`       — broadcast to every active teammate (skip self)
@@ -10,7 +8,7 @@
  *   - `type: "shutdown_request"` stops after the current tool batch.
  *   - `type: "abort_request"` cancels immediately.
  *
- * Skipped vs source:
+ * Not supported:
  *   - Plan approval and permission-request routing.
  *   - UDS / bridge cross-machine routing.
  *   - SendMessage-to-stopped-agent auto-resume; the lead must start a

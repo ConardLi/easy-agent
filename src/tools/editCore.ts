@@ -1,10 +1,9 @@
 /**
  * Shared string-edit core for the Edit and MultiEdit tools.
  *
- * Reference: claude-code-source-code/src/tools/FileEditTool/ (the newer
- * Claude Code folds `replace_all` into Edit and exposes batched edits via
- * MultiEdit). Both paths share the same match/replace semantics, so we
- * centralize them here:
+ * Edit handles `replace_all` itself and MultiEdit exposes batched edits.
+ * Both paths share the same match/replace semantics, so we centralize them
+ * here:
  *
  *   - smart-quote normalization on the model-supplied strings (the file
  *     content is searched as-is — normalizing the model's curly quotes is

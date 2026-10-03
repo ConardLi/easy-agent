@@ -1,19 +1,16 @@
 /**
- * Git worktree utilities for sub-agent isolation (stage 20).
+ * Git worktree utilities for sub-agent isolation.
  *
- * Reference: claude-code-source-code/src/utils/worktree.ts.
- * The source's worktree.ts is ~1200 lines and supports hook-based
- * worktrees, sparse checkout, husky/hooksPath propagation,
- * settings.local.json copy, and a separate user-session "Enter/Exit
- * worktree" flow. Stage 20 keeps just the slice the AgentTool needs:
+ * Covers what the AgentTool needs. Hook-based worktrees, sparse checkout,
+ * hooksPath propagation, settings copy, and a user-session "enter/exit
+ * worktree" flow are not supported.
  *
  *   - findGitRoot(cwd)        : walk up to the canonical repo root
  *   - createAgentWorktree(slug): `git worktree add -B <branch> <path> HEAD`
  *   - removeAgentWorktree(...) : `git worktree remove --force` + `branch -D`
  *   - hasWorktreeChanges(...)  : status + rev-list HEAD~base — fail-closed
  *
- * Path / branch convention (matches source's flatten-then-prefix shape
- * but uses `.easy-agent/` instead of `.claude/`):
+ * Path / branch convention (flatten-then-prefix):
  *
  *   <gitRoot>/.easy-agent/worktrees/<slug>/        ← worktree directory
  *   worktree-<slug>                                ← branch name
@@ -71,8 +68,7 @@ export function worktreePathFor(repoRoot: string, slug: string): string {
  * We deliberately avoid shelling out to `git rev-parse --show-toplevel`:
  * (1) it's slower than a few `stat` calls; (2) it returns the worktree
  * root rather than the canonical repo root if we're already inside one,
- * which would let nested-worktree mistakes happen. Same reasoning as
- * `findCanonicalGitRoot` in source.
+ * which would let nested-worktree mistakes happen.
  */
 export async function findGitRoot(cwd: string): Promise<string | null> {
   let current = path.resolve(cwd);
@@ -143,8 +139,7 @@ async function git(args: string[], cwd: string): Promise<ExecResult> {
  *   1. Resolve HEAD SHA — used later as the baseline for change detection.
  *   2. mkdir -p `<gitRoot>/.easy-agent/worktrees/`.
  *   3. `git worktree add -B worktree-<slug> <path> HEAD` — `-B` resets
- *      the branch if it already exists, mirroring source's behaviour
- *      so a stale leftover from a previous run gets reused cleanly.
+ *      the branch if it already exists, so a stale leftover from a previous run gets reused cleanly.
  *
  * Throws on failure. Caller (AgentTool) catches and falls back to "no
  * isolation" with a warning rather than aborting the whole sub-agent.

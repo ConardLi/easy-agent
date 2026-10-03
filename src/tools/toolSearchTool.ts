@@ -1,9 +1,6 @@
 /**
  * ToolSearch — fetch full schema definitions for deferred tools.
  *
- * Reference: claude-code-source-code/src/tools/ToolSearchTool/ToolSearchTool.ts
- *            claude-code-source-code/src/tools/ToolSearchTool/prompt.ts
- *
  * Deferred tools (MCP tools, `shouldDefer` tools) are announced to the model
  * by name only. This tool maps a query — `select:A,B`, keywords, or
  * `+required` keywords — onto that pool and returns `tool_reference` blocks.

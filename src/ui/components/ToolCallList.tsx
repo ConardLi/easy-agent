@@ -12,7 +12,7 @@ import type { BashProgress } from "../../state/bashProgressStore.js";
 /**
  * The `⎿` sub-line shown under an in-flight card for the non-running phases.
  * Running cards have no sub-line (their progress shows elsewhere, e.g. the
- * Bash tail). Wording mirrors source's queued / permission / classifier text.
+ * Bash tail).
  */
 function phaseSubLine(state: ToolState): string | null {
   switch (state) {
@@ -38,7 +38,7 @@ interface ToolCallListProps {
 const BASH_TAIL_LINES = 5;
 
 /**
- * The `(elapsed · timeout Xs)` hint, mirroring source's ShellTimeDisplay:
+ * The `(elapsed · timeout Xs)` hint:
  *   - no timeout      → `(4s)`
  *   - with timeout    → `(4s · timeout 2m)`
  *   - before first ms → `(timeout 2m)`
@@ -53,7 +53,7 @@ function shellTimeHint(elapsedSec: number | undefined, timeoutMs?: number): stri
 }
 
 /**
- * Live tail of a running Bash command, mirroring source's ShellProgressMessage:
+ * Live tail of a running Bash command:
  *   - last 5 output lines (dim)
  *   - a status row: `+N lines`/`~N lines` · `(elapsed · timeout Xs)` · bytes
  *   - before any output: a bare `Running… (elapsed · timeout)` line
@@ -195,7 +195,7 @@ function SingleToolCard({ toolCall }: { toolCall: ToolCallInfo }): React.ReactNo
 }
 
 // A run of this many consecutive read/search/list calls collapses into one
-// live summary card (mirrors source's collapseReadSearch min group size).
+// live summary card.
 const LIVE_GROUP_MIN = 2;
 
 /** True when an in-flight card can fold into a live read/search summary. */
@@ -210,7 +210,7 @@ function isLiveCollapsible(tc: ToolCallInfo): boolean {
  * calls. While any member is still in flight, the summary uses present tense +
  * a blinking dot ("Reading 5 files…"); once all land it reads past tense
  * ("Read 5 files"). The `⎿` line previews the most recent target so the user
- * sees what's being touched right now. Mirrors source's CollapsedReadSearchContent.
+ * sees what's being touched right now.
  */
 function LiveGroupedCard({ members }: { members: ToolCallInfo[] }): React.ReactNode {
   const anyPending = members.some((m) => m.resultLength === undefined);

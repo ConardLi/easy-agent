@@ -1,17 +1,14 @@
 /**
  * TaskList — read-only rendering of the persistent task graph.
  *
- * Mirrors `claude-code-source-code/src/components/TaskListV2.tsx` minus
- * the multi-agent / teammate pieces (owner colors, activity summaries,
- * shut-down tracking). Single-agent only needs status, subject, and
- * blocker info.
+ * Shows status, subject, and blocker info per task. Owners, teammate
+ * activity, and shutdown state are not rendered here.
  *
  * Rendering rules, same as TodoList:
  *   - every row is STATIC (no per-row spinner) — the live "active task"
  *     verb is rendered once by the global StatusBar spinner via
  *     `effectiveSpinnerLabel` in App.tsx. Adding a setInterval per row
- *     multiplies terminal repaints and reintroduces the flicker we
- *     fought in stage 14.
+ *     multiplies terminal repaints and causes visible flicker.
  *   - React.memo with a structural comparator prevents siblings of
  *     streamingText from forcing re-renders through us.
  */

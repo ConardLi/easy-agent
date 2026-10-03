@@ -3,8 +3,7 @@
  * memory files (AGENT.md chain + project memdir); the user moves with ↑/↓ (or a
  * 1-9 quick key) and presses Enter to open the selected file in $EDITOR.
  *
- * Mirrors source's MemoryFileSelector (components/memory/MemoryFileSelector.tsx):
- * non-existent User/Project files are still listed (marked "new"), and selecting
+ * Non-existent User/Project files are still listed (marked "new"), and selecting
  * a row opens it in the editor. Pure presentation — keyboard handling lives in
  * hooks/useMemoryPicker, and the open is performed by re-invoking `/memory edit
  * <n>` through the engine (the same $EDITOR path the text command uses).

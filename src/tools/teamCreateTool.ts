@@ -1,8 +1,6 @@
 /**
  * TeamCreate — kick off an Agent Teams session.
  *
- * Reference: claude-code-source-code/src/tools/TeamCreateTool/TeamCreateTool.ts
- *
  * Mental model: TeamCreate is the moment the main session morphs from
  * "one agent talking to the user" into "team lead coordinating
  * teammates". After this call:
@@ -15,12 +13,10 @@
  *   - The model can now call `Agent({ name, team_name, ... })` to
  *     spawn named teammates that the lead can SendMessage to.
  *
- * Trimmed vs source:
- *   - No `getResolvedTeammateMode()` / tmux backend setup — Easy Agent
- *     only does in-process teammates (background sub-agents).
- *   - No analytics event.
- *   - No `parseUserSpecifiedModel` resolution; we record the lead's
- *     current model name as-is.
+ * Scope:
+ *   - Teammates are always in-process background sub-agents; there is no
+ *     terminal-pane backend.
+ *   - The lead's current model name is recorded as-is.
  *   - Shared tasks use a team-specific namespace. Ordinary task lists
  *     keep their existing session scope.
  *

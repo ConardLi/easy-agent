@@ -1,5 +1,5 @@
 /**
- * Markdown rendering components (stage 24).
+ * Markdown rendering components.
  *
  *   <Markdown>          — for FINALIZED text (committed history). Converts
  *                         once and renders the ANSI string in a <Text>.
@@ -11,13 +11,10 @@
  *                             rendered as Markdown and never re-formatted;
  *                           - the trailing, still-incomplete block is shown
  *                             as PLAIN text so a half-written **bold** or an
- *                             unterminated ```fence``` doesn't flÍicker
+ *                             unterminated ```fence``` doesn't flicker
  *                             between styled and unstyled on every chunk.
  *                         When the tail completes it rolls into the stable
  *                         prefix and gets formatted — exactly once.
- *
- * Reference: claude-code-source-code/src/components/Markdown.tsx
- *            (StreamingMarkdown + stablePrefixRef).
  */
 
 import React from "react";

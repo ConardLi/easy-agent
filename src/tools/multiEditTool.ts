@@ -14,8 +14,7 @@ import {
 /**
  * MultiEdit — apply several find/replace edits to a single file in one call.
  *
- * Reference: claude-code-source-code MultiEdit semantics. The point of the
- * tool is to cut tool round-trips and to make a batch of edits ATOMIC:
+ * The point of the tool is to cut tool round-trips and to make a batch of edits ATOMIC:
  *
  *   - edits apply in order; each one operates on the result of the previous
  *     (so you can create a string in edit #1 and modify it in edit #2)

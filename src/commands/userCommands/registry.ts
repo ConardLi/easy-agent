@@ -24,7 +24,7 @@ export function isUserCommandsInitialized(): boolean {
   return initialized;
 }
 
-/** Look up a command by name (case-sensitive, like the source). */
+/** Look up a command by name (case-sensitive). */
 export function findUserCommand(name: string): UserCommand | undefined {
   return commands.get(name);
 }

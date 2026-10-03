@@ -1,6 +1,6 @@
 /**
  * TeammateViewer — read-only viewer for one background sub-agent's
- * `.output` JSONL transcript (stage 21).
+ * `.output` JSONL transcript.
  *
  * Mounted by App.tsx when `teammateViewStore.mode === 'viewing'`.
  * Replaces the main `ConversationView` for the duration of the view.
@@ -18,11 +18,9 @@
  *     └ ok (12 chars): no errors
  *   ✓ Done · completed · 8421ms · 3 tool uses · 2541 tokens
  *
- * Source reference: claude-code-source-code/src/screens/REPL.tsx around
- * the `viewingAgentTaskId` branch, which renders the teammate's own
- * `messages` array. We don't keep that array in memory (background
- * agents run in their own loop and only persist to the .output file),
- * so we read+poll the file instead — see useTaskOutputLive below.
+ * A teammate's message history is not kept in memory (background agents
+ * run in their own loop and only persist to the .output file), so we
+ * read+poll the file instead — see useTaskOutputLive below.
  *
  * Why we only show the last N records:
  *   Long-running sub-agents can rack up hundreds of events. Rendering

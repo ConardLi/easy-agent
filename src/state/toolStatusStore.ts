@@ -7,7 +7,7 @@
  * execution phase here keyed by the parent's `tool_use.id`, and the UI
  * subscribes to drive the tool-card state machine.
  *
- * Phases (mirroring source's AssistantToolUseMessage state detection):
+ * Phases:
  *   - (absent)            → queued: the model emitted the tool_use block but
  *                           the loop hasn't started running it yet
  *   - "classifier"        → Auto-mode safety classifier is checking the call

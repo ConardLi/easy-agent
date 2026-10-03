@@ -1,5 +1,5 @@
 /**
- * User-command startup orchestration (stage 23).
+ * User-command startup orchestration.
  *
  * Called once from the CLI entrypoint before the React UI mounts. Loads
  * commands from disk, populates the registry, and surfaces warnings for

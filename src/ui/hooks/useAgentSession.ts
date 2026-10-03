@@ -101,7 +101,7 @@ interface UseAgentSessionOptions {
   shouldResume?: boolean;
   resumeSessionId?: string | null;
   /**
-   * Stage 33: launch `$EDITOR` on a memory file (`/memory edit <n>`). The UI
+   * Launch `$EDITOR` on a memory file (`/memory edit <n>`). The UI
    * owns the TTY, so the App provides this; the engine only emits the
    * `open_editor` event with the resolved path. Returns whether the editor ran.
    */
@@ -136,25 +136,24 @@ export function useAgentSession({
   const [todos, setTodosState] = useState<TodoItem[]>([]);
   const [tasks, setTasksState] = useState<Task[]>([]);
   const [taskMode, setTaskModeState] = useState<TaskMode>(getTaskMode());
-  // Stage 24.1 — Ctrl+O transcript overlay. Mirrors Claude's
-  // `app:toggleTranscript`: the inline conversation stays condensed (one-line
+  // Ctrl+O transcript overlay: the inline conversation stays condensed (one-line
   // `⎿` summaries), and Ctrl+O opens a full-screen, scrollable, verbose
   // transcript rebuilt from the message log — so any past tool call can be
   // expanded retroactively without repainting the <Static> scrollback.
   const [transcriptOpen, setTranscriptOpen] = useState(false);
-  // Stage 33 — `/resume` interactive picker + `/diff` colorized panel. Both are
+  // `/resume` interactive picker + `/diff` colorized panel. Both are
   // live-frame overlays (not <Static>): the picker owns the keyboard while open,
   // the diff panel is dismissed with Esc like any command result.
   const [resumePicker, setResumePicker] = useState<ResumeSessionInfo[] | null>(null);
   const [resumePickerIndex, setResumePickerIndex] = useState(0);
   const [diffView, setDiffView] = useState<DiffViewData | null>(null);
-  // Stage 33 — `/memory` picker + `/permissions` manager interactive overlays.
+  // `/memory` picker + `/permissions` manager interactive overlays.
   const [memoryPicker, setMemoryPicker] = useState<MemoryPickerItem[] | null>(null);
   const [memoryPickerIndex, setMemoryPickerIndex] = useState(0);
   const [permissionView, setPermissionView] = useState<PermissionsViewData | null>(null);
-  // Stage 35 — `/plugin` interactive manager overlay.
+  // `/plugin` interactive manager overlay.
   const [pluginView, setPluginView] = useState<PluginViewData | null>(null);
-  // Stage 20: live snapshot of the asyncAgentStore. The footer
+  // Live snapshot of the asyncAgentStore. The footer
   // BackgroundAgentBar component reads this to show running background
   // sub-agents (count + per-agent token / tool stats). We take a fresh
   // snapshot via getAllAsyncAgents() on every store notification rather
@@ -170,7 +169,7 @@ export function useAgentSession({
   const questionResolverRef = useRef<((response: UserQuestionResponse | null) => void) | null>(null);
   const pendingClearContextRef = useRef(false);
   const pendingFeedbackRef = useRef<string | null>(null);
-  // Stage 20: refs that the notification auto-trigger subscriber reads
+  // Refs that the notification auto-trigger subscriber reads
   // synchronously. State variables would be stale inside the subscriber
   // closure (it's set up once on mount), so we mirror them into refs
   // and update on every render via the useEffect below.
@@ -249,8 +248,8 @@ export function useAgentSession({
     [],
   );
 
-  // Subscribe to TodoWrite updates. The store is global (mirrors source's
-  // `appState.todos` map), so we filter by our own sessionId. When the
+  // Subscribe to TodoWrite updates. The store is global, so we filter by
+  // our own sessionId. When the
   // session is restored or cleared we also re-pull the snapshot.
   useEffect(() => {
     setTodosState(getTodos(sessionIdRef.current));
@@ -378,7 +377,7 @@ export function useAgentSession({
     return unsubscribe;
   }, []);
 
-  // Stage 20: subscribe to the async-agent store. Every register /
+  // Subscribe to the async-agent store. Every register /
   // progress / complete / fail / kill event fires the listener, and we
   // re-snapshot the full registry to drive the BackgroundAgentBar.
   // Re-snapshotting on every event is cheap — the registry holds at
@@ -393,7 +392,7 @@ export function useAgentSession({
     return unsubscribe;
   }, []);
 
-  // Stage 20: keep the auto-trigger refs in sync with current state.
+  // Keep the auto-trigger refs in sync with current state.
   // The subscribePendingNotifications listener (set up once on mount)
   // reads these synchronously to decide whether the engine is idle.
   useEffect(() => {
@@ -403,17 +402,14 @@ export function useAgentSession({
     permissionPromptRef.current = permissionPrompt;
   }, [permissionPrompt]);
 
-  // Stage 20: idle auto-resume after a background sub-agent finishes.
+  // Idle auto-resume after a background sub-agent finishes.
   //
-  // Source-aligned with `useQueueProcessor` + `processQueueIfReady`
-  // (claude-code-source-code/src/hooks/useQueueProcessor.ts:33-61):
-  // when the parent loop is idle and the notification queue is
-  // non-empty, the source synthesises a submit so the model can
-  // react to the finished sub-agent without the user having to type.
-  // Without this hook, our notifications would only be drained the
-  // next time the user actually typed something — which is exactly
-  // what the user noticed: a backgrounded reviewer finishes, the
-  // pill disappears, but the conversation stays silent.
+  // When the parent loop is idle and the notification queue is
+  // non-empty, synthesise a submit so the model can react to the
+  // finished sub-agent without the user having to type. Without this
+  // hook, notifications would only be drained the next time the user
+  // typed something: a backgrounded reviewer finishes, the pill
+  // disappears, but the conversation stays silent.
   //
   // A subtle detail: when a notification arrives WHILE a turn is
   // active, the listener's `isLoadingRef` check skips. The retry
@@ -543,7 +539,7 @@ export function useAgentSession({
           });
         }
 
-        // Stage 26: bind file-history to this session (reads the
+        // Bind file-history to this session (reads the
         // checkpointingEnabled setting + sets the backup dir / cwd), then
         // fold any persisted snapshots back in so /rewind survives --resume.
         await configureFileHistory(toolContext.cwd, sessionIdRef.current);
@@ -716,7 +712,7 @@ export function useAgentSession({
 
   const submit = useCallback(async (text: string): Promise<SubmitResult> => {
     const trimmed = text.trim();
-    // Stage 20: empty text is valid when the auto-trigger
+    // Empty text is valid when the auto-trigger
     // (subscribePendingNotifications below) wakes us up to drain the
     // notification queue. submitMessage("") routes to submitInternal
     // which prepends the queued <task-notification> blocks as the
@@ -793,14 +789,14 @@ export function useAgentSession({
       // an internal/wire-only artifact — keeping the transcript clean
       // means /resume replays the same UX the user originally saw.
       //
-      // Stage 20: skip this when `trimmed` is empty — that means we're
+      // Skip this when `trimmed` is empty — that means we're
       // here via the auto-trigger from subscribePendingNotifications,
       // and the queued <task-notification> is itself the user-side
       // transcript entry (added inside submitInternal). Persisting an
       // empty user message would pollute the transcript and confuse
       // /resume.
       if (trimmed.length > 0) {
-        // Stage 26: open the file-history turn before persisting, so the
+        // Open the file-history turn before persisting, so the
         // user-message entry and any snapshot taken this turn share an id.
         const messageId = engineRef.current.beginUserTurn();
         await appendTranscriptEntry(toolContext.cwd, sessionIdRef.current, {
@@ -851,7 +847,7 @@ export function useAgentSession({
             }
             break;
           case "thinking_start":
-            // Stage 34: mirror source — during the thinking stream we only
+            // During the thinking stream we only
             // surface a spinner ("✻ Thinking…"), not the reasoning text.
             // The finished thinking block lands in the committed assistant
             // message and renders (folded) via ConversationView.
@@ -1138,7 +1134,7 @@ export function useAgentSession({
             setTaskModeState(value.mode);
             break;
           case "session_switched": {
-            // Stage 33: `/resume <n|id>` swapped the engine's conversation in
+            // `/resume <n|id>` swapped the engine's conversation in
             // place. Rebind the UI to the resumed session: new id (so tools
             // and transcript appends target it), restored messages + usage,
             // and the file-history snapshots so /rewind keeps working.
@@ -1210,7 +1206,7 @@ export function useAgentSession({
             break;
           }
           case "api_retry": {
-            // Stage 27: the API layer is backing off before re-issuing a
+            // The API layer is backing off before re-issuing a
             // request after a transient failure. Show a transient notice with
             // the countdown so the user knows we're retrying, not hung.
             setSpinnerLabel("Retrying");
@@ -1218,7 +1214,7 @@ export function useAgentSession({
             break;
           }
           case "stream_restart":
-            // Stage 27: about to re-run the turn (max_tokens escalation or
+            // About to re-run the turn (max_tokens escalation or
             // reactive compact). Drop any partially-streamed text so the
             // re-run renders cleanly instead of concatenating.
             cancelPendingText();
@@ -1309,7 +1305,7 @@ export function useAgentSession({
     return { handled: true };
   }, [onExit, toolContext.cwd, cancelPendingText, flushPendingText]);
 
-  // Stage 20: expose `submit` to the notification subscriber via a ref.
+  // Expose `submit` to the notification subscriber via a ref.
   // The subscriber is set up once on mount and would otherwise close
   // over a stale `submit` reference. The ref is updated on every render
   // so the subscriber always gets the freshest `submit`.

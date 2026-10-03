@@ -1,7 +1,7 @@
 /**
  * Tool Registry — Central registry for all available tools.
  *
- * Stage 16: MCP tools are registered at startup via `registerMcpTools()`.
+ * MCP tools are registered at startup via `registerMcpTools()`.
  * Built-in tools live in BUILTIN_TOOLS (compile-time list); MCP tools are
  * collected separately so they can be reset/refreshed independently when
  * the user runs `/mcp reconnect`.
@@ -65,7 +65,7 @@ const BUILTIN_TOOLS: Tool[] = [
   skillTool,
   askUserQuestionTool,
   agentTool,
-  // Stage 21 — Agent Teams. The three tools below all gate themselves
+  // Agent Teams. The three tools below all gate themselves
   // on isAgentTeamsEnabled() in their `isEnabled()` methods, so when
   // the feature flag is off they're filtered out by `getAllTools()`
   // before the model sees the schema. No prompt-side branching needed.

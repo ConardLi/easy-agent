@@ -1,5 +1,5 @@
 /**
- * Runtime shapes produced by the Plugin Loader (plan §35.2).
+ * Runtime shapes produced by the Plugin Loader.
  *
  * A `LoadedPlugin` is the fully-resolved, namespaced snapshot of everything a
  * single plugin contributes — the currency the runtime merges into the live

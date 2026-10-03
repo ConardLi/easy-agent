@@ -94,7 +94,7 @@ export async function collectMemoryTargets(cwd: string): Promise<MemoryTarget[]>
 }
 
 /**
- * Stage 33: `/memory`. Lists the editable memory files (AGENT.md chain +
+ * `/memory`. Lists the editable memory files (AGENT.md chain +
  * project memdir) and opens one in `$EDITOR`.
  *   - (no args) | list  → numbered list with paths + size/existence
  *   - edit <n> | <n>    → open target #n in $EDITOR (creating it if missing)
@@ -129,7 +129,7 @@ export async function* handleMemoryCommand(
     }
     const target = targets[idx - 1]!;
     // Create the file (and parents) if it doesn't exist yet, so $EDITOR opens
-    // on a real path. Mirrors source's writeFile({ flag: 'wx' }) priming.
+    // on a real path.
     if (!target.exists) {
       try {
         if (target.path === getGlobalAgentMdPath()) {
@@ -177,8 +177,7 @@ export async function* handleMemoryCommand(
     return { handled: true };
   }
 
-  // `/memory` (no args) → interactive picker overlay (mirrors source's
-  // MemoryFileSelector). The UI owns the keyboard; selecting a row re-invokes
+  // `/memory` (no args) → interactive picker overlay. The UI owns the keyboard; selecting a row re-invokes
   // `/memory edit <n>` so the $EDITOR launch path is shared.
   yield { type: "memory_picker", items: targets };
   return { handled: true };

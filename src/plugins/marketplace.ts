@@ -1,5 +1,5 @@
 /**
- * Static Marketplace (plan §35.4).
+ * Static Marketplace.
  *
  * A "marketplace" is NOT an online store — it's a plain `marketplace.json`
  * catalog that lives in a local directory or a Git repo:
@@ -246,7 +246,7 @@ async function updateMarketplaceUnlocked(name: string): Promise<KnownMarketplace
 /**
  * Remove a marketplace source. A MANAGED Git clone is deleted from disk; a
  * LOCAL source is only de-registered — the user's own directory is never
- * touched (plan §35.5 safety boundary).
+ * touched.
  */
 export async function removeMarketplace(name: string): Promise<void> {
   return withPluginOperationLock(() => removeMarketplaceUnlocked(name));

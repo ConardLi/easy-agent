@@ -1,5 +1,5 @@
 /**
- * Disk loader for custom output styles (stage 23).
+ * Disk loader for custom output styles.
  *
  * Discovers `<output-styles>/<name>.md` flat files in two scopes:
  *   1. ~/.easy-agent/output-styles/         (user)
@@ -16,8 +16,6 @@
  * The filename (sans `.md`) is the default style name. The body becomes the
  * style prompt. We reuse the skills frontmatter splitter so the parsing
  * stays consistent across the codebase.
- *
- * Reference: claude-code-source-code/src/outputStyles/loadOutputStylesDir.ts
  */
 
 import * as fs from "node:fs/promises";
@@ -49,8 +47,8 @@ interface LoadedFromDir {
 
 /**
  * Parse the `keep-coding-instructions` frontmatter flag. Defaults to true
- * (instructions kept) — only an explicit `false` drops them, matching the
- * source's behaviour of leaving it undefined unless the user opts out.
+ * (instructions kept) — only an explicit `false` drops them, so a style
+ * that omits the flag keeps the coding instructions.
  */
 function parseKeepCodingInstructions(raw: Record<string, unknown>): boolean {
   const value = raw["keep-coding-instructions"] ?? raw["keepCodingInstructions"];
@@ -123,7 +121,7 @@ export interface LoadAllOutputStylesResult {
 }
 
 /**
- * Stage 35: load output styles from ONE arbitrary directory (e.g. a plugin's
+ * Load output styles from ONE arbitrary directory (e.g. a plugin's
  * `output-styles/` dir), reusing the shared frontmatter parser.
  */
 export async function loadOutputStylesFromDir(

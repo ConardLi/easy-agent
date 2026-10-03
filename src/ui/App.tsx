@@ -53,7 +53,7 @@ export function App({ model, permissionMode, shouldResume, resumeSessionId }: Ap
   const { setRawMode, isRawModeSupported } = useStdin();
   const { write: writeStdout } = useStdout();
 
-  // Stage 33: `/memory edit <n>` launches `$EDITOR` on a memory file. The App
+  // `/memory edit <n>` launches `$EDITOR` on a memory file. The App
   // owns the TTY, so it suspends Ink's raw mode, hands the terminal to the
   // editor (synchronous spawn — nothing else runs, so Ink can't repaint over
   // it), then restores raw mode and clears the screen so the live frame repaints
@@ -92,9 +92,8 @@ export function App({ model, permissionMode, shouldResume, resumeSessionId }: Ap
   const isPlanExitActive = Boolean(state.permissionPrompt?.isPlanExit);
 
   // Surface the current in-progress item's activeForm via the global
-  // StatusBar spinner. This mirrors source code behavior (Spinner.tsx:
-  // `leaderVerb = currentTodo?.activeForm ?? randomVerb`) and keeps the
-  // entire app at exactly ONE animation source — adding per-row spinners
+  // StatusBar spinner (`currentTodo?.activeForm ?? randomVerb`). This keeps
+  // the entire app at exactly ONE animation source — adding per-row spinners
   // caused severe flicker because every additional setInterval forces
   // another full terminal repaint cycle on top of streaming text.
   //
@@ -127,7 +126,7 @@ export function App({ model, permissionMode, shouldResume, resumeSessionId }: Ap
     [state.messages.length, state.toolCalls.length],
   );
 
-  // Stage 23: user-defined `/<name>` commands. Loaded once at startup so
+  // User-defined `/<name>` commands. Loaded once at startup so
   // a stable dependency array is fine here.
   const userCommands: CommandSuggestion[] = React.useMemo(
     () =>
@@ -191,7 +190,7 @@ export function App({ model, permissionMode, shouldResume, resumeSessionId }: Ap
     onNotice: actions.showNotice,
   });
 
-  // Status line (stage 24.5): context fed to an optional user-configured
+  // Status line: context fed to an optional user-configured
   // `statusLine` command; falls back to the built-in segments when unset.
   const statusCwd = process.cwd();
   const { custom: statusLineCustom } = useStatusLine({
@@ -205,7 +204,7 @@ export function App({ model, permissionMode, shouldResume, resumeSessionId }: Ap
       : undefined,
   });
 
-  // Ctrl+O transcript overlay (stage 24.1). Build the verbose, pre-wrapped
+  // Ctrl+O transcript overlay. Build the verbose, pre-wrapped
   // line array from the message log; useTranscript owns scrolling + close.
   const { stdout } = useStdout();
   const termCols = stdout?.columns ?? 80;
@@ -230,12 +229,11 @@ export function App({ model, permissionMode, shouldResume, resumeSessionId }: Ap
     onResolve: actions.resolveQuestion,
   });
 
-  // Stage 21 — teammate-view state machine. `view.mode` ∈ {main,
+  // Teammate-view state machine. `view.mode` ∈ {main,
   // selecting, viewing} controls whether the user is looking at the
   // main conversation, the picker overlay, or one teammate's
   // transcript. The keyboard hook below registers the Shift+↑/↓ /
-  // Enter / Esc / 'k' bindings (mirrors source's
-  // useBackgroundTaskNavigation).
+  // Enter / Esc / 'k' bindings.
   //
   // Disable navigation while a permission prompt is up — Esc on a
   // permission dialog must dismiss the dialog, not the teammate view.
@@ -247,7 +245,7 @@ export function App({ model, permissionMode, shouldResume, resumeSessionId }: Ap
     disabled: Boolean(state.permissionPrompt) || overlayActive,
   });
 
-  // Stage 33 — `/resume` session picker keyboard handler. Owns ↑↓/Enter/Esc
+  // `/resume` session picker keyboard handler. Owns ↑↓/Enter/Esc
   // only while the picker is open; selection re-invokes `/resume <id>`.
   useResumePicker({
     sessions: state.resumePicker,
@@ -261,7 +259,7 @@ export function App({ model, permissionMode, shouldResume, resumeSessionId }: Ap
     onCancel: actions.closeResumePicker,
   });
 
-  // Stage 33 — `/memory` file picker keyboard handler. Selection re-invokes
+  // `/memory` file picker keyboard handler. Selection re-invokes
   // `/memory edit <n>` to launch $EDITOR.
   useMemoryPicker({
     items: state.memoryPicker,
@@ -276,7 +274,7 @@ export function App({ model, permissionMode, shouldResume, resumeSessionId }: Ap
       ? state.asyncAgents.find((a) => a.agentId === view.viewingAgentId) ?? null
       : null;
 
-  // Stage 24 foundation — committed conversation history, flattened into
+  // Committed conversation history, flattened into
   // append-only items so it can live in <Static> (rendered once, never
   // repainted). See flattenConversation for the append-only invariant.
   // Inline history is ALWAYS condensed (one-line `⎿` summaries). Full detail
@@ -334,10 +332,10 @@ export function App({ model, permissionMode, shouldResume, resumeSessionId }: Ap
       </Static>
 
       {/*
-        Ctrl+O transcript overlay (stage 24.1). When open it REPLACES the whole
+        Ctrl+O transcript overlay. When open it REPLACES the whole
         live frame and fills the viewport (height = rows), so the condensed
         <Static> scrollback scrolls out of view and the user gets a dedicated,
-        scrollable, verbose transcript — Claude's `app:toggleTranscript`.
+        scrollable, verbose transcript.
       */}
       {state.transcriptOpen ? (
         <TranscriptOverlay

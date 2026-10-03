@@ -1,7 +1,7 @@
 /**
  * Read + parse the JSONL `.output` file that background sub-agents
- * append to during their run. Used by the teammate transcript viewer
- * (stage 21) — when the user enters viewing mode the UI calls
+ * append to during their run. Used by the teammate transcript viewer:
+ * when the user enters viewing mode the UI calls
  * `readTaskOutputEvents` to render what's there, then sets up a polling
  * loop via `useTaskOutputLive` for incremental updates.
  *

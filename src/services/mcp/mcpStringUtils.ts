@@ -1,11 +1,9 @@
 /**
  * MCP tool/server name parsing helpers.
  *
- * Reference: claude-code-source-code/src/services/mcp/mcpStringUtils.ts
- *
  * Tool name format: `mcp__<normalizedServerName>__<normalizedToolName>`.
  * Double underscore is the delimiter; if a server name contains `__` the
- * parser will split incorrectly (the source warns about this too).
+ * parser will split incorrectly. This is a known limitation of the format.
  */
 
 import { normalizeNameForMCP } from "./normalization.js";

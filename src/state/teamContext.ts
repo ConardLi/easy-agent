@@ -1,9 +1,8 @@
 /**
- * In-process active-team registry (stage 21).
+ * In-process active-team registry.
  *
- * Mirrors source's `AppState.teamContext` slice — a single object that
- * encodes "this Easy Agent process is currently leading team X". The
- * constraint of one team per process is intentional and source-aligned
+ * A single object that encodes "this Easy Agent process is currently
+ * leading team X". The constraint of one team per process is intentional
  * (TeamCreate refuses while a teamContext is set).
  *
  * The team metadata itself lives on disk (TeamFile, see
@@ -12,10 +11,10 @@
  * answer "what team am I in?" without a disk read per call.
  *
  * Why a module-level singleton:
- *   The team lead IS the main session. Wiring this through AppState
- *   would force every tool to thread state through ToolContext (which
- *   stage 8 deliberately kept small). A module-level Map mirrors the
- *   shape we use for asyncAgentStore / todoStore / etc.
+ *   The team lead IS the main session. Wiring this through app state
+ *   would force every tool to thread state through ToolContext, which is
+ *   deliberately kept small. A module-level Map matches the shape we use
+ *   for asyncAgentStore / todoStore / etc.
  */
 
 import { touchTeamHeartbeat } from "../utils/teamHelpers.js";

@@ -1,8 +1,6 @@
 /**
  * TeamDelete — disband the active Agent Teams session.
  *
- * Reference: claude-code-source-code/src/tools/TeamDeleteTool/TeamDeleteTool.ts
- *
  * Lifecycle:
  *   1. Refuse if no team is active (no-op error so the model doesn't
  *      retry blindly).
@@ -13,10 +11,8 @@
  *   4. Remove the shared task list and team directory.
  *   5. Clear the in-process teamContext singleton.
  *
- * What we omit vs source:
- *   - Analytics event.
- *   - Color-assignment registry cleanup (we don't track teammate colors).
- *   - tmux pane / orphan-process cleanup (no tmux backend).
+ * Teammates are in-process, so there are no terminal panes or orphan
+ * processes to clean up.
  */
 
 import type { Tool, ToolContext, ToolResult } from "./Tool.js";
@@ -104,9 +100,9 @@ export const teamDeleteTool: Tool = {
     // skipped — the per-teammate finalizer (runAsyncAgent's
     // cleanupWorktreeIfNeeded) already removed clean ones at the end
     // of each teammate's run, so anything still present here is either
-    // (a) dirty, or (b) clean-but-failed-to-remove. Case (a) is
-    // explicitly preserved by source's worktree policy; we surface a
-    // pointer rather than auto-deleting.
+    // (a) dirty, or (b) clean-but-failed-to-remove. Dirty worktrees may
+    // hold unreviewed work, so we surface a pointer rather than
+    // auto-deleting.
     const worktreeWarnings: string[] = [];
     const preservedWorktrees: string[] = [];
     for (const member of prepared.file.members) {

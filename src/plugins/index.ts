@@ -1,5 +1,5 @@
 /**
- * Public surface of the plugin subsystem (stage 35).
+ * Public surface of the plugin subsystem.
  *
  * A plugin bundles Easy Agent's six extension kinds — Skills / Agents /
  * Commands / Output Styles / Hooks / MCP servers — into one namespaced,

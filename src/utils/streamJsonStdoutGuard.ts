@@ -13,8 +13,6 @@
  * The blessed JSON path (the headless emitter) always writes
  * `JSON.stringify(msg) + "\n"`, so it passes straight through. Only out-of-band
  * writes are diverted.
- *
- * Reference: claude-code-source-code/src/utils/streamJsonStdoutGuard.ts.
  */
 
 /** Written to stderr ahead of any diverted non-JSON line. */

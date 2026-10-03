@@ -5,9 +5,9 @@
  * having to re-discover servers. Updated by bootstrapMcp() at startup and
  * by `/mcp reconnect` afterwards.
  *
- * (The source code stores this in React app state via `MCPConnectionManager`
- * + `useManageMCPConnections`. We don't need React because the data is
- * pull-based — `/mcp` runs synchronously inside QueryEngine.handleCommand.)
+ * A plain module-level store is enough because the data is pull-based —
+ * `/mcp` runs synchronously inside QueryEngine.handleCommand — so it does
+ * not live in React state.
  */
 
 import type { McpServerConnection } from "../../types/mcp.js";

@@ -1,8 +1,7 @@
 /**
- * Interactive multiple-choice dialog for the AskUserQuestion tool (stage 24).
+ * Interactive multiple-choice dialog for the AskUserQuestion tool.
  *
- * Renders ONE question at a time, aligned with Claude Code's
- * AskUserQuestionPermissionRequest layout:
+ * Renders ONE question at a time:
  *
  *   ┌──────────────────────────────────────────────────────────┐
  *   │  Library   question 1/2                                   │  ← header chip

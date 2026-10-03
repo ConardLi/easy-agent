@@ -41,8 +41,7 @@ async function runGit(
 /**
  * `/diff [n]` — show what changed, as a colorized panel.
  *   - Uncommitted git changes (working tree vs HEAD): per-file unified
- *     patches the UI renders with green/red/cyan hunks (mirrors source's
- *     DiffDetailView). Falls back gracefully outside a git repo.
+ *     patches the UI renders with green/red/cyan hunks. Falls back gracefully outside a git repo.
  *   - Agent file-history edits over the last n turns (default 1), reusing the
  *     same snapshot machinery `/rewind` relies on.
  *

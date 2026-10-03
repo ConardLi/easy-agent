@@ -1,8 +1,8 @@
 /**
  * Skill registry — central in-memory state for loaded skills.
  *
- * Two maps mirror the source code's split between always-on skills and
- * conditionally-activated ones (paths frontmatter):
+ * Two maps split always-on skills from conditionally-activated ones
+ * (paths frontmatter):
  *
  *   - `dynamic`     : visible to the model right now. Initial set comes from
  *                     loadAllSkills(); conditional skills are promoted in
@@ -10,11 +10,8 @@
  *   - `conditional` : declared with `paths` but not yet activated.
  *
  * Two sources of skills (user / project) are merged at load time with
- * project overriding user when names collide. After load the source
+ * project overriding user when names collide. After load a skill's origin
  * doesn't matter for execution — it only affects the discovery listing.
- *
- * Reference: claude-code-source-code/src/skills/loadSkillsDir.ts
- * (`getSkillDirCommands` + `activateConditionalSkillsForPaths`).
  */
 
 import type { Skill } from "../../types/types.js";

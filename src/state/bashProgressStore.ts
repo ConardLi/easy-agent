@@ -5,8 +5,7 @@
  * is blocked on `await`-ing the child process, there's no path to yield events
  * back into the parent loop's AsyncGenerator. So the tool publishes stdout /
  * stderr chunks here keyed by the parent's `tool_use.id`, and the UI subscribes
- * to show the command's tail live (last few lines + elapsed + line count),
- * mirroring source's ShellProgressMessage.
+ * to show the command's tail live (last few lines + elapsed + line count).
  *
  * Throttling: a chatty command (npm install, a test run) emits data in bursts;
  * notifying on every chunk would repaint the whole live frame dozens of times a
@@ -17,8 +16,7 @@
  * an `npm install` stuck resolving, anything block-buffering its stdout) would
  * emit nothing and the card would freeze at "Running… (0s)". So while a command
  * runs we also tick once a second, re-emitting the snapshot so the live card
- * re-renders and its elapsed clock advances. This mirrors source's per-second
- * progress poller (TaskOutput.startPolling → onProgress every 1s).
+ * re-renders and its elapsed clock advances.
  */
 
 // Keep only a bounded tail for the live preview.

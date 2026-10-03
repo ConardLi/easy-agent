@@ -15,9 +15,9 @@
  * human-readable string so the CLI can surface a non-fatal notice telling the
  * user exactly which file/field was ignored.
  *
- * Reference: source validates the key fields (model / permissions / hooks /
- * env / mcpServers) with Zod and `.passthrough()`-style leniency; we mirror the
- * intent without copying its full schema surface.
+ * The key fields (model / permissions / hooks / env / mcpServers) are
+ * validated with Zod and `.passthrough()`-style leniency; the schema does not
+ * try to describe every possible key.
  */
 
 import { z } from "zod";
@@ -31,7 +31,7 @@ const PermissionRule = z.string().trim().min(1);
  */
 export const SettingsSchema = z.looseObject({
   model: z.string().trim().min(1).optional(),
-  // Stage 30: multi-protocol model profiles. Each entry declares a provider
+  // Multi-protocol model profiles. Each entry declares a provider
   // target (protocol + model + endpoint + credentials). The map key is the
   // user-facing handle used by `--model` / `/model`. Validated leniently
   // (looseObject) so a single bad profile doesn't drop the whole `models` block;
@@ -49,7 +49,7 @@ export const SettingsSchema = z.looseObject({
       }),
     )
     .optional(),
-  // Stage 30: default profile id (or raw model name) when no --model is given.
+  // Default profile id (or raw model name) when no --model is given.
   defaultModel: z.string().trim().min(1).optional(),
   // Role names match runtime invocation classes. Unknown roles are rejected.
   modelRoles: z.object({
@@ -60,7 +60,7 @@ export const SettingsSchema = z.looseObject({
   toolSearch: z.enum(["off", "auto", "on"]).optional(),
   toolSearchAutoThreshold: z.number().min(0).max(100).optional(),
   mode: z.enum(["default", "plan", "auto"]).optional(),
-  // Stage 29: convenience switch equivalent to `mode: "auto"`. Like `mode`,
+  // Convenience switch equivalent to `mode: "auto"`. Like `mode`,
   // it is SECURITY-SENSITIVE and only honored from trusted scopes (user / flag
   // / policy) — never from a checked-in project/local settings file.
   autoMode: z.boolean().optional(),
@@ -78,14 +78,14 @@ export const SettingsSchema = z.looseObject({
   cleanupPeriodDays: z.number().int().nonnegative().optional(),
   // Tier 2
   disableAllHooks: z.boolean().optional(),
-  // Stage 26: master switch for file-history checkpointing (default on).
+  // Master switch for file-history checkpointing (default on).
   checkpointingEnabled: z.boolean().optional(),
-  // Stage 34: extended-thinking default switch. When false, thinking is
+  // Extended-thinking default switch. When false, thinking is
   // off by default (the `/think on` command can still enable it per-session).
   // When unset/true, thinking defaults to adaptive. Env var
   // MAX_THINKING_TOKENS overrides this (0 → disabled, N>0 → budget N).
   alwaysThinkingEnabled: z.boolean().optional(),
-  // Stage 34: default reasoning-effort level for output_config.effort
+  // Default reasoning-effort level for output_config.effort
   // (Anthropic only). The `/effort` command overrides this per-session.
   effortLevel: z.enum(["low", "medium", "high", "max"]).optional(),
   respectGitignore: z.boolean().optional(),
@@ -95,7 +95,7 @@ export const SettingsSchema = z.looseObject({
   enableAllProjectMcpServers: z.boolean().optional(),
   enabledMcpjsonServers: z.array(PermissionRule).optional(),
   disabledMcpjsonServers: z.array(PermissionRule).optional(),
-  // Stage 35: per-scope plugin enable map. Keys are stable plugin ids
+  // Per-scope plugin enable map. Keys are stable plugin ids
   // (`name@marketplace`); a `true` enables, `false` explicitly disables in
   // this scope (later scope wins). Install lives globally in
   // ~/.easy-agent/plugins; only ENABLE is scoped here.

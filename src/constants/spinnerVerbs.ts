@@ -1,5 +1,4 @@
-// Loading verbs sampled randomly per turn, mirroring Claude Code's
-// `src/constants/spinnerVerbs.ts`. One verb is picked when the spinner
+// Loading verbs sampled randomly per turn. One verb is picked when the spinner
 // mounts and stays stable for the duration of that loading window.
 export const SPINNER_VERBS: readonly string[] = [
   "Accomplishing",

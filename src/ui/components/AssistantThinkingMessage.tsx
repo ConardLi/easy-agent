@@ -6,15 +6,14 @@ import { theme } from "../theme.js";
 /**
  * Renders an extended-thinking block in the transcript.
  *
- * Mirrors source's AssistantThinkingMessage:
  *   - Non-verbose (default) → a single folded line "✻ Thinking…" (the
  *     reasoning body is hidden from the human view but stays in the
  *     conversation history sent to the model).
  *   - Verbose / transcript mode → the full reasoning rendered as Markdown
  *     under a "✻ Thinking" header.
  *
- * The glyph and muted styling deliberately match source's dim/italic
- * treatment so thinking reads as secondary to the assistant's answer.
+ * The glyph and dim/italic styling are deliberate so thinking reads as
+ * secondary to the assistant's answer.
  */
 export function AssistantThinkingMessage({
   thinking,
@@ -55,9 +54,8 @@ export function AssistantThinkingMessage({
 /**
  * Renders a redacted-thinking block — the model's internal reasoning was
  * withheld (encrypted). There is nothing human-readable to show, so we
- * render a non-expandable placeholder. Hidden entirely when not verbose.
- *
- * Mirrors source's AssistantRedactedThinkingMessage ("✻ Thinking…" stub).
+ * render a non-expandable "✻ Thinking…" placeholder. Hidden entirely when
+ * not verbose.
  */
 export function AssistantRedactedThinkingMessage({
   verbose = false,

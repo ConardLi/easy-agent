@@ -1,8 +1,9 @@
 /**
  * Plan mode attachments — user-message injection for plan mode state.
  *
- * Claude Code injects plan mode instructions as user messages (attachments)
- * rather than system prompt text. This module replicates that pattern with:
+ * Plan mode instructions are injected as user messages (attachments) rather
+ * than system prompt text, so the system prompt (and its cache) stays the
+ * same across mode switches. This module provides:
  *
  * - Throttled reminders: injected every N human turns, alternating full/sparse
  * - Exit attachment: one-shot message after leaving plan mode

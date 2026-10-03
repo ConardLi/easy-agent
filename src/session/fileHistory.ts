@@ -1,9 +1,7 @@
 /**
  * File history & checkpointing — per-edit backups bound to user turns.
  *
- * Reference: claude-code-source-code/src/utils/fileHistory.ts
- *
- * Model (two-phase, turn-bound — same as source):
+ * Model (two-phase, turn-bound):
  *   - `fileHistoryMakeSnapshot(messageId)` fires at the START of each user
  *     turn. It creates a new snapshot bound to that turn's messageId, backing
  *     up every currently-tracked file (creating a new version only when the
@@ -19,8 +17,7 @@
  * Backups are full file copies stored under
  *   ~/.easy-agent/file-history/{sessionId}/{pathHash}@v{N}
  * Snapshot metadata is held in-process (a module singleton, since the CLI runs
- * one session per process) and — from stage 26 step 3 — also persisted to the
- * transcript for resume.
+ * one session per process) and also persisted to the transcript for resume.
  *
  * All IO is best-effort: a backup/restore failure is swallowed so file history
  * can never break the agent loop.
@@ -135,8 +132,8 @@ export function fileHistoryEnabled(): boolean {
 }
 
 /**
- * Prune stale backup directories under ~/.easy-agent/file-history. Mirrors
- * source's `cleanupOldFileHistoryBackups`: each *session* directory is removed
+ * Prune stale backup directories under ~/.easy-agent/file-history. Each
+ * *session* directory is removed
  * wholesale once its mtime is older than the retention cutoff. Retention reuses
  * the same `cleanupPeriodDays` setting as transcripts (default 30); a value of
  * `0` (persistence disabled) prunes everything. Best-effort and run at startup.
@@ -214,7 +211,7 @@ export function restoreFileHistorySnapshots(
   state = { snapshots, trackedFiles, snapshotSequence: snapshots.length };
 }
 
-// ─── phase 1: track an edit (backup pre-edit content) ─────────────────────
+// ─── Track an edit (backup pre-edit content) ──────────────────────────────
 
 /**
  * Back up `filePath`'s current content before it is edited/created, attaching
@@ -267,7 +264,7 @@ export async function fileHistoryTrackEdit(
   await recordFileHistorySnapshot(cwd, sessionId, mostRecent).catch(() => {});
 }
 
-// ─── phase 2: make a turn snapshot ────────────────────────────────────────
+// ─── Make a turn snapshot ─────────────────────────────────────────────────
 
 /**
  * Create a snapshot bound to `messageId`, backing up every tracked file
@@ -341,7 +338,7 @@ export async function fileHistoryMakeSnapshot(messageId: string): Promise<void> 
   await recordFileHistorySnapshot(cwd, sessionId, newSnapshot).catch(() => {});
 }
 
-// ─── phase 3: rewind / diff ───────────────────────────────────────────────
+// ─── Rewind / diff ────────────────────────────────────────────────────────
 
 /**
  * Resolve a target snapshot by going back `offset` turns (1 = the most recent

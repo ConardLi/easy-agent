@@ -1,5 +1,5 @@
 /**
- * Plugin MCP reconciliation (plan §35.7).
+ * Plugin MCP reconciliation.
  *
  * A plugin can ship MCP servers, and enabling/disabling/updating a plugin must
  * bring those servers up/down WITHOUT restarting the CLI. This module diffs the

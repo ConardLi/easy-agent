@@ -2,8 +2,7 @@
  * Shared UI theme — a single source of truth for the colors and glyphs the
  * terminal UI uses, so the welcome banner, conversation, input box and status
  * line stay visually consistent instead of each component hard-coding its own
- * "magenta"/"green"/"cyan". Values mirror Claude Code's dark theme palette
- * (utils/theme.ts) closely enough to feel familiar.
+ * "magenta"/"green"/"cyan". Values target a dark terminal background.
  */
 
 export const theme = {

@@ -13,9 +13,8 @@
  *   - handlesError         → opt out of the generic error body (Bash shows its
  *                            own stderr layer)
  *
- * Mirrors source's per-Tool `renderToolUseMessage` / `renderToolResultMessage`.
- * The registry is the extension point for future tools (MCP, Todo, Memory, …)
- * and is consumed by `renderInlineToolCard` (history) below.
+ * The registry is the extension point for adding per-tool renderers and is
+ * consumed by `renderInlineToolCard` (history) below.
  */
 import React from "react";
 import { Box, Text } from "ink";
@@ -35,8 +34,7 @@ import { theme } from "../theme.js";
 // Safety cap on how many output lines a verbose Bash card prints, so a runaway
 // command (npm install, a 50k-line log) can't blow up the frame.
 const BASH_VERBOSE_MAX_LINES = 200;
-// Default (condensed) cap — mirrors source's OutputLine MAX_LINES_TO_SHOW so
-// the inline history stays an activity stream; the full output lives in the
+// Default (condensed) cap so the inline history stays an activity stream; the full output lives in the
 // Ctrl+O transcript.
 const BASH_DEFAULT_MAX_LINES = 3;
 
@@ -132,7 +130,7 @@ function CappedLines({
 }
 
 /**
- * Layered Bash result body, mirroring source's BashToolResultMessage:
+ * Layered Bash result body:
  *   - stdout  → dim (muted)
  *   - stderr  → error (red), with <sandbox_violations> stripped
  *   - timeout → warning

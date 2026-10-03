@@ -1,21 +1,16 @@
 /**
  * Teammate mailbox — file-locked, JSON-array inbox per team member.
  *
- * Reference: claude-code-source-code/src/utils/teammateMailbox.ts
- *
  * Why file-based and not in-memory:
  *
  *   1. Symmetry. A teammate that runs in the background is reachable from
- *      anywhere — the lead's main loop, another teammate's
- *      `SendMessage`, even a future tmux backend. An on-disk inbox is
+ *      anywhere — the lead's main loop or another teammate's
+ *      `SendMessage`. An on-disk inbox is
  *      the lowest-common-denominator channel that doesn't care which
  *      process or which thread put the message there.
- *   2. Durability across resumes. Source supports `--resume` on
- *      teammates and the inbox file survives the gap. We don't ship
- *      teammate resume in stage 21, but keeping the same on-disk shape
- *      means we don't have to re-architect when we add it.
+ *   2. Durability across crashes. Unread messages survive a process
+ *      restart, so `TeamCreate({ resume: true })` can pick a team back up.
  *   3. Reusing proper-lockfile we already brought in for taskStore.
- *      Source uses the same library for the same job.
  *
  * On-disk shape: a single JSON file per teammate at
  * `~/.easy-agent/teams/<team>/inboxes/<name>.json`, containing an array
@@ -33,15 +28,9 @@
  *     Writers replace the full file through the shared durable atomic-write
  *     primitive, so a reader sees either the pre- or post-write document.
  *
- * What we explicitly skip vs source (the source file is 1200 lines):
- *   - Structured protocol messages (shutdown_request / plan_approval /
- *     sandbox_permission_request / team_permission_update). The
- *     teaching version only handles plain text messages.
- *   - Idle / permission-request notification helpers; those rely on
- *     polling layers we don't ship.
- *   - markMessagesAsReadByPredicate / readUnreadMessages /
- *     getLastPeerDmSummary etc. — kept the minimum: read-all,
- *     write-one, mark-all-read.
+ * Message types: plain text plus the shutdown / abort control requests.
+ * Plan approval, permission-request routing, and idle notifications are
+ * not supported.
  */
 
 import { readFile } from "node:fs/promises";
@@ -68,14 +57,13 @@ export interface TeammateMessage {
   timestamp: string;
   /** False until the recipient consumes the message; flipped by markMessagesAsRead. */
   read: boolean;
-  /** Optional 5-10 word preview shown in any future UI panel. */
+  /** Optional 5-10 word preview of the message. */
   summary?: string;
   type?: "message" | "shutdown_request" | "shutdown_response" | "abort_request";
   requestId?: string;
 }
 
-// Per-file lock options — patterned after source's LOCK_OPTIONS in
-// teammateMailbox.ts:35. ~2.6s worst-case wait gives concurrent writers
+// Per-file lock options. ~2.6s worst-case wait gives concurrent writers
 // time to serialize through the lock rather than getting EEXIST'd.
 const LOCK_OPTIONS = {
   retries: {
@@ -319,8 +307,7 @@ export async function drainUnreadMessages(
 
 /**
  * Format one or more mailbox messages as a single user-side context
- * block. Mirrors source's `<teammate-message>` shape so a future
- * Markdown / UI renderer can match the same tag, but with one outer
+ * block. Each message is a `<teammate-message>` tag, with one outer
  * wrapper so the model knows "these arrived asynchronously while you
  * were working".
  *

@@ -1,5 +1,5 @@
 /**
- * Output Styles registry (stage 23).
+ * Output Styles registry.
  *
  * An "output style" is an extra block of system-prompt text that reshapes
  * HOW the agent answers (tone, structure, teaching behaviour) without
@@ -13,15 +13,15 @@
  * Users can add their own under:
  *   ~/.easy-agent/output-styles/<name>.md        (user scope)
  *   <cwd>/.easy-agent/output-styles/<name>.md    (project scope, wins)
+ * Enabled plugins can contribute styles from their `output-styles/` dir.
  *
  * The active style is a single piece of process-global state, flipped at
  * runtime with `/output-style <name>` and persisted to settings.json as
  * `outputStyle`. `buildSystemPrompt` reads `getActiveOutputStyleConfig()`
  * each turn so a switch takes effect on the very next request.
  *
- * Reference: claude-code-source-code/src/constants/outputStyles.ts
- *   - We mirror `OUTPUT_STYLE_CONFIG` + `keepCodingInstructions`.
- *   - We DROP plugin/managed scopes and the forced-plugin logic.
+ * There is no managed (policy) scope, and a plugin cannot force its style
+ * to become active.
  */
 
 export type OutputStyleSource = "built-in" | "user" | "project" | "plugin";
@@ -45,9 +45,9 @@ export interface OutputStyleConfig {
    * the agent still knows how to use its tools.
    */
   keepCodingInstructions: boolean;
-  /** Stage 35: owning plugin id (`name@marketplace`) when source is "plugin". */
+  /** Owning plugin id (`name@marketplace`) when source is "plugin". */
   pluginId?: string;
-  /** Stage 35: owning plugin root directory, for provenance / reload / unload. */
+  /** Owning plugin root directory, for provenance / reload / unload. */
   pluginRoot?: string;
 }
 

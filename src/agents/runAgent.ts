@@ -1,14 +1,11 @@
 /**
  * runChildAgent — execute one sub-agent invocation end-to-end.
  *
- * Reference: claude-code-source-code/src/tools/AgentTool/runAgent.ts.
- * The source's runAgent is ~600 lines and handles fork mode, async tasks,
- * worktree isolation, MCP setup, plugin loading, etc. Stage 19 keeps the
- * core slice: build the sub-agent's tool pool, set up its system prompt,
- * run an isolated agentic loop with its own message history, and pull
- * the final text back as the result the parent will see.
+ * Builds the sub-agent's tool pool, sets up its system prompt, runs an
+ * isolated agentic loop with its own message history, and pulls the final
+ * text back as the result the parent will see.
  *
- * What this DOES:
+ * Responsibilities:
  *   - Filter the parent's tool pool through resolveAgentTools.
  *   - Build a fresh `MessageParam[]` containing only the prompt as the
  *     opening user message (no parent history → context isolation).
@@ -17,11 +14,13 @@
  *     rules + onPermissionRequest) so an "allow_always" decision in the
  *     sub-agent persists across the whole turn.
  *
- * What this DOESN'T:
- *   - Fork mode (inherit parent context) — deferred per §19.7.
- *   - Background / async execution — stage 20.
- *   - Worktree isolation — stage 20.
- *   - Resume / persisted sub-agent sessions — deferred.
+ * Handled elsewhere:
+ *   - Background execution: runAsyncAgent.ts wraps this function.
+ *   - Worktree isolation: AgentTool creates the worktree and passes it in
+ *     through `cwdOverride`.
+ *
+ * Not supported: inheriting the parent conversation (fork mode) and
+ * resuming a previous sub-agent session.
  */
 
 import type { MessageParam } from "@anthropic-ai/sdk/resources/messages.js";
@@ -58,8 +57,7 @@ export type AgentProgressEvent =
        * `cumulativeUsage` is everything the sub-agent has spent so far
        * (input + output + cache). The parent's AgentTool publishes this
        * to subAgentProgressStore so the SubAgentCard can show "28.0k
-       * tokens" updating LIVE while the sub-agent is still working —
-       * matching the per-agent token line in Claude Code's UI.
+       * tokens" updating LIVE while the sub-agent is still working.
        */
       type: "turn_usage";
       cumulativeUsage: Usage;
@@ -84,9 +82,8 @@ export interface RunChildAgentParams {
    * Headless flag — see RunQueryParams.shouldAvoidPermissionPrompts in
    * core/agenticLoop.ts. Set by `runAsyncAgentLifecycle` for backgrounded
    * sub-agents so any "ask" decision is auto-denied with a workaround
-   * message instead of bubbling up to the parent UI. Mirrors source's
-   * `isAsync → shouldAvoidPermissionPrompts: true` wiring in
-   * claude-code-source-code/src/tools/AgentTool/runAgent.ts:436-451.
+   * message instead of bubbling up to the parent UI: nobody is waiting on
+   * a background agent to answer a prompt.
    */
   shouldAvoidPermissionPrompts?: boolean;
   abortSignal?: AbortSignal;
@@ -95,19 +92,19 @@ export interface RunChildAgentParams {
   /**
    * Override the working directory used by every sub-agent tool call
    * (Read/Write/Edit/Bash all resolve paths from `context.cwd`).
-   * Stage 20 sets this to the worktree path when `isolation: "worktree"`
+   * AgentTool sets this to the worktree path when `isolation: "worktree"`
    * is requested. Falls back to the parent's cwd when omitted.
    */
   cwdOverride?: string;
   /**
-   * Optional sub-session-id override. Stage 20's async path threads its
+   * Optional sub-session-id override. The background path threads its
    * `agentId` through here so transcript files / TodoWrite scopes line
    * up with the public id the parent agent sees in the
    * `<task-notification>`.
    */
   sessionIdOverride?: string;
   /**
-   * Stage 21 — Agent Teams identity. When set, this sub-agent runs as a
+   * Agent Teams identity. When set, this sub-agent runs as a
    * named teammate:
    *   1. Its tool context exposes the identity so SendMessage's `from`
    *      field reflects the teammate's name (not "team-lead").
@@ -115,8 +112,8 @@ export interface RunChildAgentParams {
    *      injected ahead of the opening user prompt — the teammate sees
    *      pending coordination notes the moment it starts thinking.
    *
-   * Undefined when the sub-agent is a regular (un-named) Agent call —
-   * stage 19/20 paths stay byte-identical.
+   * Undefined when the sub-agent is a regular (un-named) Agent call; the
+   * plain foreground and background paths are then unaffected.
    */
   teammateIdentity?: {
     agentId: string;
@@ -128,8 +125,7 @@ export interface RunChildAgentParams {
 
 /**
  * Walk back through assistant messages to find the most recent one with
- * actual text content. Mirrors source code's `finalizeAgentTool` fallback:
- * if the loop terminated mid-tool-call, the very last assistant message
+ * actual text content. If the loop terminated mid-tool-call, the very last assistant message
  * may be a pure tool_use block — we want the last *textual* response.
  */
 function extractFinalAssistantText(messages: MessageParam[]): string {
@@ -172,7 +168,7 @@ export async function runChildAgent(params: RunChildAgentParams): Promise<AgentR
   // Sub-agent gets its own session id so its TodoWrite / Task state
   // doesn't pollute the parent's. Format keeps the parent's id as a
   // prefix for grep-ability when debugging from a session transcript.
-  // Stage 20 lets the caller override this so the public agentId in
+  // The background path overrides this so the public agentId in
   // the <task-notification> matches the on-disk session scope.
   const subSessionId =
     params.sessionIdOverride ??
@@ -184,7 +180,7 @@ export async function runChildAgent(params: RunChildAgentParams): Promise<AgentR
     def.permissionMode ?? params.permissionMode ?? "default";
 
   const subToolContext: ToolContext = {
-    // Stage 20: when isolation: "worktree" is requested, the AgentTool
+    // When isolation: "worktree" is requested, the AgentTool
     // passes the worktree path here so EVERY sub-agent tool call
     // (Read/Write/Edit/Bash) resolves against the isolated tree.
     cwd: params.cwdOverride ?? params.parentToolContext.cwd,
@@ -194,21 +190,20 @@ export async function runChildAgent(params: RunChildAgentParams): Promise<AgentR
     // Sub-agent reads its own mode — isolating plan-mode transitions
     // (Enter/ExitPlanMode) from the parent's mode state.
     getPermissionMode: () => subPermissionMode,
-    // Stage 21: thread teammate identity into the sub-agent's tool
+    // Thread teammate identity into the sub-agent's tool
     // context so SendMessage's `from` resolves correctly.
     ...(params.teammateIdentity
       ? { teammateIdentity: params.teammateIdentity }
       : {}),
   };
 
-  // Stage 21: pre-loop mailbox drain.
+  // Pre-loop mailbox drain.
   //
   // If this sub-agent is a named teammate, we read its inbox right
   // before kicking off the loop and prepend any unread messages as a
-  // <teammate-messages> attachment in the opening user turn. This
-  // mirrors source's `getTeammateMailboxAttachments` call inside
-  // inProcessRunner.ts — the in-process teammate path always picks up
-  // pending mailbox traffic before its first model call.
+  // <teammate-messages> attachment in the opening user turn, so a
+  // teammate always picks up pending mailbox traffic before its first
+  // model call.
   //
   // Why prepend (vs separate first message): two distinct user-role
   // messages with no assistant in between would surface as a single
@@ -232,7 +227,7 @@ export async function runChildAgent(params: RunChildAgentParams): Promise<AgentR
     initialMessages.push({ role: "user", content: params.prompt });
   }
 
-  // Stage 22: id we'll use for SubagentStop hooks. Sync sub-agents
+  // Id we'll use for SubagentStop hooks. Sync sub-agents
   // don't have a persistent agent id (only async/background ones do),
   // so we mint a per-invocation one here. Hook authors can match on
   // `agent_type` for type-level rules.
@@ -260,7 +255,7 @@ export async function runChildAgent(params: RunChildAgentParams): Promise<AgentR
     onPermissionRequest: params.onPermissionRequest,
     shouldAvoidPermissionPrompts: params.shouldAvoidPermissionPrompts,
     subagentInfo: { agentId: agentIdForHooks, agentType: def.agentType },
-    // Stage 27: a backgrounded sub-agent has no one waiting on its result, so
+    // A backgrounded sub-agent has no one waiting on its result, so
     // a 529 capacity overload should fail fast rather than amplify load.
     // Interactive sub-agents stay foreground (retry 529).
     querySource: params.shouldAvoidPermissionPrompts ? "background" : "foreground",

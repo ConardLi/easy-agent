@@ -3,17 +3,15 @@
  * available skill into a single text block, subject to a character budget
  * so we don't bloat the system prompt on long-skill collections.
  *
- * Reference: claude-code-source-code/src/tools/SkillTool/prompt.ts
  *   - SKILL_BUDGET_CONTEXT_PERCENT = 0.01  (1% of context window)
  *   - MAX_LISTING_DESC_CHARS = 250         (per-skill description cap)
  *   - Three-tier degradation: full → truncated descriptions → names-only
  *
- * Where ours differs from the source:
- *   - No "bundled skill never truncates" privilege (we have no bundled
- *     skills in stage 17 — see DEVELOPMENT-PLAN §17.6.1).
- *   - The budget is in CHARACTERS, not tokens. The source's
- *     `contextWindowTokens × 4 × 1%` heuristic assumes ~4 chars/token, so
- *     our default 8000 chars ≈ 2000 tokens for a 200K-token model.
+ * Notes:
+ *   - Every skill is subject to truncation; there are no bundled skills
+ *     with a "never truncate" privilege.
+ *   - The budget is in CHARACTERS, not tokens. Assuming ~4 chars/token,
+ *     the default 8000 chars ≈ 2000 tokens, 1% of a 200K-token window.
  */
 
 import type { Skill } from "../../types/types.js";
@@ -88,15 +86,15 @@ export function formatSkillsWithinBudget(
 
   // Tier 3: names only. No further degradation — at this point we either
   // fit the names or we accept overshoot (unavoidable, the model gets to
-  // see the full set). Mirrors source code's "names_only" final tier.
+  // see the full set).
   return skills.map(buildNameOnly).join("\n");
 }
 
 /**
  * Build the system-reminder block to inject into every system prompt.
  *
- * Wrapping in `<system-reminder>` tags matches the convention used elsewhere
- * in Claude Code for "ambient" context that should influence the model's
+ * Wrapping in `<system-reminder>` tags matches the convention used for the
+ * agents and teams reminders: "ambient" context that should influence the model's
  * planning without being treated as a user instruction.
  */
 export function formatSkillsSystemReminder(skills: Skill[]): string {

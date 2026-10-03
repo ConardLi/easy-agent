@@ -1,19 +1,18 @@
 /**
  * runAsyncAgentLifecycle — fire-and-forget background sub-agent runner.
  *
- * Reference: claude-code-source-code/src/tools/AgentTool/agentToolUtils.ts
- *   `runAsyncAgentLifecycle()` is the one source function whose contract
- *   the AgentTool calls into for backgrounded sub-agents. It runs the
- *   sub-agent's full agentic loop in the background, writes a transcript,
- *   and on termination publishes a `<task-notification>` so the parent
- *   conversation can pick it up at the next user submission.
+ *   `runAsyncAgentLifecycle()` is the entry point the AgentTool calls for
+ *   backgrounded sub-agents. It runs the sub-agent's full agentic loop in
+ *   the background, writes a transcript, and on termination publishes a
+ *   `<task-notification>` so the parent conversation can pick it up at the
+ *   next user submission.
  *
- * Stage 20 implementation:
+ * Lifecycle:
  *   1. Subscribe to `runChildAgent`'s `onProgress` events and append each
  *      one to the .output JSONL file. This is what makes the file
  *      tail-able from the parent (`Read outputFile`).
- *   2. Mirror the same events into the asyncAgentStore so a future
- *      `/agents` UI panel can render live status.
+ *   2. Mirror the same events into the asyncAgentStore so the UI can
+ *      render live status.
  *   3. On any termination path (success, model error, abort), call
  *      `cleanupWorktreeIfNeeded` and then `enqueuePendingNotification`
  *      with the formatted `<task-notification>` block.
@@ -74,7 +73,7 @@ export interface RunAsyncAgentLifecycleParams {
   /** Set when this run is using `isolation: "worktree"`. */
   worktreeInfo?: WorktreeInfo;
   /**
-   * Stage 21 — when set, this background sub-agent is registered as a
+   * When set, this background sub-agent is registered as a
    * named teammate. We propagate the identity into `runChildAgent` so
    * SendMessage sees the right `from`, and on termination we flip the
    * member's `isActive` flag to false in the team file (signal for
@@ -188,20 +187,18 @@ async function runAsyncAgentLifecycleInner(
       ...(params.onPermissionRequest
         ? { onPermissionRequest: params.onPermissionRequest }
         : {}),
-      // Headless mode for backgrounded sub-agents (source-aligned).
+      // Headless mode for backgrounded sub-agents.
       // The agentic loop honours this by short-circuiting any "ask"
       // permission decision into an auto-deny with workaround
       // guidance, instead of bubbling a prompt up to the parent UI
       // (which would clobber the parent's permissionResolverRef and
-      // freeze the user's input). See:
-      //   - core/agenticLoop.ts → buildHeadlessDenialMessage
-      //   - claude-code-source-code/src/tools/AgentTool/runAgent.ts:436-451
-      //     (`isAsync → toolPermissionContext.shouldAvoidPermissionPrompts`)
+      // freeze the user's input). See core/agenticLoop.ts →
+      // buildHeadlessDenialMessage.
       shouldAvoidPermissionPrompts: true,
       // Background path uses its OWN AbortController — pressing ESC on
       // the parent must not interrupt a backgrounded sub-agent.
       abortSignal: entry.abortController.signal,
-      // Stage 20: route the worktree path into the sub-agent's tool
+      // Route the worktree path into the sub-agent's tool
       // context if isolation is on.
       ...(params.worktreeInfo
         ? { cwdOverride: params.worktreeInfo.worktreePath }
@@ -210,7 +207,7 @@ async function runAsyncAgentLifecycleInner(
       // transcripts and TodoWrite scopes are addressable by the same
       // string the model gets back in `async_launched`.
       sessionIdOverride: entry.agentId,
-      // Stage 21: forward teammate identity so SendMessage's `from`
+      // Forward teammate identity so SendMessage's `from`
       // resolves correctly inside this sub-agent, and so the pre-loop
       // mailbox drain in runChildAgent picks up any pending messages.
       ...(params.teammateIdentity
@@ -346,7 +343,7 @@ async function runAsyncAgentLifecycleInner(
         ...worktreeFinal,
     });
   } finally {
-    // Stage 21: regardless of how this lifecycle ended (success,
+    // Regardless of how this lifecycle ended (success,
     // failure, abort), flip the team-file member's isActive flag.
     // TeamDelete consults this flag to refuse deletion while any
     // teammate is still working, and SendMessage uses it to warn the

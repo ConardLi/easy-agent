@@ -164,7 +164,7 @@ export function prepareRequest(profile: ModelProfile, params: StreamRequestParam
     // (llm-bridge mishandles both, breaking Gemini-3 multi/parallel tool turns).
     translated.contents = buildGeminiContents(providerMessages);
 
-    // Stage 34: request-side thinking. Gemini expresses thinking via
+    // Request-side thinking. Gemini expresses thinking via
     // generationConfig.thinkingConfig — includeThoughts surfaces the
     // `thought` parts. The effort level maps to `thinkingLevel`; the legacy
     // numeric `thinkingBudget` is only used when an explicit budget is set
@@ -203,7 +203,7 @@ export function prepareRequest(profile: ModelProfile, params: StreamRequestParam
   const base = stripTrailingSlash(getProfileBaseURL(profile));
   const path = profile.protocol === "openai-responses" ? "/responses" : "/chat/completions";
   const body: Record<string, unknown> = { ...translated, stream: true };
-  // Stage 34: request-side reasoning effort. Chat Completions takes a top-level
+  // Request-side reasoning effort. Chat Completions takes a top-level
   // `reasoning_effort` string; the Responses API takes a nested `reasoning.effort`.
   // Source: doc/CURL_EXAMPLES.md §1–§2.
   const reasoningEffort = resolveOpenAIReasoningEffort(params);

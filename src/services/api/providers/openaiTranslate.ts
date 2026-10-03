@@ -2,8 +2,6 @@
  * OpenAI translation — universal IR → Chat Completions `messages[]` and
  * Responses `input[]`.
  *
- * Extracted verbatim from providerStream.ts (二期 A2); behavior is unchanged.
- *
  * Why we rebuild the request shape by hand instead of trusting llm-bridge:
  *   llm-bridge's universal IR captures tool calls / results correctly (each
  *   tool_result keeps its tool_call_id). But `fromUniversal("openai" | "openai-

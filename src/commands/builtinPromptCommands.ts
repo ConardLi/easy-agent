@@ -4,7 +4,7 @@
  * Unlike local commands (handled by `QueryEngine.handleCommand`, which yield a
  * panel and return), a prompt command expands into a prompt and runs one normal
  * model turn — the model does the work (e.g. analyse the repo and write
- * `AGENT.md`). This mirrors Claude Code's `commands/init.ts` (`type: 'prompt'`).
+ * `AGENT.md`).
  *
  * The engine consumes these via `tryExpandBuiltinPromptCommand`: the matched
  * command name is recorded in the transcript as a hidden marker (so the bubble

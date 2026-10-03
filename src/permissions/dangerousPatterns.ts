@@ -1,19 +1,15 @@
 /**
  * Auto Mode dangerous-permission patterns.
  *
- * Reference: claude-code-source-code/src/utils/permissions/dangerousPatterns.ts
- * (`isDangerousClassifierPermission` / `isDangerousBashPermission` /
- *  `isDangerousTaskPermission`).
- *
  * Some allow rules, if honored in Auto Mode, would let the agent bypass the
  * AI classifier entirely — e.g. `Bash(node:*)` lets it run arbitrary code via
  * an interpreter, and `Agent(*)` hands work to a sub-agent without per-action
  * review. In Auto Mode these allow rules are NOT honored; the matching action
  * falls through to the classifier instead.
  *
- * Design note: source physically strips these rules from the context on
- * entering auto mode and restores them on exit. Easy Agent instead filters
- * them at decision time (`checkPermission` receives the rule set as params on
+ * Design note: rather than stripping these rules from the context on
+ * entering auto mode and restoring them on exit, they are filtered at
+ * decision time (`checkPermission` receives the rule set as params on
  * every call), so there is no mutate/restore state machine to keep in sync —
  * the full rule set automatically applies again the moment the mode leaves
  * `auto`. Same security guarantee, no cross-module state.

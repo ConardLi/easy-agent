@@ -121,14 +121,14 @@ const TASK_MODE_OPTIONS: { mode: TaskMode; description: string }[] = [
   { mode: "todo", description: "Session-only todo list" },
 ];
 
-// Stage 34: extended-thinking on/off selector (arrow-navigable like /mode).
+// Extended-thinking on/off selector (arrow-navigable like /mode).
 // `/think <budget>` typed directly still works for an explicit token budget.
 const THINK_OPTIONS: { value: string; description: string }[] = [
   { value: "on", description: "Enable extended thinking (adaptive)" },
   { value: "off", description: "Disable extended thinking" },
 ];
 
-// Stage 34: reasoning-effort selector (Anthropic). `auto` clears the override.
+// Reasoning-effort selector (Anthropic). `auto` clears the override.
 const EFFORT_OPTIONS: { value: string; description: string }[] = [
   { value: "low", description: "Quick, minimal reasoning overhead" },
   { value: "medium", description: "Balanced reasoning" },
@@ -388,8 +388,8 @@ export function usePromptInput({
 
   // Stash a decoded image in the in-memory registry and drop a compact
   // `[Image #N]` chip into the editor — never a raw temp path. The bytes are
-  // expanded into a real image block at submit time. Matches Claude Code's
-  // pasted-image model and avoids the workspace allowed-roots check entirely.
+  // expanded into a real image block at submit time, which also avoids the
+  // workspace allowed-roots check entirely.
   const attachImageBlock = (
     img: { block: ImageBlock; mediaType: string; bytes: number },
     at: number,
@@ -455,7 +455,7 @@ export function usePromptInput({
   // and never lets it reach useInput, but it *does* forward the paste here.
   // Crucially, pasting a clipboard *image* with Cmd+V yields an EMPTY bracketed
   // paste (the terminal can't serialize the bitmap as text), which we treat as
-  // "go read the image off the clipboard" — exactly how Claude Code does it.
+  // "go read the image off the clipboard".
   usePaste((text: string) => {
     // Overlays own the keyboard; don't leak pastes into the hidden buffer.
     if (hasCommandPanel || hasTranscript || hasPermissionPrompt || hasQuestionPrompt || hasResumePicker) {
@@ -499,8 +499,7 @@ export function usePromptInput({
       return;
     }
     // A slash-command result panel owns the screen: typing is suppressed and
-    // only Esc dismisses it (mirrors Claude's local-jsx commands hiding the
-    // prompt input). Sits before everything else so no keystroke leaks through.
+    // only Esc dismisses it, and the prompt input is hidden. Sits before everything else so no keystroke leaks through.
     if (hasCommandPanel) {
       if (key.escape) onDismissCommandPanel?.();
       return;
@@ -510,7 +509,7 @@ export function usePromptInput({
     if (hasResumePicker) {
       return;
     }
-    // Esc interrupts the running turn (Claude's "esc to interrupt"). Only while
+    // Esc interrupts the running turn ("esc to interrupt"). Only while
     // loading and when no overlay owns the keyboard — those handle Esc first.
     if (
       key.escape &&
@@ -915,8 +914,8 @@ export function usePromptInput({
 
     // Rank by match quality: exact name → name-prefix → name-substring →
     // description-substring. Within a tier, shorter names sort first so the
-    // closest command floats to the top (mirrors the source's Fuse ordering
-    // without pulling in a fuzzy-search dependency).
+    // closest command floats to the top, without pulling in a fuzzy-search
+    // dependency.
     const ranked: { cmd: CommandSuggestion; score: number }[] = [];
     for (const cmd of merged) {
       const name = cmd.name.slice(1).toLowerCase();

@@ -1,5 +1,5 @@
 /**
- * Enabled-plugin state (plan §35.4 — the third layer).
+ * Enabled-plugin state.
  *
  * INSTALL is global (a version lands in `~/.easy-agent/plugins/cache`), but
  * ENABLE is per-scope: a plugin can be on for your user account, on only in

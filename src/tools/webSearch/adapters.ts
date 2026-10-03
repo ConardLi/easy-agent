@@ -1,16 +1,15 @@
 /**
  * WebSearch provider adapters.
  *
- * Reference: claude-code-source-code/src/tools/WebSearchTool/adapters/
- *   - adapters/index.ts   → createAdapter (api vs bing selection)
- *   - adapters/apiAdapter.ts → Anthropic server-side `web_search_20250305` tool
- *   - adapters/bingAdapter.ts → Bing HTML scrape (no API key)
+ *   - createAdapter → api vs bing selection
+ *   - API adapter   → Anthropic server-side `web_search_20250305` tool
+ *   - Bing adapter  → Bing HTML scrape (no API key)
  *
- * Both source adapters work WITHOUT any third-party key: the API adapter rides
- * on the Anthropic endpoint the agent already uses, and the Bing adapter
- * scrapes public search HTML. We port both faithfully.
+ * Both adapters work WITHOUT any third-party key: the API adapter rides on
+ * the Anthropic endpoint the agent already uses, and the Bing adapter
+ * scrapes public search HTML.
  *
- * Selection (mirrors the source's intended logic):
+ * Selection:
  *   - env WEB_SEARCH_ADAPTER=api|bing forces a backend
  *   - first-party Anthropic endpoint → API server-side search
  *   - otherwise                      → Bing scrape fallback

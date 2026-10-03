@@ -1,5 +1,5 @@
 /**
- * Keyboard + scroll state for the Ctrl+O transcript overlay (stage 24.1/24.5).
+ * Keyboard + scroll state for the Ctrl+O transcript overlay.
  *
  * Owns the keyboard while the transcript is open (a pager: ↑/↓ line,
  * PgUp/PgDn page, g/G top/bottom, Esc / Ctrl+O / q to close). Returns the

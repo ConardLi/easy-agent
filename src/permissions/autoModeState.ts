@@ -1,9 +1,6 @@
 /**
  * Auto Mode runtime state — session-scoped, in-memory, reset on restart.
  *
- * Reference: claude-code-source-code/src/utils/permissions/denialTracking.ts
- * (consecutive/total denial limits) and autoModeState.ts (circuit breaker).
- *
  * Two independent safety mechanisms layer on top of the AI classifier:
  *
  *  1. Denial tracking — when the classifier blocks N actions in a row (or M

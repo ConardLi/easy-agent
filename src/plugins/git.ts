@@ -1,5 +1,5 @@
 /**
- * Git helpers for the plugin subsystem (plan §35.5).
+ * Git helpers for the plugin subsystem.
  *
  * SECURITY: git is ALWAYS invoked with an argument array via `execFile` — we
  * never build a shell string, so a malicious ref / URL can't inject shell

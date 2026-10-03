@@ -1,11 +1,12 @@
 /**
  * Tool interface definition — The abstraction for all agent tools.
  *
- * Reference: claude-code-source-code/src/Tool.ts
- * The original has ~800 lines covering permissions, React rendering,
- * MCP, Zod schemas, concurrency safety, etc. We extract the core:
+ * Core contract:
  *
  *   name + description + inputSchema + call() + isReadOnly() + isEnabled()
+ *
+ * Optional members cover result-size limits, concurrency safety, and
+ * ToolSearch deferral metadata.
  *
  * The `call()` method returns a `ToolResult` that gets converted into
  * a `tool_result` content block and sent back to the API.
@@ -63,20 +64,20 @@ export interface ToolContext {
   addSessionAllowRules?: (rules: string[]) => void;
   /**
    * Current session id. Used by session-scoped tools (e.g. TodoWrite) to
-   * key their in-memory state — mirrors source code's
-   * `agentId ?? getSessionId()` lookup pattern in `appState.todos[todoKey]`.
+   * key their in-memory state. Sub-agents get their own id, so their
+   * state never mixes with the parent's.
    */
   sessionId?: string;
 
   /**
-   * Stage 26 — id of the active user turn. File-history snapshots bind to
+   * Id of the active user turn. File-history snapshots bind to
    * this id; the agentic loop uses it to back up files before Edit/Write.
    * Set per-turn by the QueryEngine; tools themselves ignore it.
    */
   messageId?: string;
 
   /**
-   * Stage 24 — interactive multiple-choice prompt. AskUserQuestion calls
+   * Interactive multiple-choice prompt. AskUserQuestion calls
    * this to surface questions to the user and await their selection. The
    * QueryEngine/UI wires it the same way as the permission prompt
    * (a promise resolved when the user answers). Resolves to `null` if the
@@ -87,7 +88,7 @@ export interface ToolContext {
     request: UserQuestionRequest,
   ) => Promise<UserQuestionResponse | null>;
 
-  // ─── Sub-agent spawning support (stage 19) ────────────────────────
+  // ─── Sub-agent spawning support ───────────────────────────────────
   //
   // The Agent tool needs to give its sub-agent the same permission
   // infrastructure the parent loop has — settings file rules, session
@@ -157,7 +158,7 @@ export interface ToolResult {
  * The core tool abstraction. Every tool implements this interface.
  *
  * Generic parameters are intentionally omitted — we use `Record<string, unknown>`
- * for input to keep the interface simple and avoid Zod dependency at this stage.
+ * for input; runtime validation against `inputSchema` happens in the agentic loop.
  */
 export const DEFAULT_MAX_RESULT_SIZE_CHARS = 100_000;
 
@@ -199,8 +200,7 @@ export interface Tool {
    * this to partition a single assistant turn's tool_use blocks into
    * batches: consecutive concurrency-safe tools form one parallel batch
    * (run via `Promise.all`); anything else runs serially in its own
-   * singleton batch. Mirrors source's `isConcurrencySafe(input)` flag in
-   * claude-code-source-code/src/tools/AgentTool/AgentTool.tsx.
+   * singleton batch.
    *
    * Optional — defaults to `false` for safety. Tools that mutate the
    * filesystem (Write/Edit/Bash/MemoryWrite), the session (TodoWrite,

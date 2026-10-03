@@ -1,23 +1,19 @@
 /**
  * Extended-thinking utilities for Easy Agent.
  *
- * Mirrors claude-code-source-code/src/utils/thinking.ts:
  *   - ThinkingConfig three-state union
  *   - Model capability detection (thinking / adaptive / interleaved)
  *   - shouldEnableThinkingByDefault
  *   - hasUltrathinkKeyword (whole-word /\bultrathink\b/i)
  *
- * Easy Agent does not use Bun feature() or GrowthBook, so the
- * isUltrathinkEnabled() gate is replaced by a simple env-var check.
- * The 3P model-override table (get3PModelCapabilityOverride) is dropped;
- * capability detection is reproduced from source using pure model-name
- * heuristics + env vars, so all functions here are synchronous and safe
- * to call from the streaming hot path.
+ * The ultrathink keyword is always active. Capability detection uses pure
+ * model-name heuristics + env vars (there is no per-model override table),
+ * so all functions here are synchronous and safe to call from the
+ * streaming hot path.
  *
  * Session-level thinking state (the `/think` and `/effort` commands, plus
  * the `alwaysThinkingEnabled` boot preference) lives in a small in-memory
- * store here — mirroring source's AppState.effortValue / thinking config,
- * which the REPL mutates live. The CLI seeds it once at startup from
+ * store here, which the REPL mutates live. The CLI seeds it once at startup from
  * settings.json (see configureThinkingDefaults).
  */
 
@@ -32,8 +28,6 @@
  * - `enabled`   — thinking on with an explicit token budget; used when
  *                 the model does not support adaptive mode.
  * - `disabled`  — thinking off entirely.
- *
- * Source reference: claude-code-source-code/src/utils/thinking.ts:11-14
  */
 export type ThinkingConfig =
   | { type: "adaptive" }
@@ -48,10 +42,8 @@ export type EffortLevel = "low" | "medium" | "high" | "max";
 
 /**
  * True when the text contains the whole-word keyword "ultrathink"
- * (case-insensitive). Faithfully copied from source — note the word
- * boundary anchors (\b) and the `i` flag.
- *
- * Source: claude-code-source-code/src/utils/thinking.ts:30
+ * (case-insensitive). Note the word boundary anchors (\b) and the `i`
+ * flag: "ultrathinking" does not trigger it.
  */
 export function hasUltrathinkKeyword(text: string): boolean {
   return /\bultrathink\b/i.test(text);
@@ -64,9 +56,6 @@ export function hasUltrathinkKeyword(text: string): boolean {
  * for containment checks. Strips vendor prefixes used by Bedrock /
  * Vertex (e.g. "anthropic.claude-opus-4-6-20251101-v1:0") and trims
  * whitespace.
- *
- * Source reference: getCanonicalName in
- *   claude-code-source-code/src/utils/model/model.ts
  */
 function getCanonicalName(model: string): string {
   // Bedrock format: "anthropic.claude-*" → "claude-*"
@@ -94,30 +83,21 @@ function isClaudeVersionAtLeast(model: string, major: number, minor: number): bo
 /**
  * Whether the given model supports extended thinking at all.
  *
- * Easy Agent simplification vs source:
- *   - No 3P override table → honor `settings.json` key
- *     `modelCapabilities.<model>.thinking` when present.
- *   - No Bedrock/Vertex distinction → treat all non-localhost
- *     endpoints as "firstParty"-equivalent (default-true for
- *     unknown Claude 4+ models).
- *
- * Source: claude-code-source-code/src/utils/thinking.ts:91-111
+ * Known Claude 3 models are excluded; every other model (Claude 4+ and
+ * unknown names) defaults to true. There is no per-endpoint distinction.
  */
 export function modelSupportsThinking(model: string): boolean {
   const canonical = getCanonicalName(model);
   // Disable for known Claude 3 models
   if (canonical.includes("claude-3-")) return false;
-  // Default true for all Claude 4+ and unknown models (aligns with
-  // source's firstParty / foundry default-true strategy)
+  // Default true for all Claude 4+ and unknown models
   return true;
 }
 
 /**
  * Whether the model supports *adaptive* thinking (no token budget
  * required). Opus 4.6+ and Sonnet 4.6+; unknown models default true
- * to avoid silently degrading quality (mirrors source).
- *
- * Source: claude-code-source-code/src/utils/thinking.ts:114-145
+ * to avoid silently degrading quality.
  */
 export function modelSupportsAdaptiveThinking(model: string): boolean {
   const canonical = getCanonicalName(model);
@@ -138,7 +118,7 @@ export function modelSupportsAdaptiveThinking(model: string): boolean {
   ) {
     return false;
   }
-  // Unknown models: default true (mirrors source's firstParty/foundry policy)
+  // Unknown models: default true
   return true;
 }
 
@@ -146,8 +126,6 @@ export function modelSupportsAdaptiveThinking(model: string): boolean {
  * Whether the model supports *interleaved* thinking — thinking blocks
  * between tool call turns. Required for the interleaved-thinking-2025-05-14
  * beta header.
- *
- * Source: claude-code-source-code/src/utils/betas.ts:91-111
  */
 export function modelSupportsInterleavedThinking(model: string): boolean {
   const canonical = getCanonicalName(model);
@@ -156,14 +134,12 @@ export function modelSupportsInterleavedThinking(model: string): boolean {
   if (canonical.includes("claude-opus-4") || canonical.includes("claude-sonnet-4")) {
     return true;
   }
-  // Unknown models: default true (mirrors source's firstParty/foundry policy)
+  // Unknown models: default true
   return true;
 }
 
 /**
  * Whether the model supports the `output_config.effort` parameter.
- *
- * Source: claude-code-source-code/src/utils/effort.ts:25-51
  */
 export function modelSupportsEffort(model: string): boolean {
   if (process.env.CLAUDE_CODE_ALWAYS_ENABLE_EFFORT) return true;
@@ -173,7 +149,7 @@ export function modelSupportsEffort(model: string): boolean {
     isClaudeVersionAtLeast(model, 4, 6)
   ) return true;
   if (m.includes("haiku") || m.includes("sonnet") || m.includes("opus")) return false;
-  // Unknown: default true (mirrors source's firstParty policy)
+  // Unknown: default true
   return true;
 }
 
@@ -183,13 +159,11 @@ export function modelSupportsEffort(model: string): boolean {
  * Whether extended thinking should be enabled by default for a new
  * session.
  *
- * Mirrors source's shouldEnableThinkingByDefault:
+ * Rules:
  *   - `MAX_THINKING_TOKENS=0` → disable
  *   - `MAX_THINKING_TOKENS=N` (N > 0) → enable with budget N
  *   - `settings.alwaysThinkingEnabled === false` → disable
  *   - Otherwise → enable (default-on)
- *
- * Source: claude-code-source-code/src/utils/thinking.ts:147-163
  */
 export function shouldEnableThinkingByDefault(): boolean {
   const env = process.env.MAX_THINKING_TOKENS;
@@ -205,8 +179,7 @@ export function shouldEnableThinkingByDefault(): boolean {
 // ─── Session-level thinking + effort state ─────────────────────────
 //
 // In-memory session state mutated by the `/think` and `/effort` commands
-// and seeded once at boot by configureThinkingDefaults(). Mirrors source's
-// AppState.effortValue + thinking config that the REPL edits live.
+// and seeded once at boot by configureThinkingDefaults().
 
 let sessionAlwaysThinkingEnabled: boolean | undefined;
 let sessionThinkingConfig: ThinkingConfig | undefined;
@@ -277,8 +250,8 @@ export function buildDefaultThinkingConfig(): ThinkingConfig {
 // ─── ultrathink meta-message ───────────────────────────────────────
 
 /**
- * The message injected by the ultrathink keyword path. Mirrors source:
- *   claude-code-source-code/src/utils/messages.ts ultrathink_effort branch.
+ * The message injected by the ultrathink keyword path. It raises effort
+ * for the current turn only; the thinking budget is unchanged.
  */
 export const ULTRATHINK_META_MESSAGE =
   "The user has requested reasoning effort level: high. Apply this to the current turn.";

@@ -7,7 +7,7 @@ interface StatusLineProps {
   /**
    * Output of a user-configured `statusLine` command. Only when this is set do
    * we render an extra status row — by default (no config) the footer stays the
-   * minimal hint line, matching Claude's restrained bottom area.
+   * minimal hint line.
    */
   custom?: string | null;
 }

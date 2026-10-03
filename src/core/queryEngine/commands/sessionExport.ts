@@ -210,8 +210,8 @@ export async function* handleResumeCommand(
       return { handled: true };
     }
     // Hand the list to the UI, which renders an interactive picker
-    // (↑↓ + Enter) and re-invokes `/resume <id>` on selection — mirroring
-    // source's LogSelector instead of a static text dump.
+    // (↑↓ + Enter) and re-invokes `/resume <id>` on selection instead of a
+    // static text dump.
     yield {
       type: "resume_picker",
       sessions: sessions.map((s) => ({

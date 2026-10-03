@@ -1,10 +1,8 @@
 /**
- * Async sub-agent registry (stage 20).
+ * Async sub-agent registry.
  *
  * Holds the in-memory state of every background sub-agent the model has
- * launched in the current session. Mirrors the `tasks: { type:
- * 'local_agent', ... }` slice of source's AppState (LocalAgentTask.tsx)
- * but keeps only the fields the teaching version needs.
+ * launched in the current session.
  *
  * Lifecycle:
  *
@@ -37,7 +35,7 @@ export interface AsyncAgentEntry {
   agentId: string;
   agentType: string;
   /**
-   * Stage 21 — teammate handle when launched via `Agent({ name, team_name })`.
+   * Teammate handle when launched via `Agent({ name, team_name })`.
    * The `BackgroundAgentBar` prefers this to `agentType` because multiple
    * teammates of the same agentType (e.g. several `general-purpose`
    * teammates with different roles) would otherwise be indistinguishable.

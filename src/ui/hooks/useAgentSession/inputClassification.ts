@@ -1,6 +1,6 @@
 /**
  * Slash-command vs. chat-input classification, extracted from useAgentSession's
- * `submit` (二期 C2). Pure: given the trimmed input (and the live registries it
+ * `submit`. Pure: given the trimmed input (and the live registries it
  * consults), it decides whether the input should engage the full agentic loop
  * or be handled as a synchronous system command. Behavior is unchanged.
  *

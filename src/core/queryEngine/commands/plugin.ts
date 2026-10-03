@@ -1,5 +1,5 @@
 /**
- * `/plugin` command family (plan §35.6).
+ * `/plugin` command family.
  *
  *   /plugin                                — interactive manager overlay
  *   /plugin list [--available]             — installed plugins + enable state
@@ -111,8 +111,7 @@ export async function* handlePluginCommand(
   try {
     switch (sub) {
       case undefined:
-        // Bare `/plugin` opens the interactive manager (mirrors the source's
-        // PluginSettings root view). The text subcommands below stay for
+        // Bare `/plugin` opens the interactive manager. The text subcommands below stay for
         // headless / scripted use.
         yield { type: "plugin_view", data: await buildPluginView(ctx.cwd) };
         return { handled: true };
@@ -368,7 +367,7 @@ async function* handleMarketplace(ctx: CommandContext, args: string[]): Yield {
 }
 
 /**
- * `/plugin validate <path>` (plan §35.1/§35.6) — strict-check a plugin or
+ * `/plugin validate <path>` — strict-check a plugin or
  * marketplace directory WITHOUT installing it, so an author sees schema and
  * path mistakes (typos, escaping paths, bad frontmatter) before publishing.
  */

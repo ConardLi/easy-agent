@@ -1,7 +1,6 @@
 /**
- * useTeammateNavigation — keyboard handler for the stage 21
- * teammate-view UX (Shift+↑/↓ to pick, Enter to view, Esc to return,
- * 'k' to kill).
+ * useTeammateNavigation — keyboard handler for the teammate-view UX
+ * (Shift+↑/↓ to pick, Enter to view, Esc to return, 'k' to kill).
  *
  * Mounted once in App.tsx. Reads from asyncAgentStore (to know which
  * agents exist) and teammateViewStore (to know the current mode +
@@ -12,12 +11,8 @@
  *     suggestions; piling teammate-navigation onto the same useInput
  *     closure makes the precedence rules (e.g. "Esc closes view UNLESS
  *     there's a permission prompt waiting") impossible to read.
- *   - Source code splits the same way:
- *       useBackgroundTaskNavigation.ts  ← all the keys we mirror here
- *       useTypeahead.tsx + PromptInput  ← text editing
  *
- * Key bindings (mirrors source where the binding makes sense in our
- * single-team scope):
+ * Key bindings:
  *
  *   Shift+↓   open picker (or move cursor down, with wraparound)
  *   Shift+↑   open picker / move cursor up (with wraparound)

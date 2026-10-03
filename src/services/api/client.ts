@@ -1,13 +1,12 @@
 /**
  * API Client — Creates and manages the Anthropic API client instance.
  *
- * Mirrors the pattern in claude-code-source-code/src/services/api/client.ts:
  * - Reads API key from environment
  * - Configurable model and max tokens
  * - Single shared client instance (lazy init)
  *
- * We keep this intentionally simple — no Bedrock/Vertex/OAuth,
- * just direct Anthropic API via SDK.
+ * Talks to the Anthropic API (or an Anthropic-compatible endpoint) directly
+ * through the SDK; Bedrock, Vertex, and OAuth are not supported.
  */
 
 import Anthropic from "@anthropic-ai/sdk";
@@ -56,7 +55,7 @@ export function getAnthropicClient(options?: {
 
 // ─── Per-profile clients ───────────────────────────────────────────
 //
-// Stage 30: an Anthropic-protocol model profile may carry its own baseURL /
+// An Anthropic-protocol model profile may carry its own baseURL /
 // apiKey (e.g. a self-hosted Anthropic-compatible gateway). Build (and cache)
 // a dedicated client per distinct baseURL|apiKey so we don't re-instantiate on
 // every request. Profiles with neither override fall back to the env singleton.

@@ -1,5 +1,5 @@
 /**
- * Plugin Loader (plan §35.2 / §35.3).
+ * Plugin Loader.
  *
  * Turns one plugin directory into a fully-resolved {@link LoadedPlugin}:
  *   1. read + validate `.easy-agent-plugin/plugin.json` (or `.claude-plugin/`)
@@ -9,12 +9,12 @@
  *   5. apply the `plugin:` namespace + stamp provenance on every component
  *   6. substitute `${EASY_AGENT_PLUGIN_ROOT}` / `${EASY_AGENT_PLUGIN_DATA}`
  *
- * Design rule (plan §35.2): the loader NEVER re-implements a parser. It calls
+ * Design rule: the loader NEVER re-implements a parser. It calls
  * `loadSkillsFromDir` / `loadAgentsFromDir` / `loadCommandsFromDir` /
  * `loadOutputStylesFromDir`, then decorates the results. A single bad
  * component is recorded as a structured {@link PluginError} and skipped — it
- * never aborts the whole plugin (plan §35.2 "one bad plugin doesn't break the
- * others" starts here, at "one bad component doesn't break the plugin").
+ * never aborts the whole plugin ("one bad plugin doesn't break the others"
+ * starts here, at "one bad component doesn't break the plugin").
  */
 
 import * as fs from "node:fs/promises";
@@ -528,7 +528,7 @@ export async function loadPlugin(opts: LoadPluginOptions): Promise<LoadedPlugin>
   emptyPlugin.hasExecutableComponents =
     emptyPlugin.hooks.length > 0 || emptyPlugin.mcpServers.length > 0 || emptyPlugin.lspServers.length > 0;
 
-  // ── Within-plugin public-name conflict (plan §35.3): a skill and a command
+  // ── Within-plugin public-name conflict: a skill and a command
   //    resolving to the same `/name` is ambiguous → validation error. ──
   const skillNames = new Set(emptyPlugin.skills.map((s) => s.name));
   for (const c of emptyPlugin.commands) {

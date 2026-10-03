@@ -19,7 +19,7 @@ import type { QueryEngineEvent } from "../types.js";
 import type { CommandContext } from "./context.js";
 
 /**
- * Stage 26: `/rewind [n]` (alias `/checkpoint`). Restores tracked files to
+ * `/rewind [n]` (alias `/checkpoint`). Restores tracked files to
  * the state at the start of the n-th-from-last user turn (default 1 = undo
  * the most recent turn's edits). Shows the affected file list + diff stats,
  * then applies the rewind. Only files are rewound; the conversation is left

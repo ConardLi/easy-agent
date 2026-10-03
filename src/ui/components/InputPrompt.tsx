@@ -82,8 +82,8 @@ function HighlightedLine({
 }
 
 /**
- * The prompt input. Framed by a top + bottom rule (no side borders) — this
- * mirrors Claude Code's input chrome and, crucially, lets long/wrapped input
+ * The prompt input. Framed by a top + bottom rule (no side borders), which
+ * lets long/wrapped input
  * flow naturally: with no left/right border, wrapped lines can't "escape" a
  * vertical edge the way they did inside a full rounded box.
  *

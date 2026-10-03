@@ -26,6 +26,7 @@ The numbered roadmap is complete through **Stage 36**. The `eagent` package is p
 There is **no** catch-all `npm test` and no lint/format script. Tests are smoke/characterization scripts wired directly in `package.json`; the release workflow runs the Stage 36 verification before publishing.
 
 - **Typecheck:** `npm run typecheck` → `tsc --noEmit`
+- **Source hygiene:** `npm run check:source-hygiene` (part of `verify:production`) rejects roadmap stage numbers, development-plan references, reference-implementation pointers, and tutorial wording in `src/` (excluding `src/scripts/`). Legitimate matches go into `ALLOWED_MATCHES` in `scripts/check-source-hygiene.ts` with a reason.
 - **Build:** `npm run build` → `tsup` (outputs the bundled `dist/eagent.js` + sourcemap)
 - **Dev (no rebuild needed):** `npm run dev` → `tsx src/entrypoint/cli.ts`
 - **Start built binary:** `npm start` → `node dist/eagent.js`

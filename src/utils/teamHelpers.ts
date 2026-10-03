@@ -1,9 +1,7 @@
 /**
- * Team metadata helpers (stage 21).
+ * Team metadata helpers.
  *
- * Reference: claude-code-source-code/src/utils/swarm/teamHelpers.ts
- *
- * On-disk shape (mirrors source, minus tmux/iTerm2/pane fields):
+ * On-disk shape:
  *
  *   ~/.easy-agent/teams/<sanitized-team-name>/
  *   ├── team.json              ← TeamFile (this file's read/write helpers)
@@ -12,18 +10,17 @@
  *   │   └── <name>.json.lock
  *   └── (worktree paths recorded inside TeamFile.members[].worktreePath)
  *
- * One team per process is the source-aligned constraint — `TeamCreate`
+ * One team per process is a deliberate constraint — `TeamCreate`
  * refuses to spawn a second team while one is active. That keeps the
  * mental model simple ("I'm leading exactly one team right now") and
  * spares us from cross-team routing logic in SendMessage.
  *
  * What this file does NOT do — and intentionally so:
- *   - tmux pane id / backendType tracking (source-only, no terminal mux here)
+ *   - terminal pane tracking (teammates are in-process)
  *   - hidden pane registry, member mode broadcasting
  *   - cross-machine plan_approval / shutdown protocols
- *   - registerTeamForSessionCleanup (source uses it for SIGINT cleanup;
- *     we rely on the existing graceful-shutdown path + best-effort
- *     `cleanupTeamDirectories` from TeamDelete instead).
+ *   - SIGINT-time team cleanup (the graceful-shutdown path and the
+ *     best-effort `cleanupTeamDirectories` from TeamDelete cover it).
  */
 
 import { readdir, readFile, rm } from "node:fs/promises";
@@ -47,9 +44,7 @@ import {
  * (always `name === TEAM_LEAD_NAME`) plus any teammates the lead has
  * spawned via `Agent({ name, team_name, ... })`.
  *
- * Source's member record has ~15 fields (tmuxPaneId, backendType, mode,
- * subscriptions, hiddenPaneIds, ...). We keep only the ones the
- * teaching version needs to coordinate sends + cleanup.
+ * Only the fields needed to coordinate sends + cleanup are recorded.
  */
 export interface TeamMember {
   /** Unique id for this member run. The lead keeps `<name>@<teamName>`. */
@@ -111,9 +106,8 @@ export interface TeamFile {
 }
 
 /**
- * The conventional "name" of the team lead in every team. Mirrors
- * source's `TEAM_LEAD_NAME` (claude-code-source-code/src/utils/swarm/
- * constants.ts:1). Hard-coded by convention so SendMessage can target
+ * The conventional "name" of the team lead in every team. Hard-coded by
+ * convention so SendMessage can target
  * the lead from inside a teammate without knowing the lead's agentId.
  */
 export const TEAM_LEAD_NAME = "team-lead";
@@ -150,10 +144,8 @@ export function getTeamFilePath(teamName: string): string {
 
 // ─── read / write (sync + async) ────────────────────────────────────
 //
-// Source ships both flavors because some render paths (`isTeamLead` in
-// AppState selectors) run in synchronous React contexts. Easy Agent
-// doesn't have those today, but we mirror the API surface so future
-// readers cross-referencing source aren't surprised.
+// Both flavors exist because some callers are synchronous (e.g. the
+// system-prompt builder in agents/teamPromptInjection.ts) and cannot await.
 
 function parseTeamFile(filePath: string, content: string): TeamFile {
   const parsed = parsePersistedJson<unknown>(filePath, content);
@@ -427,7 +419,7 @@ export async function cleanupTeamDirectory(teamName: string): Promise<void> {
 
 /**
  * Enumerate every team currently on disk. Used by TeamCreate to refuse
- * duplicates and by the `/teams` listing command (future stage).
+ * duplicates.
  */
 export async function listTeamNames(): Promise<string[]> {
   try {
