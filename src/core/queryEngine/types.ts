@@ -211,6 +211,11 @@ export interface QueryEngineOptions {
   permissionSettings?: PermissionSettings;
   sessionPermissionRules?: PermissionRuleSet;
   onPermissionRequest?: (request: PermissionRequest) => Promise<PermissionDecision>;
+  /**
+   * Tool-turn limit when neither `--max-turns` nor the `maxTurns` setting is
+   * set. Defaults to the agentic loop's MAX_TOOL_TURNS.
+   */
+  defaultMaxTurns?: number;
 }
 
 export interface QueryEngineState {

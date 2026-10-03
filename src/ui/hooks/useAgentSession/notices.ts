@@ -163,7 +163,9 @@ export function turnCompleteNotice(
     return {
       tone: "error",
       title: "Maximum tool turns reached",
-      body: `Reached maximum tool turns (${turnCount}).`,
+      body:
+        `Stopped after ${turnCount} tool turns. The work so far is kept; send a message such as ` +
+        `"continue" to keep going, or raise the limit with --max-turns or the maxTurns setting.`,
     };
   }
   if (reason === "blocking_limit") {

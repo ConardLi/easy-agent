@@ -44,6 +44,8 @@ Options:
                               json: one result object; stream-json: NDJSON stream
                               (system/init → assistant/user → result)
   --tool-search <mode>         ToolSearch mode: off | auto | on
+  --max-turns <n>             Maximum tool turns per request (default: 200 in
+                              the REPL, 50 with -p). Overrides the maxTurns setting.
   --resume [session-id]       Resume the latest or a specific session
   --plan                      Start in plan mode (read-only tools only)
   --auto                      Start in auto mode: an AI classifier auto-approves
@@ -117,6 +119,7 @@ Settings keys (in ~/.easy-agent/settings.json or <cwd>/.easy-agent/settings.json
   apiKeyHelper: "vault token"    Script whose stdout is used as the API token when none is in env
                                  (executed → trusted sources only)
   cleanupPeriodDays: 30          Transcript retention in days; 0 disables session persistence
+  maxTurns: 200                  Maximum tool turns per request (REPL default 200, -p default 50)
   additionalDirectories: ["..."] Extra dirs the file tools may access beyond cwd (trusted sources only)
   disableAllHooks: true          Master switch — turns off every hook AND the statusLine
   respectGitignore: false        Let Glob/Grep search files .gitignore would hide (default: true)
@@ -214,6 +217,16 @@ Settings keys (in ~/.easy-agent/settings.json or <cwd>/.easy-agent/settings.json
       process.exit(1);
     }
     flagSettings.toolSearch = mode;
+  }
+  const maxTurnsIndex = process.argv.indexOf("--max-turns");
+  if (maxTurnsIndex !== -1) {
+    const raw = process.argv[maxTurnsIndex + 1] ?? "";
+    const value = /^\d+$/.test(raw) ? Number(raw) : Number.NaN;
+    if (!Number.isSafeInteger(value) || value < 1) {
+      console.error("[easy-agent] --max-turns requires a positive integer.");
+      process.exit(1);
+    }
+    flagSettings.maxTurns = value;
   }
   if (model) flagSettings.model = model;
   if (permissionMode) flagSettings.mode = permissionMode;

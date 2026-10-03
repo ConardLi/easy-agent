@@ -76,6 +76,9 @@ export const SettingsSchema = z.looseObject({
   language: z.string().trim().min(1).optional(),
   apiKeyHelper: z.string().trim().min(1).optional(),
   cleanupPeriodDays: z.number().int().nonnegative().optional(),
+  // Tool-turn limit for one request of the main session. Sub-agents keep
+  // their own `maxTurns` frontmatter.
+  maxTurns: z.number().int().positive().optional(),
   // Tier 2
   disableAllHooks: z.boolean().optional(),
   // Master switch for file-history checkpointing (default on).
