@@ -9,7 +9,7 @@ npm ci
 npm run verify:production
 ```
 
-The command runs TypeScript validation, lint, the source hygiene check, builds the distributable CLI, and executes the `core`, `extensions`, and `ui` test groups. Any failed test or timeout returns a non-zero exit code. `npm run verify:release` runs this gate, then the `platform` group, then the package and installation checks; see [Releasing](./releasing.md).
+The command runs TypeScript validation, lint, the format check, the source hygiene check, builds the distributable CLI, and executes the `core`, `extensions`, and `ui` test groups. Any failed test or timeout returns a non-zero exit code. `npm run verify:release` runs this gate, then the `platform` group, then the package and installation checks; see [Releasing](./releasing.md).
 
 `npm test` runs only the three test groups, without typecheck, lint, or build. It selects the same tests as the gate; `npm test -- --list` prints them.
 
@@ -23,7 +23,11 @@ npm run format         # rewrite files in place
 npm run format:check   # report files that differ from the formatter output
 ```
 
-Lint is part of `verify:production`.
+Lint and the format check are part of `verify:production`. Run `npm run format` before committing.
+
+The formatter collapses repeated spaces in JSX text. Write text that needs them, such as indentation inside a `<Text>`, as a string expression: `<Text>{"  ↳ "}{label}</Text>`.
+
+`.git-blame-ignore-revs` lists the bulk formatting commit. GitHub skips it in blame views; run `git config blame.ignoreRevsFile .git-blame-ignore-revs` once to do the same locally.
 
 Each offline test process receives a temporary `HOME`, `USERPROFILE`, XDG directories, and Windows application-data directories. Provider credentials, API endpoints, MCP settings, editor overrides, and `EASY_AGENT_*` feature settings inherited from the developer environment are removed. Tests must create their own configuration and fixtures under the assigned temporary directories.
 

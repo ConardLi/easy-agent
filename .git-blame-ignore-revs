@@ -1,0 +1,5 @@
+# Bulk formatting commits. GitHub skips these in blame views; locally run
+# `git config blame.ignoreRevsFile .git-blame-ignore-revs` once.
+
+# style: format the codebase with Biome (#41)
+d29a181fe5b637bdf1cf8c79b87ce7ea87f312ab
