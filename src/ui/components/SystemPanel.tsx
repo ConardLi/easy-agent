@@ -1,4 +1,4 @@
-import React from "react";
+import type React from "react";
 import { Box, Text } from "ink";
 import { theme, glyph } from "../theme.js";
 import type { SystemNotice } from "../types.js";

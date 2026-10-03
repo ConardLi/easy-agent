@@ -5,7 +5,7 @@
  * Each message type gets distinct styling via Ink's Text component.
  */
 
-import React from "react";
+import type React from "react";
 import { Box, Text } from "ink";
 import type { MessageParam } from "@anthropic-ai/sdk/resources/messages.js";
 

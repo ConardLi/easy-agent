@@ -22,7 +22,7 @@
  *   then collapses the row entirely (no ghost line).
  */
 
-import React from "react";
+import type React from "react";
 import { Box, Text } from "ink";
 import type { AsyncAgentEntry } from "../../state/asyncAgentStore.js";
 

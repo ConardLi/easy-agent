@@ -45,7 +45,9 @@ export function createMcpFetch(config: RemoteConfig): typeof fetch {
     if (target.origin !== origin) return fetch(input, init);
     const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined));
     const resolved = await resolveMcpHeaders(config);
-    resolved.forEach((value, name) => headers.set(name, value));
+    resolved.forEach((value, name) => {
+      headers.set(name, value);
+    });
     return fetch(input, { ...init, headers });
   };
 }

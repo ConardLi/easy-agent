@@ -1,20 +1,4 @@
-/**
- * Visual smoke for P1 #7 — live collapsed groups with active/done text.
- *
- * Renders three live ToolCallList scenarios so you can confirm the tense +
- * dot switch (mirrors source's CollapsedReadSearchContent):
- *
- *   A. all in flight  → present tense + trailing "…" + blinking orange dot
- *                       e.g. "Searching 1 pattern · Reading 3 files · Listing 1 directory…"
- *   B. mixed (some done, some pending) → still active (present tense)
- *   C. all landed     → past tense, no "…", steady green dot
- *                       e.g. "Searched 1 pattern · Read 3 files · Listed 1 directory"
- *
- * The `⎿` line shows the most recent target (the file/pattern being touched).
- * A lone collapsible card (run length 1) is NOT grouped — it renders as a
- * normal single card.
- */
-import React from "react";
+
 import { PassThrough } from "node:stream";
 import { Box, Text, render } from "ink";
 import chalk from "chalk";

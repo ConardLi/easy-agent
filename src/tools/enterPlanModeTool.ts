@@ -8,7 +8,6 @@
  */
 
 import type { Tool, ToolContext, ToolResult } from "./Tool.js";
-import type Anthropic from "@anthropic-ai/sdk";
 import { getPlanFilePath, ensurePlansDirectory } from "../context/plans.js";
 
 export const enterPlanModeTool: Tool = {

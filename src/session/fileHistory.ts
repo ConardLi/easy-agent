@@ -524,13 +524,6 @@ async function withBackupFile<T>(
   }
 }
 
-async function readBackupFile(filePath: string): Promise<{ data: Buffer; stats: Stats }> {
-  return withBackupFile(filePath, async (handle, stats) => ({
-    data: await handle.readFile(),
-    stats,
-  }));
-}
-
 /**
  * Earliest (v1) backup name for a file — used when rewinding to a snapshot
  * that predates the file being tracked. Returns null if the file did not exist

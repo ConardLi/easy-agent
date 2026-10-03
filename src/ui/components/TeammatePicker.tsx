@@ -19,7 +19,7 @@
  *   apart lets either layout change without affecting the other.
  */
 
-import React from "react";
+import type React from "react";
 import { Box, Text } from "ink";
 import type { AsyncAgentEntry } from "../../state/asyncAgentStore.js";
 

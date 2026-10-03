@@ -19,7 +19,7 @@
  * thinking block work for `openai-responses` too.
  */
 
-import type { StreamRequestParams, StreamResult } from "../streaming.js";
+import type { StreamResult } from "../streaming.js";
 import type {
   ContentBlock,
   StreamEvent,

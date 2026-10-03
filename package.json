@@ -27,6 +27,10 @@
   "scripts": {
     "dev": "tsx src/entrypoint/cli.ts",
     "typecheck": "tsc --noEmit",
+    "test": "node --import tsx scripts/verify-production.ts",
+    "lint": "biome lint --error-on-warnings .",
+    "format": "biome format --write .",
+    "format:check": "biome format .",
     "check:source-hygiene": "node --import tsx scripts/check-source-hygiene.ts",
     "build": "tsup",
     "start": "node dist/eagent.js",
@@ -102,7 +106,7 @@
     "verify:production:ui": "node --import tsx scripts/verify-production.ts --group ui",
     "verify:production:platform": "node --import tsx scripts/verify-production.ts --group platform",
     "verify:production:live": "node --import tsx scripts/verify-production.ts --group live",
-    "verify:production": "npm run typecheck && npm run check:source-hygiene && npm run build && npm run verify:production:tests",
+    "verify:production": "npm run typecheck && npm run lint && npm run check:source-hygiene && npm run build && npm run verify:production:tests",
     "verify:release": "npm run verify:production && npm run verify:production:platform && node --import tsx src/scripts/test-stage36.ts",
     "verify:plugin": "tsx src/scripts/verify-plugin-compat.ts",
     "test:filehistory": "tsx src/scripts/smoke-filehistory.ts",
@@ -132,6 +136,7 @@
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.102.0",
+    "@biomejs/biome": "2.5.14",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@types/diff": "^7.0.2",
     "@types/he": "^1.2.3",

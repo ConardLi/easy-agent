@@ -56,8 +56,6 @@ function sseStream(chunks: string[]): ReadableStream<Uint8Array> {
   });
 }
 
-const BANNER = path.resolve(process.cwd(), "public/img/banner.jpeg");
-
 async function main(): Promise<void> {
   // ── [1] imageUtils ────────────────────────────────────────────────────────
   section("[1] imageUtils: detection + size guard");

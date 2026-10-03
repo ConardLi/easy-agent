@@ -1,4 +1,4 @@
-import React from "react";
+import type React from "react";
 import { Box, Text } from "ink";
 import type { FileSuggestion } from "../types.js";
 import { theme } from "../theme.js";

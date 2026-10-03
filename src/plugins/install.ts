@@ -377,8 +377,6 @@ async function installPluginUnlocked(
       if (rollbackExists) await fs.rename(rollback, installPath);
       throw error;
     }
-  } catch (error) {
-    throw error;
   } finally {
     await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
   }

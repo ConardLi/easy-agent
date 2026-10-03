@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { pathToFileURL } from "node:url";
 import { SettingsSchema, validateSettings } from "../config/schema.js";
 import { resolveFeatureSettings, loadFeatureSettings } from "../config/features.js";
 import { setFlagSettings, resetSettingsCache, type LoadedSource } from "../config/sources.js";

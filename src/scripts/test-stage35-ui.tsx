@@ -6,7 +6,7 @@
  * plugin state or the network.
  */
 
-import React from "react";
+import type React from "react";
 import { PassThrough } from "node:stream";
 import { render } from "ink";
 import { PluginManager } from "../ui/components/PluginManager.js";

@@ -7,7 +7,7 @@
  * The body shows a window of
  * pre-built lines at the current scroll offset (see useTranscript).
  */
-import React from "react";
+import type React from "react";
 import { Box, Text } from "ink";
 import { theme } from "../theme.js";
 

@@ -1,14 +1,4 @@
-/**
- * Stage 24 foundation smoke test (no TTY needed).
- *
- * Verifies:
- *   [1] flattenConversation produces stable, append-only items as a turn
- *       progresses (user → assistant+tool_use → tool_result).
- *   [2] ConversationView renders to a string without crashing.
- *   [3] A tool card only appears AFTER its result lands, and its key is
- *       stable across the two snapshots (append-only invariant).
- */
-import React from "react";
+
 import { renderToString } from "ink";
 import type { MessageParam } from "@anthropic-ai/sdk/resources/messages.js";
 import { flattenConversation, ConversationView } from "../ui/components/ConversationView.js";

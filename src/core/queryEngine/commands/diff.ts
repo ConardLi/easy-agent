@@ -69,7 +69,7 @@ export async function* handleDiffCommand(
   const MAX_PATCH_LINES = 400;
 
   let isRepo = false;
-  let files: DiffFilePatch[] = [];
+  const files: DiffFilePatch[] = [];
   let gitStat: DiffViewData["gitStat"] = null;
   let truncated = false;
 

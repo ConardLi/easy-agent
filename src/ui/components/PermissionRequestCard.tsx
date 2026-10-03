@@ -4,7 +4,7 @@
  * Edit and the new-file content for Write — instead of a bare `args: {...}`
  * dump.
  */
-import React from "react";
+import type React from "react";
 import { Box, Text, useStdout } from "ink";
 import { theme, glyph } from "../theme.js";
 import { StructuredDiff } from "./StructuredDiff.js";

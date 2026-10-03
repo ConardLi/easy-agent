@@ -39,7 +39,7 @@ const RULES: Rule[] = [
     id: "reference-source",
     pattern: new RegExp(
       [
-        String.raw`claude-code-source-code`,
+        "claude-code-source-code",
         String.raw`\bsource(?:'s|\s+code(?:'s)?|-aligned)\b`,
         String.raw`\b(?:[Mm]irror(?:s|ed|ing)?|vs\.?|[Ll]ike|[Ff]rom|[Mm]atch(?:es|ing)?|same as)\s+(?:the\s+)?source\b`,
         // "the source" as a noun for the reference implementation; common

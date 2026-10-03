@@ -7,7 +7,8 @@
 //   - Verb is sampled once per mount from SPINNER_VERBS (overridable via prop)
 //   - Suffix is a static U+2026 ellipsis (no animated dots — that's BriefSpinner)
 
-import React, { useEffect, useState } from "react";
+import type React from "react";
+import { useEffect, useState } from "react";
 import { Text } from "ink";
 import { sampleSpinnerVerb } from "../../constants/spinnerVerbs.js";
 import { prefersReducedMotion } from "../motionPrefs.js";

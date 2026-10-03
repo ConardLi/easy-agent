@@ -145,7 +145,7 @@ async function main(): Promise<void> {
   assert(bg.retry === false, "decideRetry: background 529 → retry=false");
   // foreground 529 → retries until MAX_529_RETRIES consecutive
   let consec = 0;
-  let fgDecisions: boolean[] = [];
+  const fgDecisions: boolean[] = [];
   for (let attempt = 1; attempt <= 5; attempt++) {
     const d = decideRetry(apiError(529, "overloaded"), attempt, {
       maxRetries: 10,
