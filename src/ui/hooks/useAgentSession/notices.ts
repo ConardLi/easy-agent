@@ -1,5 +1,5 @@
 /**
- * Pure, React-free helpers extracted from useAgentSession (二期 C1).
+ * Pure, React-free helpers extracted from useAgentSession.
  *
  * These four members capture no closure state and touch no hooks — they are
  * plain functions + one constant. Moving them out shrinks the hook file and

@@ -90,7 +90,7 @@ export async function mutatePermissionRule(
 }
 
 /**
- * Stage 33: `/permissions` (alias `/allowed-tools`). A dedicated allow/deny
+ * `/permissions` (alias `/allowed-tools`). A dedicated allow/deny
  * rule manager that mirrors `/config`'s layered-write model but is scoped to
  * permission rules.
  *   - (no args) | list  → every allow/deny rule grouped by source layer
@@ -110,8 +110,7 @@ export async function* handlePermissionsCommand(
   const cwd = ctx.cwd;
   const sub = (args[0] ?? "").toLowerCase();
 
-  // `/permissions` (no args) → interactive manager overlay (mirrors source's
-  // PermissionRuleList). The UI owns the keyboard and mutates rules directly
+  // `/permissions` (no args) → interactive manager overlay. The UI owns the keyboard and mutates rules directly
   // via mutatePermissionRule(); the text subcommands below remain for headless
   // use and power-users.
   if (sub === "") {

@@ -118,7 +118,7 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions): Prom
     readMergedStringSetting(options.cwd, "language").catch(() => undefined),
   ]);
 
-  // Stage 23: output style reshapes HOW the agent answers. A non-null
+  // Output style reshapes HOW the agent answers. A non-null
   // config means a non-default style is active; keepCodingInstructions
   // decides whether the base coding guidance survives.
   const activeStyle = getActiveOutputStyleConfig();
@@ -155,7 +155,7 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions): Prom
   // registry is populated at startup by bootstrapAgents() in cli.ts.
   const agentsReminder = formatAgentsSystemReminder(getAllAgents());
 
-  // Stage 21: Agent Teams reminder — appears only when the feature flag
+  // Agent Teams reminder — appears only when the feature flag
   // is on AND a team is currently active. The model already sees the
   // TeamCreate/TeamDelete/SendMessage tool schemas when the flag is on;
   // this block adds the workflow guidance source bakes into
@@ -164,7 +164,7 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions): Prom
   // instructions during a single-agent conversation.
   const teamReminder = formatTeamSystemReminder();
 
-  // Stage 23: the active output-style prompt, injected as a labelled
+  // The active output-style prompt, injected as a labelled
   // section. Placed in the dynamic block (not static) because the user can
   // flip styles at runtime via /output-style and we want the change to take
   // effect on the very next turn without a cache-stale prefix.

@@ -1,8 +1,6 @@
 /**
  * Auto Mode AI classifier.
  *
- * Reference: claude-code-source-code/src/utils/permissions/yoloClassifier.ts
- *
  * Given the conversation transcript and a single proposed tool action, the
  * classifier makes ONE lightweight, non-streaming API call and returns a
  * binary verdict: `shouldBlock` true (needs human confirmation) or false
@@ -10,9 +8,10 @@
  * the permission layer — this module only produces the block/allow signal
  * plus an `unavailable` flag for graceful degradation.
  *
- * NOTE (Stage 1): this module is standalone and is NOT yet wired into
- * `checkPermission`. It can be exercised directly (see step snapshot /
- * verification script) without affecting any existing permission path.
+ * Called from the Auto Mode branch of `checkPermission`
+ * (permissions.ts → resolveAutoModeDecision) after the deny rules, the Bash
+ * hard-deny list, the read-only fast path, and the safe allow rules have all
+ * failed to decide.
  */
 
 import type Anthropic from "@anthropic-ai/sdk";

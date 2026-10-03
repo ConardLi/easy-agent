@@ -152,7 +152,7 @@ Settings keys (in ~/.easy-agent/settings.json or <cwd>/.easy-agent/settings.json
   const dumpSystemPrompt = process.argv.includes("--dump-system-prompt");
   const permissionMode = parsePermissionMode(process.argv);
 
-  // Stage 28: headless / print mode. `-p` / `--print` runs a single
+  // Headless / print mode. `-p` / `--print` runs a single
   // non-interactive turn (stdin and/or the following arg → one Agentic Loop →
   // stdout → exit). The prompt argument is optional: when absent, input comes
   // from piped stdin. We only treat the token right after the flag as the
@@ -162,11 +162,11 @@ Settings keys (in ~/.easy-agent/settings.json or <cwd>/.easy-agent/settings.json
   const printPromptCandidate = isPrintMode ? process.argv[printIndex + 1] : undefined;
   const printPrompt =
     printPromptCandidate && !printPromptCandidate.startsWith("-") ? printPromptCandidate : undefined;
-  // Stage 28b: bypass permissions (auto-approve `ask` prompts). Honored by the
+  // Bypass permissions (auto-approve `ask` prompts). Honored by the
   // headless callback; `deny` rules still apply. Currently only wired into
   // print mode.
   const bypassPermissions = process.argv.includes("--dangerously-skip-permissions");
-  // Stage 28c: headless output format. `text` (default) prints just the final
+  // Headless output format. `text` (default) prints just the final
   // answer; `json` emits a single machine-readable `result` object.
   const outputFormatIndex = process.argv.indexOf("--output-format");
   const outputFormat = outputFormatIndex !== -1 ? process.argv[outputFormatIndex + 1] : undefined;
@@ -280,7 +280,7 @@ Settings keys (in ~/.easy-agent/settings.json or <cwd>/.easy-agent/settings.json
     console.error(`[easy-agent] skills bootstrap failed: ${(error as Error).message}`);
   });
 
-  // Agents (stage 19) — same reason as skills: the system prompt's
+  // Agents — same reason as skills: the system prompt's
   // <system-reminder> for available sub-agent types is built from the
   // registry, so the registry has to be populated before any prompt
   // rendering. Built-ins are synchronous; user/project agents come from
@@ -290,7 +290,7 @@ Settings keys (in ~/.easy-agent/settings.json or <cwd>/.easy-agent/settings.json
     console.error(`[easy-agent] agents bootstrap failed: ${(error as Error).message}`);
   });
 
-  // Output styles (stage 23) — must load before any system-prompt render
+  // Output styles — must load before any system-prompt render
   // (live REPL or --dump-system-prompt) so the persisted `outputStyle`
   // preference and any custom styles are reflected in the prompt.
   const { bootstrapOutputStyles } = await import("../styles/bootstrap.js");
@@ -298,14 +298,14 @@ Settings keys (in ~/.easy-agent/settings.json or <cwd>/.easy-agent/settings.json
     console.error(`[easy-agent] output-styles bootstrap failed: ${(error as Error).message}`);
   });
 
-  // User-defined slash commands (stage 23) — loaded before the UI so the
+  // User-defined slash commands — loaded before the UI so the
   // suggestion list + dispatch see them on frame 1.
   const { bootstrapUserCommands } = await import("../commands/userCommands/bootstrap.js");
   await bootstrapUserCommands(process.cwd()).catch((error) => {
     console.error(`[easy-agent] commands bootstrap failed: ${(error as Error).message}`);
   });
 
-  // Plugins (stage 35) — layer enabled plugins' skills/agents/commands/styles/
+  // Plugins — layer enabled plugins' skills/agents/commands/styles/
   // hooks on top of the base registries. This runs AFTER the four bootstraps
   // above so it is the final authority on registry contents. The prompt-facing
   // components are awaited (needed frame 1); MCP servers are started later,
@@ -356,7 +356,7 @@ Settings keys (in ~/.easy-agent/settings.json or <cwd>/.easy-agent/settings.json
     process.exit(0);
   }
 
-  // Stage 25 Tier 1 config — resolve trust-sensitive, execution-affecting
+  // Tier 1 config — resolve trust-sensitive, execution-affecting
   // settings now that the trust decision is settled:
   //   - apiKeyHelper:         mint an auth token via a script (only if the env
   //                           doesn't already provide one).
@@ -385,13 +385,13 @@ Settings keys (in ~/.easy-agent/settings.json or <cwd>/.easy-agent/settings.json
     const { applySessionRetentionPolicy } = await import("../session/storage.js");
     await applySessionRetentionPolicy(process.cwd()).catch(() => {});
 
-    // Stage 26: prune stale file-history backups under the same retention
+    // Prune stale file-history backups under the same retention
     // policy (cleanupPeriodDays). Best-effort; never blocks startup.
     const { cleanupOldFileHistoryBackups } = await import("../session/fileHistory.js");
     await cleanupOldFileHistoryBackups(process.cwd()).catch(() => {});
   }
 
-  // Stage 25 Tier 2 config — snapshot the toggles that sync hot paths consult:
+  // Tier 2 config — snapshot the toggles that sync hot paths consult:
   //   - disableAllHooks:          master kill switch for hooks + statusLine.
   //   - syntaxHighlightingDisabled / prefersReducedMotion: UI render prefs.
   {
@@ -408,7 +408,7 @@ Settings keys (in ~/.easy-agent/settings.json or <cwd>/.easy-agent/settings.json
       (await readMergedBooleanSetting(process.cwd(), "prefersReducedMotion").catch(() => undefined)) === true,
     );
 
-    // Stage 34: seed extended-thinking defaults from settings.json.
+    // Seed extended-thinking defaults from settings.json.
     //   - alwaysThinkingEnabled: false → thinking off by default this session
     //   - effortLevel: default output_config.effort for Anthropic models
     const { loadTrustedSettingSources, getScalarSetting } = await import("../config/sources.js");
@@ -430,7 +430,7 @@ Settings keys (in ~/.easy-agent/settings.json or <cwd>/.easy-agent/settings.json
     }
   }
 
-  // Stage 28: headless / print mode forks here — AFTER the shared setup
+  // Headless / print mode forks here — AFTER the shared setup
   // pipeline (bootstrap, apiKeyHelper, additionalDirectories, retention, hook
   // toggles) but BEFORE any Ink rendering. It runs one turn and exits, so we
   // never reach the interactive REPL below.
@@ -466,7 +466,7 @@ Settings keys (in ~/.easy-agent/settings.json or <cwd>/.easy-agent/settings.json
   // local → project → user → built-in default. `--model` lives in the flag
   // source installed above, so it naturally wins.
   //
-  // Stage 30: the resolved value is a model *handle* — either a declared
+  // The resolved value is a model *handle* — either a declared
   // `models` profile id or a raw model name. When no explicit `model` is set,
   // fall back to `defaultModel` (the multi-profile default) before the built-in.
   const resolvedModel =
@@ -482,16 +482,14 @@ Settings keys (in ~/.easy-agent/settings.json or <cwd>/.easy-agent/settings.json
   // the UI until it returned.
   //
   // Trade-off: if the user submits a query before MCP tools land, the
-  // model just doesn't see them yet. They'll appear on the next turn.
-  // This matches Claude Code's behavior — its `prefetchAllMcpResources`
-  // runs inside `useManageMCPConnections` (a React useEffect), so the
-  // REPL is interactive from frame 1 too.
+  // model just doesn't see them yet. They'll appear on the next turn. In
+  // exchange the REPL is interactive from frame 1.
   const { logWarn } = await import("../utils/log.js");
   void bootstrapMcp(process.cwd()).catch((error) => {
     logWarn(`MCP bootstrap failed: ${(error as Error).message}`);
   });
 
-  // Stage 35: bring up plugin-contributed MCP servers the same way — a second,
+  // Bring up plugin-contributed MCP servers the same way — a second,
   // non-blocking reconcile that starts their subprocesses without stalling the
   // first frame. Prompt-facing plugin components were already applied above.
   void refreshActivePlugins(process.cwd(), { pluginDirs }).catch((error) => {

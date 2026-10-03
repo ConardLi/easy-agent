@@ -1,10 +1,10 @@
 /**
- * Full-screen, scrollable, verbose transcript overlay (stage 24.1).
+ * Full-screen, scrollable, verbose transcript overlay.
  *
  * Rendered in place of the live frame while Ctrl+O is active. Because it's
  * `height = rows` tall it fills the viewport, pushing the (condensed) <Static>
- * scrollback out of view — so it reads as a dedicated transcript screen, the
- * same UX as Claude Code's `app:toggleTranscript`. The body shows a window of
+ * scrollback out of view — so it reads as a dedicated transcript screen.
+ * The body shows a window of
  * pre-built lines at the current scroll offset (see useTranscript).
  */
 import React from "react";

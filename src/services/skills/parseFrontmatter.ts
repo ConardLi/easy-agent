@@ -5,10 +5,8 @@
  * (parsed with the `yaml` package) and the markdown body. Returns the body
  * unchanged when no frontmatter delimiters are present.
  *
- * Reference: claude-code-source-code/src/utils/frontmatterParser.ts (full
- * implementation has shell hooks + path splitting; we keep just the
- * structural split here and do field-by-field normalization in
- * loadSkillsDir.ts).
+ * Only the structural split lives here; field-by-field normalization is
+ * done by normalizeFrontmatter() below.
  */
 
 import { parse as parseYaml } from "yaml";
@@ -120,9 +118,9 @@ export function extractFallbackDescription(body: string): string {
  * skill name (= dir name) so we can default-populate the `name` field, and
  * the markdown body so we can derive a fallback description.
  *
- * Unknown / deferred fields (model, effort, hooks, agent, shell, …) are
- * preserved untouched in `frontmatter.raw` so future stages can read them
- * without re-parsing the file.
+ * Fields without an effect (model, hooks, agent, shell, …) are preserved
+ * untouched in `frontmatter.raw` so callers can read them without
+ * re-parsing the file.
  */
 export function normalizeFrontmatter(
   raw: Record<string, unknown>,

@@ -1,7 +1,7 @@
 /**
- * Keyboard state machine for the AskUserQuestion dialog (stage 24).
+ * Keyboard state machine for the AskUserQuestion dialog.
  *
- * Aligned with Claude Code's AskUserQuestionPermissionRequest:
+ * Layout:
  *   - the model's options are a numbered list,
  *   - followed by a free-text "Type something" row (the user can type their
  *     own answer instead of picking),
@@ -15,10 +15,6 @@
  *   <type>     when the "Type something" row is focused, edit the free text
  *   Enter      confirm → advance, or finish on the last question
  *   Esc        cancel the whole interaction (resolve null)
- *
- * Reference: claude-code-source-code/src/components/permissions/
- *   AskUserQuestionPermissionRequest/QuestionView.tsx
- *   (the `__other__` input option + "Chat about this" footer row).
  */
 import { useEffect, useRef, useState } from "react";
 import { useInput } from "ink";

@@ -1,5 +1,5 @@
 /**
- * Placeholder substitution for user-command prompt templates (stage 23).
+ * Placeholder substitution for user-command prompt templates.
  *
  * Supported placeholders:
  *   - $ARGUMENTS        → the full raw argument string
@@ -8,11 +8,10 @@
  *                         Code convention: $1 is the FIRST argument)
  *
  * When the template contains NO placeholder but the user passed arguments,
- * we append "ARGUMENTS: <args>" so the model still sees them (source parity).
+ * we append "ARGUMENTS: <args>" so the model still sees them.
  *
- * We use a small hand-rolled shell-style tokenizer for indexed access
- * (handles single/double quotes); the source uses `shell-quote`, but we keep
- * dependencies minimal here.
+ * A small hand-rolled shell-style tokenizer handles indexed access
+ * (single/double quotes) without pulling in a shell-parsing dependency.
  */
 
 /**

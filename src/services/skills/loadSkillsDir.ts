@@ -7,10 +7,8 @@
  *   1. ~/.easy-agent/skills/             (per-user)
  *   2. <cwd>/.easy-agent/skills/         (per-project)
  *
- * Reference: claude-code-source-code/src/skills/loadSkillsDir.ts
- *   - We mirror getFileIdentity() with `realpath()` for symlink dedupe.
- *   - We DROP the legacy `.md` flat files and the bundled / mcp / remote
- *     loaders — see DEVELOPMENT-PLAN §17.6.1 for the deferral rationale.
+ * Only directory-style skills are loaded; flat `<name>.md` files in a
+ * skills dir are ignored. Plugin skill dirs go through loadSkillsFromDir.
  */
 
 import * as fs from "node:fs/promises";
@@ -129,7 +127,7 @@ export interface LoadAllSkillsResult {
 }
 
 /**
- * Stage 35: load skills from ONE arbitrary directory (e.g. a plugin's
+ * Load skills from ONE arbitrary directory (e.g. a plugin's
  * `skills/` dir). Reuses the same parser + realpath dedupe as the built-in
  * user/project scopes — the Plugin Loader must never re-implement parsing.
  */

@@ -6,7 +6,7 @@
  * Supports:
  *   - field edits: subject / description / activeForm
  *   - status changes (incl. "deleted" pseudo-status → calls deleteTask)
- *   - metadata merge (setting a key to null deletes it, like source)
+ *   - metadata merge (setting a key to null deletes it)
  *   - dependency edits via `addBlockedBy` / `addBlocks`
  *
  * The reason we accept `"deleted"` on `status` (rather than a separate

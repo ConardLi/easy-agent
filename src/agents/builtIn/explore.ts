@@ -1,10 +1,9 @@
 /**
  * Built-in `Explore` agent — read-only code search specialist.
  *
- * Mirrors claude-code-source-code/src/tools/AgentTool/built-in/exploreAgent.ts.
- * The source declares `disallowedTools: ['Agent', 'Write', 'Edit', ...]`
+ * The definition declares `disallowedTools: ['Agent', 'Write', 'Edit', ...]`
  * AND a "READ-ONLY MODE" header in the system prompt to belt-and-suspenders
- * its read-only guarantee. We follow the same pattern.
+ * its read-only guarantee.
  *
  * Why both?
  *   - `disallowedTools` is the structural guarantee: even if the model

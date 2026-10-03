@@ -8,8 +8,7 @@ import {
 /**
  * WebSearch — search the web and return a list of result links.
  *
- * Reference: claude-code-source-code/src/tools/WebSearchTool/WebSearchTool.ts.
- * Like the source, this works WITHOUT any third-party key: it prefers
+ * Works WITHOUT any third-party key: it prefers
  * Anthropic's server-side `web_search` tool (on Anthropic endpoints) and falls
  * back to scraping Bing otherwise. See webSearch/adapters.ts for selection.
  */

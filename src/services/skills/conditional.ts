@@ -3,10 +3,9 @@
  * frontmatter into the visible skill set when their patterns match a file
  * the agent just touched (Read / Write / Edit / Glob).
  *
- * Reference: claude-code-source-code/src/skills/loadSkillsDir.ts
  *   `activateConditionalSkillsForPaths` — uses gitignore-style matching
- *   via the `ignore` package; we follow the same library + semantics so
- *   patterns authored against Claude Code work unmodified.
+ *   via the `ignore` package, so patterns authored for Claude Code skills
+ *   work unmodified.
  *
  * Activation is one-way and sticky for the lifetime of the process: once a
  * skill activates, it stays in the visible set until restart. This avoids

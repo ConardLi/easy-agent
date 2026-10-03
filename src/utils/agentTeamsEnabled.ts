@@ -1,13 +1,12 @@
 /**
- * Feature flag for Agent Teams (stage 21).
+ * Feature flag for Agent Teams.
  *
- * Mirrors source's `agentSwarmsEnabled.ts` killswitch pattern:
+ * Pattern:
  *   - One central gate function (`isAgentTeamsEnabled`).
  *   - Two opt-in signals: a CLI flag and an environment variable.
  *   - Defaults to OFF — teams must be explicitly enabled.
  *
- * Why a feature flag at all (source ships it as the "tengu_amber_flint"
- * GrowthBook gate):
+ * Why a feature flag at all:
  *
  *   1. The team toolchain (TeamCreate / TeamDelete / SendMessage) adds
  *      three new schema-visible tools the model can call. When teams are
@@ -16,20 +15,17 @@
  *      lights up unrelated `<system-reminder>` guidance.
  *   2. Teams persist state on disk (~/.easy-agent/teams/...). For a user
  *      who never opted in we should never create that directory tree.
- *   3. Forward compatibility: keeping the gate isolated means future
- *      stages can extend it (tmux backend, plan_approval protocol, …)
- *      without touching every call site that asks "is this feature on?".
+ *   3. Keeping the gate in one function means new opt-in signals can be
+ *      added without touching every call site that asks "is this
+ *      feature on?".
  *
  * Resolution order (any single signal flips the flag on):
  *
  *   --agent-teams (CLI flag, checked via process.argv)
  *   EASY_AGENT_TEAMS=1 (env var; accepts 1/true/yes/on, anything else off)
  *
- * Mirrors source's check shape:
- *   claude-code-source-code/src/utils/agentSwarmsEnabled.ts:24-44
- *   (we drop USER_TYPE === 'ant' and the GrowthBook killswitch because
- *    Easy Agent has no analytics service and no internal-vs-external
- *    distinction — every install is "external").
+ * There is no remote killswitch: Easy Agent has no analytics or
+ * feature-flag service.
  */
 
 const TRUTHY_VALUES = new Set(["1", "true", "yes", "on"]);
@@ -44,8 +40,7 @@ function isEnvTruthy(value: string | undefined): boolean {
  *
  * Read on every Tool.isEnabled() call (cheap — pure string/array checks)
  * so a settings reload that sets the env var mid-session is picked up
- * without a process restart. CLI-flag opt-in is locked at startup,
- * which is the source-aligned behavior.
+ * without a process restart. CLI-flag opt-in is locked at startup.
  */
 export function isAgentTeamsEnabled(): boolean {
   if (process.argv.includes("--agent-teams")) return true;

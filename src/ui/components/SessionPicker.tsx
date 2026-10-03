@@ -1,7 +1,7 @@
 /**
  * SessionPicker — interactive overlay for `/resume`. Lists the project's saved
  * sessions; the user moves the cursor with ↑/↓ (or a 1-9 quick key) and presses
- * Enter to switch. Mirrors source's LogSelector (commands/resume): each row is
+ * Enter to switch. Each row is
  * labelled by the session's first user prompt (not the opaque UUID), and only a
  * bounded window of rows is shown at once so a long history can't fill the
  * screen — the viewport scrolls to keep the cursor in view.

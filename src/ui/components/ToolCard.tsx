@@ -1,12 +1,10 @@
 /**
- * Shared chrome for tool-call cards (stage 24.4), aligned with Claude Code's
- * AssistantToolUseMessage + MessageResponse look:
+ * Shared chrome for tool-call cards:
  *
  *   ● Edit(src/foo.ts)              ← status dot + bold name + (target)
  *     ⎿  +12 -8  (ctrl+o to expand) ← dimmed result line under a corner gutter
  *
- * The dot is colored by state (grey = running, green = ok, red = error),
- * mirroring source's ToolUseLoader (BLACK_CIRCLE colored success/error/dim).
+ * The dot is colored by state (grey = running, green = ok, red = error).
  * `ToolCardHeader`, `ResultLine` and `ToolResultSummary` are rendered by both
  * the live `ToolCallList` and the historical `InlineToolCard`, so a card looks
  * identical in-flight and once archived.
@@ -18,7 +16,7 @@ import { useBlink } from "../hooks/useBlink.js";
 import type { ToolLine } from "../utils/toolCardFormat.js";
 
 /**
- * The tool-card lifecycle, mirroring source's AssistantToolUseMessage states:
+ * The tool-card lifecycle:
  *   - queued             → emitted but not started (static dim dot)
  *   - running            → actively executing (blinking dot)  [alias: pending]
  *   - waiting-permission → blocked on the user's approval (blinking dot)
@@ -55,7 +53,7 @@ function dotColor(state: ToolState): string {
 /**
  * The status dot in its 2-col gutter (`● ` / `✗ ` …), colored + blinking by
  * state. Shared by `ToolCardHeader` and the live collapsed-group card so every
- * card's leading dot behaves identically — same model as source's ToolUseLoader.
+ * card's leading dot behaves identically.
  */
 export function ToolDot({ state }: { state: ToolState }): React.ReactNode {
   const blinkOn = useBlink(isActive(state));
@@ -67,7 +65,7 @@ export function ToolDot({ state }: { state: ToolState }): React.ReactNode {
  * One-line tool header: `● Label(target)`. The status dot occupies a 2-col
  * gutter (dot + space) so result lines align under the label. While the tool
  * is actively working the dot blinks (shared clock, see useBlink); a queued
- * card shows a steady dim dot — same model as source's ToolUseLoader.
+ * card shows a steady dim dot.
  */
 export function ToolCardHeader({
   line,
@@ -90,7 +88,7 @@ export function ToolCardHeader({
 }
 
 /**
- * Dimmed `⎿` corner gutter + body, matching source's MessageResponse. The
+ * Dimmed `⎿` corner gutter + body. The
  * 4-col gutter (`  ⎿ `) lines the body up just past the header's dot+label.
  */
 export function ResultLine({ children }: { children: React.ReactNode }): React.ReactNode {

@@ -1,20 +1,16 @@
 /**
  * TodoWriteTool — V1 会话级任务清单工具。
  *
- * 严格参照 Claude Code 源码 `tools/TodoWriteTool/TodoWriteTool.ts` 的语义：
+ * 语义：
  *
  *   1. 输入只有一个 `todos: TodoItem[]`，每次**全量替换**之前的列表
  *   2. allDone（全部 completed）→ 存为空数组，"用完即归零"
- *   3. 状态写入按 sessionId 隔离的内存 store（对应源码的
- *      `appState.todos[agentId ?? sessionId]`）
- *   4. tool result 文本与源码一致："Todos have been modified successfully..."
- *   5. 权限层面：源码用 `shouldDefer: true` + `checkPermissions: allow`
- *      ——本仓库在 `permissions.ts` 里把 TodoWrite 写成全模式 allow
+ *   3. 状态写入按 sessionId 隔离的内存 store（子 Agent 有自己的 sessionId）
+ *   4. tool result 固定为 "Todos have been modified successfully..."
+ *   5. 权限：`permissions.ts` 把 TodoWrite 列为协调类工具，所有模式都放行
  *
- * V1 的三个内生限制（待 V2 解决）：
- *   - 仅会话内（进程退出即失）
- *   - 平铺列表，无依赖关系
- *   - 单 agent，无 owner / claim
+ * V1 的限制：只在会话内有效（进程退出即丢失），平铺列表没有依赖关系，
+ * 也没有 owner / claim。需要这些能力时改用 V2 的 Task 工具。
  */
 
 import { setTodos } from "../state/todoStore.js";
@@ -119,15 +115,14 @@ export const todoWriteTool: Tool = {
 
     const sessionId = context.sessionId ?? "default";
 
-    // Mirror source code: when every todo is `completed`, store an empty
-    // list. The "all done" auto-clear keeps the UI from accumulating stale
+    // When every todo is `completed`, store an empty list. The "all done" auto-clear keeps the UI from accumulating stale
     // checkmarks across long sessions.
     const allDone = parsed.length > 0 && parsed.every((t) => t.status === "completed");
     const newStored = allDone ? [] : parsed;
     setTodos(sessionId, newStored);
 
-    // Result text matches source verbatim so the model gets the same
-    // post-call nudge it expects from real Claude Code behavior.
+    // Fixed result text: the trailing sentences nudge the model to keep
+    // using the list and carry on with the work.
     return {
       content:
         "Todos have been modified successfully. " +
@@ -144,8 +139,7 @@ export const todoWriteTool: Tool = {
   },
 
   isEnabled() {
-    // Mirrors source's `!isTodoV2Enabled()` guard: TodoWrite V1 and the
-    // Task V2 tools are mutually exclusive. The runtime toggle lives in
+    // TodoWrite V1 and the Task V2 tools are mutually exclusive. The runtime toggle lives in
     // taskModeStore and is flipped by `/tasks task|todo`.
     return isTodoModeEnabled();
   },

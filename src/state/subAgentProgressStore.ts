@@ -10,11 +10,7 @@
  *   already use this pattern for cross-cutting state updates) gives us
  *   a clean side-channel: the tool publishes, the UI subscribes.
  *
- * Reference: claude-code-source-code/src/tools/AgentTool/UI.tsx
- *   The source's renderToolUseProgressMessage() reads from a much
- *   richer ProgressMessage stream (full sub-agent message history,
- *   per-token usage breakdown, condensed-mode rendering, etc.). Stage
- *   19 ships a minimal subset that matches our UI capacity:
+ *   Each entry carries what the SubAgentCard renders:
  *     - Agent type + description
  *     - Live tool-use count
  *     - Most recent tool name (so user sees "Read", "Grep", etc.)
@@ -36,7 +32,7 @@ export interface SubAgentProgress {
   /** AgentDefinition.agentType (e.g. "Explore", "general-purpose"). */
   agentType: string;
   /**
-   * Stage 21 — teammate handle when this sub-agent was launched via
+   * Teammate handle when this sub-agent was launched via
    * `Agent({ name, team_name, ... })`. Set the UI prefers this to
    * `agentType` because two teammates can share the same agentType
    * (e.g. both backend + frontend are `general-purpose`), and showing

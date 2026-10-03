@@ -1,14 +1,13 @@
 /**
  * AgentDefinition — describes one sub-agent the model can spawn via the
- * `Agent` tool. Mirrors `BaseAgentDefinition` from
- * claude-code-source-code/src/tools/AgentTool/loadAgentsDir.ts but trimmed
- * to the fields stage 19 cares about (no `mcpServers`, no `hooks`, no
- * `memory`, no `isolation`, no `effort`, no plugin metadata).
+ * `Agent` tool. Per-agent `mcpServers`, `hooks`, `memory`, and `effort`
+ * are not supported.
  *
- * Three sources are supported, in priority order:
+ * Sources, in priority order:
  *   1. project — `<cwd>/.easy-agent/agents/*.md`   (highest)
  *   2. user    — `~/.easy-agent/agents/*.md`
- *   3. built-in — hard-coded in `src/agents/builtIn/`
+ *   3. plugin  — `agents/` of an enabled plugin
+ *   4. built-in — hard-coded in `src/agents/builtIn/`
  *
  * Collisions are resolved by name: a project-scope `Explore.md` overrides
  * the built-in Explore agent, and so on.
@@ -24,7 +23,7 @@ export type AgentPermissionMode = "default" | "plan" | "auto";
 /**
  * How the sub-agent's filesystem is sandboxed.
  *  - "none"     : default — runs in the parent's cwd.
- *  - "worktree" : stage 20 — runs inside a fresh `git worktree` so its
+ *  - "worktree" : runs inside a fresh `git worktree` so its
  *                 file edits don't touch the main working copy until
  *                 the user reviews them.
  */
@@ -35,7 +34,7 @@ export interface AgentDefinition {
   agentType: string;
 
   /** Human-readable description shown in the system prompt to help the
-   * model pick the right agent. Mirrors source's `whenToUse` field. */
+   * model pick the right agent. */
   whenToUse: string;
 
   /**
@@ -69,9 +68,9 @@ export interface AgentDefinition {
   /** Where this definition came from. */
   source: AgentSource;
 
-  /** Stage 35: owning plugin id (`name@marketplace`) when source is "plugin". */
+  /** Owning plugin id (`name@marketplace`) when source is "plugin". */
   pluginId?: string;
-  /** Stage 35: owning plugin root directory, for provenance / reload / unload. */
+  /** Owning plugin root directory, for provenance / reload / unload. */
   pluginRoot?: string;
 
   /** Absolute path to the source `.md` file (custom agents only). */
@@ -79,8 +78,7 @@ export interface AgentDefinition {
 
   /**
    * Returns the system prompt for this agent. A function (not a string)
-   * to mirror the source pattern where built-ins compose their prompt
-   * from helpers — leaves the door open for richer composition later.
+   * so built-ins can compose their prompt from helpers at call time.
    */
   getSystemPrompt(): string;
 }

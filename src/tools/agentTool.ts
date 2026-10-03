@@ -1,13 +1,11 @@
 /**
  * Agent tool — the model's "delegate to a sub-agent" handle.
  *
- * Reference: claude-code-source-code/src/tools/AgentTool/AgentTool.tsx.
- * The source's AgentTool input schema is huge (prompt, description,
- * subagent_type, model, run_in_background, name, team_name, mode,
- * isolation, cwd, …). Stage 19 implements just the four fields the
- * tutorial needs: prompt, description, subagent_type, model.
+ * Input fields: prompt, description, subagent_type, model,
+ * run_in_background, isolation, and the Agent Teams pair name /
+ * team_name.
  *
- * Flow:
+ * Flow (foreground):
  *   1. Validate input + look up the AgentDefinition by name.
  *   2. Resolve the model (explicit override → agent default → parent's).
  *   3. Pull the parent's permission infrastructure off ToolContext (set
@@ -16,9 +14,13 @@
  *      the sub-agent's final text plus stats.
  *   5. Format the result so the parent model sees a structured summary.
  *
- * Plan-mode behavior: Agent declares `isReadOnly: true` (mirroring source
- * — the actual permission decisions happen on the sub-agent's individual
- * tool calls). However the permissions.ts plan-mode branch denies any
+ * `run_in_background: true` hands the same work to runAsyncAgentLifecycle
+ * and returns immediately; `isolation: "worktree"` runs the sub-agent in a
+ * fresh git worktree.
+ *
+ * Plan-mode behavior: Agent declares `isReadOnly: true` (the actual
+ * permission decisions happen on the sub-agent's individual tool calls).
+ * However the permissions.ts plan-mode branch denies any
  * tool not in PLAN_ALLOWED_TOOLS, so Agent cannot be spawned during
  * planning anyway. This is intentional — sub-agents shouldn't run while
  * the user is iterating on a plan they haven't approved.
@@ -60,7 +62,7 @@ import {
   type TeamMember,
 } from "../utils/teamHelpers.js";
 
-// Stage 20: short id helper. Crypto-grade uniqueness isn't needed —
+// Short id helper. Crypto-grade uniqueness isn't needed —
 // agentIds are scoped to one CLI session and we use them as map keys.
 function generateAgentId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
@@ -99,16 +101,16 @@ interface AgentInput {
   description?: string;
   subagent_type?: string;
   model?: string;
-  /** Stage 20: if true, return immediately and run the sub-agent in the background. */
+  /** If true, return immediately and run the sub-agent in the background. */
   run_in_background?: boolean;
   /**
-   * Stage 20: filesystem isolation level. Currently supports "worktree"
+   * Filesystem isolation level. Currently supports "worktree"
    * (creates a fresh `git worktree`) or "none". Per-call value overrides
    * the agent definition's `isolation` field.
    */
   isolation?: AgentIsolation;
   /**
-   * Stage 21 — Agent Teams. Short human-readable handle that other
+   * Agent Teams. Short human-readable handle that other
    * teammates use as the `to` value in SendMessage. Requires `team_name`
    * to also be set and forces `run_in_background: true` (an unnamed
    * synchronous Agent call would never be reachable by SendMessage
@@ -116,7 +118,7 @@ interface AgentInput {
    */
   name?: string;
   /**
-   * Stage 21 — Agent Teams. The team the new teammate joins. Must match
+   * Agent Teams. The team the new teammate joins. Must match
    * the team currently active in this session (set by TeamCreate).
    */
   team_name?: string;
@@ -269,7 +271,7 @@ export const agentTool: Tool = {
       };
     }
 
-    // ─── Stage 21: validate team-mode invariants ────────────────────
+    // ─── Validate team-mode invariants ──────────────────────────────
     //
     // Three failure modes we surface as errors rather than silently
     // ignoring the name/team_name fields (silent ignore is the worst
@@ -377,12 +379,9 @@ export const agentTool: Tool = {
       | ((request: PermissionRequest) => Promise<PermissionDecision>)
       | undefined;
 
-    // Stage 20: resolve isolation. Per-call > definition > "none".
+    // Resolve isolation. Per-call > definition > "none".
     //
-    // This precedence is intentional and mirrors source
-    // (claude-code-source-code/src/tools/AgentTool/AgentTool.tsx:663:
-    //   `const effectiveIsolation = isolation ?? selectedAgent.isolation`).
-    // The agent definition's `isolation` field acts as a DEFAULT, not a
+    // This precedence is intentional. The agent definition's `isolation` field acts as a DEFAULT, not a
     // hard floor — the model can override per-call. Users who want a
     // strict guarantee that "this agent always runs in a worktree"
     // should rely on:
@@ -391,8 +390,8 @@ export const agentTool: Tool = {
     //   - downstream review of the worktree path the tool result
     //     surfaces (an empty `worktree:` line in the result is a
     //     visible signal that isolation was skipped).
-    // We could enforce a strict floor here, but diverging from source's
-    // semantics would surprise readers cross-referencing the two repos.
+    // A strict floor is deliberately not enforced: a definition's
+    // isolation is a default the model may override per call.
     const effectiveIsolation: AgentIsolation =
       isolation ?? def.isolation ?? "none";
 
@@ -400,8 +399,7 @@ export const agentTool: Tool = {
     let isolationWarning: string | undefined;
     if (effectiveIsolation === "worktree") {
       // Try to set up a worktree. If the cwd isn't a git repo, fall
-      // back to no isolation but warn — the source's behaviour is
-      // similar (it logs and continues with cwd).
+      // back to no isolation but warn and continue with cwd.
       const inRepo = await isInsideGitRepo(context.cwd);
       if (!inRepo) {
         isolationWarning =
@@ -418,7 +416,7 @@ export const agentTool: Tool = {
       }
     }
 
-    // ─── Stage 20: async (run_in_background) branch ─────────────────
+    // ─── Async (run_in_background) branch ───────────────────────────
     //
     // When the model asks for backgrounding, we:
     //   1. Generate an agentId + ensure its .output JSONL file exists.
@@ -446,7 +444,7 @@ export const agentTool: Tool = {
       const sessionIdForOutput = context.sessionId ?? "default";
       const outputFile = await ensureTaskOutputFile(sessionIdForOutput, agentId);
 
-      // Stage 21: register the teammate in the team file BEFORE
+      // Register the teammate in the team file BEFORE
       // launching, so SendMessage from anywhere (including this same
       // model turn) can target them immediately.
       if (teammateIdentity) {
@@ -495,14 +493,7 @@ export const agentTool: Tool = {
 
       // Headless permission policy for background sub-agents.
       //
-      // Architecture mirrors source — see
-      // claude-code-source-code/src/tools/AgentTool/runAgent.ts:436-451
-      // (`isAsync → toolPermissionContext.shouldAvoidPermissionPrompts`).
-      // Source forwards canUseTool down to the sub-agent unchanged but
-      // gates ask-prompt behaviour via a flag on the permission context.
-      //
-      // We do the same: forward the parent's `onPermissionRequest` as
-      // usual (kept symmetric with the synchronous path), and rely on
+      // Forward the parent's `onPermissionRequest` as usual (kept symmetric with the synchronous path), and rely on
       // `shouldAvoidPermissionPrompts: true` (set inside
       // runAsyncAgentLifecycle) to make the agentic loop short-circuit
       // any "ask" decision into an auto-deny with a workaround message.
@@ -539,25 +530,19 @@ export const agentTool: Tool = {
       });
 
       // Tool-result text the model sees after launching a background
-      // sub-agent. Wording is taken almost verbatim from source's
-      // claude-code-source-code/src/tools/AgentTool/AgentTool.tsx:1748-1753
-      // ("Async agent launched successfully. … Work on non-overlapping
-      // tasks, or briefly tell the user what you launched and end your
-      // response. … If asked, you can check progress before completion
-      // by using FileRead or Bash tail on the output file."), with two
-      // very deliberate copy choices that we should NOT drift from:
+      // sub-agent. Two copy choices are deliberate and should NOT drift:
       //
       //   1. The two follow-on options ("work on non-overlapping tasks"
       //      vs "briefly tell the user and end your response") are
       //      presented as equal alternatives joined by "or" — neither
-      //      capitalised, neither emphasised. Earlier drafts of mine
-      //      ALL-CAPSed "END YOUR RESPONSE" and the model dutifully
-      //      stopped working entirely. Don't bias it.
+      //      capitalised, neither emphasised. An ALL-CAPS "END YOUR
+      //      RESPONSE" makes the model stop working entirely. Don't
+      //      bias it.
       //
       //   2. The output_file check is gated by "If asked" — meaning
       //      the model is explicitly allowed to Read it when the user
       //      requests an update, but should NOT do so preemptively
-      //      (which leads to the sleep+read loop the user reported).
+      //      (which leads to a sleep+read polling loop).
       const summary = [
         teammateIdentity
           ? `Teammate '${teammateIdentity.agentName}' joined team '${teammateIdentity.teamName}' (agent_type: ${agentType}).`
@@ -599,7 +584,7 @@ export const agentTool: Tool = {
       };
     }
 
-    // ─── Synchronous branch (the original stage 19 flow) ────────────
+    // ─── Synchronous (foreground) branch ────────────────────────────
 
     // The parent's tool_use id is our key into the sub-agent progress
     // store. UI subscribes to that store and merges live updates into
@@ -617,9 +602,8 @@ export const agentTool: Tool = {
     }
 
     // Map AgentProgressEvent (from the sub-agent's own loop) onto the
-    // store's update API. We track tool count via tool_use_done (not
-    // _start) to mirror the source's behavior of only counting completed
-    // calls — avoids an inflated mid-call number flickering on the UI.
+    // store's update API. Tool count is tracked via tool_use_done (not
+    // _start) so only completed calls are counted — avoids an inflated mid-call number flickering on the UI.
     const onProgress = progressKey
       ? (event: import("../agents/runAgent.js").AgentProgressEvent): void => {
           switch (event.type) {
@@ -641,12 +625,10 @@ export const agentTool: Tool = {
               break;
             case "turn_usage": {
               // Push the running token total to the store so the
-              // SubAgentCard can render "28.0k tokens" live (matches
-              // Claude Code's per-agent token line). We surface the
-              // FULL accumulated cost — input + output + cache reads
+              // SubAgentCard can render "28.0k tokens" live. We surface
+              // the FULL accumulated cost — input + output + cache reads
               // + cache creation — because that's what the user
-              // pays for and what the source counts in
-              // calculateAgentStats (UI.tsx).
+              // pays for.
               const u = event.cumulativeUsage;
               const totalTokens =
                 u.input_tokens +
@@ -680,12 +662,12 @@ export const agentTool: Tool = {
         ...(onPermissionRequest ? { onPermissionRequest } : {}),
         ...(context.abortSignal ? { abortSignal: context.abortSignal } : {}),
         ...(onProgress ? { onProgress } : {}),
-        // Stage 20: worktree-isolated runs override the cwd so every
+        // Worktree-isolated runs override the cwd so every
         // file tool resolves against the worktree path.
         ...(worktreeInfo ? { cwdOverride: worktreeInfo.worktreePath } : {}),
       });
 
-      // Stage 20: post-run worktree cleanup. Same dirty-check as the
+      // Post-run worktree cleanup. Same dirty-check as the
       // async path — keep when there are uncommitted changes / new
       // commits, remove when clean. The path is appended to the result
       // payload so the model knows where the work landed.
@@ -739,7 +721,7 @@ export const agentTool: Tool = {
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
 
-      // Stage 20: even on failure, run the same cleanup pass. If the
+      // Even on failure, run the same cleanup pass. If the
       // sub-agent crashed mid-edit we want to keep the worktree.
       if (worktreeInfo) {
         const { hasWorktreeChanges, removeAgentWorktree } = await import(
@@ -782,7 +764,7 @@ export const agentTool: Tool = {
   },
 
   isReadOnly(): boolean {
-    // Mirrors source: the Agent tool itself has no side effects — its
+    // The Agent tool itself has no side effects — its
     // sub-agent's individual tool calls each go through their own
     // permission checks. Plan-mode still rejects Agent because plan
     // mode's allow-list only contains Read/Grep/Glob.
@@ -794,7 +776,6 @@ export const agentTool: Tool = {
   },
 
   /**
-   * Mirrors source (`AgentTool.tsx → isConcurrencySafe()` returns true).
    * Each sub-agent runs in its own isolated context and the only shared
    * state it touches — the parent's permission settings + session rules
    * + the per-call entry in subAgentProgressStore — is keyed by the

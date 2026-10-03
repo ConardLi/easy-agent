@@ -1,13 +1,13 @@
 /**
  * Task V2 data model.
  *
- * Mirrors `claude-code-source-code/src/utils/tasks.ts::TaskSchema`:
  *   - id is an incrementing numeric string ("1", "2", ...), stable across
  *     restarts thanks to the high water mark file.
  *   - `blocks` / `blockedBy` store task ids, maintained bidirectionally by
  *     the store so the model only has to set one side.
- *   - `owner` is kept in the schema for forward-compat with multi-agent
- *     (stage 24+). Single-agent never writes it.
+ *   - `owner` is the agent that claimed the task on a shared team list;
+ *     the store refuses updates from other actors. Session lists leave
+ *     it unset.
  *   - `metadata` is a free-form bag for tool-specific state (e.g. hooks,
  *     verification flags). Nothing in V2 depends on it.
  */

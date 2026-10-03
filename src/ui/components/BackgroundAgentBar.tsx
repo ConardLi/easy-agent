@@ -1,11 +1,10 @@
 /**
  * BackgroundAgentBar — persistent footer line for background sub-agents.
  *
- * Inspired by Claude Code's `BackgroundTaskStatus.tsx`. The source shows
- * a clickable pill ("[ N background tasks ]") that expands into a
- * BackgroundTasksDialog modal. We keep just the pill + an inline summary
- * of each running agent — no dialog yet, since opening a modal in Ink
- * would require routing through usePromptInput's keyboard handler.
+ * Shows a count plus an inline summary of each running agent. There is no
+ * expandable dialog: opening a modal in Ink would require routing through
+ * usePromptInput's keyboard handler, and the teammate picker (Shift+↑/↓)
+ * already covers drilling into one agent.
  *
  * Layout (only rendered when there's at least one running agent):
  *
@@ -52,7 +51,7 @@ function formatNumber(n: number): string {
  * enough for a single line. Users who want details look at the
  * .output file or wait for the task-notification.
  *
- * Label selection (stage 21):
+ * Label selection:
  *   - Plain sub-agent      → "<agentType>"             e.g. "Explore"
  *   - Agent Teams teammate → "<name> · <agentType>"    e.g. "backend · general-purpose"
  *

@@ -27,6 +27,7 @@
   "scripts": {
     "dev": "tsx src/entrypoint/cli.ts",
     "typecheck": "tsc --noEmit",
+    "check:source-hygiene": "node --import tsx scripts/check-source-hygiene.ts",
     "build": "tsup",
     "start": "node dist/eagent.js",
     "prepack": "npm run typecheck && npm run build",
@@ -96,7 +97,7 @@
     "verify:production:ui": "node --import tsx scripts/verify-production.ts --group ui",
     "verify:production:platform": "node --import tsx scripts/verify-production.ts --group platform",
     "verify:production:live": "node --import tsx scripts/verify-production.ts --group live",
-    "verify:production": "npm run typecheck && npm run build && npm run verify:production:tests",
+    "verify:production": "npm run typecheck && npm run check:source-hygiene && npm run build && npm run verify:production:tests",
     "verify:release": "npm run verify:production && node --import tsx src/scripts/test-stage36.ts",
     "verify:plugin": "tsx src/scripts/verify-plugin-compat.ts",
     "test:filehistory": "tsx src/scripts/smoke-filehistory.ts",

@@ -1,5 +1,5 @@
 /**
- * Task-output file helpers for background sub-agents (stage 20).
+ * Task-output file helpers for background sub-agents.
  *
  * The model gets back `outputFile: <absolute path>` from a launched
  * background `Agent(...)` call. While the sub-agent runs in the
@@ -10,15 +10,14 @@
  * `<task-notification>` injected on completion also references the same
  * path.
  *
- * Path convention (mirrors source's `{projectTmp}/{session}/tasks/{id}.output`,
- * adapted to our `~/.easy-agent/projects/...` layout):
+ * Path convention:
  *
  *   ~/.easy-agent/projects/<sessionId-encoded>/tasks/<agentId>.output
  *
  * Why JSONL and not a plain narrative log:
  *   - One event per line — `tail` and `Read offset` work cleanly.
- *   - Structured (timestamp + type + payload) — when we later add a
- *     dedicated UI viewer it can parse the file without regex hacks.
+ *   - Structured (timestamp + type + payload) — the TeammateViewer UI
+ *     parses the file without regex hacks.
  *   - Resilient to partial writes: if the process crashes mid-line, the
  *     partial line is the *last* line and consumers can drop it.
  *
@@ -26,7 +25,7 @@
  *   - Writes are best-effort. We never let an output-file IO error bubble
  *     up to crash the sub-agent loop — the worst case is the user sees an
  *     empty .output file but the result still comes back via the
- *     notification (which is how the source behaves too).
+ *     notification.
  *   - We append in a single `fs.appendFile` per event (no buffering).
  *     Perf is fine — sub-agents emit O(turns) events, not O(stream tokens).
  *   - Path is derived purely from sessionId + agentId; both are pure

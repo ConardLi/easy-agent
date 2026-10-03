@@ -9,10 +9,9 @@
  * 2. Auto-exit — when the user is currently viewing or has selected an
  *    agent that just disappeared / finished, we want to drop them back
  *    to the main view automatically (otherwise the screen stays on a
- *    stale transcript that won't grow further). Mirrors source's
- *    `useTeammateViewAutoExit` (claude-code-source-code/src/hooks).
+ *    stale transcript that won't grow further).
  *
- *    Auto-exit policy (matches source):
+ *    Auto-exit policy:
  *      - `viewing` mode + agent no longer running AND no longer in
  *        store at all → eject. (Users keep viewing completed teammates
  *        while the entry still exists, so they can read the final

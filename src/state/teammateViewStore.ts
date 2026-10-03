@@ -1,8 +1,8 @@
 /**
  * teammateViewStore — small state machine for the "look at what each
- * teammate is doing" keyboard UX (stage 21).
+ * teammate is doing" keyboard UX.
  *
- * Three modes (mirrors source's `AppState.viewSelectionMode`):
+ * Three modes:
  *
  *   main      → default. The lead's main conversation is on screen.
  *   selecting → user pressed Shift+↑/↓; a picker overlay lists every
@@ -12,16 +12,11 @@
  *               hidden; the picked teammate's `.output` JSONL is
  *               rendered as a read-only transcript. Esc returns.
  *
- * Reference: claude-code-source-code/src/state/teammateViewHelpers.ts
- *   + hooks/useBackgroundTaskNavigation.ts (Shift+Up/Down + Enter + Esc
- *   + 'k' to kill) + hooks/useTeammateViewAutoExit.ts (auto-eject when
- *   the viewed teammate is no longer alive).
- *
  * Why a dedicated store and not a useState in App.tsx:
  *   - The keyboard handler lives in a custom hook (useTeammateNavigation)
  *     that needs to read+update the same state the renderer subscribes to.
- *   - The auto-exit watcher (useTeammateViewAutoExit) also subscribes.
- *   - Mirroring the other Stage 19/20 cross-cutting stores (todoStore /
+ *   - The auto-exit watcher (useTeammateViewState) also subscribes.
+ *   - Matching the other cross-cutting stores (todoStore /
  *     subAgentProgressStore / asyncAgentStore) keeps the pattern uniform.
  *
  * Scope:

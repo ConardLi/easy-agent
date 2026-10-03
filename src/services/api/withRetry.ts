@@ -2,8 +2,6 @@
  * API retry core — exponential backoff + jitter, with a foreground/background
  * 529 split.
  *
- * Reference: claude-code-source-code/src/services/api/withRetry.ts
- *
  * The source `withRetry` is ~800 lines, but most of it serves features Easy
  * Agent does not have: Bedrock/Vertex/OAuth token refresh, fast mode, the
  * persistent/unattended keep-alive path, fallbackModel downgrade, and the
@@ -27,9 +25,8 @@ import {
 } from "./errors.js";
 
 /**
- * Where a query originated. Source keys a 13-entry whitelist
- * (FOREGROUND_529_RETRY_SOURCES) off this; the teaching version collapses it
- * to two buckets — that is all the policy actually needs.
+ * Where a query originated. Two buckets are all the 529 retry policy needs:
+ * is a user waiting on the result or not.
  */
 export type QuerySource = "foreground" | "background";
 
@@ -80,7 +77,7 @@ export function getRetryDelay(
  * On a 529 (capacity overload), should we retry? Foreground sources retry
  * (the user is blocking on the result); background sources bail immediately to
  * avoid amplifying a capacity cascade. `undefined` defaults to foreground —
- * conservative for untagged call paths, matching source.
+ * conservative for untagged call paths.
  */
 export function shouldRetry529(source: QuerySource | undefined): boolean {
   return source === undefined || source === "foreground";

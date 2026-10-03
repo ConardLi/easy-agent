@@ -1,7 +1,5 @@
 /**
- * System-prompt reminder for the active Agent Teams session (stage 21).
- *
- * Reference: claude-code-source-code/src/utils/swarm/teammatePromptAddendum.ts
+ * System-prompt reminder for the active Agent Teams session.
  *
  * Two-tier visibility:
  *
@@ -20,10 +18,10 @@
  * as the skills + agents reminders) so the model treats it as ambient
  * context — applicable when relevant, ignorable otherwise.
  *
- * Stage 21 keeps this block intentionally short:
- *   - Source's prompt addendum (~150 lines) covers tmux pane mgmt,
- *     plan-mode approval, shutdown protocols, and DM summaries. We
- *     don't ship any of those, so most of that text would be lying.
+ * The block is intentionally short:
+ *   - It only describes features that exist (no pane management,
+ *     plan-mode approval, or shutdown protocol), so the model is never
+ *     told about capabilities it cannot use.
  *   - The TeamCreate / TeamDelete / SendMessage tool descriptions
  *     already carry the per-action usage notes; the reminder only adds
  *     CROSS-cutting workflow rules.

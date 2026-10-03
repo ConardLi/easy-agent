@@ -1,7 +1,7 @@
 /**
  * TaskList — summary of every task in the current task list.
  *
- * Mirrors the source tool. Returns a compact line per task with the
+ * Returns a compact line per task with the
  * blocker ids filtered down to *unresolved* blockers only (a completed
  * upstream task shouldn't look like it's still blocking anyone).
  *
@@ -40,7 +40,7 @@ export const taskListTool: Tool = {
     }
 
     // Completed upstream tasks no longer block anyone, so trim them out
-    // of the reported blockedBy list. Matches source TaskListTool.
+    // of the reported blockedBy list.
     const resolvedIds = new Set(allTasks.filter((t) => t.status === "completed").map((t) => t.id));
 
     const lines = allTasks

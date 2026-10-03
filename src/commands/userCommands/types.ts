@@ -1,15 +1,12 @@
 /**
- * User-defined slash command type definitions (stage 23).
+ * User-defined slash command type definitions.
  *
  * A "user command" is a Markdown file with optional YAML frontmatter that
  * the USER invokes by name (`/review src/foo.ts`). It's the user-triggered
  * sibling of a Skill (model-triggered). The body is a prompt template whose
  * `$ARGUMENTS` / `$1` placeholders are filled in at invocation time and then
- * submitted as a normal chat turn.
- *
- * Reference: claude-code-source-code/src/utils/markdownConfigLoader.ts
- *   (commands live in the `commands` config dir) +
- *   src/utils/argumentSubstitution.ts.
+ * submitted as a normal chat turn. Commands live in the `commands` config
+ * dir; placeholder rules are in argumentSubstitution.ts.
  */
 
 export type UserCommandSource = "user" | "project" | "plugin";
@@ -34,8 +31,8 @@ export interface UserCommand {
   filePath: string;
   /** Where this command came from. Project overrides user. */
   source: UserCommandSource;
-  /** Stage 35: owning plugin id (`name@marketplace`) when source is "plugin". */
+  /** Owning plugin id (`name@marketplace`) when source is "plugin". */
   pluginId?: string;
-  /** Stage 35: owning plugin root directory, for provenance / reload / unload. */
+  /** Owning plugin root directory, for provenance / reload / unload. */
   pluginRoot?: string;
 }

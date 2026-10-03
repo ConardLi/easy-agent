@@ -1,14 +1,14 @@
 /**
  * TodoList — V1 会话级任务清单的静态展示。
  *
- * 渲染策略（与 Claude Code 源码 Spinner.tsx 行为一致）：
+ * 渲染策略：
  *   - pending     → "○" + 暗色文字
  *   - in_progress → "▸" + 黄色 activeForm（不在这里转 spinner）
  *   - completed   → "✓" + 绿色删除线 content
  *
  * **不要在每行放独立的 Spinner**：在终端里每多一个 setInterval 就多一份
  * 80ms 的全树重绘压力，叠加 streamingText 高频更新会出现严重闪屏并导致
- * 终端无法滚动。源码做法是：
+ * 终端无法滚动。所以：
  *   - TodoList 行全部静态
  *   - 当前 in_progress 的 `activeForm` 由 **全局 StatusBar 的 spinner**
  *     接管（"leaderVerb = currentTodo?.activeForm ?? randomVerb"）

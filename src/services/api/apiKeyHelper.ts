@@ -12,9 +12,6 @@
  *
  * Precedence: an explicit `ANTHROPIC_AUTH_TOKEN` in the environment always
  * wins; the helper only fills in a token when none is set.
- *
- * Reference: source code's `apiKeyHelper` in the settings schema + its
- * credential resolution path.
  */
 
 import { exec } from "node:child_process";

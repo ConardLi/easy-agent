@@ -1,5 +1,5 @@
 /**
- * Plugin Runtime (plan §35.7).
+ * Plugin Runtime.
  *
  * The single orchestrator that turns "which plugins are installed + enabled"
  * into live registry state. It owns registry population for the four
@@ -8,7 +8,7 @@
  * single, idempotent pass — call `refreshActivePlugins(cwd)` again any time
  * (install / enable / disable / update) and the registries converge to match.
  *
- * Component precedence (plan §35.2):
+ * Component precedence:
  *   built-in  →  plugin  →  user  →  project      (later wins on bare-name
  * collisions). In practice plugin components are namespaced (`plugin:foo`) so
  * they never collide with a user/project component — the ordering only matters
@@ -114,7 +114,7 @@ export function _resetPluginRuntimeForTesting(): void {
 /**
  * Load every enabled + installed plugin plus any `--plugin-dir` dev roots.
  * A single plugin that fails to load contributes its `errors` but never aborts
- * the others (plan §35.2 fail-soft).
+ * the others.
  */
 async function discoverPlugins(cwd: string, pluginDirs: string[]): Promise<{
   plugins: LoadedPlugin[];

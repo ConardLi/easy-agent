@@ -46,8 +46,8 @@ type OpenAIResponsesNativeEvent =
   | { type: "error"; message: string };
 
 /**
- * Parse a `POST /responses` `text/event-stream` body. Faithfully replicates
- * llm-bridge's coverage (message lifecycle, text deltas, function-call
+ * Parse a `POST /responses` `text/event-stream` body. Covers everything
+ * llm-bridge's parser handles (message lifecycle, text deltas, function-call
  * start/delta/end, usage, error) and additionally surfaces the
  * reasoning-summary text stream as `thinking` events.
  */

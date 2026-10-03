@@ -1,5 +1,5 @@
 /**
- * Code-block syntax highlighting via cli-highlight (stage 24).
+ * Code-block syntax highlighting via cli-highlight.
  *
  * cli-highlight is CommonJS; we wrap it so the rest of the (ESM) UI imports
  * a single `highlightCode` helper and never has to think about interop or

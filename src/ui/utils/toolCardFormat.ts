@@ -120,9 +120,8 @@ export function extractBashOutput(content: string): string {
 /**
  * Structured view of a Bash tool_result, separating stdout, stderr and the
  * exceptional states (timeout / abort / spawn failure / sandbox violation) so
- * the UI can render each on its own visual layer. Mirrors source's
- * `BashToolResultMessage` split (stdout default, stderr `isError`, warnings
- * dim, sandbox tags stripped before display).
+ * the UI can render each on its own visual layer (stdout default, stderr
+ * `isError`, warnings dim, sandbox tags stripped before display).
  */
 export interface BashResult {
   /** Original command, when present in the metadata header. */
@@ -427,8 +426,7 @@ export function computeCollapsedCounts(members: CollapseInput[]): {
 
 /**
  * A short tag rendered after a tool-card header (`Bash(npm test) [timeout: 5m]`,
- * `WebFetch(example.com) [200 OK]`, `MCP read [slack]`). Mirrors source's
- * per-tool `renderToolUseTag`: a low-noise, high-density hint that augments the
+ * `WebFetch(example.com) [200 OK]`, `MCP read [slack]`): a low-noise, high-density hint that augments the
  * `Label(target)` without competing with it. Returns undefined for tools that
  * have nothing useful to tag.
  *

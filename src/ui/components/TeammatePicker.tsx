@@ -1,6 +1,6 @@
 /**
  * TeammatePicker — overlay list of running background sub-agents the
- * user can pick from to view their transcript (stage 21).
+ * user can pick from to view their transcript.
  *
  * Mounted by App.tsx when `teammateViewStore.mode === 'selecting'`.
  *
@@ -11,14 +11,12 @@
  *     frontend · general-purpose (2 tools, 0.6k tokens, 8s)   last: Read
  *     reviewer · security-review (7 tools, 2.4k tokens, 22s)  last: Grep
  *
- * Mirrors source's TeammateSpinnerTree expanded view + the picker
- * cursor handled by hooks/useBackgroundTaskNavigation.ts.
+ * The picker cursor is driven by hooks/useTeammateNavigation.ts.
  *
  * Why a separate component (not inlined in BackgroundAgentBar):
  *   BackgroundAgentBar is always-on per-row summary. The picker is a
  *   modal-ish overlay only visible while selecting. Keeping the two
- *   apart lets us swap layouts (we eventually want a "tree" view that
- *   shows tool-uses inline like source's TeammateSpinnerTree.tsx).
+ *   apart lets either layout change without affecting the other.
  */
 
 import React from "react";

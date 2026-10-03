@@ -9,7 +9,7 @@ npm ci
 npm run verify:production
 ```
 
-The command runs TypeScript validation, builds the distributable CLI, and executes the `core`, `extensions`, and `ui` test groups. Any failed test or timeout returns a non-zero exit code. `npm run verify:release` includes this gate before the package and installation checks.
+The command runs TypeScript validation, the source hygiene check, builds the distributable CLI, and executes the `core`, `extensions`, and `ui` test groups. Any failed test or timeout returns a non-zero exit code. `npm run verify:release` includes this gate before the package and installation checks.
 
 Each offline test process receives a temporary `HOME`, `USERPROFILE`, XDG directories, and Windows application-data directories. Provider credentials, API endpoints, MCP settings, editor overrides, and `EASY_AGENT_*` feature settings inherited from the developer environment are removed. Tests must create their own configuration and fixtures under the assigned temporary directories.
 
@@ -87,6 +87,14 @@ Run the configuration trust suite after changing settings precedence, environmen
 ```bash
 npm run test:config-trust
 ```
+
+## Source hygiene
+
+`npm run check:source-hygiene` scans production code under `src/` for roadmap stage numbers, development-plan references, pointers to a reference implementation, and tutorial or simplification wording. Comments should describe current behavior, constraints, and reasons.
+
+`src/scripts/` is excluded because it holds test and smoke scripts that are not bundled, and their stage-numbered names are kept for command compatibility. `step/`, `article/`, and historical development documents are outside the scanned tree.
+
+A legitimate match, such as the Explanatory output style's teaching wording, goes into `ALLOWED_MATCHES` in `scripts/check-source-hygiene.ts` with a reason. An allowance that no longer matches any line fails the check, so the list cannot go stale.
 
 ## Platform and external checks
 

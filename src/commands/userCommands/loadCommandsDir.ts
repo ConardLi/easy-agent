@@ -1,5 +1,5 @@
 /**
- * Disk loader for user-defined slash commands (stage 23).
+ * Disk loader for user-defined slash commands.
  *
  * Discovers `*.md` files (recursively) in two scopes:
  *   1. ~/.easy-agent/commands/         (user)
@@ -15,8 +15,6 @@
  *   argument-hint  — UI hint for args
  *   model          — per-turn model override
  *   allowed-tools  — tool whitelist (CSV or array)
- *
- * Reference: claude-code-source-code/src/utils/markdownConfigLoader.ts
  */
 
 import * as fs from "node:fs/promises";
@@ -147,7 +145,7 @@ export interface LoadAllUserCommandsResult {
 }
 
 /**
- * Stage 35: load slash commands from ONE arbitrary directory (e.g. a plugin's
+ * Load slash commands from ONE arbitrary directory (e.g. a plugin's
  * `commands/` dir), reusing the recursive `.md` walk + subdir→`:` namespacing.
  */
 export async function loadCommandsFromDir(

@@ -2,11 +2,8 @@
  * SubAgentCard — rich tool-call card for `Agent` invocations.
  *
  * Replaces the bare "⚡ Using tool: Agent" line you'd otherwise see for
- * every sub-agent call. Inspired by Claude Code's
- * `claude-code-source-code/src/components/AgentProgressLine.tsx` (and
- * the surrounding `renderToolUseProgressMessage` in
- * `tools/AgentTool/UI.tsx`), but distilled to what we can render with
- * the data flowing through `subAgentProgressStore`.
+ * every sub-agent call, built from the data flowing through
+ * `subAgentProgressStore`.
  *
  * Layout:
  *
@@ -137,9 +134,8 @@ export function SubAgentCard({ toolCall }: SubAgentCardProps): React.ReactNode {
   //   Done    → "<count> tool uses · <tokens> tokens · <duration>"
   // Token line is live — agentTool publishes cumulative usage from each
   // sub-agent turn into the store, so this number ticks upward while
-  // the sub-agent is still working (matches Claude Code's behavior of
-  // showing "17 tool uses · 28.0k tokens" mid-flight, side-by-side
-  // with sibling agents in a parallel batch).
+  // the sub-agent is still working ("17 tool uses · 28.0k tokens"
+  // mid-flight, side-by-side with sibling agents in a parallel batch).
   let body: React.ReactNode = null;
   if (isRunning) {
     const parts: string[] = [];

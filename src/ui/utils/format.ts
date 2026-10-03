@@ -1,7 +1,6 @@
 /**
- * Human-readable size/duration formatting, mirroring source's
- * `src/utils/format.ts`. Used by the live Bash progress indicators
- * (ShellProgressMessage parity) and reusable by any other UI surface.
+ * Human-readable size/duration formatting. Used by the live Bash progress
+ * indicators and reusable by any other UI surface.
  */
 
 /** `1536` → `"1.5KB"`, `500` → `"500 bytes"`. */
@@ -23,8 +22,7 @@ export function formatFileSize(sizeInBytes: number): string {
 
 /**
  * `90000` → `"1m 30s"`, `5000` → `"5s"`. With `hideTrailingZeros`, drops
- * zero-valued trailing units (`120000` → `"2m"`). Mirrors source's
- * `formatDuration`.
+ * zero-valued trailing units (`120000` → `"2m"`).
  */
 export function formatDuration(
   ms: number,

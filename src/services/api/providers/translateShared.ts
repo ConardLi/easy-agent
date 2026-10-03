@@ -1,9 +1,9 @@
 /**
  * Shared, side-effect-free helpers used by more than one provider translator.
  *
- * Extracted from providerStream.ts (二期 A) so the per-provider translation
- * modules (openaiTranslate / geminiTranslate) and the streaming orchestrator
- * can all depend on them without importing one another. Behavior is unchanged.
+ * Kept in their own module so the per-provider translation modules
+ * (openaiTranslate / geminiTranslate) and the streaming orchestrator
+ * (providerStream.ts) can all depend on them without importing one another.
  */
 
 /**

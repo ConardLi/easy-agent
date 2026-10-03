@@ -13,8 +13,7 @@ import { validateFetchUrl } from "./webFetch/urlValidation.js";
  * WebFetch — fetch a URL, convert it to markdown, and run the model's prompt
  * over the content to extract just what's relevant.
  *
- * Reference: claude-code-source-code/src/tools/WebFetchTool/WebFetchTool.ts.
- * Two-stage design (mirrors the source): fetch + convert, then a secondary
+ * Two-stage design: fetch + convert, then a secondary
  * model pass that applies `prompt` to the fetched markdown. Preapproved
  * documentation hosts skip the confirmation prompt; everything else is gated
  * per-domain by the permission system (see permissions.ts WebFetch branch).
@@ -147,7 +146,7 @@ export const webFetchTool: Tool = {
   isEnabled(): boolean {
     return true;
   },
-  // Intentionally NOT concurrency-safe (diverges from source). WebFetch may
+  // Intentionally NOT concurrency-safe. WebFetch may
   // trigger a per-domain "ask" prompt, and Easy Agent's permission UI is
   // single-flight — two concurrent prompts would clobber each other's resolver
   // and deadlock the turn. Serializing WebFetch lets prompts happen one at a

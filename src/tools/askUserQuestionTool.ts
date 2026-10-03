@@ -2,17 +2,15 @@
  * AskUserQuestion — let the model put a structured multiple-choice question
  * to the user instead of guessing or rattling off options in prose.
  *
- * The interaction model mirrors Claude Code's AskUserQuestionTool: the tool
- * itself does no I/O of its own — it hands the questions to the frontend via
+ * The tool itself does no I/O of its own — it hands the questions to the frontend via
  * `context.requestUserQuestion`, which renders an interactive selector and
  * resolves with the user's choices. The tool then formats those answers back
  * to the model. If there's no interactive frontend (headless / pipe mode) the
  * callback is absent and we return a clear error so the model falls back to
  * asking inline.
  *
- * Reference: claude-code-source-code/src/tools/AskUserQuestionTool/
- *   AskUserQuestionTool.tsx (schema: questions[].{question,header,options,
- *   multiSelect}; result: "User has answered your questions: …").
+ * Schema: questions[].{question,header,options,multiSelect}; result text
+ * starts with "User has answered your questions: …".
  */
 import type { Tool, ToolContext, ToolResult, UserQuestion } from "./Tool.js";
 

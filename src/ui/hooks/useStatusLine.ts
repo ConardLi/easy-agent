@@ -6,8 +6,8 @@ import {
 import { runControlledProcess } from "../../utils/controlledProcess.js";
 
 /**
- * Context handed to a user-configured status-line command on stdin (as JSON),
- * mirroring source's statusLine hook contract. Scripts read this to render a
+ * Context handed to a user-configured status-line command on stdin (as JSON).
+ * Scripts read this to render a
  * custom line (e.g. inject git branch, a cost budget, etc.).
  */
 export interface StatusLineContext {

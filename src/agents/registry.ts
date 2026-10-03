@@ -5,8 +5,7 @@
  * Insertion order matters: the bootstrap places built-ins first, user
  * agents second, project agents third — and `Map.set()` overwrites on
  * collision, so project > user > built-in by name. Same precedence
- * model as skills/registry.ts and the source's plugin-aware loader in
- * loadAgentsDir.ts.
+ * model as skills/registry.ts.
  */
 
 import type { AgentDefinition } from "./types.js";

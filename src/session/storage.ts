@@ -67,7 +67,7 @@ export interface SessionSummary {
 }
 
 /**
- * Stage 26: serialized file-history snapshot persisted to the transcript so
+ * Serialized file-history snapshot persisted to the transcript so
  * `/rewind` survives `--resume`. Structurally matches fileHistory.ts's
  * FileHistoryBackup / FileHistorySnapshot (kept local here to avoid a
  * session↔session import cycle).
@@ -151,8 +151,8 @@ function parseJsonLine(line: string): TranscriptEntry | null {
           timestamp: parsed.timestamp,
           role: parsed.role,
           message: parsed.message,
-          // Optional for back-compat: transcripts written before stage 26
-          // (file history) have no per-message id. Snapshots bind to this
+          // Optional for back-compat: transcripts written before file
+          // history existed have no per-message id. Snapshots bind to this
           // id, so resume relies on it being preserved when present.
           ...(typeof parsed.messageId === "string" ? { messageId: parsed.messageId } : {}),
         };
@@ -256,7 +256,7 @@ function getLastUpdatedAt(entries: TranscriptEntry[], fallback: string): string 
 
 /**
  * The first user prompt of a session, used as its human-readable label in the
- * `/resume` picker (mirrors source's per-session firstPrompt). XML command/skill
+ * `/resume` picker. XML command/skill
  * markers are stripped so a `/foo` invocation shows its text, not raw tags.
  */
 function extractFirstPrompt(messages: MessageParam[]): string {
@@ -325,7 +325,7 @@ export async function initSessionStorage(metadata: SessionMetadata): Promise<Ses
 }
 
 /**
- * Stage 26: persist a file-history snapshot to the transcript. Called by
+ * Persist a file-history snapshot to the transcript. Called by
  * fileHistory.ts whenever a snapshot is created (makeSnapshot) or updated
  * (trackEdit). On `--resume`, restoreSession folds these back into the
  * in-memory FileHistoryState so `/rewind` keeps working. No-op when
@@ -420,8 +420,7 @@ export async function restoreSession(cwd: string, sessionId?: string): Promise<R
   // Rebuild the file-history snapshot chain: keep the LAST record per
   // messageId (trackEdit appends updated copies of the most-recent snapshot
   // after makeSnapshot creates it), preserving first-appearance order so the
-  // snapshots array stays chronological. Mirrors source's
-  // buildFileHistorySnapshotChain.
+  // snapshots array stays chronological.
   const fhMap = new Map<string, FileHistorySnapshotRecord>();
   for (const entry of entries) {
     if (entry.type === "file_history_snapshot") {

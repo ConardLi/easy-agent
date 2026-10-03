@@ -2,10 +2,10 @@
  * Build the full, verbose transcript as a flat array of pre-wrapped terminal
  * rows (each string = exactly one visual line, ANSI included).
  *
- * This is what powers the Ctrl+O transcript overlay (stage 24.1): the inline
+ * This is what powers the Ctrl+O transcript overlay: the inline
  * conversation in <Static> stays condensed, and the overlay re-renders the
  * ENTIRE history verbose so the user can scroll back and expand any tool call
- * retroactively — mirroring Claude Code's `app:toggleTranscript`.
+ * retroactively.
  *
  * We render to *strings* rather than Ink components on purpose: a flat line
  * array makes windowed scrolling (lines.slice(offset, offset+height)) exact
@@ -190,7 +190,7 @@ function buildLogicalLines(messages: MessageParam[]): string[] {
           input?: Record<string, unknown>;
         }>;
         for (const block of blocks) {
-          // Stage 34: the transcript overlay is the verbose view, so thinking
+          // The transcript overlay is the verbose view, so thinking
           // blocks are fully expanded here (unlike the condensed inline view).
           if (block?.type === "thinking" && block.thinking?.trim()) {
             blank();

@@ -2,10 +2,8 @@
  * WebFetch HTTP layer: controlled fetch + same-host redirect following +
  * HTML→markdown conversion.
  *
- * Reference: claude-code-source-code/src/tools/WebFetchTool/utils.ts
- * (`getWithPermittedRedirects`, `isPermittedRedirect`, `getURLMarkdownContent`).
- * We use the platform `fetch` (Node 18+) with manual redirect handling instead
- * of axios, and `turndown` for HTML→markdown (same library the reference uses).
+ * Uses the platform `fetch` with manual redirect handling (so every hop is
+ * re-validated) and `turndown` for HTML→markdown.
  */
 
 import TurndownService from "turndown";
@@ -150,7 +148,7 @@ export async function fetchUrlContent(
   }
 
   if (isBinaryContentType(contentType)) {
-    // Multimodal/binary persistence lands in a later stage; for now report it.
+    // Binary bodies are not converted or persisted; report type and size only.
     return {
       type: "content",
       content: `[Binary content: ${contentType || "unknown"}, ${bytes} bytes — not rendered as text]`,

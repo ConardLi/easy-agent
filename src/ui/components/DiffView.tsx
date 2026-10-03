@@ -3,8 +3,7 @@
  * colorized unified-patch hunks (green `+`, red `-`, cyan `@@`, dim file
  * headers), then a compact summary of the agent's file-history edits.
  *
- * Mirrors source's DiffDetailView look (colorized hunks per file) within our
- * non-interactive panel model. Dismissed with Esc like any command panel.
+ * A non-interactive panel, dismissed with Esc like any command panel.
  */
 
 import React from "react";

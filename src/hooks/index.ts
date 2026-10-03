@@ -1,5 +1,5 @@
 /**
- * Public entry point for the hooks subsystem (Stage 22).
+ * Public entry point for the hooks subsystem.
  *
  * Callers should import from "src/hooks/index.js" — not from the
  * individual sub-modules — so we can refactor internals later

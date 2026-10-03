@@ -1,5 +1,5 @@
 /**
- * Durable state for the plugin subsystem (plan §35.4).
+ * Durable state for the plugin subsystem.
  *
  * Two JSON files under `~/.easy-agent/plugins/` track the two lower layers of
  * the three-layer plugin model (the third — ENABLED per scope — lives in
@@ -8,7 +8,7 @@
  *   known_marketplaces.json   ← which marketplace sources are registered
  *   installed_plugins.json    ← which plugin versions are in the local cache
  *
- * Durability contract (plan §35.4/§35.5):
+ * Durability contract:
  *   - Every mutation runs inside a process-wide critical section (a
  *     `proper-lockfile` lock on a sentinel in the plugins root) so two
  *     concurrent `install`/`marketplace add` calls can't interleave and

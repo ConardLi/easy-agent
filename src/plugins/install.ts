@@ -1,5 +1,5 @@
 /**
- * Install / update / uninstall (plan §35.5).
+ * Install / update / uninstall.
  *
  * Install pipeline (fixed order — safety depends on it):
  *   resolve id → fetch to a TEMP dir → validate manifest/paths/components →

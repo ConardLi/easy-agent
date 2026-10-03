@@ -1,11 +1,10 @@
 /**
  * PermissionManager — interactive overlay for `/permissions` (no args).
  *
- * Mirrors source's PermissionRuleList (components/permissions/rules): Allow / Deny
- * tabs, each listing the active rules plus an "Add a new rule…" entry; selecting
- * a rule confirms deletion, selecting "Add" prompts for a rule string. easy-agent
- * has no Ask tier / Workspace dirs / Recently-denied retry, so those tabs are
- * omitted (it has no underlying support for them).
+ * Allow / Deny tabs, each listing the active rules plus an "Add a new rule…"
+ * entry; selecting a rule confirms deletion, selecting "Add" prompts for a
+ * rule string. There are only these two tabs because the permission engine
+ * has no Ask rule tier, workspace-directory list, or denied-call retry list.
  *
  * Self-contained: it renders AND owns its keyboard (useInput) and its transient
  * UI state (tab / cursor / add-or-delete mode / text buffer / scope). Persisted

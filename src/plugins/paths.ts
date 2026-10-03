@@ -1,5 +1,5 @@
 /**
- * On-disk layout for the plugin subsystem (stage 35).
+ * On-disk layout for the plugin subsystem.
  *
  * Everything the runtime writes lives under `~/.easy-agent/plugins/`:
  *
@@ -129,7 +129,7 @@ export function getMarketplaceManifestPathCandidates(marketplaceRoot: string): s
   );
 }
 
-// ─── Variable substitution (plan §35.1) ───────────────────────────────
+// ─── Variable substitution ────────────────────────────────────────────
 
 /**
  * The two environment variables a plugin's components (hooks / MCP / bodies)

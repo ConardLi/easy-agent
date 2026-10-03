@@ -1,8 +1,6 @@
 /**
  * API error classification + user-facing messages.
  *
- * Reference: claude-code-source-code/src/services/api/errors.ts
- *
  * The source file is ~1200 lines because it covers Bedrock/Vertex/OAuth,
  * media-size rejections, subscription tiers, and a dozen provider-specific
  * branches. Easy Agent only talks to the first-party Anthropic API with a
@@ -55,8 +53,7 @@ export const SERVER_OVERLOAD_MESSAGE =
 
 /**
  * 529 capacity overload. The SDK sometimes fails to surface the 529 status
- * during streaming, so we also sniff the overloaded_error type in the body —
- * mirrors source's `is529Error`.
+ * during streaming, so we also sniff the overloaded_error type in the body.
  */
 export function is529Error(error: unknown): boolean {
   if (!(error instanceof APIError)) return false;
@@ -81,8 +78,8 @@ export function isPromptTooLongError(error: unknown): boolean {
 
 /**
  * Parse "prompt is too long: 137500 tokens > 135000 maximum" into its two
- * numbers. Lenient on casing / wrapping — mirrors source's
- * `parsePromptTooLongTokenCounts`. Returns undefined fields when unparseable.
+ * numbers. Lenient on casing / wrapping. Returns undefined fields when
+ * unparseable.
  */
 export function parsePromptTooLongTokenCounts(rawMessage: string): {
   actualTokens: number | undefined;
@@ -119,8 +116,7 @@ export function getRetryAfterMs(error: unknown): number | null {
 /**
  * Map any thrown error to a single category. Order matters: more specific
  * checks (timeout, 529, prompt-too-long) come before the status-code
- * fallbacks. Mirrors the spirit of source's `classifyAPIError`, trimmed to
- * the categories Easy Agent can actually act on.
+ * fallbacks. Only categories the retry and recovery layers act on exist.
  */
 export function classifyAPIError(error: unknown): APIErrorCategory {
   if (error instanceof Error && error.name === "AbortError") return "aborted";

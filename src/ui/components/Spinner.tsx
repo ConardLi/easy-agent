@@ -1,5 +1,5 @@
 // Spinner — breathing star + reverse-sweep shimmer.
-// Mirrors Claude Code's `SpinnerAnimationRow` + `GlimmerMessage` + `SpinnerGlyph`:
+// Behavior:
 //   - 50ms master clock, 120ms star frame, 200ms shimmer step
 //   - Star cycles forward then reverse: · ✢ ✳ ✶ ✻ ✽ ✽ ✻ ✶ ✳ ✢ ·
 //   - Shimmer is a 3-char window of `claudeShimmer` color sweeping right-to-left

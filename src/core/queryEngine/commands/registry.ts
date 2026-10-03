@@ -88,10 +88,8 @@ export async function* handleSkillsCommand(
 
 /**
  * Handle `/agents` — read-only listing of every Agent definition the
- * loader picked up at startup, grouped by source. Mirrors the source's
- * `claude agents` CLI handler (claude-code-source-code/src/tools/
- * AgentTool/agentDisplay.ts) but stripped to a text-only listing — no
- * interactive AgentsMenu yet.
+ * loader picked up at startup, grouped by source. Text-only listing; there
+ * is no interactive agents menu.
  *
  * The model only sees the agents in the system-prompt <system-reminder>;
  * this command is the human-side answer to "what sub-agent types are
@@ -260,8 +258,7 @@ export async function* handleHooksCommand(
  *   /mcp reconnect <name>      — drop cache + retry connection
  *
  * The output is rendered as a system notice (info/error tone), never sent
- * to the model. Mirrors the source's `mcp.tsx` panel content but stripped
- * to a text-only listing — Easy Agent doesn't need a full TUI panel for it.
+ * to the model. A text-only listing is enough here; no TUI panel is needed.
  */
 export async function* handleMcpCommand(
   args: string[],

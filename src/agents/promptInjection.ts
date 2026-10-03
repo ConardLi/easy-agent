@@ -100,9 +100,8 @@ export function formatAgentsSystemReminder(agents: AgentDefinition[]): string {
     "Use sub-agents to keep the main conversation context clean — search-heavy or read-heavy work is a good fit. Do not delegate trivial single-step tasks.",
     "Sub-agents do NOT see the main conversation history, so the `prompt` must be self-contained.",
     "",
-    // Foreground vs background discipline — copied almost verbatim from
-    // source's `claude-code-source-code/src/tools/AgentTool/prompt.ts:262-264`
-    // because the rule is too easy for the model to forget mid-conversation:
+    // Foreground vs background discipline. Spelled out explicitly because the
+    // rule is too easy for the model to forget mid-conversation:
     //   - polling burns tokens and locks the user out behind a spinner;
     //   - "end your response" is one of TWO equally-valid options, not the
     //     only one — the main agent can still spawn more parallel

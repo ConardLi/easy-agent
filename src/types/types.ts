@@ -6,15 +6,15 @@
  * unit: prompt + permission config. The Skill body becomes a UserMessage at
  * invocation time, instructing the model how to perform a complex task.
  *
- * Stage 17 supports a subset of the source-code frontmatter fields. The full
- * field list (model/effort/context=fork/agent/hooks/shell/...) is parsed but
- * ignored for now — see DEVELOPMENT-PLAN §17.6.1 for the deferral rationale.
+ * The frontmatter fields below are interpreted; anything else (model, agent,
+ * hooks, shell, ...) is parsed but has no effect, and stays available in
+ * `frontmatter.raw`.
  */
 
 /** Where a skill was loaded from. Affects override priority and display. */
 export type SkillSource = "user" | "project" | "plugin";
 
-/** Raw frontmatter keys we read in this stage. Other keys are preserved in `frontmatter` for forward compat. */
+/** Interpreted frontmatter keys. The full parsed map is kept in `raw` for forward compat. */
 export interface SkillFrontmatter {
   /** Display name (defaults to dirname). */
   name?: string;
@@ -31,7 +31,7 @@ export interface SkillFrontmatter {
   /** UI hint for arguments (e.g. `<file-or-dir>`). */
   argumentHint?: string;
   /**
-   * Stage 34: reasoning-effort level (maps to output_config.effort for
+   * Reasoning-effort level (maps to output_config.effort for
    * Anthropic). When a skill declares `effort:`, invoking it sets the
    * session effort. Undefined leaves the session/model default in place.
    */
@@ -44,9 +44,9 @@ export interface SkillFrontmatter {
    * touched by Read/Write/Edit/Glob.
    */
   paths?: string[];
-  /** Whether the source file declared `context: fork` — currently rejected at exec. */
+  /** Whether SKILL.md declared `context: fork` — the skill then runs in a fresh sub-agent context. */
   hasForkContext: boolean;
-  /** Untouched frontmatter (sans the ones above) for future expansion. */
+  /** The untouched parsed frontmatter map. */
   raw: Record<string, unknown>;
 }
 
@@ -66,9 +66,9 @@ export interface Skill {
   baseDir: string;
   /** Where this skill came from. Project overrides user. */
   source: SkillSource;
-  /** Stage 35: owning plugin id (`name@marketplace`) when source is "plugin". */
+  /** Owning plugin id (`name@marketplace`) when source is "plugin". */
   pluginId?: string;
-  /** Stage 35: owning plugin root directory, for provenance / reload / unload. */
+  /** Owning plugin root directory, for provenance / reload / unload. */
   pluginRoot?: string;
   /** Parsed + normalized frontmatter. */
   frontmatter: SkillFrontmatter;

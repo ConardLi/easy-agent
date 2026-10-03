@@ -22,9 +22,8 @@
  *
  * Files with malformed frontmatter or missing required fields (`name`,
  * `description`, non-empty body) are skipped with a warning so a typo
- * doesn't crash startup. Mirrors the loader in
- * claude-code-source-code/src/tools/AgentTool/loadAgentsDir.ts but trimmed
- * to the field set we actually use.
+ * doesn't crash startup. Only the frontmatter fields declared on
+ * AgentDefinition are read; anything else is ignored.
  */
 
 import * as fs from "node:fs/promises";
@@ -198,7 +197,7 @@ export interface LoadAllAgentsResult {
 }
 
 /**
- * Stage 35: load agent definitions from ONE arbitrary directory (e.g. a
+ * Load agent definitions from ONE arbitrary directory (e.g. a
  * plugin's `agents/` dir), reusing the exact same frontmatter parser and
  * field validation as the user/project scopes.
  */

@@ -1,9 +1,9 @@
 /**
- * Shared blink clock for in-flight tool dots (stage 24.4).
+ * Shared blink clock for in-flight tool dots.
  *
- * Mirrors source's ToolUseLoader + useBlink: while a tool is unresolved its
- * `●` status dot blinks. The catch (called out in App.tsx) is that每个独立的
- * setInterval 都会多触发一轮终端重绘 —— so instead of one timer per card we
+ * While a tool is unresolved its `●` status dot blinks. The catch (called
+ * out in App.tsx) is that every independent setInterval triggers another
+ * full terminal repaint, so instead of one timer per card we
  * keep a SINGLE module-level timer that many dots subscribe to via
  * useSyncExternalStore. The timer only runs while at least one dot is pending,
  * and stops itself when the last subscriber unmounts.

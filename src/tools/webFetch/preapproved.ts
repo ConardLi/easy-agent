@@ -1,8 +1,6 @@
 /**
  * Preapproved WebFetch hosts.
  *
- * Reference: claude-code-source-code/src/tools/WebFetchTool/preapproved.ts
- *
  * WebFetch normally requires the user to approve each domain. We make an
  * exception for a curated set of code-related documentation hosts so the
  * agent can read docs without a confirmation prompt for every lookup.

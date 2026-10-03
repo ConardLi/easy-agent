@@ -148,7 +148,7 @@ export class QueryEngine {
   private readonly defaultModel: string;
   private sessionModelOverride: string | null = null;
   /**
-   * Stage 23: one-shot model override for a single turn, set when a user
+   * One-shot model override for a single turn, set when a user
    * command's frontmatter declares `model:`. Cleared after the turn ends so
    * the next prompt reverts to the session/default model.
    */
@@ -167,7 +167,7 @@ export class QueryEngine {
   private modeChangeCallback?: (mode: PermissionMode, previousMode: PermissionMode) => void;
   private needsPlanModeExitAttachment = false;
   /**
-   * Stage 22: tracks whether SessionStart hooks have already fired
+   * Tracks whether SessionStart hooks have already fired
    * this process. The hook is a once-per-session boot signal — we
    * deliberately do NOT re-fire on /clear, because source treats
    * /clear as a different event type ("source: clear") that we don't
@@ -176,8 +176,8 @@ export class QueryEngine {
   private sessionStartHooksFired = false;
 
   /**
-   * Stage 26: the id of the current user turn. File-history snapshots bind to
-   * this id (mirrors source's `messageId` on `fileHistoryMakeSnapshot`), and
+   * The id of the current user turn. File-history snapshots bind to
+   * this id, and
    * `/rewind` resolves a target snapshot by walking these per-turn ids. The UI
    * layer calls `beginUserTurn()` right before persisting the user prompt so
    * the transcript entry and the snapshot share the same id; the auto-trigger
@@ -274,7 +274,7 @@ export class QueryEngine {
   }
 
   /**
-   * Stage 26: open a fresh user turn, generating the id that file-history
+   * Open a fresh user turn, generating the id that file-history
    * snapshots for this turn will bind to. Returns the id so the caller can
    * stamp it onto the persisted user-message transcript entry, keeping the
    * transcript and the snapshot in lockstep.
@@ -284,7 +284,7 @@ export class QueryEngine {
     return this.currentMessageId;
   }
 
-  /** Stage 26: id of the active user turn (null before the first turn). */
+  /** Id of the active user turn (null before the first turn). */
   getCurrentMessageId(): string | null {
     return this.currentMessageId;
   }
@@ -302,7 +302,7 @@ export class QueryEngine {
     input: string,
   ): AsyncGenerator<QueryEngineEvent, { handled: boolean; reason?: LoopTerminationReason }> {
     const trimmed = input.trim();
-    // Stage 20: empty input is a valid call when there are background-
+    // Empty input is a valid call when there are background-
     // agent notifications waiting — the auto-trigger path in
     // useAgentSession passes "" to mean "drain whatever's in the queue
     // and run a turn". `submitInternal` is already empty-text safe (it
@@ -314,7 +314,7 @@ export class QueryEngine {
       }
     }
 
-    // Stage 26: the auto-trigger (background-agent reply) path has no
+    // The auto-trigger (background-agent reply) path has no
     // user-typed prompt for the UI to stamp via beginUserTurn(), so open
     // the turn here. Normal turns already had beginUserTurn() called by the
     // UI before the prompt was persisted.
@@ -323,7 +323,7 @@ export class QueryEngine {
     }
 
     if (trimmed.startsWith("/")) {
-      // Stage 33: built-in `prompt` command (`/init`). Resolved FIRST so a
+      // Built-in `prompt` command (`/init`). Resolved FIRST so a
       // reserved prompt command always means itself and can never be shadowed
       // by a user command or skill file. Expands into a prompt and runs a
       // normal model turn (the model analyses the repo and writes AGENT.md),
@@ -339,7 +339,7 @@ export class QueryEngine {
         return yield* this.submitInternal(promptExpansion.bodyText);
       }
 
-      // Stage 23: user-defined slash command (`/review [args]`). Resolved
+      // User-defined slash command (`/review [args]`). Resolved
       // BEFORE skills so an explicit user command takes precedence, but we
       // skip reserved built-in names so `/help`, `/output-style`, etc. can
       // never be shadowed by a same-named file on disk. Expands into the
@@ -359,18 +359,10 @@ export class QueryEngine {
       }
 
       // User-invoked skill: `/skill-name [args]`. Resolve the skill against
-      // the registry; if it matches, expand into the source's two-message
-      // pattern and submit normally. Falls through to handleCommand() for
-      // /help, /mcp, /clear, etc. when no skill matches.
-      //
-      // Source reference (claude-code-source-code/src/utils/processUserInput
-      // /processSlashCommand.tsx ~ line 1237 `getMessagesForPromptSlashCommand`):
-      //
-      //   const messages = [
-      //     createUserMessage({ content: metadata }),                  // visible bubble
-      //     createUserMessage({ content: skillBody, isMeta: true }),   // hidden, model-only
-      //     ...
-      //   ]
+      // the registry; if it matches, expand into a two-message pattern
+      // (visible metadata bubble + hidden model-only body) and submit
+      // normally. Falls through to handleCommand() for /help, /mcp,
+      // /clear, etc. when no skill matches.
       //
       // The metadata message wraps `<command-name>/foo</command-name>` +
       // `<command-message>foo</command-message>` + `<command-args>...</...>`
@@ -382,7 +374,7 @@ export class QueryEngine {
       //
       // We don't have an `isMeta` field on `MessageParam`, so we use a
       // string-prefix sentinel ("[skill_invocation:<name>]\n") for the body
-      // and the source's exact XML format for the marker — both matched in
+      // and the `<command-*>` XML tags for the marker — both matched in
       // ConversationView.
       const skillExpansion = this.tryExpandSkillCommand(trimmed);
       if (skillExpansion) {
@@ -452,7 +444,7 @@ export class QueryEngine {
       this.addSessionAllowRules(skill.frontmatter.allowedTools);
     }
 
-    // Stage 34: a skill can declare a reasoning-effort level; invoking it
+    // A skill can declare a reasoning-effort level; invoking it
     // sets the session effort (maps to output_config.effort on Anthropic).
     if (!skill.frontmatter.hasForkContext && skill.frontmatter.effort) {
       setSessionEffortLevel(skill.frontmatter.effort);
@@ -463,7 +455,6 @@ export class QueryEngine {
       .replaceAll("${CLAUDE_SESSION_ID}", sessionId)
       .replaceAll("$ARGUMENTS", args);
 
-    // Match `formatCommandInputTags` from source/utils/messages.ts:577.
     // ConversationView's command-bubble renderer parses these exact tags;
     // changing the format here also requires updating extractCommandTag().
     const markerLines = [
@@ -483,7 +474,7 @@ export class QueryEngine {
   }
 
   /**
-   * Stage 23: expand `/command-name [args]` into the same two-message
+   * Expand `/command-name [args]` into the same two-message
    * pattern as skills. The visible marker renders a "❯ /command args"
    * bubble; the hidden body (prefixed `[command_invocation:<name>]`) carries
    * the substituted prompt template to the model.
@@ -538,7 +529,7 @@ export class QueryEngine {
     trimmed: string,
   ): AsyncGenerator<QueryEngineEvent, { handled: boolean; reason?: LoopTerminationReason }> {
 
-    // ─── Stage 26: open the file-history snapshot for this turn ─────
+    // ─── Open the file-history snapshot for this turn ───────────────
     // Fire at turn start (before any edit) so the snapshot bound to this
     // turn's id captures the filesystem state *before* the model's edits;
     // fileHistoryTrackEdit (in the loop) then attaches pre-edit backups to
@@ -547,7 +538,7 @@ export class QueryEngine {
     if (!this.currentMessageId) this.beginUserTurn();
     await fileHistoryMakeSnapshot(this.currentMessageId!);
 
-    // ─── Stage 22: SessionStart hook (one-shot per process) ─────────
+    // ─── SessionStart hook (one-shot per process) ───────────────────
     // Source fires SessionStart from the bootstrap path; we delay
     // until the user's first submit so the hook can't block CLI
     // startup if it's slow / broken. The hook's additionalContext
@@ -577,7 +568,7 @@ export class QueryEngine {
       }
     }
 
-    // ─── Stage 22: UserPromptSubmit hook ───────────────────────────
+    // ─── UserPromptSubmit hook ─────────────────────────────────────
     // Source fires UserPromptSubmit RIGHT BEFORE the prompt becomes
     // a user message. The hook can:
     //   - inject additionalContext (prepended to the user's prompt)
@@ -679,15 +670,11 @@ export class QueryEngine {
       this.messages = [...this.messages, exitAttachment];
     }
 
-    // Stage 20: drain any pending background-agent notifications BEFORE
+    // Drain any pending background-agent notifications BEFORE
     // the user message. The model will see them as system-side user
     // messages tagged `[task-notification]` so it can react ("oh the
     // background reviewer finished — let me look at its output") before
     // tackling the actual user prompt.
-    //
-    // Source reference: claude-code-source-code/src/utils/queueProcessor.ts
-    //   `processQueueIfReady` drains task-notification entries between
-    //   turns and calls `enqueueUserOrSystemMessage` to inject them.
     const activeTeam = getActiveTeam();
     if (activeTeam) {
       const teamMessages = await drainUnreadMessages(TEAM_LEAD_NAME, activeTeam.teamName);
@@ -708,10 +695,10 @@ export class QueryEngine {
       yield { type: "messages_updated", messages: [...this.messages] };
     }
 
-    // ─── Stage 34: ultrathink keyword ──────────────────────────────
+    // ─── Ultrathink keyword ────────────────────────────────────────
     // When the user prompt contains the whole-word keyword "ultrathink",
     // inject a hidden meta user message asking the model for high reasoning
-    // effort. Mirrors source's ultrathink_effort branch: it does NOT change
+    // effort. It does NOT change
     // the thinking budget — it only nudges effort via a meta message. The
     // marker prefix keeps it out of the human-visible transcript.
     if (promptToSubmit.length > 0 && hasUltrathinkKeyword(promptToSubmit)) {
@@ -722,7 +709,7 @@ export class QueryEngine {
       this.messages = [...this.messages, ultrathinkMessage];
     }
 
-    // Stage 20: when this turn was triggered by a background-agent
+    // When this turn was triggered by a background-agent
     // notification (no real user input), skip appending an empty user
     // message — the notification(s) we just drained ARE the user-side
     // input for the model. The Anthropic API also rejects empty
@@ -761,7 +748,7 @@ export class QueryEngine {
         setPermissionMode: (mode: string) => this.setPermissionMode(mode as PermissionMode),
         getPermissionMode: () => this.currentPermissionMode,
         addSessionAllowRules: (rules: string[]) => this.addSessionAllowRules(rules),
-        // Sub-agent spawning support (stage 19): expose the parent's
+        // Sub-agent spawning support: expose the parent's
         // permission infrastructure + active model so the AgentTool can
         // hand them to runChildAgent. Tools other than Agent ignore
         // these fields.
@@ -769,7 +756,7 @@ export class QueryEngine {
         sessionPermissionRules: this.sessionPermissionRules,
         onPermissionRequest: this.onPermissionRequest,
         defaultModel: this.getActiveModel(),
-        // Stage 26: the active turn id, so the loop can back up files
+        // The active turn id, so the loop can back up files
         // (fileHistoryTrackEdit) before Edit/Write run.
         messageId: this.currentMessageId ?? undefined,
       };
@@ -826,7 +813,7 @@ export class QueryEngine {
       }
     } finally {
       this.abortController = null;
-      // Stage 23: drop any per-turn model override so the next prompt
+      // Drop any per-turn model override so the next prompt
       // reverts to the session/default model.
       this.turnModelOverride = null;
     }
@@ -895,7 +882,7 @@ export class QueryEngine {
       case "plugins":
         return yield* handlePluginCommand(this.commandContext(), args);
       case "marketplace":
-        // Shorthand for `/plugin marketplace ...` (plan §35.6 alias).
+        // Shorthand for `/plugin marketplace ...`.
         return yield* handlePluginCommand(this.commandContext(), ["marketplace", ...args]);
       case "reload-plugins":
         return yield* handlePluginCommand(this.commandContext(), ["reload"]);
@@ -1141,7 +1128,7 @@ export class QueryEngine {
         return yield* handleMemoryCommand(this.commandContext(), args);
       case "think": {
         // /think on|off|<budget> — per-session extended-thinking override.
-        // Mirrors source's thinking three-state:
+        // Three states:
         //   on      → adaptive (or enabled+default budget on non-adaptive models)
         //   off     → disabled
         //   <N>     → enabled + budget N

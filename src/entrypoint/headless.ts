@@ -1,5 +1,5 @@
 /**
- * Headless (print / pipe) mode — Stage 28a–28c.
+ * Headless (print / pipe) mode.
  *
  * The non-interactive entry point: read a prompt from argv and/or stdin, run a
  * single QueryEngine turn to completion, render the outcome to stdout in the
@@ -10,8 +10,6 @@
  * stdin→stdout function for CI/CD, git hooks, and other-program integration.
  * It is a *second consumer* of the same QueryEngine event stream the REPL
  * (useAgentSession) consumes — no core-layer changes required.
- *
- * Reference: claude-code-source-code/src/cli/print.ts (runHeadless).
  */
 
 import type { MessageParam } from "@anthropic-ai/sdk/resources/messages.js";
@@ -85,7 +83,6 @@ function writeJsonLine(obj: object): void {
 /**
  * Build the `system/init` message — the first line of a stream-json session,
  * carrying the metadata a remote consumer uses to render pickers / gate UI.
- * Mirrors source's `buildSystemInitMessage` (trimmed to fields Easy Agent has).
  */
 function buildInitMessage(params: {
   cwd: string;
@@ -202,7 +199,7 @@ export async function runHeadless(options: RunHeadlessOptions): Promise<void> {
   // what we return here.
   //
   //   - default / plan                   → `deny` (never block waiting for a TTY)
-  //   - auto                             → `deny` (Stage 29 alignment: in auto
+  //   - auto                             → `deny` (in auto
   //       mode the classifier already returns allow/deny directly; a residual
   //       `ask` only comes from a degrade path — classifier blocked-too-often /
   //       unavailable / EnterPlanMode — which must NOT be auto-approved here)

@@ -220,7 +220,7 @@ export async function readStatusLineConfig(
   cwd: string,
 ): Promise<StatusLineCommandConfig | null> {
   // `disableAllHooks` also kills the statusLine (it runs a shell command every
-  // turn, same execution surface as hooks) — mirrors source's behavior.
+  // turn, same execution surface as hooks).
   if (await isAllHooksDisabled(cwd)) return null;
 
   // Trust-gated: the statusLine command is executed as a shell command on

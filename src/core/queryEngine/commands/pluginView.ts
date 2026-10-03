@@ -1,8 +1,8 @@
 /**
- * Snapshot builder for the interactive `/plugin` manager (plan §35.6).
+ * Snapshot builder for the interactive `/plugin` manager.
  *
- * Mirrors the four tabs the source's PluginSettings drives — Discover /
- * Installed / Marketplaces / Errors — by turning the three separate pieces of
+ * Feeds the manager's four tabs — Discover / Installed / Marketplaces /
+ * Errors — by turning the three separate pieces of
  * durable state (marketplace sources, install records, per-scope enable flags)
  * plus the live runtime snapshot into one flat, render-ready payload.
  *

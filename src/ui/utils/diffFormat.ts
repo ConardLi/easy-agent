@@ -1,5 +1,5 @@
 /**
- * Line-level diff helpers for tool-result rendering (stage 24.4).
+ * Line-level diff helpers for tool-result rendering.
  *
  * Edit calls hand us the `old_string` / `new_string` fragments directly, so a
  * line diff of those two fragments IS the change to show — no file-system read

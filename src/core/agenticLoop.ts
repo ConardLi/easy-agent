@@ -44,11 +44,10 @@ import {
 export const MAX_TOOL_TURNS = 50;
 
 /**
- * Stage 27: injected when output is truncated and the silent 64K escalation
- * already happened — the model is asked to resume from the cut point. Copied
- * verbatim from source (query.ts) because the wording is load-bearing: it
- * stops the model from apologizing / recapping (which would waste the very
- * tokens we're trying to conserve).
+ * Injected when output is truncated and the silent 64K escalation
+ * already happened — the model is asked to resume from the cut point. The
+ * wording is load-bearing: it stops the model from apologizing / recapping
+ * (which would waste the very tokens we're trying to conserve).
  */
 const MAX_OUTPUT_TOKENS_RECOVERY_PROMPT =
   "Output token limit hit. Resume directly — no apology, no recap of what you were doing. " +
@@ -95,7 +94,7 @@ export type AgenticLoopEvent =
   | { type: "token_warning"; warning: TokenWarningResult }
   | {
       /**
-       * Stage 27: surfaced while the API layer is backing off before
+       * Surfaced while the API layer is backing off before
        * re-issuing a request after a transient failure (429 / 5xx / network).
        * Lets the UI show "Retrying in Xs… (attempt N/M)".
        */
@@ -107,7 +106,7 @@ export type AgenticLoopEvent =
     }
   | {
       /**
-       * Stage 27: the loop is about to re-run the current turn from scratch —
+       * The loop is about to re-run the current turn from scratch —
        * either after a silent max_tokens escalation to 64K, or after a
        * reactive compaction triggered by a prompt-too-long error. The UI uses
        * this to clear any partially-streamed text so the re-run renders
@@ -126,8 +125,8 @@ export type AgenticLoopEvent =
        * The parent QueryEngine has its own `usage_updated` event for the
        * top-level loop's bookkeeping; this one exists so sub-agent
        * runners (`runChildAgent`) can publish live token counts to the
-       * UI store while the sub-agent is still mid-flight, mirroring
-       * Claude Code's per-agent "28.0k tokens" line.
+       * UI store while the sub-agent is still mid-flight (the per-agent
+       * "28.0k tokens" line).
        */
       type: "turn_usage";
       turnUsage: Usage;
@@ -161,7 +160,7 @@ export interface QueryParams {
   /** Optional user-side messages that arrive while a sub-agent is running. */
   beforeModelCall?: () => Promise<MessageParam[]>;
   /**
-   * Stage 27: foreground (user waiting) vs background (sub-agent / summary).
+   * Foreground (user waiting) vs background (sub-agent / summary).
    * Threaded into the streaming layer so 529 capacity overloads are retried
    * for foreground turns and dropped fast for background ones. Defaults to
    * foreground when unset.
@@ -172,27 +171,22 @@ export interface QueryParams {
   sessionPermissionRules?: PermissionRuleSet;
   onPermissionRequest?: (request: PermissionRequest) => Promise<PermissionDecision>;
   /**
-   * Headless flag — mirrors source's
-   * `toolPermissionContext.shouldAvoidPermissionPrompts` from
-   * claude-code-source-code/src/tools/AgentTool/runAgent.ts:436-451.
+   * Headless flag.
    *
    * When true, any tool call that resolves to `behavior: "ask"` is
-   * auto-denied WITHOUT invoking `onPermissionRequest`. We keep
-   * `onPermissionRequest` plumbed through (parity with source's
-   * `canUseTool` forwarding) but the agentic loop short-circuits
+   * auto-denied WITHOUT invoking `onPermissionRequest`. Callers may still
+   * pass `onPermissionRequest`, but the agentic loop short-circuits
    * before it can fire, with a richer denial message that gives the
    * model workaround guidance instead of "user rejected".
    *
-   * Set to true for backgrounded sub-agents (no UI to ask), or any
-   * future "non-interactive" execution context.
+   * Set to true for backgrounded sub-agents (no UI to ask) and any other
+   * non-interactive execution context.
    */
   shouldAvoidPermissionPrompts?: boolean;
   /**
-   * Stage 22: when set, the loop fires SubagentStop hooks (with the
+   * When set, the loop fires SubagentStop hooks (with the
    * supplied id + type) instead of Stop hooks at the end of the
-   * conversation. Mirrors source's
-   *   `const hookEvent = subagentId ? 'SubagentStop' : 'Stop'`
-   * in utils/hooks.ts:executeStopHooks. The top-level main agent
+   * conversation. The top-level main agent
    * leaves this undefined; runChildAgent + runAsyncAgent pass their
    * own id + type so SubagentStop hooks fire per-agent.
    */
@@ -212,8 +206,8 @@ export interface RunToolsOptions {
   toolSearchEnabled?: boolean;
   /**
    * Conversation so far (before the current tool-use action). Threaded into
-   * `checkPermission` so the Auto Mode classifier can infer user intent.
-   * Stage 1: passed through but not yet consumed by the permission engine.
+   * `checkPermission` so the Auto Mode classifier can infer user intent,
+   * and into the deferred-schema hint for invalid tool input.
    */
   conversationMessages?: MessageParam[];
   /** Active model handle, forwarded to the Auto Mode classifier. */
@@ -227,8 +221,7 @@ export interface RunToolsOptions {
 
 /**
  * Maximum number of concurrency-safe tools to run in parallel within a
- * single batch. Mirrors source's `getMaxToolUseConcurrency()` (default
- * 10) — high enough to amortize a fan-out across many sub-agents,
+ * single batch. High enough to amortize a fan-out across many sub-agents,
  * low enough that the OS doesn't choke on subprocess explosions.
  */
 const MAX_TOOL_USE_CONCURRENCY = 10;
@@ -250,9 +243,7 @@ function extractLastAssistantText(content: ContentBlock[]): string | undefined {
 
 /**
  * Build the denial message used when a backgrounded sub-agent (or any
- * other headless context) hits an "ask" rule. The body mirrors source's
- * `DONT_ASK_REJECT_MESSAGE` + `DENIAL_WORKAROUND_GUIDANCE` from
- * claude-code-source-code/src/utils/messages.ts:227-240:
+ * other headless context) hits an "ask" rule. The message has to:
  *
  *   - Tell the model WHY it was denied (no UI), so it doesn't keep
  *     retrying with the same tool.
@@ -260,9 +251,7 @@ function extractLastAssistantText(content: ContentBlock[]): string | undefined {
  *     malicious / bypass-the-intent ways.
  *   - Tell it to STOP and report back when the capability is essential.
  *
- * Compressed to a couple of sentences to keep the tool_result lean —
- * source's message is verbose because it has to cover hooks, classifier
- * fallback, and policy escalation paths we don't have here.
+ * Kept to a couple of sentences so the tool_result stays lean.
  */
 function buildHeadlessDenialMessage(toolName: string): string {
   return (
@@ -284,9 +273,7 @@ interface ToolBatch {
 /**
  * Partition the assistant's tool_use blocks into ordered batches.
  *
- * Mirrors source's `partitionToolCalls` in
- * claude-code-source-code/src/services/tools/toolOrchestration.ts:91 —
- * consecutive concurrency-safe blocks coalesce into one parallel
+ * Consecutive concurrency-safe blocks coalesce into one parallel
  * batch; everything else becomes its own singleton batch (which the
  * runner will execute serially).
  *
@@ -373,16 +360,12 @@ async function runOneToolBlock(
   const toolInput = validated.input;
 
   try {
-    // ─── Stage 22: PreToolUse hooks ────────────────────────────────
+    // ─── PreToolUse hooks ──────────────────────────────────────────
     // Fire user-defined PreToolUse hooks BEFORE the permission check.
     // A hook can:
     //   - veto the tool call (blockingError → result becomes an error)
     //   - override the permission decision (allow / ask / deny)
     //   - inject additionalContext that we prepend to the tool_result
-    //
-    // Mirrors source's order in
-    //   claude-code-source-code/src/services/tools/toolHooks.ts:runPreToolUseHooks
-    // which is called from `runToolWithPermissions` BEFORE `checkPermission`.
     const preOutcome = await runPreToolUseHooks({
       toolName: block.name,
       toolInput,
@@ -420,8 +403,8 @@ async function runOneToolBlock(
       model: options.model,
     });
 
-    // PreToolUse hook can override the rule-based decision (source's
-    // `permissionBehavior` from `processHookJSONOutput`). `deny` we
+    // PreToolUse hook can override the rule-based decision via its
+    // `permissionBehavior` output. `deny` we
     // handle above as `blockingError`; `allow` short-circuits the
     // permission flow; `ask` upgrades a would-be `allow` into a prompt.
     if (preOutcome.permissionBehavior === "allow") {
@@ -452,18 +435,15 @@ async function runOneToolBlock(
     if (permission.behavior === "ask") {
       surfacedRequest = permission.request;
 
-      // Headless short-circuit (source-aligned):
-      //   claude-code-source-code/src/utils/permissions/permissions.ts:929-940
-      //   When toolPermissionContext.shouldAvoidPermissionPrompts is on,
-      //   the source skips the user prompt and auto-denies (after running
-      //   permission hooks if any are configured). Easy Agent has no
-      //   hooks system, so we go straight to deny — but with a richer
-      //   message modelled on source's DONT_ASK_REJECT_MESSAGE so the
-      //   model knows WHY and what to do next.
+      // Headless short-circuit: when shouldAvoidPermissionPrompts is on,
+      // skip the user prompt and auto-deny. PreToolUse hooks have already
+      // had their chance to allow the call above, so this goes straight
+      // to deny — with a message that tells the model WHY and what to do
+      // next.
       //
       // We deliberately do NOT call options.onPermissionRequest here.
-      // It may still be plumbed through (parity with source's canUseTool
-      // forwarding) but invoking it from a backgrounded sub-agent would
+      // It may still be plumbed through, but invoking it from a
+      // backgrounded sub-agent would
       // pop a prompt in the parent's UI — see agentTool.ts for the long
       // list of failure modes that causes.
       let decision: PermissionDecision;
@@ -510,7 +490,7 @@ async function runOneToolBlock(
       availableTools: options.availableTools ?? context.availableTools,
     };
 
-    // ─── Stage 26: file-history track-edit (before the mutation) ──────
+    // ─── File-history track-edit (before the mutation) ────────────────
     // Back up the pre-edit content of any file Write/Edit is about to
     // change, so /rewind can restore it. Runs before tool.call so the
     // backup reflects the original content. Best-effort & non-blocking on
@@ -548,7 +528,7 @@ async function runOneToolBlock(
       }
     }
 
-    // ─── Stage 22: PostToolUse hooks ─────────────────────────────────
+    // ─── PostToolUse hooks ───────────────────────────────────────────
     // Fire AFTER the tool executes. Two effects:
     //   - additionalContext  → appended to the tool_result the model sees
     //   - blockingError      → wraps the result with an error attachment
@@ -726,7 +706,7 @@ export async function* query(
   // Stop-hook re-entry guard — see the call site below for context.
   let stopHookFired = false;
 
-  // ─── Stage 27: recovery state ────────────────────────────────────
+  // ─── Recovery state ──────────────────────────────────────────────
   // `maxOutputTokensOverride`: while set, the next API call uses this higher
   //   max_tokens (the silent 64K escalation). Reset to undefined after a
   //   normal turn or once multi-turn recovery takes over.
@@ -823,14 +803,14 @@ export async function* query(
       toolSearchEnabled: prepared.enabled,
       betaHeaders: prepared.betaHeaders,
       signal: params.abortSignal,
-      // Stage 27: silent 64K escalation override (undefined → default cap).
+      // Silent 64K escalation override (undefined → default cap).
       ...(maxOutputTokensOverride !== undefined ? { maxTokens: maxOutputTokensOverride } : {}),
       querySource: params.querySource,
     });
 
     let assistantContent: ContentBlock[] = [];
     let stopReason = "";
-    // Stage 27: capture a surfaced stream error so the outer scope can decide
+    // Capture a surfaced stream error so the outer scope can decide
     // on a recovery path (reactive compact) instead of failing inline.
     let streamError: { error: Error; category?: string } | undefined;
 
@@ -894,7 +874,7 @@ export async function* query(
       if (streamError) break;
     }
 
-    // ─── Stage 27: stream error handling (reactive compact) ──────────
+    // ─── Stream error handling (reactive compact) ────────────────────
     if (streamError) {
       // Prompt-too-long → summarize the history once and retry the turn.
       // Guarded by hasAttemptedReactiveCompact so we never loop on it.
@@ -936,9 +916,9 @@ export async function* query(
       };
     }
 
-    // ─── Stage 27: max_output_tokens two-phase recovery ──────────────
+    // ─── max_output_tokens two-phase recovery ────────────────────────
     if (stopReason === "max_tokens") {
-      // Phase 1 — silent escalation: retry the SAME request at 64K without
+      // Silent escalation: retry the SAME request at 64K without
       // touching the message history. Fires once per truncation episode.
       if (maxOutputTokensOverride === undefined) {
         maxOutputTokensOverride = ESCALATED_MAX_TOKENS;
@@ -946,7 +926,7 @@ export async function* query(
         continue; // turnCount unchanged — same turn, higher cap
       }
 
-      // Phase 2 — multi-turn continuation: commit the (truncated) assistant
+      // Multi-turn continuation: commit the (truncated) assistant
       // output, then inject a recovery prompt asking the model to resume.
       if (maxOutputTokensRecoveryCount < MAX_OUTPUT_TOKENS_RECOVERY_LIMIT) {
         const truncatedAssistant: MessageParam = {
@@ -1019,18 +999,16 @@ export async function* query(
           continue;
         }
       }
-      // ─── Stage 22: Stop hook ──────────────────────────────────────
+      // ─── Stop hook ────────────────────────────────────────────────
       // Fire user-defined Stop hooks before the loop returns. A hook
       // can inject extra context that becomes a user message and
       // continues the loop ("not done yet — keep going"), or it can
       // just observe the final assistant message and emit telemetry.
       //
-      // `stopHookFired` is the local equivalent of source's
-      // `stop_hook_active` flag — once a Stop hook has caused us to
-      // re-enter the loop, we skip the hook on the second pass so
-      // misbehaving hooks can't trigger an infinite re-prompt cycle.
-      //
-      // Mirror: claude-code-source-code/src/utils/hooks.ts:executeStopHooks
+      // `stopHookFired` acts as a `stop_hook_active` flag — once a Stop
+      // hook has caused us to re-enter the loop, the hook is not run again
+      // on the second pass so misbehaving hooks can't trigger an infinite
+      // re-prompt cycle.
       if (!stopHookFired) {
         const lastAssistantText = extractLastAssistantText(assistantContent);
         const stopOutcome = params.subagentInfo

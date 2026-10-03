@@ -8,8 +8,8 @@ const AGENT_MD_NAME = "AGENT.md";
 /**
  * Compile a glob pattern (matched against absolute file paths) to a RegExp.
  * Supports `**` (any chars incl. separators), `*` (any non-separator run), and
- * `?` (single non-separator). Mirrors the picomatch-style matching source uses
- * for `claudeMdExcludes`.
+ * `?` (single non-separator), the picomatch-style subset needed for
+ * `claudeMdExcludes`.
  */
 function globToRegExp(pattern: string): RegExp {
   let out = "";

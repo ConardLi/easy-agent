@@ -1,7 +1,7 @@
 /**
  * TaskGet — fetch a single task's full record.
  *
- * Mirrors the source tool. Matters because TaskList only returns a
+ * Matters because TaskList only returns a
  * trimmed summary (id/subject/status/blockedBy), so the model uses
  * TaskGet to see the description + full context before editing.
  */

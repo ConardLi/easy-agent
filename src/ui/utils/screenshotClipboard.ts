@@ -1,8 +1,7 @@
 /**
  * Read an image from the system clipboard and persist it to a temp PNG.
  *
- * Mirrors the source's `screenshotClipboard`: it shells out to the
- * platform's clipboard-image tool (macOS `pngpaste`, Linux `xclip`/`xsel`,
+ * Shells out to the platform's clipboard-image tool (macOS `pngpaste`, Linux `xclip`/`xsel`,
  * Windows PowerShell). The returned file path is then injected into the
  * prompt as an `@path` token so it flows through the same image-attachment
  * pipeline as a typed `@image.png` reference.

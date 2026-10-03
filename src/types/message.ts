@@ -2,7 +2,6 @@
  * Message types for the Easy Agent CLI.
  *
  * Maps closely to the Anthropic Messages API format.
- * Reference: claude-code-source-code/src/types/message.ts
  */
 
 // ─── Content Block Types ───────────────────────────────────────────
@@ -153,7 +152,7 @@ export interface StreamErrorEvent {
   type: "error";
   error: Error;
   /**
-   * Stage 27: the classified category of the error (rate_limit,
+   * The classified category of the error (rate_limit,
    * prompt_too_long, auth_error, …). Lets the agentic loop decide on a
    * recovery path (e.g. reactive compact for prompt_too_long) instead of
    * re-parsing the error string. Optional so non-API errors stay simple.
@@ -162,7 +161,7 @@ export interface StreamErrorEvent {
 }
 
 /**
- * Stage 27: emitted by the retry wrapper while it is waiting to re-issue a
+ * Emitted by the retry wrapper while it is waiting to re-issue a
  * request after a transient failure (429 / 5xx / network). Carries enough for
  * the UI to show "Retrying in Xs… (attempt N/M)". Yielded BEFORE any content,
  * so it never interleaves with partial assistant text.
@@ -177,7 +176,7 @@ export interface StreamRetryEvent {
 }
 
 /**
- * Stage 34: emitted when a thinking block starts streaming. Lets the
+ * Emitted when a thinking block starts streaming. Lets the
  * UI show a "thinking…" indicator in real-time.
  */
 export interface StreamThinkingStartEvent {
@@ -185,7 +184,7 @@ export interface StreamThinkingStartEvent {
 }
 
 /**
- * Stage 34: incremental thinking text delta (mirrors text_delta for
+ * Incremental thinking text delta (mirrors text_delta for
  * text blocks). Batched at 30ms by the agentic loop / UI hook.
  */
 export interface StreamThinkingDeltaEvent {
@@ -194,7 +193,7 @@ export interface StreamThinkingDeltaEvent {
 }
 
 /**
- * Stage 34: thinking block complete, carries the accumulated text and
+ * Thinking block complete, carries the accumulated text and
  * the cryptographic signature required for API replay.
  */
 export interface StreamThinkingDoneEvent {
@@ -204,7 +203,7 @@ export interface StreamThinkingDoneEvent {
 }
 
 /**
- * Stage 34: a redacted_thinking block was received (content opaque,
+ * A redacted_thinking block was received (content opaque,
  * echoed back to API as-is on next turn).
  */
 export interface StreamRedactedThinkingEvent {
