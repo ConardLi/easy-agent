@@ -3,7 +3,7 @@
  * QuestionPrompt in single-select and multi-select states to a fake stdout so
  * the layout / chip / highlight / markers can be eyeballed without a TTY.
  */
-import React from "react";
+import type React from "react";
 import { PassThrough } from "node:stream";
 import { Box, render } from "ink";
 import chalk from "chalk";

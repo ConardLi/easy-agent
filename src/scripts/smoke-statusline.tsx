@@ -3,7 +3,7 @@
  * built-in segmented line in a few states plus a custom-command override, so
  * the segments / separators / mode color can be eyeballed without a TTY.
  */
-import React from "react";
+import type React from "react";
 import { PassThrough } from "node:stream";
 import { Box, Text, render } from "ink";
 import chalk from "chalk";

@@ -56,7 +56,6 @@ import { getActiveTeam } from "../state/teamContext.js";
 import {
   addTeamMember,
   formatAgentId,
-  readTeamFileAsync,
   sanitizeName,
   TEAM_LEAD_NAME,
   type TeamMember,

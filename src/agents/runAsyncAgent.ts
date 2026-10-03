@@ -37,7 +37,6 @@ import {
 } from "../state/notificationStore.js";
 import {
   appendTaskOutput,
-  previewToolResult,
   type TaskOutputEvent,
 } from "../utils/taskOutput.js";
 import {

@@ -12,7 +12,8 @@
  * permission decision.
  */
 
-import React, { useState } from "react";
+import type React from "react";
+import { useState } from "react";
 import { Box, Text, useInput } from "ink";
 import type { PermissionDecision } from "../../permissions/permissions.js";
 

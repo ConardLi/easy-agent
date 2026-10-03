@@ -1,4 +1,4 @@
-import React from "react";
+import type React from "react";
 import os from "node:os";
 import path from "node:path";
 import { Box, Text, useStdout } from "ink";

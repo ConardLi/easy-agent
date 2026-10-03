@@ -44,8 +44,6 @@ import {
   addTeamMember,
   cleanupTeamDirectory,
   formatAgentId,
-  getTeamDir,
-  getTeamFilePath,
   readTeamFile,
   readTeamFileAsync,
   removeTeamMember,

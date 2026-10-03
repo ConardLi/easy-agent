@@ -9,7 +9,7 @@
  * the live `ToolCallList` and the historical `InlineToolCard`, so a card looks
  * identical in-flight and once archived.
  */
-import React from "react";
+import type React from "react";
 import { Box, Text, useStdout } from "ink";
 import { theme, glyph } from "../theme.js";
 import { useBlink } from "../hooks/useBlink.js";

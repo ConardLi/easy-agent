@@ -1,16 +1,4 @@
-/**
- * Visual smoke for the read/search collapse + Bash semantic labels.
- *
- * Turn 1 — a mixed run of Reads, Greps, Bash inspection commands (ls/cat/rg),
- * an MCP query and a MemoryWrite collapse into ONE grouped card with a
- * semantic summary ("Searched … · Read … · Listed … · Queried …"), while a
- * lone Edit stays its own card.
- *
- * Turn 2 — action Bash commands that are NOT collapsible each render their own
- * card with a semantic label: Build(npm run build), Test(vitest), Git(status),
- * Search("foo"), List(ls -la).
- */
-import React from "react";
+
 import { PassThrough } from "node:stream";
 import { Box, render } from "ink";
 import chalk from "chalk";

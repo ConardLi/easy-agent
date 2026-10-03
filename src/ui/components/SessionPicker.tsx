@@ -10,7 +10,7 @@
  * actual switch is performed by re-invoking `/resume <id>` through the engine.
  */
 
-import React from "react";
+import type React from "react";
 import { Box, Text } from "ink";
 import type { ResumeSessionInfo } from "../../core/queryEngine.js";
 import { theme, glyph } from "../theme.js";

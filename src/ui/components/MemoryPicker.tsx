@@ -9,7 +9,7 @@
  * <n>` through the engine (the same $EDITOR path the text command uses).
  */
 
-import React from "react";
+import type React from "react";
 import { Box, Text } from "ink";
 import type { MemoryPickerItem } from "../../core/queryEngine.js";
 import { theme, glyph } from "../theme.js";

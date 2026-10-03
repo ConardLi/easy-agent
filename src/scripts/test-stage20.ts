@@ -66,11 +66,10 @@ import {
   worktreePathFor,
 } from "../utils/worktree.js";
 import { agentTool } from "../tools/agentTool.js";
-import { runChildAgent } from "../agents/runAgent.js";
+import type { runChildAgent } from "../agents/runAgent.js";
 import { loadAllCustomAgents } from "../agents/loadAgentsDir.js";
 import { setAgents } from "../agents/registry.js";
 import { getBuiltInAgents } from "../agents/builtIn/index.js";
-import type { AgentDefinition } from "../agents/types.js";
 import { toolResultText, type ToolContext } from "../tools/Tool.js";
 import type { AgentRunResult } from "../agents/types.js";
 import type {
@@ -134,29 +133,6 @@ async function waitForAgentNotification(agentId: string): Promise<void> {
       reject(new Error(`Background agent ${agentId} did not finish after cancellation`));
     }, 10_000);
   });
-}
-
-/**
- * Fake AgentDefinition whose system prompt is irrelevant — used purely
- * to drive `runChildAgent` through the agentic loop. The "model" loop
- * we use in tests for cwdOverride directly invokes a stub tool that
- * captures `context.cwd`, then bails out with maxTurns=1.
- *
- * We can't actually call runChildAgent without an LLM, so test [9]
- * goes a different route — it asserts the cwdOverride field is wired
- * into the ToolContext by inspecting the params interface and the
- * runAgent.ts source via runChildAgent's behaviour with a stub tool
- * provider. To keep this test offline-pure we cheat and just check
- * the field exists on the params type.
- */
-function buildTestAgent(overrides: Partial<AgentDefinition> = {}): AgentDefinition {
-  return {
-    agentType: "test-agent",
-    whenToUse: "test only",
-    source: "built-in",
-    getSystemPrompt: () => "test system prompt",
-    ...overrides,
-  };
 }
 
 async function main(): Promise<void> {

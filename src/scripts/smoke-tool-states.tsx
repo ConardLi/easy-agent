@@ -1,20 +1,4 @@
-/**
- * Visual smoke for P0 #3 — the in-flight tool-card state machine.
- *
- * Renders a live ToolCallList with one card in each phase so you can confirm
- * the dot color + sub-line per state:
- *   - queued              → dim dot, "Waiting…"
- *   - running             → orange dot, no sub-line (Build label from #2)
- *   - running (bash tail)  → orange dot + streaming tail
- *   - waiting-permission  → orange dot, "Waiting for permission…"
- *   - classifier          → orange dot, "Auto classifier checking…"
- *   - done (ok)           → green dot + summary
- *   - done (error)        → red dot + error body
- *
- * Dots that blink are sampled at one instant here (shared blink clock); in the
- * live UI they pulse.
- */
-import React from "react";
+
 import { PassThrough } from "node:stream";
 import { Box, render } from "ink";
 import chalk from "chalk";

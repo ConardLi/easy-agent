@@ -1,17 +1,4 @@
-/**
- * Visual smoke for P1 #8 — live Bash running indicators (ShellProgressMessage
- * parity). Renders one in-flight Bash card per scenario so you can eyeball the
- * status row beneath the 5-line tail:
- *
- *   1. no output yet        → `Running… (3s · timeout 2m)`
- *   2. small output         → tail + `+N lines  (Ns · timeout 2m)  <bytes>`
- *   3. large output         → tail + `~N lines  …` (preview dropped earlier lines)
- *   4. no timeout configured → `(elapsed)` only, no `timeout` suffix
- *
- * Tail is capped at 5 lines (source ShellProgressMessage). Bytes use
- * formatFileSize; the time/timeout hint uses formatDuration(hideTrailingZeros).
- */
-import React from "react";
+
 import { PassThrough } from "node:stream";
 import { Box, render } from "ink";
 import chalk from "chalk";

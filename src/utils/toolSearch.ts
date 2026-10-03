@@ -98,7 +98,7 @@ const CHARS_PER_TOKEN = 2.5;
 function parseAutoPercentage(value: string): number | null {
   if (!value.startsWith("auto:")) return null;
   const percent = parseInt(value.slice(5), 10);
-  if (isNaN(percent)) {
+  if (Number.isNaN(percent)) {
     debugLog("toolsearch", `Invalid tool search value "${value}": expected auto:N where N is a number.`);
     return null;
   }

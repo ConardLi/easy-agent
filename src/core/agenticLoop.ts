@@ -32,7 +32,7 @@ import { tokenCountWithEstimation } from "../utils/tokens.js";
 import { fileHistoryTrackEdit } from "../session/fileHistory.js";
 import { setToolStatus } from "../state/toolStatusStore.js";
 import * as path from "node:path";
-import { isAtBlockingLimit, calculateTokenWarningState, type TokenWarningResult } from "../context/autoCompact.js";
+import { calculateTokenWarningState, type TokenWarningResult } from "../context/autoCompact.js";
 import type { ContentBlock, TextBlock, ToolUseBlock, Usage } from "../types/message.js";
 import {
   runPreToolUseHooks,
@@ -718,7 +718,7 @@ export async function* query(
   // `hasAttemptedReactiveCompact`: one-shot guard so a prompt-too-long error
   //   triggers compaction at most once — without it, "compact → still too
   //   long → compact" would loop forever burning API calls.
-  let maxOutputTokensOverride: number | undefined = undefined;
+  let maxOutputTokensOverride: number | undefined;
   let maxOutputTokensRecoveryCount = 0;
   let hasAttemptedReactiveCompact = false;
 

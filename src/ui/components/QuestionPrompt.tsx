@@ -23,7 +23,7 @@
  * purely presentational and reads the current selection state from props.
  * Descriptions live on their own line and wrap within the dialog width.
  */
-import React from "react";
+import type React from "react";
 import { Box, Text, useStdout } from "ink";
 import { theme } from "../theme.js";
 import type { UserQuestion } from "../../tools/Tool.js";
@@ -62,10 +62,10 @@ export function QuestionPrompt({
   selected,
   textInput,
 }: QuestionPromptProps): React.ReactNode {
+  const { stdout } = useStdout();
   const question = questions[questionIndex];
   if (!question) return null;
 
-  const { stdout } = useStdout();
   const columns = stdout?.columns ?? 80;
   // Leave room for the root paddingX (1*2). Border + own paddingX is handled
   // by Ink inside this width, so descriptions wrap a couple cols short of it.

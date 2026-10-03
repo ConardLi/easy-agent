@@ -6,7 +6,7 @@
  * A non-interactive panel, dismissed with Esc like any command panel.
  */
 
-import React from "react";
+import type React from "react";
 import { Box, Text } from "ink";
 import type { DiffViewData } from "../../core/queryEngine.js";
 import { theme, glyph } from "../theme.js";

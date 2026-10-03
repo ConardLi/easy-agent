@@ -4,7 +4,7 @@
  * the block cursor, continuation indent, and mode caret can be eyeballed without
  * a TTY. Also renders the `@` FileSuggestions palette.
  */
-import React from "react";
+import type React from "react";
 import { PassThrough } from "node:stream";
 import { Box, Text, render } from "ink";
 import chalk from "chalk";

@@ -12,7 +12,6 @@
 import { getMcpRegistry } from "../services/mcp/registry.js";
 import {
   isDeferredTool,
-  isToolSearchEnabledOptimistic,
   TOOL_SEARCH_TOOL_NAME,
 } from "../utils/toolSearch.js";
 import { debugLog } from "../utils/log.js";

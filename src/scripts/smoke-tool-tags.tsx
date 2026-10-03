@@ -1,20 +1,4 @@
-/**
- * Visual smoke for P1 #10 — tool-card tags (`renderToolUseTag` parity).
- *
- * Renders the condensed history + Ctrl+O transcript for a set of tool calls so
- * you can confirm the dim `[tag]` after the header:
- *   - Bash with a custom timeout   → `Bash(sleep 300) [timeout: 5m]`
- *   - Bash with the default timeout → no tag (low-noise)
- *   - Bash with no timeout field    → no tag
- *   - WebFetch (200)                → `WebFetch(…) [200 OK]`
- *   - WebFetch (404)                → `… [404 Not Found]`
- *   - MCP tool (mcp__slack__…)      → `… [slack]`
- *   - Read (control)                → no tag
- *
- * Input-derived tags (timeout, MCP server) also show on live cards; the WebFetch
- * status tag is result-derived, so it appears once archived.
- */
-import React from "react";
+
 import { PassThrough } from "node:stream";
 import { Box, render } from "ink";
 import chalk from "chalk";

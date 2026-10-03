@@ -1,18 +1,4 @@
-/**
- * Visual smoke for P0 #5 — layered Bash output rendering.
- *
- * Renders a ConversationView (the condensed, default history view) covering:
- *   - multi-line stdout  → capped at 3 lines + "+N lines (ctrl+o to expand)"
- *   - stdout + stderr    → stdout dim, stderr red, stacked under one corner
- *   - timeout            → warning line
- *   - silent no-output   → "Done"  (mkdir)
- *   - non-silent empty   → "(No output)"  (git add)
- *   - failing command    → stderr in red
- *
- * Then prints the Ctrl+O transcript (verbose) for the same messages so you can
- * confirm the full, uncapped output only appears there.
- */
-import React from "react";
+
 import { PassThrough } from "node:stream";
 import { Box, render } from "ink";
 import chalk from "chalk";

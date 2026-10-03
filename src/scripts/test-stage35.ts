@@ -281,8 +281,8 @@ async function main(): Promise<void> {
   section("[3] component-path containment");
   const inside = await resolveInsidePlugin(fx.demoRoot, "skills");
   assert(inside.ok, "in-root path accepted");
-  const escape = await resolveInsidePlugin(fx.demoRoot, "../../../../etc");
-  assert(!escape.ok, "escaping path rejected");
+  const escaped = await resolveInsidePlugin(fx.demoRoot, "../../../../etc");
+  assert(!escaped.ok, "escaping path rejected");
   // Regression: an absent optional dir must be allowed even when the plugin
   // root sits under a symlinked ancestor (macOS /var → /private/var).
   const absent = await resolveInsidePlugin(fx.demoRoot, "not-there");
@@ -342,10 +342,10 @@ async function main(): Promise<void> {
     loaded.mcpServers[0]?.namespacedName === "plugin:demo:local",
     "mcp server namespaced → plugin:demo:local",
   );
-  const mcpArgs = (loaded.mcpServers[0]?.config as { args?: string[] }).args ?? [];
+  const mcpArgs = (loaded.mcpServers[0]?.config as { args?: string[] } | undefined)?.args ?? [];
   assert(mcpArgs[0] === `${fx.demoRoot}/server.js`, "mcp ${ROOT} substituted");
   const mcpEnv =
-    (loaded.mcpServers[0]?.config as { env?: Record<string, string> }).env ?? {};
+    (loaded.mcpServers[0]?.config as { env?: Record<string, string> } | undefined)?.env ?? {};
   assert(
     mcpEnv.EASY_AGENT_PLUGIN_ROOT === fx.demoRoot &&
       mcpEnv.EASY_AGENT_PLUGIN_DATA === getPluginDataDir("demo@testmp"),

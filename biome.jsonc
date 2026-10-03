@@ -1,0 +1,64 @@
+{
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
+  "files": {
+    "includes": [
+      "**",
+      // Milestone snapshot scripts are maintained apart from src/.
+      "!step",
+      "!src/scripts/__golden__",
+      "!package-lock.json",
+      "!docs/headless-output.schema.json"
+    ]
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 120
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "double",
+      "semicolons": "always",
+      "trailingCommas": "all",
+      "arrowParentheses": "always"
+    }
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "recommended",
+      "style": {
+        // Used after bounds checks and on lookups the surrounding code guarantees.
+        "noNonNullAssertion": "off",
+        "useTemplate": "off"
+      },
+      "complexity": {
+        // Raw settings and JSON payloads are read with bracket keys on purpose.
+        "useLiteralKeys": "off",
+        // `a && a.b` and `a?.b` differ when `a` is falsy but not nullish.
+        "useOptionalChain": "off"
+      },
+      "suspicious": {
+        // `${VAR}` placeholders in settings, hook, and command strings are literal syntax.
+        "noTemplateCurlyInString": "off",
+        // Terminal output is parsed with ANSI escape and control-character regexes.
+        "noControlCharactersInRegex": "off",
+        // `while ((m = re.exec(s)) !== null)` and `x ?? (x = init())`.
+        "noAssignInExpressions": "off",
+        // Ink renders static, append-only lists.
+        "noArrayIndexKey": "off",
+        "noExplicitAny": "off",
+        "noImplicitAnyLet": "off"
+      },
+      "correctness": {
+        // Hook dependency lists decide when effects re-run; changing them changes behavior.
+        "useExhaustiveDependencies": "off",
+        // Parameters kept to satisfy tool and component interfaces.
+        "noUnusedFunctionParameters": "off"
+      }
+    }
+  },
+  "assist": { "enabled": false }
+}

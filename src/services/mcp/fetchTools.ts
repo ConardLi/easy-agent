@@ -76,7 +76,8 @@ function buildToolAdapter(connection: ConnectedMcpServer, mcpTool: McpTool): Too
       };
       try {
         return await invoke(active);
-      } catch (error) {
+      } catch (firstError) {
+        let error = firstError;
         if ((error as { code?: number }).code === 404 && active.sessionId?.() && connection.config.type === "http") {
           const rebuilt = await requestMcpReconnect(connection.name).catch(() => null);
           if (rebuilt?.type === "connected") {

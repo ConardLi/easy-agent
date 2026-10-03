@@ -9,7 +9,21 @@ npm ci
 npm run verify:production
 ```
 
-The command runs TypeScript validation, the source hygiene check, builds the distributable CLI, and executes the `core`, `extensions`, and `ui` test groups. Any failed test or timeout returns a non-zero exit code. `npm run verify:release` runs this gate, then the `platform` group, then the package and installation checks; see [Releasing](./releasing.md).
+The command runs TypeScript validation, lint, the source hygiene check, builds the distributable CLI, and executes the `core`, `extensions`, and `ui` test groups. Any failed test or timeout returns a non-zero exit code. `npm run verify:release` runs this gate, then the `platform` group, then the package and installation checks; see [Releasing](./releasing.md).
+
+`npm test` runs only the three test groups, without typecheck, lint, or build. It selects the same tests as the gate; `npm test -- --list` prints them.
+
+## Lint and formatting
+
+[Biome](https://biomejs.dev/) lints and formats `src/`, `scripts/`, and the root configuration files. `step/`, the golden fixtures, and `package-lock.json` are excluded. The configuration is `biome.jsonc`; every rule switched off there has a comment giving the reason.
+
+```bash
+npm run lint           # fails on errors and warnings
+npm run format         # rewrite files in place
+npm run format:check   # report files that differ from the formatter output
+```
+
+Lint is part of `verify:production`.
 
 Each offline test process receives a temporary `HOME`, `USERPROFILE`, XDG directories, and Windows application-data directories. Provider credentials, API endpoints, MCP settings, editor overrides, and `EASY_AGENT_*` feature settings inherited from the developer environment are removed. Tests must create their own configuration and fixtures under the assigned temporary directories.
 

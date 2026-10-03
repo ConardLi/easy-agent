@@ -74,7 +74,6 @@ export const exitPlanModeTool: Tool = {
     }
 
     const planPath = getPlanFilePath();
-    const summary = (input.summary as string) || "No summary provided.";
     const allowedPrompts = (input.allowedPrompts as AllowedPrompt[]) ?? [];
     const inputPlan = typeof input.plan === "string" ? input.plan : undefined;
 

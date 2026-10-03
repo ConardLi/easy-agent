@@ -1,4 +1,4 @@
-import React from "react";
+import type React from "react";
 import { Box, Text, useStdout } from "ink";
 import { theme, glyph } from "../theme.js";
 import type { CommandSuggestion } from "../types.js";

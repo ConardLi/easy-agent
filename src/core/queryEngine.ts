@@ -43,7 +43,7 @@ import { findUserCommand } from "../commands/userCommands/registry.js";
 import { substituteArguments } from "../commands/userCommands/argumentSubstitution.js";
 import { isBuiltinCommandName } from "../commands/builtinCommandNames.js";
 import { tryExpandBuiltinPromptCommand } from "../commands/builtinPromptCommands.js";
-import { type SettingSource } from "../config/sources.js";
+import type { SettingSource } from "../config/sources.js";
 import type { UserCommand } from "../commands/userCommands/types.js";
 import {
   runSessionStartHooks,
