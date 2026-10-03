@@ -15,7 +15,7 @@ import {
 import { buildSystemPrompt, renderSystemPrompt } from "../context/systemPrompt.js";
 import { compactMessages } from "../context/compaction.js";
 import { autoCompactIfNeeded, calculateTokenWarningState } from "../context/autoCompact.js";
-import { tokenCountWithEstimation } from "../utils/tokens.js";
+import { formatSessionUsage, tokenCountWithEstimation } from "../utils/tokens.js";
 import { formatProjectSessionHistory } from "../session/history.js";
 import { fileHistoryMakeSnapshot } from "../session/fileHistory.js";
 import { getToolsForMode } from "../tools/index.js";
@@ -984,7 +984,7 @@ export class QueryEngine {
         yield {
           type: "command",
           kind: "info",
-          message: `Session usage\n- Input tokens: ${this.totalUsage.input_tokens}\n- Output tokens: ${this.totalUsage.output_tokens}\n- Total tokens: ${this.totalUsage.input_tokens + this.totalUsage.output_tokens}`,
+          message: formatSessionUsage(this.totalUsage),
         };
         return { handled: true };
       case "model": {

@@ -11,13 +11,21 @@ import { formatTeamSystemReminder } from "../agents/teamPromptInjection.js";
 import { getAllAgents } from "../agents/registry.js";
 import { getActiveOutputStyleConfig } from "../styles/registry.js";
 import { readMergedStringSetting } from "../utils/settings.js";
+import {
+  SYSTEM_PROMPT_DYNAMIC_END,
+  SYSTEM_PROMPT_DYNAMIC_START,
+  SYSTEM_PROMPT_STATIC_END,
+  SYSTEM_PROMPT_STATIC_START,
+} from "../constants/systemPromptMarkers.js";
+
+export {
+  SYSTEM_PROMPT_DYNAMIC_END,
+  SYSTEM_PROMPT_DYNAMIC_START,
+  SYSTEM_PROMPT_STATIC_END,
+  SYSTEM_PROMPT_STATIC_START,
+};
 
 const execFileAsync = promisify(execFile);
-
-export const SYSTEM_PROMPT_STATIC_START = "<SYSTEM_STATIC_CONTEXT>";
-export const SYSTEM_PROMPT_STATIC_END = "</SYSTEM_STATIC_CONTEXT>";
-export const SYSTEM_PROMPT_DYNAMIC_START = "<SYSTEM_DYNAMIC_CONTEXT>";
-export const SYSTEM_PROMPT_DYNAMIC_END = "</SYSTEM_DYNAMIC_CONTEXT>";
 
 export interface RuntimeEnvironmentContext {
   cwd: string;

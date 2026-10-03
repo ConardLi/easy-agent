@@ -114,6 +114,29 @@ export function getTokenCountFromUsage(usage: Usage): number {
   );
 }
 
+/** Share of prompt input tokens served from the prompt cache, or null without cache activity. */
+export function getCacheHitRate(usage: Usage): number | null {
+  const read = usage.cache_read_input_tokens ?? 0;
+  const write = usage.cache_creation_input_tokens ?? 0;
+  if (read === 0 && write === 0) return null;
+  return read / (usage.input_tokens + read + write);
+}
+
+/** `/cost` body. Cache lines appear only once the provider reports cache activity. */
+export function formatSessionUsage(usage: Usage): string {
+  const lines = ["Session usage", `- Input tokens: ${usage.input_tokens}`];
+  const hitRate = getCacheHitRate(usage);
+  if (hitRate !== null) {
+    lines.push(
+      `- Cache read tokens: ${usage.cache_read_input_tokens ?? 0}`,
+      `- Cache write tokens: ${usage.cache_creation_input_tokens ?? 0}`,
+      `- Cache hit rate: ${Math.round(hitRate * 100)}%`,
+    );
+  }
+  lines.push(`- Output tokens: ${usage.output_tokens}`, `- Total tokens: ${getTokenCountFromUsage(usage)}`);
+  return lines.join("\n");
+}
+
 export function tokenCountWithEstimation(
   messages: readonly MessageParam[],
   options?: { usage?: Usage; usageAnchorIndex?: number; systemPrompt?: string },

@@ -46,6 +46,14 @@ Project and local settings that can execute code, redirect providers, or widen r
 
 Values are model profile IDs or raw Anthropic model names. Per-call and custom-agent model declarations remain authoritative.
 
+## Prompt caching
+
+Requests that use the Anthropic protocol mark the tool definitions, the static part of the system prompt, and the latest messages for prompt caching. Later requests in the same tool loop read the shared prefix from cache, which cuts input cost and time to first token on long sessions. OpenAI-compatible and Gemini requests are not changed.
+
+`/cost` and `/status` show cache read and write tokens and the cached share of input once the provider reports cache activity.
+
+Set `EASY_AGENT_DISABLE_PROMPT_CACHING=1` for an Anthropic-compatible endpoint that rejects `cache_control`. Requests then go out in the uncached shape.
+
 ## Forked Skills
 
 A Skill with `context: fork` executes in a fresh sub-agent context. It inherits the active permission infrastructure but not the parent message history. Its `allowed-tools` narrows the available tool pool and supplies only session-scoped allow rules for the fork. Optional `agent` and `model` frontmatter select an agent definition or model; defaults are `general-purpose` and the active model. Nested forks are rejected.

@@ -29,7 +29,9 @@ import {
   estimateSystemPromptTokens,
   roughTokenCountEstimationForMessages,
   getContextWindowForModel,
+  getCacheHitRate,
 } from "../../../utils/tokens.js";
+import type { Usage } from "../../../types/message.js";
 import {
   isPlatformSupported as isSandboxPlatformSupported,
   isSandboxRuntimeReady,
@@ -78,7 +80,7 @@ export async function* handleStatusCommand(
     `- Task system: ${taskModeLabel} (${taskMode})`,
     `- Output style: ${getActiveOutputStyleName()}`,
     `- Messages in context: ${ctx.getMessages().length}`,
-    `- Session tokens: in ${ctx.getTotalUsage().input_tokens} / out ${ctx.getTotalUsage().output_tokens}`,
+    formatStatusTokens(ctx.getTotalUsage()),
     `- Tools enabled (${tools.length}): ${toolNames.join(", ")}`,
     mcp.length === 0
       ? "- MCP servers: none configured"
@@ -86,6 +88,13 @@ export async function* handleStatusCommand(
   ];
   yield { type: "command", kind: "info", message: lines.join("\n") };
   return { handled: true };
+}
+
+function formatStatusTokens(usage: Usage): string {
+  const line = `- Session tokens: in ${usage.input_tokens} / out ${usage.output_tokens}`;
+  const hitRate = getCacheHitRate(usage);
+  if (hitRate === null) return line;
+  return `${line} / cache read ${usage.cache_read_input_tokens ?? 0} / cache write ${usage.cache_creation_input_tokens ?? 0} (${Math.round(hitRate * 100)}% cached)`;
 }
 
 /**
