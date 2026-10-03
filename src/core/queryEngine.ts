@@ -13,6 +13,7 @@ import {
   type PermissionSettings,
 } from "../permissions/permissions.js";
 import { buildSystemPrompt, renderSystemPrompt } from "../context/systemPrompt.js";
+import { loadMaxTurnsSetting } from "../config/features.js";
 import { compactMessages } from "../context/compaction.js";
 import { autoCompactIfNeeded, calculateTokenWarningState } from "../context/autoCompact.js";
 import { tokenCountWithEstimation } from "../utils/tokens.js";
@@ -161,6 +162,7 @@ export class QueryEngine {
   private permissionSettings?: PermissionSettings;
   private readonly sessionPermissionRules: PermissionRuleSet;
   private readonly onPermissionRequest?: (request: PermissionRequest) => Promise<PermissionDecision>;
+  private readonly defaultMaxTurns?: number;
   private abortController: AbortController | null = null;
   private usageAnchorIndex: number = -1;
   private lastCallUsage: Usage = { input_tokens: 0, output_tokens: 0 };
@@ -195,6 +197,7 @@ export class QueryEngine {
     this.permissionSettings = options.permissionSettings;
     this.sessionPermissionRules = options.sessionPermissionRules ?? { allow: [], deny: [] };
     this.onPermissionRequest = options.onPermissionRequest;
+    this.defaultMaxTurns = options.defaultMaxTurns;
   }
 
   getPermissionMode(): PermissionMode {
@@ -761,9 +764,11 @@ export class QueryEngine {
         messageId: this.currentMessageId ?? undefined,
       };
 
+      const maxTurns = (await loadMaxTurnsSetting(this.toolContext.cwd)) ?? this.defaultMaxTurns;
       const loop = query({
         messages: [...this.messages],
         systemPrompt,
+        maxTurns,
         getTools: () => getToolsForMode(this.currentPermissionMode),
         model: this.getActiveModel(),
         abortSignal: abortController.signal,

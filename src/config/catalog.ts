@@ -8,7 +8,7 @@ import { loadFeatureSettings } from "./features.js";
 export const SETTING_RELOAD: Record<string, string> = {
   toolSearch: "next request", toolSearchAutoThreshold: "next request", modelRoles: "next invocation/request",
   hooks: "next event", disableAllHooks: "next event", models: "next request", model: "next turn",
-  defaultModel: "next turn", language: "next turn", checkpointingEnabled: "next checkpoint",
+  defaultModel: "next turn", language: "next turn", maxTurns: "next turn", checkpointingEnabled: "next checkpoint",
   respectGitignore: "next search", allow: "config command", deny: "config command", ask: "config command",
   mode: "config command", autoMode: "config command", outputStyle: "output-style command or restart",
   enabledPlugins: "plugin reload", mcpServers: "MCP reconnect", sandbox: "next shell execution",
