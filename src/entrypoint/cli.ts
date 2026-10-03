@@ -25,6 +25,7 @@ async function main(): Promise<void> {
   }
 
   if (process.argv.includes("--help") || process.argv.includes("-h")) {
+    const { formatBuiltinCommandHelpColumns } = await import("../commands/builtinCommandHelp.js");
     console.log(`
 Easy Agent v${VERSION} — Terminal-native agentic coding system
 
@@ -66,19 +67,7 @@ Options:
   --dump-system-prompt        Print the assembled system prompt and exit
 
 Commands (in REPL):
-  /help                       Show available commands
-  /clear                      Clear conversation history
-  /config [list|get|set]      Inspect or change settings (--user/--project/--local)
-  /mode [default|plan|auto]   Inspect or switch permission mode
-  /tasks [task|todo|reset]    Switch task system or reset the task graph
-  /mcp [tools|reconnect <n>]  Inspect or reconnect MCP servers
-  /skills                     List loaded skills (user + project scope)
-  /<skill-name> [args]        Invoke a skill by name
-  /<command> [args]           Invoke a user-defined command (.easy-agent/commands)
-  /output-style [name]        Inspect or switch the answer style
-  /agents                     List built-in + custom sub-agent definitions
-  /hooks                      Show configured lifecycle hooks
-  /history                    Show session history
+${formatBuiltinCommandHelpColumns()}
 
 Extensions (Markdown + frontmatter):
   Output styles: ~/.easy-agent/output-styles/<name>.md (default/Explanatory/Learning built-in)
@@ -133,9 +122,6 @@ Settings keys (in ~/.easy-agent/settings.json or <cwd>/.easy-agent/settings.json
   sandbox.failClosed: true           Block shell execution when isolation is unavailable (default)
   sandbox.filesystem: {...}          Configure allowWrite/denyWrite/allowRead/denyRead
   sandbox.network: {...}             Optional domain policy and local IPC settings
-
-  /compact                    Compact conversation context
-  /exit, /quit, /bye          Exit the REPL
 `);
     process.exit(0);
   }

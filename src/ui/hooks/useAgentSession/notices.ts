@@ -9,6 +9,7 @@
 import type { SystemNotice, ToolCallInfo } from "../../types.js";
 import type { TokenWarningResult } from "../../../context/autoCompact.js";
 import type { LoopTerminationReason } from "../../../core/agenticLoop.js";
+import { formatBuiltinCommandHelpLines } from "../../../commands/builtinCommandHelp.js";
 
 export interface ToolCallCompletion {
   resultLength: number;
@@ -55,34 +56,7 @@ export function buildCommandNotice(message: string, kind: "info" | "error"): Sys
     return {
       tone: "info",
       title: "Available commands",
-      body: [
-        "/help — Show available commands",
-        "/clear — Clear conversation history",
-        "/config [list|get|set] — Inspect or change settings (--user/--project/--local)",
-        "/cost — Show session token usage",
-        "/model [name|default] — Inspect or override the session model",
-        "/mode [default|plan|auto] — Inspect or switch permission mode",
-        "/tasks [task|todo|reset] — Switch task system or reset the task graph",
-        "/mcp — Inspect MCP servers and their tools",
-        "/skills — List loaded skills (user + project scope)",
-        "/<skill-name> [args] — Run a registered skill as a chat turn",
-        "/<command> [args] — Run a user-defined command (~/.easy-agent/commands)",
-        "/output-style [name] — Inspect or switch the answer style",
-        "/agents — List built-in + custom sub-agent definitions",
-        "/history — Show saved sessions for this project",
-        "/compact — Compact conversation context",
-        "/status — Snapshot of the current session config",
-        "/context — Visualize context window usage by category",
-        "/doctor — Run an environment health check",
-        "/copy [n] — Copy an assistant reply to the clipboard",
-        "/export [file] — Export the conversation to Markdown",
-        "/resume [n|id] — List and switch to a saved session",
-        "/diff [n] — Show uncommitted git changes + recent agent edits",
-        "/init — Analyze the repo and draft an AGENT.md (runs a model turn)",
-        "/permissions [allow|deny|remove <rule>] — Manage allow/deny rules by layer",
-        "/memory [edit <n>] — List/edit AGENT.md + project memory files in $EDITOR",
-        "/exit | /quit | /bye — Exit session",
-      ].join("\n"),
+      body: formatBuiltinCommandHelpLines(),
     };
   }
 
