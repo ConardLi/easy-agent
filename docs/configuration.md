@@ -81,6 +81,20 @@ Plugins may declare inline `lspServers` or point `lspServers` at JSON files insi
 
 LSP processes are executable plugin components: they start only for trusted plugins. Paths cannot escape the plugin root; commands are spawned without a shell; JSON-RPC frames, queues, requests, document size, timeouts, cancellation, restarts, and process-tree cleanup are bounded. The `LSP` tool exposes read-only `definition`, `references`, `hover`, and `documentSymbol` requests. Failed replacements retain the previously ready server.
 
+## Tool turn limit
+
+One request stops after a fixed number of model calls that end in tool use. The default is 200 in the interactive REPL and 50 for Headless runs (`-p`).
+
+```json
+{
+  "maxTurns": 400
+}
+```
+
+`--max-turns <n>` overrides the setting for one invocation, and managed policy overrides both. The value must be a positive integer; anything else is ignored. The limit applies to the main session only: sub-agents keep the `maxTurns` from their own definition.
+
+When the REPL reaches the limit, the conversation so far is kept. Send another message, for example `continue`, to resume. Headless runs end with `error_max_turns` and exit code 1, as before.
+
 ## Reload behavior
 
 ToolSearch, model roles, hooks, and most request-time settings refresh on the next relevant operation. Settings files publish one complete source snapshot at a time. If a previously valid file becomes unreadable or invalid during a live update, Easy Agent reports the problem and retains that source's last valid snapshot until the file is corrected.

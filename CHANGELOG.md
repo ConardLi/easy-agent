@@ -15,6 +15,7 @@ All notable changes to Easy Agent are documented in this file.
 
 - The npm description and keywords describe product capabilities.
 - The development milestone table moved from the README to `docs/learning-path.md`.
+- The tool-turn limit per request is configurable with `--max-turns <n>` or the `maxTurns` setting. The interactive REPL default rises from 50 to 200, and reaching the limit explains how to continue. Headless runs keep the 50-turn default and the `error_max_turns` result.
 - `verify:release` also runs the host sandbox tests. The release workflow runs the gate on macOS and Ubuntu and the core tests on Windows before publishing, and publishes the verified artifact without rebuilding it.
 
 ## [0.1.1] - 2026-09-04

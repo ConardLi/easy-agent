@@ -44,6 +44,7 @@
     "test:streaming": "tsx src/scripts/test-streaming.ts",
     "test:tools": "tsx src/scripts/test-tools.ts",
     "test:tool-input": "node --import tsx src/scripts/test-tool-input-validation.ts",
+    "test:max-turns": "node --import tsx src/scripts/test-max-turns.ts",
     "test:path-boundary": "node --import tsx src/scripts/test-path-boundary.ts",
     "test:private-data": "node --import tsx src/scripts/test-private-data-permissions.ts",
     "test:persistence": "node --import tsx src/scripts/test-atomic-persistence.ts",
