@@ -40,9 +40,44 @@ jobs:
             *) printf '%s\n' "$output" >&2; exit 1 ;;
           esac
 
+  portability:
+    name: Core tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          package-manager-cache: false
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+      - run: npm run verify:production:core
+      - run: npm run test:hooks-hardening
+
+  release-gate-macos:
+    name: Release gate (macOS)
+    runs-on: macos-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          package-manager-cache: false
+      - run: npm ci
+      - run: npm run verify:release
+
   publish:
     name: Verify and publish
-    needs: old-node-gate
+    needs: [old-node-gate, portability, release-gate-macos]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -54,6 +89,9 @@ jobs:
           node-version: "22"
           registry-url: "https://registry.npmjs.org"
           package-manager-cache: false
+      - run: sudo apt-get update && sudo apt-get install -y bubblewrap socat ripgrep
+      - name: Enable unprivileged user namespaces for the sandbox test
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - run: npm ci
       - run: npm run verify:release
       - name: Verify tag and choose npm channel
@@ -66,7 +104,10 @@ jobs:
             *-*) printf 'tag=next\n' >> "$GITHUB_OUTPUT" ;;
             *) printf 'tag=latest\n' >> "$GITHUB_OUTPUT" ;;
           esac
+      # verify:release already built and tested dist/. Skipping lifecycle
+      # scripts publishes exactly that artifact instead of rebuilding it and
+      # running the whole gate a second time through prepublishOnly.
       - name: Publish with provenance
-        run: npm publish --provenance --access public --tag "${{ steps.release.outputs.tag }}"
+        run: npm publish --ignore-scripts --provenance --access public --tag "${{ steps.release.outputs.tag }}"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

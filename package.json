@@ -1,7 +1,7 @@
 {
   "name": "eagent",
   "version": "0.1.1",
-  "description": "Easy Agent — a terminal-native agentic coding CLI, rebuilt from scratch in TypeScript",
+  "description": "Terminal coding agent that reads, edits, and runs your code under permission rules, with OS sandboxing, MCP, skills, sub-agents, and Anthropic, OpenAI-compatible, Gemini, or local models",
   "type": "module",
   "bin": {
     "eagent": "dist/eagent.js",
@@ -98,7 +98,7 @@
     "verify:production:platform": "node --import tsx scripts/verify-production.ts --group platform",
     "verify:production:live": "node --import tsx scripts/verify-production.ts --group live",
     "verify:production": "npm run typecheck && npm run check:source-hygiene && npm run build && npm run verify:production:tests",
-    "verify:release": "npm run verify:production && node --import tsx src/scripts/test-stage36.ts",
+    "verify:release": "npm run verify:production && npm run verify:production:platform && node --import tsx src/scripts/test-stage36.ts",
     "verify:plugin": "tsx src/scripts/verify-plugin-compat.ts",
     "test:filehistory": "tsx src/scripts/smoke-filehistory.ts",
     "test:resilience": "tsx src/scripts/smoke-resilience.ts",
@@ -108,10 +108,17 @@
   "keywords": [
     "agent",
     "agentic",
+    "ai",
+    "anthropic",
     "cli",
     "coding-agent",
+    "coding-assistant",
+    "developer-tools",
+    "gemini",
     "llm",
     "mcp",
+    "openai",
+    "sandbox",
     "terminal"
   ],
   "license": "MIT",
