@@ -58,7 +58,7 @@ eagent
 - Web 与外部工具：WebFetch、WebSearch、[MCP Tools 与 Resources](./docs/mcp.md)
 - 安全执行：Allow/Ask/Deny 规则、Plan Mode、Auto Mode、工作区信任、[Hooks](./docs/hooks.md)、[受控子进程](./docs/subprocesses.md)、[本地私有数据保护](./docs/local-data-security.md)，以及 macOS 和 Linux 上[默认失败即阻断的 Shell 沙箱](./docs/sandbox-security.md)
 - 长任务：TodoWrite、持久化任务图、Sub-Agent、后台运行、Git Worktree 隔离、[Agent Teams](./docs/agent-teams.md)
-- 上下文与连续性：[可靠持久化](./docs/persistence.md)、Resume、上下文压缩、Token 预算、项目记忆（`AGENT.md`）、文件检查点和 Rewind
+- 上下文与连续性：[可靠持久化](./docs/persistence.md)、Resume、上下文压缩、Token 预算、项目记忆（`AGENTS.md` / `AGENT.md`）、文件检查点和 Rewind
 - 扩展能力：Skills、自定义 Agent、Slash Commands、Output Styles、Hooks、MCP Server、插件和静态 Marketplace
 - 使用方式：交互式终端界面、[Headless text/JSON/NDJSON 输出](./docs/headless-output.md)、图片与截图、多种模型协议
 
@@ -163,7 +163,7 @@ eagent
 | `~/.easy-agent/plugins/`、`mcp/` | 已安装的插件，MCP 的 OAuth 凭据和产物 |
 | `~/.easy-agent/stream-debug.log` | 只在设置 `EASY_AGENT_DEBUG_STREAM=1` 时生成 |
 | `<project>/.easy-agent/` | 项目级配置、本地配置和项目级扩展 |
-| `<project>/AGENT.md` | 你自己写或用 `/init` 生成的项目记忆 |
+| `<project>/AGENTS.md`、`<project>/AGENT.md` | 你自己写或用 `/init` 生成的项目记忆；两个都有时都会加载，`AGENTS.md` 在前 |
 | `<git root>/.easy-agent/worktrees/` | 隔离运行的 Sub-Agent 使用的 Git Worktree |
 
 在 macOS 和 Linux 上，`~/.easy-agent` 以 `0700` 权限创建，敏感文件为 `0600`。卸载 npm 包不会删除这个目录，想清掉全部数据需要手动删除。

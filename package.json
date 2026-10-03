@@ -37,6 +37,7 @@
     "test:user-output": "node --import tsx src/scripts/test-user-output-contract.ts",
     "test:config-session": "node --import tsx src/scripts/test-config-session-characterization.ts",
     "test:config-trust": "node --import tsx src/scripts/test-config-trust-boundary.ts && node --import tsx src/scripts/test-config-trust-cli.ts",
+    "test:project-memory": "node --import tsx src/scripts/test-project-memory-files.ts",
     "test:feature-config": "node --import tsx src/scripts/test-feature-config.ts",
     "test:providerstream": "tsx src/scripts/test-providerstream-characterization.ts",
     "test:prompt-caching": "node --import tsx src/scripts/test-prompt-caching.ts && node --import tsx src/scripts/test-session-prompt-context.ts",

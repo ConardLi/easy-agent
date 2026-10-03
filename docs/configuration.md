@@ -46,11 +46,25 @@ Project and local settings that can execute code, redirect providers, or widen r
 
 Values are model profile IDs or raw Anthropic model names. Per-call and custom-agent model declarations remain authoritative.
 
+## Project memory files
+
+Every session loads `~/.easy-agent/AGENT.md`, then `AGENTS.md` and `AGENT.md` from each directory between the filesystem root and the working directory, outermost first. A directory can hold both files: `AGENTS.md` loads first and `AGENT.md` after it, so Easy Agent-specific notes can extend a shared `AGENTS.md`. A project that only has `AGENT.md` loads exactly as before.
+
+`/init` writes `AGENT.md`. If the repository root has an `AGENTS.md` and no `AGENT.md`, `/init` improves `AGENTS.md` instead of creating a second file. `/memory` lists the files that exist, plus the project `AGENT.md` when the working directory has neither file.
+
+`claudeMdExcludes` matches absolute paths, so each name needs its own pattern:
+
+```json
+{
+  "claudeMdExcludes": ["**/AGENTS.md", "/abs/path/to/repo/AGENT.md"]
+}
+```
+
 ## Prompt caching
 
 Providers reuse a cached request prefix only while it stays byte-identical. Easy Agent keeps the prefix stable for the whole session and tells each provider where it ends.
 
-**The system prompt is written once per session.** The environment section holds the date (day precision) and a git snapshot labelled as taken at session start. When AGENT.md, the memory index, the response language, the output style, the available skills or agents, or the date change later, the next user message is preceded by a hidden context update that lists only the changed sections. The system prompt is rebuilt from the current state after `/clear`, after compaction, when a session is resumed, and when an output style drops the base coding instructions. Run `git status` (the agent does this itself when it needs to) for the current repository state.
+**The system prompt is written once per session.** The environment section holds the date (day precision) and a git snapshot labelled as taken at session start. When AGENTS.md or AGENT.md, the memory index, the response language, the output style, the available skills or agents, or the date change later, the next user message is preceded by a hidden context update that lists only the changed sections. The system prompt is rebuilt from the current state after `/clear`, after compaction, when a session is resumed, and when an output style drops the base coding instructions. Run `git status` (the agent does this itself when it needs to) for the current repository state.
 
 **Anthropic** requests carry four `cache_control` markers: the end of the static system block, the end of the dynamic system block, the last message of the previous request, and the last message. A system prompt without the static/dynamic split gives its spare marker to the last loaded tool. The Auto Mode classifier caches its fixed prompt and tool; other single-shot calls are sent uncached.
 
