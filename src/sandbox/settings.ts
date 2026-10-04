@@ -1,9 +1,5 @@
 import { loadTrustedSettingSources, type LoadedSource } from "../config/sources.js";
-import type {
-  SandboxFilesystemSettings,
-  SandboxNetworkSettings,
-  SandboxSettings,
-} from "./types.js";
+import type { SandboxFilesystemSettings, SandboxNetworkSettings, SandboxSettings } from "./types.js";
 
 interface RawRootSettings {
   sandbox?: unknown;
@@ -81,11 +77,7 @@ function reportUnknownKeys(
   }
 }
 
-function readObject(
-  value: unknown,
-  label: string,
-  problems: string[],
-): Record<string, unknown> | undefined {
+function readObject(value: unknown, label: string, problems: string[]): Record<string, unknown> | undefined {
   if (value === undefined) return undefined;
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     problems.push(`${label} must be an object`);
@@ -94,11 +86,7 @@ function readObject(
   return value as Record<string, unknown>;
 }
 
-function pickFilesystem(
-  value: unknown,
-  label: string,
-  problems: string[],
-): SandboxFilesystemSettings | undefined {
+function pickFilesystem(value: unknown, label: string, problems: string[]): SandboxFilesystemSettings | undefined {
   const raw = readObject(value, label, problems);
   if (!raw) return undefined;
   reportUnknownKeys(raw, FILESYSTEM_KEYS, label, problems);
@@ -110,11 +98,7 @@ function pickFilesystem(
   };
 }
 
-function pickNetwork(
-  value: unknown,
-  label: string,
-  problems: string[],
-): SandboxNetworkSettings | undefined {
+function pickNetwork(value: unknown, label: string, problems: string[]): SandboxNetworkSettings | undefined {
   const raw = readObject(value, label, problems);
   if (!raw) return undefined;
   reportUnknownKeys(raw, NETWORK_KEYS, label, problems);
@@ -127,11 +111,7 @@ function pickNetwork(
   };
 }
 
-function parseSandboxValue(
-  value: unknown,
-  label: string,
-  problems: string[],
-): SandboxSettings {
+function parseSandboxValue(value: unknown, label: string, problems: string[]): SandboxSettings {
   if (value === undefined) return {};
   const raw = readObject(value, label, problems);
   if (!raw) return {};
@@ -221,10 +201,7 @@ export function resolveSandboxList(list: SandboxSettings[]): ResolvedSandboxSett
   };
 }
 
-export function resolveSandboxSettings(
-  user: SandboxSettings,
-  project: SandboxSettings,
-): ResolvedSandboxSettings {
+export function resolveSandboxSettings(user: SandboxSettings, project: SandboxSettings): ResolvedSandboxSettings {
   return resolveSandboxList([user, project]);
 }
 

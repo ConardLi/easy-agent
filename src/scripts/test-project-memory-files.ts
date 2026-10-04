@@ -71,7 +71,10 @@ try {
   await check("only AGENTS.md: the file is loaded", async () => {
     const dir = await project({ "AGENTS.md": "SHARED\n" });
     const ctx = await loadAgentMdContext(dir);
-    assert.equal(ctx, [section(GLOBAL_AGENT_MD, "GLOBAL"), section(path.join(dir, "AGENTS.md"), "SHARED")].join("\n\n"));
+    assert.equal(
+      ctx,
+      [section(GLOBAL_AGENT_MD, "GLOBAL"), section(path.join(dir, "AGENTS.md"), "SHARED")].join("\n\n"),
+    );
   });
 
   await check("both: AGENTS.md before AGENT.md in each directory, outer directories first", async () => {
@@ -109,7 +112,10 @@ try {
     assert.ok(!ctx.includes("SHARED") && ctx.includes("OWN"), "**/AGENTS.md drops only AGENTS.md");
     await writeFile(USER_SETTINGS, JSON.stringify({ claudeMdExcludes: ["**/AGENT.md"] }), "utf-8");
     ctx = await loadAgentMdContext(dir);
-    assert.ok(ctx.includes("SHARED") && !ctx.includes("OWN") && !ctx.includes("GLOBAL"), "**/AGENT.md drops AGENT.md files only");
+    assert.ok(
+      ctx.includes("SHARED") && !ctx.includes("OWN") && !ctx.includes("GLOBAL"),
+      "**/AGENT.md drops AGENT.md files only",
+    );
     await writeFile(USER_SETTINGS, JSON.stringify({ claudeMdExcludes: [path.join(dir, "AGENTS.md")] }), "utf-8");
     ctx = await loadAgentMdContext(dir);
     assert.ok(!ctx.includes("SHARED") && ctx.includes("OWN"), "absolute path drops that AGENTS.md");

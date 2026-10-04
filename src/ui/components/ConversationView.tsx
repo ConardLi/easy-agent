@@ -6,10 +6,7 @@ import { classifyToolForCollapse, getCollapsedSummaryText } from "../utils/toolC
 import { Markdown } from "../markdown/Markdown.js";
 import { ResultLine } from "./ToolCard.js";
 import { renderInlineToolCard } from "./toolRenderers.js";
-import {
-  AssistantThinkingMessage,
-  AssistantRedactedThinkingMessage,
-} from "./AssistantThinkingMessage.js";
+import { AssistantThinkingMessage, AssistantRedactedThinkingMessage } from "./AssistantThinkingMessage.js";
 import { AssistantMessageRow } from "./AssistantMessageRow.js";
 import { theme, glyph } from "../theme.js";
 import { CONTEXT_UPDATE_MARKER } from "../../constants/systemPromptMarkers.js";
@@ -102,10 +99,7 @@ export function extractTaskNotification(text: string): TaskNotificationView | nu
     return m ? m[1]?.trim() : undefined;
   };
   const statusRaw = pickTag("status") ?? "";
-  const status =
-    statusRaw === "completed" || statusRaw === "failed" || statusRaw === "killed"
-      ? statusRaw
-      : "unknown";
+  const status = statusRaw === "completed" || statusRaw === "failed" || statusRaw === "killed" ? statusRaw : "unknown";
   const agentType = pickTag("agent_type") ?? "agent";
   const description = pickTag("description");
   const usageRaw = pickTag("usage");
@@ -122,11 +116,7 @@ export function extractTaskNotification(text: string): TaskNotificationView | nu
     if (kv.get("tools")) bits.push(`${kv.get("tools")} tools`);
     if (kv.get("tokens")) {
       const n = Number(kv.get("tokens"));
-      bits.push(
-        Number.isFinite(n) && n >= 1000
-          ? `${(n / 1000).toFixed(1)}k tokens`
-          : `${n} tokens`,
-      );
+      bits.push(Number.isFinite(n) && n >= 1000 ? `${(n / 1000).toFixed(1)}k tokens` : `${n} tokens`);
     }
     if (kv.get("duration_ms")) {
       const ms = Number(kv.get("duration_ms"));
@@ -144,9 +134,7 @@ export function extractTaskNotification(text: string): TaskNotificationView | nu
   };
 }
 
-function taskNotificationStyle(
-  status: TaskNotificationView["status"],
-): { color: string; glyph: string } {
+function taskNotificationStyle(status: TaskNotificationView["status"]): { color: string; glyph: string } {
   switch (status) {
     case "completed":
       return { color: "green", glyph: "●" };
@@ -165,9 +153,7 @@ function taskNotificationStyle(
  * for plain user text. The tags are persisted in session transcripts, so
  * the format must stay stable for `/resume` to render old sessions.
  */
-export function extractCommandMarker(
-  message: MessageParam,
-): { name: string; args: string } | null {
+export function extractCommandMarker(message: MessageParam): { name: string; args: string } | null {
   if (typeof message.content !== "string") return null;
   const text = message.content;
   if (!text.includes("<command-name>")) return null;
@@ -261,7 +247,9 @@ function GroupedReadSearchCard({ members }: { members: GroupMember[] }): React.R
       </Box>
       {summary ? (
         <ResultLine>
-          <Text color={theme.muted} wrap="truncate-end">{summary}</Text>
+          <Text color={theme.muted} wrap="truncate-end">
+            {summary}
+          </Text>
         </ResultLine>
       ) : null}
     </Box>
@@ -287,10 +275,7 @@ export interface ConversationItem {
 
 type VisibleItemKind = "user" | "assistantText" | "tool";
 
-function withToolLeadSpacing(
-  element: React.ReactNode,
-  previousKind: VisibleItemKind | null,
-): React.ReactNode {
+function withToolLeadSpacing(element: React.ReactNode, previousKind: VisibleItemKind | null): React.ReactNode {
   // One blank line above every card (after a prompt/text reply AND between
   // consecutive tool cards) so the history reads as a spaced activity stream
   // instead of a dense log wall. Only the very first item of the turn hugs
@@ -308,7 +293,9 @@ function renderUserBubble(content: string): React.ReactNode {
       <Box marginTop={1}>
         <Text color={color}>{glyph}</Text>
         <Text>{` Sub-agent `}</Text>
-        <Text bold color={color}>{taskNotif.agentType}</Text>
+        <Text bold color={color}>
+          {taskNotif.agentType}
+        </Text>
         <Text>{` ${taskNotif.status}`}</Text>
         {taskNotif.description ? <Text dimColor>{`  ${taskNotif.description}`}</Text> : null}
         {taskNotif.usage ? <Text dimColor>{`  · ${taskNotif.usage}`}</Text> : null}
@@ -331,10 +318,7 @@ function renderUserBubble(content: string): React.ReactNode {
  * resume), which shrinks the array — the caller detects that and remounts
  * `<Static>` via a key bump.
  */
-export function flattenConversation(
-  messages: MessageParam[],
-  verbose = false,
-): ConversationItem[] {
+export function flattenConversation(messages: MessageParam[], verbose = false): ConversationItem[] {
   const toolResults = buildToolResultMap(messages);
   const items: ConversationItem[] = [];
   let lastVisibleKind: VisibleItemKind | null = null;
@@ -363,9 +347,7 @@ export function flattenConversation(
           const display = `/${marker.name.replace(/^\//, "")}` + (marker.args ? ` ${marker.args}` : "");
           items.push({
             key: `u${index}`,
-            element: (
-              <UserMessageBar caret={glyph.userCaret} text={display} textColor={theme.brandLight} />
-            ),
+            element: <UserMessageBar caret={glyph.userCaret} text={display} textColor={theme.brandLight} />,
           });
           lastVisibleKind = "user";
           return;
@@ -388,11 +370,7 @@ export function flattenConversation(
             items.push({
               key: `u${index}`,
               element: (
-                <UserMessageBar
-                  caret={glyph.userCaret}
-                  text={`${text}${suffix}`}
-                  textColor={theme.userBarText}
-                />
+                <UserMessageBar caret={glyph.userCaret} text={`${text}${suffix}`} textColor={theme.userBarText} />
               ),
             });
             lastVisibleKind = "user";
@@ -407,15 +385,15 @@ export function flattenConversation(
         if (!message.content) return;
         items.push({
           key: `a${index}`,
-            element: (
-              <AssistantMessageRow>
-                <Markdown content={message.content} />
-              </AssistantMessageRow>
-            ),
-          });
-          lastVisibleKind = "assistantText";
-          return;
-        }
+          element: (
+            <AssistantMessageRow>
+              <Markdown content={message.content} />
+            </AssistantMessageRow>
+          ),
+        });
+        lastVisibleKind = "assistantText";
+        return;
+      }
 
       if (Array.isArray(message.content)) {
         const blocks = message.content as Array<{
@@ -442,12 +420,7 @@ export function flattenConversation(
             if (showThinking) {
               items.push({
                 key: `a${index}-th${j}`,
-                element: (
-                  <AssistantThinkingMessage
-                    thinking={block.thinking ?? ""}
-                    verbose={verbose}
-                  />
-                ),
+                element: <AssistantThinkingMessage thinking={block.thinking ?? ""} verbose={verbose} />,
               });
               lastVisibleKind = "assistantText";
             }
@@ -467,15 +440,15 @@ export function flattenConversation(
           if (block?.type === "text" && block.text) {
             items.push({
               key: `a${index}-t${j}`,
-                element: (
-                  <AssistantMessageRow>
-                    <Markdown content={block.text} />
-                  </AssistantMessageRow>
-                ),
-              });
-              lastVisibleKind = "assistantText";
-              continue;
-            }
+              element: (
+                <AssistantMessageRow>
+                  <Markdown content={block.text} />
+                </AssistantMessageRow>
+              ),
+            });
+            lastVisibleKind = "assistantText";
+            continue;
+          }
           if (block?.type === "tool_use" && typeof block.id === "string" && typeof block.name === "string") {
             const result = toolResults.get(block.id);
             if (block.name === "ToolSearch" && !result?.isError) continue;
@@ -495,8 +468,7 @@ export function flattenConversation(
               let k = j + 1;
               while (k < blocks.length) {
                 const next = blocks[k];
-                if (next?.type !== "tool_use" || typeof next.id !== "string" || typeof next.name !== "string")
-                  break;
+                if (next?.type !== "tool_use" || typeof next.id !== "string" || typeof next.name !== "string") break;
                 const nextResult = toolResults.get(next.id);
                 if (!isCollapsibleMember(next.name, next.input, nextResult)) break;
                 run.push({ name: next.name, input: next.input, result: nextResult! });
@@ -505,10 +477,7 @@ export function flattenConversation(
               if (run.length >= GROUP_MIN) {
                 items.push({
                   key: `tug${block.id}`,
-                  element: withToolLeadSpacing(
-                    <GroupedReadSearchCard members={run} />,
-                    lastVisibleKind,
-                  ),
+                  element: withToolLeadSpacing(<GroupedReadSearchCard members={run} />, lastVisibleKind),
                 });
                 lastVisibleKind = "tool";
                 j = k - 1; // skip the consumed blocks

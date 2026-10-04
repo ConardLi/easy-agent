@@ -20,16 +20,12 @@ function asString(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
-function PermissionTitle({
-  title,
-  subtitle,
-}: {
-  title: string;
-  subtitle?: string;
-}): React.ReactNode {
+function PermissionTitle({ title, subtitle }: { title: string; subtitle?: string }): React.ReactNode {
   return (
     <Box paddingX={1}>
-      <Text bold color={theme.info}>{title}</Text>
+      <Text bold color={theme.info}>
+        {title}
+      </Text>
       {subtitle ? <Text color={theme.muted}>{`  ${displayPath(subtitle)}`}</Text> : null}
     </Box>
   );
@@ -71,9 +67,7 @@ function FileContentPreview({
             <Text>{line || " "}</Text>
           </Text>
         ))}
-        {hidden > 0 ? (
-          <Text color={theme.muted}>{`... +${hidden} more line${hidden === 1 ? "" : "s"}`}</Text>
-        ) : null}
+        {hidden > 0 ? <Text color={theme.muted}>{`... +${hidden} more line${hidden === 1 ? "" : "s"}`}</Text> : null}
       </Box>
     </PreviewFrame>
   );
@@ -147,7 +141,9 @@ function PermissionPreview({
           if (oldStr === undefined || newStr === undefined) return null;
           return (
             <Box key={i} flexDirection="column" marginTop={i === 0 ? 0 : 1}>
-              <Text color={theme.muted}>{`  edit ${i + 1}/${edits.length}${e.replace_all === true ? " (all)" : ""}`}</Text>
+              <Text
+                color={theme.muted}
+              >{`  edit ${i + 1}/${edits.length}${e.replace_all === true ? " (all)" : ""}`}</Text>
               <DiffPreview oldText={oldStr} newText={newStr} maxLines={perEdit} />
             </Box>
           );
@@ -174,7 +170,9 @@ function PermissionPreview({
   // Anything else: fall back to the one-line argument summary.
   return (
     <Box flexDirection="column" paddingX={1}>
-      <Text bold color={theme.info}>{toolName}</Text>
+      <Text bold color={theme.info}>
+        {toolName}
+      </Text>
       <Text color={theme.muted}>{summary}</Text>
     </Box>
   );
@@ -196,16 +194,9 @@ function actionQuestion(toolName: string): string {
   }
 }
 
-function PermissionOptions({
-  toolName,
-  selectedIndex,
-}: {
-  toolName: string;
-  selectedIndex: number;
-}): React.ReactNode {
-  const sessionLabel = toolName === "WebFetch"
-    ? "Yes, allow this domain during this session"
-    : "Yes, allow this tool during this session";
+function PermissionOptions({ toolName, selectedIndex }: { toolName: string; selectedIndex: number }): React.ReactNode {
+  const sessionLabel =
+    toolName === "WebFetch" ? "Yes, allow this domain during this session" : "Yes, allow this tool during this session";
   const options = [
     { label: "Yes", shortcut: "y" },
     { label: sessionLabel, shortcut: "a" },

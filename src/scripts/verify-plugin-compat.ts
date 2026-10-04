@@ -21,9 +21,7 @@ import * as fs from "node:fs/promises";
 
 const target = process.argv[2];
 if (!target) {
-  process.stderr.write(
-    "usage: npx tsx src/scripts/verify-plugin-compat.ts <git-url|local-path>\n",
-  );
+  process.stderr.write("usage: npx tsx src/scripts/verify-plugin-compat.ts <git-url|local-path>\n");
   process.exit(2);
 }
 
@@ -99,8 +97,12 @@ async function main(): Promise<void> {
         `commands=${l.commands.length} styles=${l.outputStyles.length} ` +
         `hooks=${l.hooks.length} mcp=${l.mcpServers.length}`;
       const total =
-        l.skills.length + l.agents.length + l.commands.length +
-        l.outputStyles.length + l.hooks.length + l.mcpServers.length;
+        l.skills.length +
+        l.agents.length +
+        l.commands.length +
+        l.outputStyles.length +
+        l.hooks.length +
+        l.mcpServers.length;
       if (total === 0) {
         failures++;
         process.stdout.write(`  ${RED}✗${OFF} ${id} installed but contributed NOTHING (${counts})\n`);

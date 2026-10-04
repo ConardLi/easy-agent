@@ -36,11 +36,7 @@ interface ParseFailure {
 
 type ParseResult = ParseSuccess | ParseFailure;
 
-function parseFailure(
-  reason: ParseFailure["reason"],
-  detail: string,
-  commands: ParsedBashCommand[],
-): ParseFailure {
+function parseFailure(reason: ParseFailure["reason"], detail: string, commands: ParsedBashCommand[]): ParseFailure {
   return { ok: false, reason, detail, commands };
 }
 
@@ -51,10 +47,7 @@ function parseFailure(
  * operators, semicolons, or newlines. Anything outside this subset fails
  * closed and requires approval.
  */
-function parseRestrictedCommandList(
-  input: string,
-  platform: NodeJS.Platform,
-): ParseResult {
+function parseRestrictedCommandList(input: string, platform: NodeJS.Platform): ParseResult {
   const source = input.replace(/\r\n?/g, "\n");
   const windowsShell = platform === "win32";
   if (!source.trim()) return parseFailure("empty", "command is empty", []);
@@ -197,11 +190,7 @@ function parseRestrictedCommandList(
       const hasCommand = flushCommand();
       if (!hasCommand) {
         if (char === "\n" && commands.length > 0 && !requiredCommandAfterSeparator) continue;
-        return parseFailure(
-          "invalid_syntax",
-          `missing command before ${char === "\n" ? "newline" : ";"}`,
-          commands,
-        );
+        return parseFailure("invalid_syntax", `missing command before ${char === "\n" ? "newline" : ";"}`, commands);
       }
       requiredCommandAfterSeparator = false;
       continue;
@@ -223,24 +212,10 @@ function parseRestrictedCommandList(
   return { ok: true, commands };
 }
 
-const SIMPLE_READ_ONLY_COMMANDS = new Set([
-  "ls",
-  "cat",
-  "grep",
-  "pwd",
-  "which",
-  "head",
-  "tail",
-  "wc",
-]);
+const SIMPLE_READ_ONLY_COMMANDS = new Set(["ls", "cat", "grep", "pwd", "which", "head", "tail", "wc"]);
 
 const READ_ONLY_GIT_SUBCOMMANDS = new Set(["status", "log", "diff", "show"]);
-const UNSAFE_GIT_OPTIONS = new Set([
-  "--ext-diff",
-  "--textconv",
-  "--output",
-  "--show-signature",
-]);
+const UNSAFE_GIT_OPTIONS = new Set(["--ext-diff", "--textconv", "--output", "--show-signature"]);
 const UNSAFE_FIND_ACTIONS = new Set([
   "-delete",
   "-exec",
@@ -269,10 +244,11 @@ function validateGit(args: string[]): string | null {
   if (!subcommand || !READ_ONLY_GIT_SUBCOMMANDS.has(subcommand)) {
     return `git subcommand ${subcommand ?? "<missing>"} is not read-only allowlisted`;
   }
-  const unsafe = subcommandArgs.find((arg) =>
-    [...UNSAFE_GIT_OPTIONS].some(
-      (option) => matchesOption(arg, option) || matchesLongOptionOrAbbreviation(arg, option),
-    ) || arg.includes("%G"),
+  const unsafe = subcommandArgs.find(
+    (arg) =>
+      [...UNSAFE_GIT_OPTIONS].some(
+        (option) => matchesOption(arg, option) || matchesLongOptionOrAbbreviation(arg, option),
+      ) || arg.includes("%G"),
   );
   return unsafe ? `git option ${unsafe} can write files or execute external helpers` : null;
 }
@@ -288,9 +264,7 @@ function validateFind(args: string[]): string | null {
 }
 
 function validateRipgrep(args: string[]): string | null {
-  const unsafe = args.find((arg) =>
-    [...UNSAFE_RG_OPTIONS].some((option) => matchesOption(arg, option)),
-  );
+  const unsafe = args.find((arg) => [...UNSAFE_RG_OPTIONS].some((option) => matchesOption(arg, option)));
   return unsafe ? `rg option ${unsafe} can execute an external command` : null;
 }
 
@@ -335,10 +309,7 @@ function isSafeSedDisplayScript(script: string): boolean {
   const address = script.slice(0, -1);
   if (!address) return true;
   const parts = address.split(",");
-  return (
-    parts.length <= 2 &&
-    parts.every((part) => part === "$" || /^[0-9]+$/.test(part))
-  );
+  return parts.length <= 2 && parts.every((part) => part === "$" || /^[0-9]+$/.test(part));
 }
 
 function isSafeSedSubstitution(script: string): boolean {
@@ -410,14 +381,7 @@ function validateSed(args: string[]): string | null {
     if (!optionsEnded && /^-[nErsuz]+$/.test(arg)) continue;
     if (
       !optionsEnded &&
-      [
-        "--quiet",
-        "--silent",
-        "--regexp-extended",
-        "--separate",
-        "--unbuffered",
-        "--null-data",
-      ].includes(arg)
+      ["--quiet", "--silent", "--regexp-extended", "--separate", "--unbuffered", "--null-data"].includes(arg)
     ) {
       continue;
     }
@@ -454,10 +418,7 @@ function validateCommand(command: ParsedBashCommand): { supported: boolean; deta
   return { supported: true, detail: validator(command.args) };
 }
 
-export function analyzeBashCommand(
-  command: string,
-  options: BashReadOnlyAnalysisOptions = {},
-): BashReadOnlyAnalysis {
+export function analyzeBashCommand(command: string, options: BashReadOnlyAnalysisOptions = {}): BashReadOnlyAnalysis {
   const parsed = parseRestrictedCommandList(command, options.platform ?? process.platform);
   if (!parsed.ok) {
     return {
@@ -496,9 +457,6 @@ export function analyzeBashCommand(
   };
 }
 
-export function isReadOnlyCommand(
-  command: string,
-  options?: BashReadOnlyAnalysisOptions,
-): boolean {
+export function isReadOnlyCommand(command: string, options?: BashReadOnlyAnalysisOptions): boolean {
   return analyzeBashCommand(command, options).isReadOnly;
 }

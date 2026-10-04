@@ -19,18 +19,8 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { createHash } from "node:crypto";
-import {
-  getPluginCacheDir,
-  getPluginCacheRoot,
-  getPluginDataDir,
-  getPluginDataRoot,
-  getPluginsRoot,
-} from "./paths.js";
-import {
-  componentPathsFromEntry,
-  resolvePlugin,
-  type ResolvedPluginEntry,
-} from "./marketplace.js";
+import { getPluginCacheDir, getPluginCacheRoot, getPluginDataDir, getPluginDataRoot, getPluginsRoot } from "./paths.js";
+import { componentPathsFromEntry, resolvePlugin, type ResolvedPluginEntry } from "./marketplace.js";
 import { gitClone, gitHeadCommit } from "./git.js";
 import { loadPlugin } from "./loader.js";
 import {
@@ -148,11 +138,7 @@ async function fetchToTemp(
  * such a plugin would install under the literal directory "unknown" and lose
  * version locking entirely.
  */
-function resolveVersion(
-  loaded: LoadedPlugin,
-  entryVersion: string | undefined,
-  commit: string | undefined,
-): string {
+function resolveVersion(loaded: LoadedPlugin, entryVersion: string | undefined, commit: string | undefined): string {
   if (loaded.manifest.version && loaded.manifest.version !== "unknown") {
     return loaded.manifest.version;
   }
@@ -207,9 +193,7 @@ async function inspectPluginUnlocked(pluginRef: string): Promise<PluginInstallPr
         agents: loaded.agents.map((item) => item.agentType),
         commands: loaded.commands.map((item) => item.name),
         outputStyles: loaded.outputStyles.map((item) => item.name),
-        hooks: loaded.hooks.map((item) =>
-          `${item.event}${item.matcher ? `:${item.matcher}` : ""}`,
-        ),
+        hooks: loaded.hooks.map((item) => `${item.event}${item.matcher ? `:${item.matcher}` : ""}`),
         mcpServers: loaded.mcpServers.map((item) => item.namespacedName),
         lspServers: (loaded.lspServers ?? []).map((item) => item.name),
       },
@@ -233,9 +217,7 @@ export async function installPlugin(
   cwd: string = process.cwd(),
   options: InstallOptions = {},
 ): Promise<InstallResult> {
-  return withPluginOperationLock(() =>
-    installPluginUnlocked(pluginRef, scope, cwd, options),
-  );
+  return withPluginOperationLock(() => installPluginUnlocked(pluginRef, scope, cwd, options));
 }
 
 async function installPluginUnlocked(
@@ -271,9 +253,7 @@ async function installPluginUnlocked(
   try {
     const loaded = await loadPlugin({ root: tempDir, ...loadOpts });
     if (hasFatalManifestError(loaded)) {
-      throw new Error(
-        `plugin validation failed: ${loaded.errors.map((e) => e.message).join("; ")}`,
-      );
+      throw new Error(`plugin validation failed: ${loaded.errors.map((e) => e.message).join("; ")}`);
     }
     if (loaded.hasExecutableComponents && options.allowExecutableComponents !== true) {
       const kinds = [
@@ -286,10 +266,7 @@ async function installPluginUnlocked(
           "Open /plugin and review the install, or use a pre-approved interactive flow.",
       );
     }
-    if (
-      options.expectedFingerprint &&
-      (await fingerprintTree(tempDir)) !== options.expectedFingerprint
-    ) {
+    if (options.expectedFingerprint && (await fingerprintTree(tempDir)) !== options.expectedFingerprint) {
       throw new Error(
         `plugin contents changed after confirmation: ${pluginId}. ` +
           "Review the updated component list and confirm again.",
@@ -307,14 +284,15 @@ async function installPluginUnlocked(
     await copyTree(tempDir, pending);
     const pendingLoaded = await loadPlugin({ root: pending, ...loadOpts });
     if (pendingLoaded.errors.length > 0) {
-      throw new Error(
-        `plugin validation failed: ${pendingLoaded.errors.map((e) => e.message).join("; ")}`,
-      );
+      throw new Error(`plugin validation failed: ${pendingLoaded.errors.map((e) => e.message).join("; ")}`);
     }
 
     await fs.mkdir(path.dirname(installPath), { recursive: true });
     const prior = (await readInstalledPlugins()).plugins[pluginId];
-    const targetExists = await fs.stat(installPath).then(() => true).catch(() => false);
+    const targetExists = await fs
+      .stat(installPath)
+      .then(() => true)
+      .catch(() => false);
     if (targetExists) await fs.rename(installPath, rollback);
 
     let swapped = false;
@@ -326,9 +304,7 @@ async function installPluginUnlocked(
       // Re-load from the final path so the record + snapshot reflect real paths.
       const finalLoaded = await loadPlugin({ root: installPath, ...loadOpts });
       if (finalLoaded.errors.length > 0) {
-        throw new Error(
-          `plugin validation failed: ${finalLoaded.errors.map((e) => e.message).join("; ")}`,
-        );
+        throw new Error(`plugin validation failed: ${finalLoaded.errors.map((e) => e.message).join("; ")}`);
       }
       await ensurePrivateDirectory(getPluginDataDir(pluginId));
 
@@ -373,7 +349,10 @@ async function installPluginUnlocked(
         }).catch(() => {});
       }
       if (swapped) await safeRemovePluginCacheDir(installPath);
-      const rollbackExists = await fs.stat(rollback).then(() => true).catch(() => false);
+      const rollbackExists = await fs
+        .stat(rollback)
+        .then(() => true)
+        .catch(() => false);
       if (rollbackExists) await fs.rename(rollback, installPath);
       throw error;
     }
@@ -405,17 +384,11 @@ export interface UninstallOptions {
  * Uninstall a plugin: drop the install record, disable it in the scope, and
  * delete ONLY the managed cache version dir. Never deletes user-owned dirs.
  */
-export async function uninstallPlugin(
-  pluginId: string,
-  opts: UninstallOptions = {},
-): Promise<void> {
+export async function uninstallPlugin(pluginId: string, opts: UninstallOptions = {}): Promise<void> {
   return withPluginOperationLock(() => uninstallPluginUnlocked(pluginId, opts));
 }
 
-async function uninstallPluginUnlocked(
-  pluginId: string,
-  opts: UninstallOptions,
-): Promise<void> {
+async function uninstallPluginUnlocked(pluginId: string, opts: UninstallOptions): Promise<void> {
   const installed = (await readInstalledPlugins()).plugins[pluginId];
   if (!installed) throw new Error(`plugin not installed: ${pluginId}`);
 
@@ -425,11 +398,7 @@ async function uninstallPluginUnlocked(
   const remaining = removeInstallationScope(installations, scope, cwd);
 
   if (remaining.length === 0) {
-    const expectedInstallPath = getPluginCacheDir(
-      installed.marketplace,
-      installed.name,
-      installed.version,
-    );
+    const expectedInstallPath = getPluginCacheDir(installed.marketplace, installed.name, installed.version);
     if (path.resolve(installed.installPath) !== path.resolve(expectedInstallPath)) {
       throw new Error(
         `refusing to uninstall: installation record points outside its version slot (${installed.installPath})`,
@@ -472,15 +441,14 @@ function legacyInstallations(
     scope?: PluginScope;
     projectPath?: string;
   };
-  const scope: PluginScope =
-    legacy.scope === "project" || legacy.scope === "local" ? legacy.scope : "user";
-  return [{
-    scope,
-    ...(scope !== "user" && legacy.projectPath
-      ? { projectPath: path.resolve(legacy.projectPath) }
-      : {}),
-    installedAt: record.installedAt,
-  }];
+  const scope: PluginScope = legacy.scope === "project" || legacy.scope === "local" ? legacy.scope : "user";
+  return [
+    {
+      scope,
+      ...(scope !== "user" && legacy.projectPath ? { projectPath: path.resolve(legacy.projectPath) } : {}),
+      installedAt: record.installedAt,
+    },
+  ];
 }
 
 function upsertInstallationScope(
@@ -490,12 +458,8 @@ function upsertInstallationScope(
   now: string,
 ): NonNullable<InstalledPluginRecord["installations"]> {
   const key = installationKey(scope, cwd);
-  const existing = current.find((entry) =>
-    installationKey(entry.scope, entry.projectPath ?? cwd) === key,
-  );
-  const next = current.filter((entry) =>
-    installationKey(entry.scope, entry.projectPath ?? cwd) !== key,
-  );
+  const existing = current.find((entry) => installationKey(entry.scope, entry.projectPath ?? cwd) === key);
+  const next = current.filter((entry) => installationKey(entry.scope, entry.projectPath ?? cwd) !== key);
   next.push({
     scope,
     ...(scopeProjectPath(scope, cwd) ? { projectPath: scopeProjectPath(scope, cwd) } : {}),
@@ -510,9 +474,7 @@ function removeInstallationScope(
   cwd: string,
 ): NonNullable<InstalledPluginRecord["installations"]> {
   const key = installationKey(scope, cwd);
-  return current.filter((entry) =>
-    installationKey(entry.scope, entry.projectPath ?? cwd) !== key,
-  );
+  return current.filter((entry) => installationKey(entry.scope, entry.projectPath ?? cwd) !== key);
 }
 
 /** Backward-compatible predicate: only versioned cache paths are managed plugin paths. */
@@ -537,10 +499,7 @@ async function safeRemoveInside(dir: string, rootDir: string): Promise<void> {
 /** Remove only versioned cache content, never marketplaces/data/the plugin root. */
 async function safeRemovePluginCacheDir(dir: string): Promise<void> {
   if (!isPathInside(dir, getPluginCacheRoot())) return;
-  const segments = path
-    .relative(path.resolve(getPluginCacheRoot()), path.resolve(dir))
-    .split(path.sep)
-    .filter(Boolean);
+  const segments = path.relative(path.resolve(getPluginCacheRoot()), path.resolve(dir)).split(path.sep).filter(Boolean);
   // Cache layout is <marketplace>/<plugin>/<version>. Never accept a state
   // record that points at a marketplace or plugin parent directory.
   if (segments.length < 3) {

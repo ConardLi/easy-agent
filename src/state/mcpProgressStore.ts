@@ -24,5 +24,7 @@ export function clearAllMcpProgress(): void {
 
 export function subscribeMcpProgress(listener: Listener): () => void {
   listeners.add(listener);
-  return () => { listeners.delete(listener); };
+  return () => {
+    listeners.delete(listener);
+  };
 }

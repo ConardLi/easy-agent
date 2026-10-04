@@ -1,11 +1,7 @@
 import type { Tool, ToolContext, ToolResult } from "./Tool.js";
 import { createMessage } from "../services/api/streaming.js";
 import { debugLog } from "../utils/log.js";
-import {
-  fetchUrlContent,
-  MAX_MARKDOWN_LENGTH,
-  type FetchedContent,
-} from "./webFetch/fetcher.js";
+import { fetchUrlContent, MAX_MARKDOWN_LENGTH, type FetchedContent } from "./webFetch/fetcher.js";
 import { isPreapprovedUrl } from "./webFetch/preapproved.js";
 import { validateFetchUrl } from "./webFetch/urlValidation.js";
 
@@ -40,11 +36,7 @@ function truncate(text: string): string {
  * returning the truncated raw content if the model call fails — WebFetch still
  * yields useful content rather than erroring out.
  */
-async function applyPromptToContent(
-  prompt: string,
-  content: string,
-  model: string | undefined,
-): Promise<string> {
+async function applyPromptToContent(prompt: string, content: string, model: string | undefined): Promise<string> {
   const truncated = truncate(content);
   const userPrompt =
     `Here is the content of a web page (converted to markdown):\n\n` +

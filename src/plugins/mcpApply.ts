@@ -15,17 +15,10 @@
  */
 
 import type { ScopedMcpServerConfig } from "../types/mcp.js";
-import {
-  clearServerCache,
-  connectToServer,
-} from "../services/mcp/client.js";
+import { clearServerCache, connectToServer } from "../services/mcp/client.js";
 import { fetchToolsForConnection } from "../services/mcp/fetchTools.js";
 import { cancelMcpReconnect } from "../services/mcp/bootstrap.js";
-import {
-  deleteMcpRegistryEntry,
-  getMcpRegistry,
-  setMcpRegistryEntry,
-} from "../services/mcp/registry.js";
+import { deleteMcpRegistryEntry, getMcpRegistry, setMcpRegistryEntry } from "../services/mcp/registry.js";
 import { registerMcpTools } from "../tools/index.js";
 import { debugLog } from "../utils/log.js";
 

@@ -81,17 +81,17 @@ function computeMatches(lines: string[], query: string): number[] {
   if (!q) return [];
   const out: number[] = [];
   for (let i = 0; i < lines.length; i++) {
-    if (stripAnsi(lines[i] ?? "").toLowerCase().includes(q)) out.push(i);
+    if (
+      stripAnsi(lines[i] ?? "")
+        .toLowerCase()
+        .includes(q)
+    )
+      out.push(i);
   }
   return out;
 }
 
-export function useTranscript({
-  open,
-  lines,
-  viewportHeight,
-  onClose,
-}: UseTranscriptOptions): UseTranscriptResult {
+export function useTranscript({ open, lines, viewportHeight, onClose }: UseTranscriptOptions): UseTranscriptResult {
   const { stdout } = useStdout();
   const totalLines = lines.length;
   const maxScroll = Math.max(0, totalLines - viewportHeight);

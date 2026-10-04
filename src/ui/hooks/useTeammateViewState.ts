@@ -30,12 +30,8 @@ import {
   type TeammateViewState,
 } from "../../state/teammateViewStore.js";
 
-export function useTeammateView(
-  agents: AsyncAgentEntry[],
-): TeammateViewState {
-  const [view, setView] = useState<TeammateViewState>(() =>
-    getTeammateViewState(),
-  );
+export function useTeammateView(agents: AsyncAgentEntry[]): TeammateViewState {
+  const [view, setView] = useState<TeammateViewState>(() => getTeammateViewState());
 
   useEffect(() => {
     return subscribeTeammateView(setView);
@@ -49,9 +45,7 @@ export function useTeammateView(
     if (view.mode === "viewing" && view.viewingAgentId) {
       // The viewed agent must still exist in the store. If it got
       // pruned (clearAllAsyncAgents during /clear, etc.) bounce back.
-      const stillThere = agents.some(
-        (a) => a.agentId === view.viewingAgentId,
-      );
+      const stillThere = agents.some((a) => a.agentId === view.viewingAgentId);
       if (!stillThere) closeTeammateView();
       // We intentionally do NOT auto-exit on status change here —
       // users want to keep reading the transcript after `completed`.
@@ -64,9 +58,7 @@ export function useTeammateView(
         closeTeammateView();
         return;
       }
-      const cursorStillRunning = running.some(
-        (a) => a.agentId === view.selectedAgentId,
-      );
+      const cursorStillRunning = running.some((a) => a.agentId === view.selectedAgentId);
       if (!cursorStillRunning) {
         // Bump to first running agent. Don't close the picker — user
         // explicitly opened it and probably wants to pick another.

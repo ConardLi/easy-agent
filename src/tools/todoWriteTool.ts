@@ -20,11 +20,7 @@ import type { Tool, ToolContext, ToolResult } from "./Tool.js";
 
 const TODO_WRITE_TOOL_NAME = "TodoWrite";
 
-const VALID_STATUSES: ReadonlySet<TodoStatus> = new Set([
-  "pending",
-  "in_progress",
-  "completed",
-]);
+const VALID_STATUSES: ReadonlySet<TodoStatus> = new Set(["pending", "in_progress", "completed"]);
 
 function isTodoItem(value: unknown): value is TodoItem {
   if (!value || typeof value !== "object") return false;
@@ -88,8 +84,7 @@ export const todoWriteTool: Tool = {
             status: {
               type: "string",
               enum: ["pending", "in_progress", "completed"],
-              description:
-                "Task status. Exactly ONE task should be in_progress at any time.",
+              description: "Task status. Exactly ONE task should be in_progress at any time.",
             },
             activeForm: {
               type: "string",

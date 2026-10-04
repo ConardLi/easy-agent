@@ -111,13 +111,17 @@ export function createSessionPromptContext(options: SessionPromptContextOptions)
 
   return {
     async prepareTurn(turn = {}) {
-      const ignoreMemoryNote = turn.userQuery && shouldIgnoreMemory(turn.userQuery)
-        ? "The user asked not to use memory for this turn. Do not read or rely on the memory index when answering."
-        : null;
+      const ignoreMemoryNote =
+        turn.userQuery && shouldIgnoreMemory(turn.userQuery)
+          ? "The user asked not to use memory for this turn. Do not read or rely on the memory index when answering."
+          : null;
 
       if (!snapshot || !sameParts(snapshot.staticParts, buildStaticSystemParts())) {
         snapshot = await build();
-        return { systemParts: snapshot.systemParts, update: formatUpdate(ignoreMemoryNote ? [["Memory", ignoreMemoryNote]] : []) };
+        return {
+          systemParts: snapshot.systemParts,
+          update: formatUpdate(ignoreMemoryNote ? [["Memory", ignoreMemoryNote]] : []),
+        };
       }
 
       const entries: Array<[string, string]> = [];

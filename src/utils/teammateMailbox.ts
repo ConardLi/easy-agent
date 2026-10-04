@@ -37,15 +37,8 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import lockfile from "proper-lockfile";
 import { getTeamDir, sanitizeName } from "./teamHelpers.js";
-import {
-  createPrivateFileIfMissing,
-  ensurePrivateDirectory,
-  writePrivateFile,
-} from "./privateData.js";
-import {
-  parsePersistedJson,
-  PersistentDataError,
-} from "./atomicFile.js";
+import { createPrivateFileIfMissing, ensurePrivateDirectory, writePrivateFile } from "./privateData.js";
+import { parsePersistedJson, PersistentDataError } from "./atomicFile.js";
 
 /** One inbox entry, persisted as-is inside the JSON-array file. */
 export interface TeammateMessage {
@@ -79,7 +72,9 @@ const pendingLeadSignals = new Set<string>();
 
 export function subscribeMailboxWrites(listener: MailboxListener): () => void {
   mailboxListeners.add(listener);
-  return () => { mailboxListeners.delete(listener); };
+  return () => {
+    mailboxListeners.delete(listener);
+  };
 }
 
 export function hasPendingLeadMailboxSignal(teamName: string): boolean {
@@ -103,10 +98,7 @@ export function getInboxPath(agentName: string, teamName: string): string {
  * Idempotent: the file is opened with `wx` so an existing inbox is
  * left untouched (preserves unread messages across teammate restarts).
  */
-async function ensureInboxFile(
-  agentName: string,
-  teamName: string,
-): Promise<string> {
+async function ensureInboxFile(agentName: string, teamName: string): Promise<string> {
   const inboxPath = getInboxPath(agentName, teamName);
   await ensurePrivateDirectory(join(getTeamDir(teamName), "inboxes"));
   await createPrivateFileIfMissing(inboxPath, "[]");
@@ -117,10 +109,7 @@ async function ensureInboxFile(
  * Read every message currently in an inbox. Returns [] if the inbox
  * file doesn't exist yet. Invalid data is preserved and reported.
  */
-export async function readMailbox(
-  agentName: string,
-  teamName: string,
-): Promise<TeammateMessage[]> {
+export async function readMailbox(agentName: string, teamName: string): Promise<TeammateMessage[]> {
   const filePath = getInboxPath(agentName, teamName);
   try {
     const content = await readFile(filePath, "utf-8");
@@ -155,7 +144,11 @@ export async function writeToMailbox(
     await writePrivateFile(inboxPath, JSON.stringify(messages, null, 2));
     if (recipientName === "team-lead") pendingLeadSignals.add(teamName);
     for (const listener of mailboxListeners) {
-      try { listener(recipientName, teamName); } catch { /* UI listeners cannot fail a send. */ }
+      try {
+        listener(recipientName, teamName);
+      } catch {
+        /* UI listeners cannot fail a send. */
+      }
     }
   } finally {
     if (release) {
@@ -177,10 +170,7 @@ export async function writeToMailbox(
  *
  * No-op if the inbox doesn't exist or has nothing unread.
  */
-export async function markMessagesAsRead(
-  agentName: string,
-  teamName: string,
-): Promise<void> {
+export async function markMessagesAsRead(agentName: string, teamName: string): Promise<void> {
   const inboxPath = getInboxPath(agentName, teamName);
   let release: (() => Promise<void>) | undefined;
   try {
@@ -264,10 +254,7 @@ export async function markControlRequestAsRead(agentName: string, teamName: stri
  * — already-read history is ignored. This is the primitive the
  * runChildAgent loop polls between turns.
  */
-export async function drainUnreadMessages(
-  agentName: string,
-  teamName: string,
-): Promise<TeammateMessage[]> {
+export async function drainUnreadMessages(agentName: string, teamName: string): Promise<TeammateMessage[]> {
   const inboxPath = getInboxPath(agentName, teamName);
   let release: (() => Promise<void>) | undefined;
   try {
@@ -315,9 +302,7 @@ export async function drainUnreadMessages(
  * keeps the conversation history compact when 5+ messages arrive between
  * turns — the model still sees each `from` / `timestamp` distinctly.
  */
-export function formatMailboxAttachment(
-  messages: TeammateMessage[],
-): string {
+export function formatMailboxAttachment(messages: TeammateMessage[]): string {
   if (messages.length === 0) return "";
   const blocks = messages.map((m) => {
     const attrs: string[] = [`from="${m.from}"`, `at="${m.timestamp}"`];

@@ -23,25 +23,15 @@
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
-import {
-  buildMcpToolName,
-  parseMcpToolName,
-  isMcpToolName,
-} from "../services/mcp/mcpStringUtils.js";
+import { buildMcpToolName, parseMcpToolName, isMcpToolName } from "../services/mcp/mcpStringUtils.js";
 import { normalizeNameForMCP } from "../services/mcp/normalization.js";
 import { loadMcpConfigs } from "../services/mcp/config.js";
-import {
-  bootstrapMcp,
-  reconnectMcpServer,
-} from "../services/mcp/bootstrap.js";
+import { bootstrapMcp, reconnectMcpServer } from "../services/mcp/bootstrap.js";
 import { getMcpRegistry, getMcpRegistryEntry, clearMcpRegistry } from "../services/mcp/registry.js";
 import { _resetMcpClientForTesting } from "../services/mcp/client.js";
 import { registerMcpTools, findToolByName, getAllTools } from "../tools/index.js";
 import type { ToolContext } from "../tools/Tool.js";
-import {
-  resetGlobalStateCache,
-  trustProjectForSession,
-} from "../config/globalState.js";
+import { resetGlobalStateCache, trustProjectForSession } from "../config/globalState.js";
 
 const ctx: ToolContext = { cwd: process.cwd() };
 
@@ -156,9 +146,7 @@ async function writeInlineServer(opts: { startupDelayMs?: number } = {}): Promis
   const serverPath = path.join(tmpDir, "server.mjs");
   // Resolve the SDK's package path from the test process so the spawned
   // child can `import` it via an absolute path. Avoids any cwd assumption.
-  const sdkPkg = path.dirname(
-    new URL(import.meta.resolve("@modelcontextprotocol/sdk/server/index.js")).pathname,
-  );
+  const sdkPkg = path.dirname(new URL(import.meta.resolve("@modelcontextprotocol/sdk/server/index.js")).pathname);
   const startupDelayMs = opts.startupDelayMs ?? 0;
   const serverJs = `
 ${startupDelayMs > 0 ? `await new Promise((r) => setTimeout(r, ${startupDelayMs}));` : ""}
@@ -320,7 +308,10 @@ async function testNonBlockingBootstrap(): Promise<void> {
   while (Date.now() < pollDeadline) {
     await new Promise((r) => setImmediate(r));
     const entry = getMcpRegistryEntry("inline");
-    if (entry?.connection.type === "pending") { pendingSeen = true; break; }
+    if (entry?.connection.type === "pending") {
+      pendingSeen = true;
+      break;
+    }
     if (entry?.connection.type === "connected") break; // missed the window
   }
   if (pendingSeen) pass("registry seeded with 'pending' before connect resolves");
@@ -351,12 +342,8 @@ async function testHttpTransport(): Promise<void> {
   // doesn't pay for it. This is the same SDK Easy Agent depends on, so the
   // resolution is local/no-network.
   const { Server } = await import("@modelcontextprotocol/sdk/server/index.js");
-  const { StreamableHTTPServerTransport } = await import(
-    "@modelcontextprotocol/sdk/server/streamableHttp.js"
-  );
-  const { CallToolRequestSchema, ListToolsRequestSchema } = await import(
-    "@modelcontextprotocol/sdk/types.js"
-  );
+  const { StreamableHTTPServerTransport } = await import("@modelcontextprotocol/sdk/server/streamableHttp.js");
+  const { CallToolRequestSchema, ListToolsRequestSchema } = await import("@modelcontextprotocol/sdk/types.js");
   const http = await import("node:http");
 
   const REQUIRED_TOKEN = "Bearer test-secret-123";
@@ -377,10 +364,7 @@ async function testHttpTransport(): Promise<void> {
       return;
     }
 
-    const server = new Server(
-      { name: "inline-http", version: "0.0.1" },
-      { capabilities: { tools: {} } },
-    );
+    const server = new Server({ name: "inline-http", version: "0.0.1" }, { capabilities: { tools: {} } });
     server.setRequestHandler(ListToolsRequestSchema, async () => ({
       tools: [
         {
@@ -401,9 +385,12 @@ async function testHttpTransport(): Promise<void> {
 
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: undefined, // stateless
-      enableJsonResponse: true,      // simple JSON, no SSE upgrade
+      enableJsonResponse: true, // simple JSON, no SSE upgrade
     });
-    res.on("close", () => { void transport.close(); void server.close(); });
+    res.on("close", () => {
+      void transport.close();
+      void server.close();
+    });
     await server.connect(transport);
     await transport.handleRequest(req, res);
   });

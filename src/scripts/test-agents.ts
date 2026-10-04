@@ -22,27 +22,16 @@ import * as os from "node:os";
 import * as path from "node:path";
 
 import { bootstrapAgents } from "../agents/bootstrap.js";
-import {
-  clearAgents,
-  findAgent,
-  getAllAgents,
-  setAgents,
-} from "../agents/registry.js";
+import { clearAgents, findAgent, getAllAgents, setAgents } from "../agents/registry.js";
 import { getBuiltInAgents } from "../agents/builtIn/index.js";
 import { loadAllCustomAgents } from "../agents/loadAgentsDir.js";
-import {
-  AGENT_TOOL_NAME,
-  resolveAgentTools,
-} from "../agents/resolveAgentTools.js";
+import { AGENT_TOOL_NAME, resolveAgentTools } from "../agents/resolveAgentTools.js";
 import { formatAgentsSystemReminder } from "../agents/promptInjection.js";
 import { agentTool } from "../tools/agentTool.js";
 import { toolResultText } from "../tools/Tool.js";
 import { getAllTools } from "../tools/index.js";
 import { checkPermission } from "../permissions/permissions.js";
-import {
-  buildSystemPrompt,
-  renderSystemPrompt,
-} from "../context/systemPrompt.js";
+import { buildSystemPrompt, renderSystemPrompt } from "../context/systemPrompt.js";
 
 const failures: string[] = [];
 function assert(condition: unknown, label: string): void {
@@ -54,9 +43,7 @@ function assert(condition: unknown, label: string): void {
   }
 }
 
-async function withTempProject(
-  fn: (cwd: string) => Promise<void>,
-): Promise<void> {
+async function withTempProject(fn: (cwd: string) => Promise<void>): Promise<void> {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "easy-agent-agents-"));
   try {
     await fn(tmp);
@@ -78,19 +65,10 @@ async function main(): Promise<void> {
     "Explore agent is built-in",
   );
   const explore = builtIns.find((a) => a.agentType === "Explore");
-  assert(
-    explore?.disallowedTools?.includes("Write"),
-    "Explore agent disallows Write",
-  );
-  assert(
-    explore?.disallowedTools?.includes("Edit"),
-    "Explore agent disallows Edit",
-  );
+  assert(explore?.disallowedTools?.includes("Write"), "Explore agent disallows Write");
+  assert(explore?.disallowedTools?.includes("Edit"), "Explore agent disallows Edit");
   const exploreSP = explore?.getSystemPrompt() ?? "";
-  assert(
-    exploreSP.includes("READ-ONLY"),
-    "Explore system prompt enforces read-only mode",
-  );
+  assert(exploreSP.includes("READ-ONLY"), "Explore system prompt enforces read-only mode");
   const generalPurpose = builtIns.find((a) => a.agentType === "general-purpose");
   assert(
     !generalPurpose?.tools && !generalPurpose?.disallowedTools,
@@ -113,41 +91,20 @@ async function main(): Promise<void> {
   assert(starResolved.hasWildcard, "`tools: ['*']` → wildcard");
 
   console.log("\n[3] resolveAgentTools — disallowedTools applies under wildcard");
-  const exploreResolved = resolveAgentTools(
-    { disallowedTools: ["Write", "Edit", "MemoryWrite"] },
-    allTools,
-  );
-  assert(
-    exploreResolved.hasWildcard,
-    "Explore-style resolution still wildcard",
-  );
-  assert(
-    !exploreResolved.resolvedTools.some((t) => t.name === "Write"),
-    "Write is removed by disallowedTools",
-  );
-  assert(
-    !exploreResolved.resolvedTools.some((t) => t.name === "Edit"),
-    "Edit is removed by disallowedTools",
-  );
+  const exploreResolved = resolveAgentTools({ disallowedTools: ["Write", "Edit", "MemoryWrite"] }, allTools);
+  assert(exploreResolved.hasWildcard, "Explore-style resolution still wildcard");
+  assert(!exploreResolved.resolvedTools.some((t) => t.name === "Write"), "Write is removed by disallowedTools");
+  assert(!exploreResolved.resolvedTools.some((t) => t.name === "Edit"), "Edit is removed by disallowedTools");
   assert(
     exploreResolved.resolvedTools.some((t) => t.name === "Read"),
     "Read survives the disallow",
   );
 
   console.log("\n[4] resolveAgentTools — explicit allow-list intersect");
-  const reviewerResolved = resolveAgentTools(
-    { tools: ["Read", "Grep", "Glob", "Bash", "Bogus"] },
-    allTools,
-  );
+  const reviewerResolved = resolveAgentTools({ tools: ["Read", "Grep", "Glob", "Bash", "Bogus"] }, allTools);
   assert(!reviewerResolved.hasWildcard, "explicit `tools` → not wildcard");
-  assert(
-    reviewerResolved.resolvedTools.length === 4,
-    "explicit allow-list produces 4 valid tools",
-  );
-  assert(
-    reviewerResolved.invalidTools.includes("Bogus"),
-    "unknown tool name surfaces in invalidTools",
-  );
+  assert(reviewerResolved.resolvedTools.length === 4, "explicit allow-list produces 4 valid tools");
+  assert(reviewerResolved.invalidTools.includes("Bogus"), "unknown tool name surfaces in invalidTools");
   assert(
     !reviewerResolved.resolvedTools.some((t) => t.name === AGENT_TOOL_NAME),
     "explicit list still cannot opt-in to the Agent tool (no recursion)",
@@ -167,7 +124,7 @@ async function main(): Promise<void> {
         'description: "Code review specialist"',
         'tools: "Read,Glob,Grep,Bash"',
         'disallowedTools: "Write,Edit"',
-        'maxTurns: 12',
+        "maxTurns: 12",
         "---",
         "You are a code review specialist. Review the diff and report findings.",
       ].join("\n"),
@@ -188,20 +145,12 @@ async function main(): Promise<void> {
     // (c) An invalid file — missing description. Should be skipped with warning.
     await fs.writeFile(
       path.join(agentsDir, "broken.md"),
-      [
-        "---",
-        'name: "broken"',
-        "---",
-        "missing description, should be skipped",
-      ].join("\n"),
+      ["---", 'name: "broken"', "---", "missing description, should be skipped"].join("\n"),
     );
 
     const result = await bootstrapAgents(cwd);
     assert(result.builtInCount === 2, "bootstrap reports 2 built-ins");
-    assert(
-      result.customCount === 2,
-      "bootstrap reports 2 valid custom agents (reviewer + Explore override)",
-    );
+    assert(result.customCount === 2, "bootstrap reports 2 valid custom agents (reviewer + Explore override)");
     assert(
       result.warnings.some((w) => w.includes("broken.md")),
       "broken.md skipped with warning",
@@ -210,24 +159,18 @@ async function main(): Promise<void> {
     const reviewer = findAgent("reviewer");
     assert(reviewer, "reviewer agent loaded by name");
     assert(
-      reviewer?.tools?.length === 4 &&
-        reviewer.tools.includes("Read") &&
-        reviewer.tools.includes("Bash"),
+      reviewer?.tools?.length === 4 && reviewer.tools.includes("Read") && reviewer.tools.includes("Bash"),
       "reviewer parses CSV `tools` field correctly",
     );
     assert(
-      reviewer?.disallowedTools?.includes("Write") &&
-        reviewer.disallowedTools.includes("Edit"),
+      reviewer?.disallowedTools?.includes("Write") && reviewer.disallowedTools.includes("Edit"),
       "reviewer parses CSV `disallowedTools` field correctly",
     );
     assert(reviewer?.maxTurns === 12, "reviewer maxTurns parsed as 12");
     assert(reviewer?.source === "project", "reviewer source is 'project'");
 
     const exploreAfter = findAgent("Explore");
-    assert(
-      exploreAfter?.source === "project",
-      "Explore is now the project-scope override (built-in shadowed)",
-    );
+    assert(exploreAfter?.source === "project", "Explore is now the project-scope override (built-in shadowed)");
     assert(
       exploreAfter?.getSystemPrompt() === "Custom Explore prompt.",
       "Custom Explore body wins over the built-in's READ-ONLY prompt",
@@ -238,14 +181,8 @@ async function main(): Promise<void> {
     // wildcard with NO write protection. This intentionally mirrors source
     // — overriding the built-in means you take responsibility for the
     // safeguards too. Verify the resolver reflects that.
-    const overrideResolved = resolveAgentTools(
-      exploreAfter ?? {},
-      allTools,
-    );
-    assert(
-      overrideResolved.hasWildcard,
-      "custom Explore (no tools field) is wildcard",
-    );
+    const overrideResolved = resolveAgentTools(exploreAfter ?? {}, allTools);
+    assert(overrideResolved.hasWildcard, "custom Explore (no tools field) is wildcard");
     assert(
       overrideResolved.resolvedTools.some((t) => t.name === "Write"),
       "custom Explore can use Write — overrides drop the built-in's safeguards",
@@ -258,18 +195,9 @@ async function main(): Promise<void> {
       rendered.includes("Available sub-agents you can invoke via the `Agent` tool"),
       "system prompt contains the agents reminder header",
     );
-    assert(
-      rendered.includes("- general-purpose [built-in]"),
-      "system prompt lists general-purpose as built-in",
-    );
-    assert(
-      rendered.includes("- Explore [project]"),
-      "system prompt lists Explore as project (override took effect)",
-    );
-    assert(
-      rendered.includes("- reviewer [project]"),
-      "system prompt lists reviewer as project",
-    );
+    assert(rendered.includes("- general-purpose [built-in]"), "system prompt lists general-purpose as built-in");
+    assert(rendered.includes("- Explore [project]"), "system prompt lists Explore as project (override took effect)");
+    assert(rendered.includes("- reviewer [project]"), "system prompt lists reviewer as project");
 
     console.log("\n[8] AgentTool — input validation + lookup errors");
     const cwdContext = { cwd, sessionId: "test-session" };
@@ -286,14 +214,8 @@ async function main(): Promise<void> {
       cwdContext,
     );
     assert(unknownAgent.isError, "unknown agent type is an error");
-    assert(
-      toolResultText(unknownAgent.content).includes("'does-not-exist'"),
-      "error message names the bad agent type",
-    );
-    assert(
-      toolResultText(unknownAgent.content).includes("Available types"),
-      "error lists available agent types",
-    );
+    assert(toolResultText(unknownAgent.content).includes("'does-not-exist'"), "error message names the bad agent type");
+    assert(toolResultText(unknownAgent.content).includes("Available types"), "error lists available agent types");
 
     console.log("\n[9] Permissions — Agent tool decisions in each mode");
     // Default mode: Agent is read-only → auto-allow.
@@ -304,10 +226,7 @@ async function main(): Promise<void> {
       mode: "default",
       settings: { allow: [], deny: [], mode: "default" },
     });
-    assert(
-      defaultDecision.behavior === "allow",
-      "Agent in default mode → allow (read-only delegation)",
-    );
+    assert(defaultDecision.behavior === "allow", "Agent in default mode → allow (read-only delegation)");
 
     // Plan mode: Agent NOT in PLAN_ALLOWED_TOOLS → deny.
     const planDecision = await checkPermission({
@@ -317,10 +236,7 @@ async function main(): Promise<void> {
       mode: "plan",
       settings: { allow: [], deny: [], mode: "plan" },
     });
-    assert(
-      planDecision.behavior === "deny",
-      "Agent in plan mode → deny (only Read/Grep/Glob allowed)",
-    );
+    assert(planDecision.behavior === "deny", "Agent in plan mode → deny (only Read/Grep/Glob allowed)");
 
     // Auto mode: everything allowed.
     const autoDecision = await checkPermission({
@@ -330,10 +246,7 @@ async function main(): Promise<void> {
       mode: "auto",
       settings: { allow: [], deny: [], mode: "auto" },
     });
-    assert(
-      autoDecision.behavior === "allow",
-      "Agent in auto mode → allow",
-    );
+    assert(autoDecision.behavior === "allow", "Agent in auto mode → allow");
 
     // Reset registry so subsequent test runs in this process don't see the
     // tmpdir-loaded agents (probably no callers, but cheap insurance).
@@ -370,10 +283,7 @@ async function main(): Promise<void> {
   const idxZ = sortedReminder.indexOf("z-custom [project]");
   assert(idxBuiltIn !== -1, "Explore appears in sortedReminder");
   assert(idxA !== -1 && idxZ !== -1, "custom agents appear in sortedReminder");
-  assert(
-    idxBuiltIn < idxA && idxA < idxZ,
-    "built-in sorted first, then alphabetical",
-  );
+  assert(idxBuiltIn < idxA && idxA < idxZ, "built-in sorted first, then alphabetical");
   clearAgents();
 
   console.log("\n[11] loadAllCustomAgents — empty / missing dir is silent");
@@ -431,35 +341,79 @@ async function main(): Promise<void> {
     assert(done?.totalTokens === 99, "complete → totalTokens mirrored");
     assert(done?.durationMs === 1234, "complete → durationMs mirrored");
 
-    completeSubAgentProgress("tool-2", { // missing entry → no-op
-      reason: "completed", durationMs: 1, totalTokens: 0, inputTokens: 0, outputTokens: 0, toolUseCount: 0,
+    completeSubAgentProgress("tool-2", {
+      // missing entry → no-op
+      reason: "completed",
+      durationMs: 1,
+      totalTokens: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+      toolUseCount: 0,
     });
     assert(getSubAgentProgress("tool-2") === undefined, "complete on unknown id is a no-op");
 
     // max_turns + abort + error mapping
     startSubAgentProgress("tool-3", { agentType: "general-purpose" });
-    completeSubAgentProgress("tool-3", { reason: "max_turns", durationMs: 1, totalTokens: 0, inputTokens: 0, outputTokens: 0, toolUseCount: 0 });
+    completeSubAgentProgress("tool-3", {
+      reason: "max_turns",
+      durationMs: 1,
+      totalTokens: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+      toolUseCount: 0,
+    });
     assert(getSubAgentProgress("tool-3")?.status === "max_turns", "reason max_turns → status max_turns");
 
     startSubAgentProgress("tool-4", { agentType: "general-purpose" });
-    completeSubAgentProgress("tool-4", { reason: "aborted", durationMs: 1, totalTokens: 0, inputTokens: 0, outputTokens: 0, toolUseCount: 0 });
+    completeSubAgentProgress("tool-4", {
+      reason: "aborted",
+      durationMs: 1,
+      totalTokens: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+      toolUseCount: 0,
+    });
     assert(getSubAgentProgress("tool-4")?.status === "aborted", "reason aborted → status aborted");
 
     startSubAgentProgress("tool-5", { agentType: "general-purpose" });
-    completeSubAgentProgress("tool-5", { reason: "model_error", durationMs: 1, totalTokens: 0, inputTokens: 0, outputTokens: 0, toolUseCount: 0 });
+    completeSubAgentProgress("tool-5", {
+      reason: "model_error",
+      durationMs: 1,
+      totalTokens: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+      toolUseCount: 0,
+    });
     assert(getSubAgentProgress("tool-5")?.status === "error", "reason model_error → status error");
 
     startSubAgentProgress("tool-6", { agentType: "general-purpose" });
-    completeSubAgentProgress("tool-6", { reason: "completed", durationMs: 1, totalTokens: 0, inputTokens: 0, outputTokens: 0, toolUseCount: 0, isError: true });
+    completeSubAgentProgress("tool-6", {
+      reason: "completed",
+      durationMs: 1,
+      totalTokens: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+      toolUseCount: 0,
+      isError: true,
+    });
     assert(getSubAgentProgress("tool-6")?.status === "error", "isError flag → status error even on completed reason");
 
     // Subscriber received: 4 starts + 1 update + 4 completes (we counted above)
-    assert(events.some((e) => e.id === "tool-1" && e.status === "running"), "subscriber saw running event");
-    assert(events.some((e) => e.id === "tool-1" && e.status === "completed" && e.tools === 5), "subscriber saw completed event with final tools");
+    assert(
+      events.some((e) => e.id === "tool-1" && e.status === "running"),
+      "subscriber saw running event",
+    );
+    assert(
+      events.some((e) => e.id === "tool-1" && e.status === "completed" && e.tools === 5),
+      "subscriber saw completed event with final tools",
+    );
 
     clearSubAgentProgress("tool-1");
     assert(getSubAgentProgress("tool-1") === undefined, "clear drops the entry");
-    assert(events.some((e) => e.id === "tool-1" && e.status === undefined), "subscriber notified of clear with null snapshot");
+    assert(
+      events.some((e) => e.id === "tool-1" && e.status === undefined),
+      "subscriber notified of clear with null snapshot",
+    );
 
     clearAllSubAgentProgress();
     assert(getSubAgentProgress("tool-3") === undefined, "clearAll drops every entry");
@@ -545,18 +499,9 @@ async function main(): Promise<void> {
       findTool("Agent")?.isConcurrencySafe?.() === true,
       "Agent tool isConcurrencySafe → true (parallel sub-agent fan-out)",
     );
-    assert(
-      findTool("Read")?.isConcurrencySafe?.() === true,
-      "Read tool isConcurrencySafe → true",
-    );
-    assert(
-      findTool("Grep")?.isConcurrencySafe?.() === true,
-      "Grep tool isConcurrencySafe → true",
-    );
-    assert(
-      findTool("Glob")?.isConcurrencySafe?.() === true,
-      "Glob tool isConcurrencySafe → true",
-    );
+    assert(findTool("Read")?.isConcurrencySafe?.() === true, "Read tool isConcurrencySafe → true");
+    assert(findTool("Grep")?.isConcurrencySafe?.() === true, "Grep tool isConcurrencySafe → true");
+    assert(findTool("Glob")?.isConcurrencySafe?.() === true, "Glob tool isConcurrencySafe → true");
     // Mutating tools must remain serial.
     const writeUnsafe = findTool("Write")?.isConcurrencySafe?.() ?? false;
     const editUnsafe = findTool("Edit")?.isConcurrencySafe?.() ?? false;
@@ -686,12 +631,8 @@ async function main(): Promise<void> {
 
   console.log("\n[16] subAgentProgressStore — turn_usage live token updates");
   {
-    const {
-      startSubAgentProgress,
-      updateSubAgentProgress,
-      getSubAgentProgress,
-      clearAllSubAgentProgress,
-    } = await import("../state/subAgentProgressStore.js");
+    const { startSubAgentProgress, updateSubAgentProgress, getSubAgentProgress, clearAllSubAgentProgress } =
+      await import("../state/subAgentProgressStore.js");
 
     clearAllSubAgentProgress();
     startSubAgentProgress("live-tok-1", { agentType: "Explore", description: "x" });

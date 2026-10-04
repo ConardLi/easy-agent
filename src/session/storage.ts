@@ -6,15 +6,8 @@ import type { MessageParam } from "@anthropic-ai/sdk/resources/messages.js";
 import type { Usage } from "../types/message.js";
 import { getProjectPathInfo } from "../context/memory/memdir.js";
 import { getEasyAgentHome } from "../utils/paths.js";
-import {
-  appendPrivateFile,
-  ensurePrivateDirectory,
-  writePrivateFile,
-} from "../utils/privateData.js";
-import {
-  PersistentDataError,
-  withFileLock,
-} from "../utils/atomicFile.js";
+import { appendPrivateFile, ensurePrivateDirectory, writePrivateFile } from "../utils/privateData.js";
+import { PersistentDataError, withFileLock } from "../utils/atomicFile.js";
 
 const MAX_SESSIONS = 20;
 
@@ -86,7 +79,14 @@ export interface FileHistorySnapshotRecord {
 export type TranscriptEntry =
   | { type: "session_meta"; sessionId: string; cwd: string; startedAt: string; model: string }
   | { type: "message"; timestamp: string; role: "user" | "assistant"; message: MessageParam; messageId?: string }
-  | { type: "tool_event"; timestamp: string; name: string; phase: "start" | "done"; resultLength?: number; isError?: boolean }
+  | {
+      type: "tool_event";
+      timestamp: string;
+      name: string;
+      phase: "start" | "done";
+      resultLength?: number;
+      isError?: boolean;
+    }
   | { type: "usage"; timestamp: string; turn: Usage; total: Usage }
   | { type: "system"; timestamp: string; level: "info" | "error"; message: string }
   | { type: "compaction"; timestamp: string; trigger: "auto" | "manual" }
@@ -207,10 +207,7 @@ function parseJsonLine(line: string): TranscriptEntry | null {
     }
 
     if (parsed.type === "compaction") {
-      if (
-        typeof parsed.timestamp === "string" &&
-        (parsed.trigger === "auto" || parsed.trigger === "manual")
-      ) {
+      if (typeof parsed.timestamp === "string" && (parsed.trigger === "auto" || parsed.trigger === "manual")) {
         return {
           type: "compaction",
           timestamp: parsed.timestamp,
@@ -347,9 +344,7 @@ export async function appendTranscriptEntry(cwd: string, sessionId: string, entr
   if (!persistenceEnabled) return;
   const paths = await getSessionPaths(cwd, sessionId);
   await ensureSessionDir(paths);
-  await withFileLock(paths.transcriptPath, () =>
-    appendPrivateFile(paths.transcriptPath, `${JSON.stringify(entry)}\n`),
-  );
+  await withFileLock(paths.transcriptPath, () => appendPrivateFile(paths.transcriptPath, `${JSON.stringify(entry)}\n`));
   await writePrivateFile(paths.latestPath, `${sessionId}\n`);
 }
 
@@ -395,7 +390,9 @@ export async function restoreSession(cwd: string, sessionId?: string): Promise<R
     throw new Error(`Session ${resolvedSessionId} is empty or unreadable.`);
   }
 
-  const meta = entries.find((entry): entry is Extract<TranscriptEntry, { type: "session_meta" }> => entry.type === "session_meta");
+  const meta = entries.find(
+    (entry): entry is Extract<TranscriptEntry, { type: "session_meta" }> => entry.type === "session_meta",
+  );
   if (!meta) {
     throw new Error(`Session ${resolvedSessionId} is missing session metadata.`);
   }
@@ -456,16 +453,16 @@ export async function appendCompactionSnapshot(
   const lines: string[] = [];
   lines.push(JSON.stringify({ type: "compaction", timestamp: new Date().toISOString(), trigger }));
   for (const msg of messages) {
-    lines.push(JSON.stringify({
-      type: "message",
-      timestamp: new Date().toISOString(),
-      role: msg.role,
-      message: msg,
-    }));
+    lines.push(
+      JSON.stringify({
+        type: "message",
+        timestamp: new Date().toISOString(),
+        role: msg.role,
+        message: msg,
+      }),
+    );
   }
-  await withFileLock(paths.transcriptPath, () =>
-    appendPrivateFile(paths.transcriptPath, lines.join("\n") + "\n"),
-  );
+  await withFileLock(paths.transcriptPath, () => appendPrivateFile(paths.transcriptPath, lines.join("\n") + "\n"));
 }
 
 /**
@@ -555,7 +552,9 @@ export async function listProjectSessions(cwd: string, limit = MAX_SESSIONS): Pr
   const sessions = await Promise.all(
     sessionFiles.map(async (filePath) => {
       const transcriptEntries = await readTranscriptEntries(filePath);
-      const meta = transcriptEntries.find((entry): entry is Extract<TranscriptEntry, { type: "session_meta" }> => entry.type === "session_meta");
+      const meta = transcriptEntries.find(
+        (entry): entry is Extract<TranscriptEntry, { type: "session_meta" }> => entry.type === "session_meta",
+      );
       if (!meta) return null;
 
       const messages = transcriptEntries.filter((entry) => entry.type === "message");

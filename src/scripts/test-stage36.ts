@@ -191,7 +191,11 @@ function sse(type: string, value: unknown): string {
   return `event: ${type}\ndata: ${JSON.stringify(value)}\n\n`;
 }
 
-async function startFixtureProvider(): Promise<{ baseURL: string; requests: () => number; close: () => Promise<void> }> {
+async function startFixtureProvider(): Promise<{
+  baseURL: string;
+  requests: () => number;
+  close: () => Promise<void>;
+}> {
   let count = 0;
   const server = createServer((request, response) => {
     request.resume();
@@ -213,10 +217,22 @@ async function startFixtureProvider(): Promise<{ baseURL: string; requests: () =
               usage: { input_tokens: 5, output_tokens: 0 },
             },
           }),
-          sse("content_block_start", { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } }),
-          sse("content_block_delta", { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: FIXTURE_REPLY } }),
+          sse("content_block_start", {
+            type: "content_block_start",
+            index: 0,
+            content_block: { type: "text", text: "" },
+          }),
+          sse("content_block_delta", {
+            type: "content_block_delta",
+            index: 0,
+            delta: { type: "text_delta", text: FIXTURE_REPLY },
+          }),
           sse("content_block_stop", { type: "content_block_stop", index: 0 }),
-          sse("message_delta", { type: "message_delta", delta: { stop_reason: "end_turn", stop_sequence: null }, usage: { output_tokens: 3 } }),
+          sse("message_delta", {
+            type: "message_delta",
+            delta: { stop_reason: "end_turn", stop_sequence: null },
+            usage: { output_tokens: 3 },
+          }),
           sse("message_stop", { type: "message_stop" }),
         ].join(""),
       );
@@ -234,7 +250,8 @@ async function startFixtureProvider(): Promise<{ baseURL: string; requests: () =
   };
 }
 
-const PTY_HELPER = "import pty, sys\nstatus = pty.spawn(sys.argv[1:])\nsys.exit(status >> 8 if status & 0xff == 0 else 1)\n";
+const PTY_HELPER =
+  "import pty, sys\nstatus = pty.spawn(sys.argv[1:])\nsys.exit(status >> 8 if status & 0xff == 0 else 1)\n";
 
 /** Starts the installed CLI in a real pseudo-terminal, accepts the trust prompt, and exits with Ctrl+D. */
 async function runInteractiveStartup(
@@ -294,18 +311,17 @@ const packageJson = JSON.parse(await fs.readFile(path.join(PROJECT_ROOT, "packag
   bugs?: unknown;
 };
 
-const ROADMAP_WORDING = /\b(?:[Ss]tage|[Pp]hase)\s+\d|阶段\s*\d|\brebuil[dt]\b|from scratch|\b[Cc]lone\b|\b[Tt]utorials?\b|\b[Tt]eaching\b|复刻|教学|教程/;
+const ROADMAP_WORDING =
+  /\b(?:[Ss]tage|[Pp]hase)\s+\d|阶段\s*\d|\brebuil[dt]\b|from scratch|\b[Cc]lone\b|\b[Tt]utorials?\b|\b[Tt]eaching\b|复刻|教学|教程/;
 
 section("[1] package contract");
 assert(packageJson.name === "eagent", "package name is eagent");
 assert(
-  JSON.stringify(packageJson.bin) ===
-    JSON.stringify({ eagent: "dist/eagent.js", "easy-agent": "dist/eagent.js" }),
+  JSON.stringify(packageJson.bin) === JSON.stringify({ eagent: "dist/eagent.js", "easy-agent": "dist/eagent.js" }),
   "only eagent and easy-agent are registered",
 );
 assert(
-  JSON.stringify(packageJson.dependencies ?? {}) ===
-    JSON.stringify({ "@anthropic-ai/sandbox-runtime": "0.0.76" }),
+  JSON.stringify(packageJson.dependencies ?? {}) === JSON.stringify({ "@anthropic-ai/sandbox-runtime": "0.0.76" }),
   "runtime dependencies are explicit and version-pinned",
 );
 assert(packageJson.engines?.node === ">=22", "Node engine is >=22");
@@ -319,7 +335,8 @@ assert(
   packageJson.description,
 );
 assert(
-  (packageJson.keywords ?? []).length >= 5 && !(packageJson.keywords ?? []).some((keyword) => ROADMAP_WORDING.test(keyword)),
+  (packageJson.keywords ?? []).length >= 5 &&
+    !(packageJson.keywords ?? []).some((keyword) => ROADMAP_WORDING.test(keyword)),
   "npm keywords describe product capabilities",
   (packageJson.keywords ?? []).join(", "),
 );
@@ -334,7 +351,13 @@ for (const readme of ["README.md", "README.zh-CN.md"]) {
   const brokenLinks: string[] = [];
   for (const match of text.matchAll(/\]\((?!https?:|mailto:|#)([^)\s]+)\)/g)) {
     const target = match[1]!.split("#")[0]!;
-    if (target && !(await fs.access(path.join(PROJECT_ROOT, target)).then(() => true, () => false))) {
+    if (
+      target &&
+      !(await fs.access(path.join(PROJECT_ROOT, target)).then(
+        () => true,
+        () => false,
+      ))
+    ) {
       brokenLinks.push(target);
     }
   }
@@ -358,21 +381,33 @@ assert(
     (source) => !path.isAbsolute(source) && !/^(?:[A-Za-z]:[\\/]|file:)/.test(source) && !source.startsWith("../../"),
   ),
   "source map paths stay relative to the package",
-  sourceMap.sources.filter((source) => path.isAbsolute(source) || source.startsWith("../../")).slice(0, 5).join(", "),
+  sourceMap.sources
+    .filter((source) => path.isAbsolute(source) || source.startsWith("../../"))
+    .slice(0, 5)
+    .join(", "),
 );
 assert(
   !sourceMap.sources.some((source) => source.startsWith("../src/scripts/")),
   "test and smoke scripts are not bundled",
 );
 
-const bundleHygiene = run(process.execPath, ["--import", "tsx", "scripts/check-source-hygiene.ts", "--bundle", "dist/eagent.js"]);
+const bundleHygiene = run(process.execPath, [
+  "--import",
+  "tsx",
+  "scripts/check-source-hygiene.ts",
+  "--bundle",
+  "dist/eagent.js",
+]);
 assert(
   bundleHygiene.status === 0,
   "bundled application code carries no roadmap, reference, or tutorial markers",
   (bundleHygiene.stdout + bundleHygiene.stderr).trim().split("\n").slice(-12).join("\n    "),
 );
 const buildPaths = [PROJECT_ROOT, os.homedir()].filter((value) => value.length > 1);
-for (const [label, text] of [["bundle", bundle], ["source map", mapText]] as const) {
+for (const [label, text] of [
+  ["bundle", bundle],
+  ["source map", mapText],
+] as const) {
   assert(!buildPaths.some((value) => text.includes(value)), `${label} contains no absolute build-machine paths`);
 }
 
@@ -443,7 +478,11 @@ try {
     "package.json",
   ];
   const packedFiles = dryRun?.[0]?.files.map((file) => file.path).sort() ?? [];
-  assert(JSON.stringify(packedFiles) === JSON.stringify(expectedFiles), "tarball contains only release files", packedFiles.join(", "));
+  assert(
+    JSON.stringify(packedFiles) === JSON.stringify(expectedFiles),
+    "tarball contains only release files",
+    packedFiles.join(", "),
+  );
 
   const pack = parseNpmJson<PackResult[]>(
     run(NPM, ["pack", "--json", "--ignore-scripts", "--pack-destination", packDir], { env: npmEnv }),
@@ -456,9 +495,13 @@ try {
     const extract = run("tar", ["-xzf", tarball, "-C", extractDir]);
     assert(extract.status === 0, "tarball extracts", extract.stderr);
     const packageRoot = path.join(extractDir, "package");
-    const extracted = (await collectFiles(packageRoot)).map((file) => path.relative(packageRoot, file).split(path.sep).join("/"));
+    const extracted = (await collectFiles(packageRoot)).map((file) =>
+      path.relative(packageRoot, file).split(path.sep).join("/"),
+    );
     const forbidden = extracted.filter((file) =>
-      /(?:^|\/)\.env(?:\.|$)|\.jsonl$|\.log$|\.err$|\.tgz$|^(?:src|step|scripts|docs|node_modules)\/|(?:^|\/)\.(?:easy-agent|claude|git)\//.test(file),
+      /(?:^|\/)\.env(?:\.|$)|\.jsonl$|\.log$|\.err$|\.tgz$|^(?:src|step|scripts|docs|node_modules)\/|(?:^|\/)\.(?:easy-agent|claude|git)\//.test(
+        file,
+      ),
     );
     assert(forbidden.length === 0, "tarball has no env files, sessions, logs, or source trees", forbidden.join(", "));
 
@@ -477,11 +520,9 @@ try {
       [...valueHits].join(", "),
     );
 
-    const install = run(
-      NPM,
-      ["install", "-g", "--ignore-scripts", "--prefix", installPrefix, tarball],
-      { env: npmEnv },
-    );
+    const install = run(NPM, ["install", "-g", "--ignore-scripts", "--prefix", installPrefix, tarball], {
+      env: npmEnv,
+    });
     assert(install.status === 0, "tarball installs in an isolated global prefix", install.stderr);
 
     const binDir = path.join(installPrefix, process.platform === "win32" ? "" : "bin");
@@ -491,26 +532,55 @@ try {
     const retiredBin = path.join(binDir, `agent${commandSuffix}`);
 
     const [eagentExists, longExists, retiredExists] = await Promise.all([
-      fs.access(eagentBin).then(() => true, () => false),
-      fs.access(longBin).then(() => true, () => false),
-      fs.access(retiredBin).then(() => true, () => false),
+      fs.access(eagentBin).then(
+        () => true,
+        () => false,
+      ),
+      fs.access(longBin).then(
+        () => true,
+        () => false,
+      ),
+      fs.access(retiredBin).then(
+        () => true,
+        () => false,
+      ),
     ]);
     assert(eagentExists, "installed eagent command exists");
     assert(longExists, "installed easy-agent command exists");
     assert(!retiredExists, "retired agent command is absent");
 
     const installedPackage = path.join(installPrefix, "lib", "node_modules", "eagent");
-    const sandboxRuntimePackage = path.join(installedPackage, "node_modules", "@anthropic-ai", "sandbox-runtime", "package.json");
-    const sandboxRuntimeInstalled = await fs.access(sandboxRuntimePackage).then(() => true, () => false);
+    const sandboxRuntimePackage = path.join(
+      installedPackage,
+      "node_modules",
+      "@anthropic-ai",
+      "sandbox-runtime",
+      "package.json",
+    );
+    const sandboxRuntimeInstalled = await fs.access(sandboxRuntimePackage).then(
+      () => true,
+      () => false,
+    );
     assert(sandboxRuntimeInstalled, "installed package includes the sandbox runtime dependency");
 
     section("[6] installed CLI");
     const cliEnv = isolatedCliEnv(cliHome);
-    for (const [name, bin] of [["eagent", eagentBin], ["easy-agent", longBin]] as const) {
+    for (const [name, bin] of [
+      ["eagent", eagentBin],
+      ["easy-agent", longBin],
+    ] as const) {
       const version = run(bin, ["--version"], { cwd: cliProject, env: cliEnv });
-      assert(version.stdout.trim() === `eagent ${packageJson.version}`, `installed ${name} reports the release version`, version.stderr);
+      assert(
+        version.stdout.trim() === `eagent ${packageJson.version}`,
+        `installed ${name} reports the release version`,
+        version.stderr,
+      );
       const help = run(bin, ["--help"], { cwd: cliProject, env: cliEnv });
-      assert(help.status === 0 && help.stdout.includes("eagent [options]"), `installed ${name} prints help`, help.stderr);
+      assert(
+        help.status === 0 && help.stdout.includes("eagent [options]"),
+        `installed ${name} prints help`,
+        help.stderr,
+      );
     }
 
     const provider = await startFixtureProvider();
@@ -522,9 +592,16 @@ try {
       });
 
       const text = await runAsync(eagentBin, ["-p", "Say hello."], { cwd: cliProject, env: providerEnv });
-      assert(text.status === 0 && text.stdout === `${FIXTURE_REPLY}\n`, "installed Headless text mode answers", text.stderr || text.stdout);
+      assert(
+        text.status === 0 && text.stdout === `${FIXTURE_REPLY}\n`,
+        "installed Headless text mode answers",
+        text.stderr || text.stdout,
+      );
 
-      const json = await runAsync(eagentBin, ["-p", "Say hello.", "--output-format", "json"], { cwd: cliProject, env: providerEnv });
+      const json = await runAsync(eagentBin, ["-p", "Say hello.", "--output-format", "json"], {
+        cwd: cliProject,
+        env: providerEnv,
+      });
       let result: Record<string, unknown> | undefined;
       try {
         result = JSON.parse(json.stdout) as Record<string, unknown>;
@@ -532,11 +609,19 @@ try {
         result = undefined;
       }
       assert(
-        json.status === 0 && result?.type === "result" && result.schema_version === 1 && result.result === FIXTURE_REPLY && result.is_error === false,
+        json.status === 0 &&
+          result?.type === "result" &&
+          result.schema_version === 1 &&
+          result.result === FIXTURE_REPLY &&
+          result.is_error === false,
         "installed Headless JSON mode returns a versioned result",
         json.stderr || json.stdout,
       );
-      assert(provider.requests() === 2, "Headless runs reach only the configured provider endpoint", `requests=${provider.requests()}`);
+      assert(
+        provider.requests() === 2,
+        "Headless runs reach only the configured provider endpoint",
+        `requests=${provider.requests()}`,
+      );
 
       if (process.platform === "win32") {
         process.stdout.write("    interactive startup skipped: no pseudo-terminal helper on Windows\n");
@@ -544,7 +629,11 @@ try {
         const interactive = await runInteractiveStartup(eagentBin, cliProject, providerEnv);
         assert(interactive.trustPrompt, "interactive startup asks for workspace trust", interactive.screen);
         assert(interactive.banner, "interactive startup renders the REPL after trust", interactive.screen);
-        assert(interactive.exitCode === 0, "interactive session exits cleanly on Ctrl+D", `exit=${String(interactive.exitCode)}`);
+        assert(
+          interactive.exitCode === 0,
+          "interactive session exits cleanly on Ctrl+D",
+          `exit=${String(interactive.exitCode)}`,
+        );
       }
     } finally {
       await provider.close();

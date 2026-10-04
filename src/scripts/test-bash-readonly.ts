@@ -4,15 +4,8 @@ import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import {
-  checkPermission,
-  type PermissionMode,
-  type PermissionSettings,
-} from "../permissions/permissions.js";
-import {
-  recordClassifierFailure,
-  resetAutoModeState,
-} from "../permissions/autoModeState.js";
+import { checkPermission, type PermissionMode, type PermissionSettings } from "../permissions/permissions.js";
+import { recordClassifierFailure, resetAutoModeState } from "../permissions/autoModeState.js";
 import { analyzeBashCommand, isReadOnlyCommand } from "../tools/bashTool.js";
 import { findToolByName } from "../tools/index.js";
 
@@ -29,7 +22,7 @@ const READ_ONLY_CASES = [
   "c''at README.md",
   "cat foo\\;bar",
   "grep -n 'foo;bar' README.md",
-  "grep \"a && b\" README.md",
+  'grep "a && b" README.md',
   "rg --line-number 'foo|bar' src",
   "find src -type f -name '*.ts'",
   "fd --type f package src",
@@ -78,7 +71,7 @@ const REQUIRES_APPROVAL_CASES = [
   "git log --format='%G? %s'",
   "git -c core.pager='touch target' log",
   "cat $(touch target)",
-  "cat \"$(touch target)\"",
+  'cat "$(touch target)"',
   "cat `touch target`",
   "cat <(touch target)",
   "cat >(touch target)",
@@ -228,6 +221,6 @@ async function main(): Promise<void> {
 }
 
 void main().catch((error: unknown) => {
-  process.stderr.write(`${error instanceof Error ? error.stack ?? error.message : String(error)}\n`);
+  process.stderr.write(`${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`);
   process.exitCode = 1;
 });

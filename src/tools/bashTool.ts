@@ -9,15 +9,9 @@ import {
   type ResolvedSandboxSettings,
   type SandboxedCommand,
 } from "../sandbox/index.js";
-import {
-  appendBashProgress,
-  completeBashProgress,
-  startBashProgress,
-} from "../state/bashProgressStore.js";
+import { appendBashProgress, completeBashProgress, startBashProgress } from "../state/bashProgressStore.js";
 import { readMergedEnv } from "../utils/settings.js";
-import {
-  analyzeBashCommand,
-} from "./bashReadOnlyAnalysis.js";
+import { analyzeBashCommand } from "./bashReadOnlyAnalysis.js";
 import { formatCapturedOutput, runControlledProcess } from "../utils/controlledProcess.js";
 
 export {
@@ -48,10 +42,7 @@ interface BashInput {
  * approving a permission rule mid-session takes effect on the next
  * Bash command — no restart required.
  */
-async function buildProfileForCwd(
-  cwd: string,
-  settings: ResolvedSandboxSettings,
-) {
+async function buildProfileForCwd(cwd: string, settings: ResolvedSandboxSettings) {
   // Load permission settings only when a sandbox profile is required.
   const { loadPermissionSettings } = await import("../permissions/permissions.js");
   const permissionSettings = await loadPermissionSettings(cwd);
@@ -74,7 +65,10 @@ export const bashTool: Tool = {
     properties: {
       command: { type: "string", description: "Shell command to execute" },
       timeout: { type: "number", description: "Timeout in milliseconds (default 120000)" },
-      idleTimeout: { type: "number", description: "Stop after this many milliseconds without output (default: command timeout)" },
+      idleTimeout: {
+        type: "number",
+        description: "Stop after this many milliseconds without output (default: command timeout)",
+      },
       dangerouslyDisableSandbox: {
         type: "boolean",
         description:
@@ -92,7 +86,12 @@ export const bashTool: Tool = {
 
     const timeoutMs = typeof input.timeout === "number" ? input.timeout : DEFAULT_TIMEOUT_MS;
     const idleTimeoutMs = typeof input.idleTimeout === "number" ? input.idleTimeout : timeoutMs;
-    if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0 || !Number.isSafeInteger(idleTimeoutMs) || idleTimeoutMs <= 0) {
+    if (
+      !Number.isSafeInteger(timeoutMs) ||
+      timeoutMs <= 0 ||
+      !Number.isSafeInteger(idleTimeoutMs) ||
+      idleTimeoutMs <= 0
+    ) {
       return { content: "Error: timeout and idleTimeout must be positive integer milliseconds", isError: true };
     }
 
@@ -190,8 +189,13 @@ export const bashTool: Tool = {
 
     try {
       const run = await runControlledProcess({
-        executable, args, cwd: context.cwd, env: spawnEnv,
-        signal: context.abortSignal, timeoutMs, idleTimeoutMs,
+        executable,
+        args,
+        cwd: context.cwd,
+        env: spawnEnv,
+        signal: context.abortSignal,
+        timeoutMs,
+        idleTimeoutMs,
         maxOutputBytes: MAX_OUTPUT_BYTES,
         onStdout: progressId ? (chunk) => appendBashProgress(progressId, chunk) : undefined,
         onStderr: progressId ? (chunk) => appendBashProgress(progressId, chunk) : undefined,
@@ -213,10 +217,15 @@ export const bashTool: Tool = {
         run.signal ? `Signal: ${run.signal}` : "",
         run.stdout ? `\nSTDOUT:\n${formatCapturedOutput(run.stdout, run.stdoutOmittedBytes)}` : "",
         annotatedStderr ? `\nSTDERR:\n${formatCapturedOutput(annotatedStderr, run.stderrOmittedBytes)}` : "",
-      ].filter(Boolean).join("\n");
+      ]
+        .filter(Boolean)
+        .join("\n");
       return { content: output, isError: (run.exitCode ?? 1) !== 0 };
     } catch (error) {
-      return { content: `Failed to run command: ${error instanceof Error ? error.message : String(error)}`, isError: true };
+      return {
+        content: `Failed to run command: ${error instanceof Error ? error.message : String(error)}`,
+        isError: true,
+      };
     } finally {
       if (progressId) completeBashProgress(progressId);
       if (sandboxCommand) cleanupSandboxCommand(sandboxCommand);

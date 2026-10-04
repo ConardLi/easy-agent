@@ -3,12 +3,7 @@
 import type { McpServerConnection, PendingMcpServer } from "../../types/mcp.js";
 import { registerMcpTools } from "../../tools/index.js";
 import { loadMcpConfigs } from "./config.js";
-import {
-  connectToServer,
-  registerMcpProcessCleanup,
-  clearServerCache,
-  setMcpConnectionListeners,
-} from "./client.js";
+import { connectToServer, registerMcpProcessCleanup, clearServerCache, setMcpConnectionListeners } from "./client.js";
 import { fetchToolsForConnection } from "./fetchTools.js";
 import {
   clearMcpRegistry,
@@ -58,16 +53,22 @@ function scheduleReconnect(name: string, config: PendingMcpServer["config"], imm
       await clearServerCache(name, config);
       if (getMcpRegistryEntry(name)?.connection.config !== config) return;
       await connectAndRegister(name, config);
-    })().catch((error) => {
-      debugLog("mcp", `[${name}] reconnect failed: ${(error as Error).message}`);
-      scheduleReconnect(name, config);
-    }).finally(() => {
-      reconnecting.delete(name);
-      const current = getMcpRegistryEntry(name);
-      if (current?.connection.config === config && current.connection.type === "failed" && !current.connection.error.startsWith("Authorization required:")) {
+    })()
+      .catch((error) => {
+        debugLog("mcp", `[${name}] reconnect failed: ${(error as Error).message}`);
         scheduleReconnect(name, config);
-      }
-    });
+      })
+      .finally(() => {
+        reconnecting.delete(name);
+        const current = getMcpRegistryEntry(name);
+        if (
+          current?.connection.config === config &&
+          current.connection.type === "failed" &&
+          !current.connection.error.startsWith("Authorization required:")
+        ) {
+          scheduleReconnect(name, config);
+        }
+      });
     reconnecting.set(name, task);
   }, delay);
   timer.unref?.();
@@ -99,9 +100,7 @@ export async function bootstrapMcp(cwd: string): Promise<McpBootstrapResult> {
   }
   refreshGlobalToolRegistry();
 
-  const tasks = Object.entries(servers).map(([name, config]) =>
-    connectAndRegister(name, config),
-  );
+  const tasks = Object.entries(servers).map(([name, config]) => connectAndRegister(name, config));
   const settled = await Promise.allSettled(tasks);
 
   const connections: McpServerConnection[] = [];
@@ -163,9 +162,11 @@ export function reconnectMcpServer(name: string): Promise<McpServerConnection | 
   if (ongoing) return ongoing;
   const attempt = reconnectMcpServerOnce(name);
   requestedReconnects.set(name, attempt);
-  void attempt.finally(() => {
-    if (requestedReconnects.get(name) === attempt) requestedReconnects.delete(name);
-  }).catch(() => {});
+  void attempt
+    .finally(() => {
+      if (requestedReconnects.get(name) === attempt) requestedReconnects.delete(name);
+    })
+    .catch(() => {});
   return attempt;
 }
 
@@ -177,12 +178,16 @@ async function reconnectMcpServerOnce(name: string): Promise<McpServerConnection
 
   await clearServerCache(name, entry.connection.config);
   deleteMcpRegistryEntry(name);
-  setMcpRegistryEntry(name, {
+  setMcpRegistryEntry(
     name,
-    type: "pending",
-    config: entry.connection.config,
-    startedAt: Date.now(),
-  }, []);
+    {
+      name,
+      type: "pending",
+      config: entry.connection.config,
+      startedAt: Date.now(),
+    },
+    [],
+  );
   refreshGlobalToolRegistry();
 
   return (await connectAndRegister(name, entry.connection.config)).connection;

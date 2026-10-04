@@ -1,7 +1,4 @@
-import {
-  ListResourcesResultSchema,
-  type ListResourcesResult,
-} from "@modelcontextprotocol/sdk/types.js";
+import { ListResourcesResultSchema, type ListResourcesResult } from "@modelcontextprotocol/sdk/types.js";
 import type { Tool, ToolContext, ToolResult } from "./Tool.js";
 import { getMcpRegistry } from "../services/mcp/registry.js";
 import type { ConnectedMcpServer } from "../types/mcp.js";
@@ -58,10 +55,14 @@ export const listMcpResourcesTool: Tool = {
     for (const server of targets) {
       if (!server.capabilities?.resources) continue;
       try {
-        const result = await withMcpReadRecovery(server, async (current) => current.client.request(
-          { method: "resources/list" },
-          ListResourcesResultSchema,
-        ) as Promise<ListResourcesResult>);
+        const result = await withMcpReadRecovery(
+          server,
+          async (current) =>
+            current.client.request(
+              { method: "resources/list" },
+              ListResourcesResultSchema,
+            ) as Promise<ListResourcesResult>,
+        );
         for (const r of result.resources) {
           entries.push({
             uri: r.uri,
@@ -79,8 +80,7 @@ export const listMcpResourcesTool: Tool = {
 
     if (entries.length === 0) {
       return {
-        content:
-          "No MCP resources found. Servers may still provide tools even with no resources.",
+        content: "No MCP resources found. Servers may still provide tools even with no resources.",
       };
     }
 

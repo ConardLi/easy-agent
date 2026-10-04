@@ -19,14 +19,8 @@
 
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import {
-  getEasyAgentPath,
-  getProjectEasyAgentDir,
-} from "../../utils/paths.js";
-import {
-  extractFallbackDescription,
-  splitFrontmatter,
-} from "../../services/skills/parseFrontmatter.js";
+import { getEasyAgentPath, getProjectEasyAgentDir } from "../../utils/paths.js";
+import { extractFallbackDescription, splitFrontmatter } from "../../services/skills/parseFrontmatter.js";
 import type { UserCommand, UserCommandSource } from "./types.js";
 
 /** ~/.easy-agent/commands */
@@ -46,9 +40,7 @@ interface LoadedFromDir {
 
 function asStringArray(value: unknown): string[] {
   if (Array.isArray(value)) {
-    return value
-      .map((v) => (typeof v === "string" ? v.trim() : ""))
-      .filter(Boolean);
+    return value.map((v) => (typeof v === "string" ? v.trim() : "")).filter(Boolean);
   }
   if (typeof value === "string") {
     return value
@@ -120,9 +112,7 @@ async function loadFromOneDir(dir: string, source: UserCommandSource): Promise<L
     // team/review.md → team:review (drop the .md, swap path sep for ':')
     const name = rel.replace(/\.md$/, "").split(/[\\/]/).join(":");
     const description =
-      asString(split.raw["description"]) ??
-      extractFallbackDescription(split.body) ??
-      `Custom /${name} command`;
+      asString(split.raw["description"]) ?? extractFallbackDescription(split.body) ?? `Custom /${name} command`;
 
     commands.push({
       name,
@@ -148,10 +138,7 @@ export interface LoadAllUserCommandsResult {
  * Load slash commands from ONE arbitrary directory (e.g. a plugin's
  * `commands/` dir), reusing the recursive `.md` walk + subdir→`:` namespacing.
  */
-export async function loadCommandsFromDir(
-  dir: string,
-  source: UserCommandSource,
-): Promise<LoadAllUserCommandsResult> {
+export async function loadCommandsFromDir(dir: string, source: UserCommandSource): Promise<LoadAllUserCommandsResult> {
   const { commands, warnings } = await loadFromOneDir(dir, source);
   return { commands, warnings };
 }

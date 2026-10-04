@@ -15,16 +15,10 @@
  */
 
 import type Anthropic from "@anthropic-ai/sdk";
-import type {
-  MessageParam,
-  ContentBlockParam,
-} from "@anthropic-ai/sdk/resources/messages.js";
+import type { MessageParam, ContentBlockParam } from "@anthropic-ai/sdk/resources/messages.js";
 import { createMessage } from "../services/api/streaming.js";
 import { debugLog } from "../utils/log.js";
-import {
-  buildAutoClassifierSystemPrompt,
-  type AutoClassifierPromptOptions,
-} from "./autoClassifierPrompt.js";
+import { buildAutoClassifierSystemPrompt, type AutoClassifierPromptOptions } from "./autoClassifierPrompt.js";
 
 /** Max characters of a single tool input we embed before truncating. */
 const MAX_INPUT_CHARS = 2000;
@@ -64,8 +58,7 @@ export interface AutoClassifierResult {
 /** Structured tool the classifier is forced to call. */
 const CLASSIFY_RESULT_TOOL: Anthropic.Tool = {
   name: "classify_result",
-  description:
-    "Report your security classification of the agent's proposed action.",
+  description: "Report your security classification of the agent's proposed action.",
   input_schema: {
     type: "object",
     properties: {
@@ -76,13 +69,11 @@ const CLASSIFY_RESULT_TOOL: Anthropic.Tool = {
       },
       shouldBlock: {
         type: "boolean",
-        description:
-          "true if the action requires explicit human confirmation; false if it is safe to auto-approve.",
+        description: "true if the action requires explicit human confirmation; false if it is safe to auto-approve.",
       },
       reason: {
         type: "string",
-        description:
-          "A one-sentence explanation of the verdict, suitable for showing the user.",
+        description: "A one-sentence explanation of the verdict, suitable for showing the user.",
       },
     },
     required: ["thinking", "shouldBlock", "reason"],
@@ -90,12 +81,7 @@ const CLASSIFY_RESULT_TOOL: Anthropic.Tool = {
 };
 
 function resolveClassifierModel(override?: string): string {
-  return (
-    override ??
-    process.env.EASY_AGENT_AUTO_MODE_MODEL ??
-    process.env.ANTHROPIC_MODEL ??
-    "claude-3-5-haiku-latest"
-  );
+  return override ?? process.env.EASY_AGENT_AUTO_MODE_MODEL ?? process.env.ANTHROPIC_MODEL ?? "claude-3-5-haiku-latest";
 }
 
 function truncate(text: string, max: number): string {
@@ -105,10 +91,7 @@ function truncate(text: string, max: number): string {
 
 function extractText(content: ContentBlockParam[]): string {
   return content
-    .filter(
-      (block): block is Extract<ContentBlockParam, { type: "text" }> =>
-        block.type === "text",
-    )
+    .filter((block): block is Extract<ContentBlockParam, { type: "text" }> => block.type === "text")
     .map((block) => block.text)
     .join("\n")
     .trim();
@@ -143,8 +126,7 @@ function buildTranscript(messages: MessageParam[]): string {
       // Tool results are the environment's output, not user intent — note
       // them tersely so the action sequence stays legible.
       const toolResults = content.filter(
-        (block): block is Extract<ContentBlockParam, { type: "tool_result" }> =>
-          block.type === "tool_result",
+        (block): block is Extract<ContentBlockParam, { type: "tool_result" }> => block.type === "tool_result",
       );
       if (toolResults.length > 0) {
         entries.push(`(tool results: ${toolResults.length})`);
@@ -154,16 +136,10 @@ function buildTranscript(messages: MessageParam[]): string {
 
     // assistant: keep only the tool calls (the actions), drop the narration.
     const toolUses = content.filter(
-      (block): block is Extract<ContentBlockParam, { type: "tool_use" }> =>
-        block.type === "tool_use",
+      (block): block is Extract<ContentBlockParam, { type: "tool_use" }> => block.type === "tool_use",
     );
     for (const block of toolUses) {
-      entries.push(
-        `AGENT CALLED ${block.name}: ${truncate(
-          JSON.stringify(block.input ?? {}),
-          MAX_ENTRY_CHARS,
-        )}`,
-      );
+      entries.push(`AGENT CALLED ${block.name}: ${truncate(JSON.stringify(block.input ?? {}), MAX_ENTRY_CHARS)}`);
     }
   }
 
@@ -171,10 +147,7 @@ function buildTranscript(messages: MessageParam[]): string {
   return entries.join("\n");
 }
 
-export function formatActionForClassifier(
-  toolName: string,
-  toolInput: Record<string, unknown>,
-): string {
+export function formatActionForClassifier(toolName: string, toolInput: Record<string, unknown>): string {
   const inputJson = truncate(JSON.stringify(toolInput ?? {}), MAX_INPUT_CHARS);
   return `The agent now wants to call the tool \`${toolName}\` with this input:\n${inputJson}`;
 }
@@ -183,9 +156,7 @@ export function formatActionForClassifier(
  * Classify a single proposed action. Never throws — on any failure it returns
  * `{ unavailable: true, shouldBlock: true }` so callers degrade safely.
  */
-export async function classifyAutoModeAction(
-  input: AutoClassifierInput,
-): Promise<AutoClassifierResult> {
+export async function classifyAutoModeAction(input: AutoClassifierInput): Promise<AutoClassifierResult> {
   const model = resolveClassifierModel(input.model);
   const systemPrompt = buildAutoClassifierSystemPrompt({
     allowRules: input.allowRules,
@@ -215,9 +186,7 @@ export async function classifyAutoModeAction(
       cacheStablePrefix: true,
     });
 
-    const toolUse = response.content.find(
-      (block) => block.type === "tool_use" && block.name === "classify_result",
-    );
+    const toolUse = response.content.find((block) => block.type === "tool_use" && block.name === "classify_result");
 
     if (!toolUse || toolUse.type !== "tool_use") {
       debugLog("autoClassifier", "no_tool_use", { stopReason: response.stopReason });

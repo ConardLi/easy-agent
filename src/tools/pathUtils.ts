@@ -92,11 +92,7 @@ export function getAdditionalAllowedRoots(): string[] {
 }
 
 export function getToolAllowedRoots(cwd: string): string[] {
-  return [
-    path.resolve(cwd),
-    path.resolve(getPlansRoot()),
-    ...additionalAllowedRoots,
-  ];
+  return [path.resolve(cwd), path.resolve(getPlansRoot()), ...additionalAllowedRoots];
 }
 
 export function describeAllowedRoots(cwd: string): string {
@@ -132,10 +128,7 @@ function isErrno(error: unknown, code: string): boolean {
   return (error as NodeJS.ErrnoException)?.code === code;
 }
 
-async function canonicalizePath(
-  target: string,
-  allowMissing: boolean,
-): Promise<CanonicalizedPath> {
+async function canonicalizePath(target: string, allowMissing: boolean): Promise<CanonicalizedPath> {
   try {
     return { resolvedPath: await fs.realpath(target), exists: true };
   } catch (error) {
@@ -217,10 +210,7 @@ export async function resolveWorkspacePath(filePath: string, cwd: string): Promi
   return (await resolveWorkspacePathDetails(filePath, cwd, false)).resolvedPath;
 }
 
-export async function resolveWorkspacePathForWrite(
-  filePath: string,
-  cwd: string,
-): Promise<WorkspacePathResolution> {
+export async function resolveWorkspacePathForWrite(filePath: string, cwd: string): Promise<WorkspacePathResolution> {
   return resolveWorkspacePathDetails(filePath, cwd, true);
 }
 
@@ -239,9 +229,7 @@ async function verifyLease(lease: WorkspacePathLease): Promise<void> {
   const currentStats = await fs.stat(currentRealPath);
   const expectedStats = lease.handle ? await lease.handle.stat() : lease.stats;
   if (!sameFile(expectedStats, currentStats)) {
-    throw new WorkspacePathError(
-      `Path changed while the operation was in progress: ${lease.resolution.requestedPath}`,
-    );
+    throw new WorkspacePathError(`Path changed while the operation was in progress: ${lease.resolution.requestedPath}`);
   }
 }
 
@@ -255,9 +243,7 @@ async function acquireReadLease(filePath: string, cwd: string): Promise<Workspac
     handle = await fs.open(resolution.resolvedPath, flags);
   } catch (error) {
     const canUseWindowsDirectoryFallback =
-      process.platform === "win32" &&
-      stats.isDirectory() &&
-      (isErrno(error, "EISDIR") || isErrno(error, "EPERM"));
+      process.platform === "win32" && stats.isDirectory() && (isErrno(error, "EISDIR") || isErrno(error, "EPERM"));
     if (!canUseWindowsDirectoryFallback) throw error;
   }
 
@@ -289,11 +275,7 @@ export async function withValidatedWorkspacePath<T>(
 export async function withValidatedWorkspaceFile<T>(
   filePath: string,
   cwd: string,
-  operation: (
-    handle: FileHandle,
-    resolution: WorkspacePathResolution,
-    stats: Stats,
-  ) => Promise<T>,
+  operation: (handle: FileHandle, resolution: WorkspacePathResolution, stats: Stats) => Promise<T>,
 ): Promise<T> {
   const lease = await acquireReadLease(filePath, cwd);
   try {
@@ -329,10 +311,7 @@ export async function readWorkspaceEntry(
     if (!lease.stats.isFile()) {
       throw new WorkspacePathError(`Only regular files and directories can be read: ${filePath}`);
     }
-    if (
-      options.maxFileBytes !== undefined &&
-      lease.stats.size > options.maxFileBytes
-    ) {
+    if (options.maxFileBytes !== undefined && lease.stats.size > options.maxFileBytes) {
       throw new WorkspaceFileTooLargeError(lease.stats.size, options.maxFileBytes);
     }
     if (!lease.handle) {
@@ -377,10 +356,7 @@ function contentDigest(content: Uint8Array): string {
   return createHash("sha256").update(content).digest("hex");
 }
 
-async function prepareWorkspaceWrite(
-  filePath: string,
-  cwd: string,
-): Promise<WorkspacePathResolution> {
+async function prepareWorkspaceWrite(filePath: string, cwd: string): Promise<WorkspacePathResolution> {
   let resolution = await resolveWorkspacePathDetails(filePath, cwd, true);
   if (!resolution.exists) {
     await ensureWorkspaceParent(filePath, cwd);
@@ -437,9 +413,7 @@ export async function writeWorkspaceFileFromHandle(
 export async function updateWorkspaceTextFile<T>(
   filePath: string,
   cwd: string,
-  update: (
-    original: string,
-  ) => { content: string; value: T } | Promise<{ content: string; value: T }>,
+  update: (original: string) => { content: string; value: T } | Promise<{ content: string; value: T }>,
 ): Promise<WorkspaceWriteResult & { value: T }> {
   const initial = await resolveWorkspacePathDetails(filePath, cwd, false);
   return withFileLock(initial.resolvedPath, async () => {
@@ -473,10 +447,7 @@ export async function removeWorkspaceFile(filePath: string, cwd: string): Promis
       throw new WorkspacePathError(`Parent path is not a directory: ${parentPath}`);
     }
 
-    const deletionPath = path.join(
-      parentLease.resolution.resolvedPath,
-      path.basename(requestedPath),
-    );
+    const deletionPath = path.join(parentLease.resolution.resolvedPath, path.basename(requestedPath));
     let entryStats: Stats;
     try {
       entryStats = await fs.lstat(deletionPath);

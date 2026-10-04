@@ -1,4 +1,3 @@
-
 import { PassThrough } from "node:stream";
 import { Box, render } from "ink";
 import chalk from "chalk";
@@ -26,7 +25,14 @@ const toolCalls: ToolCallInfo[] = [
   { id: "p1", name: "Write", input: { file_path: "src/new.ts", content: "x" }, status: "waiting-permission" },
   { id: "cl1", name: "Bash", input: { command: "rm -rf build" }, status: "classifier" },
   { id: "d1", name: "Read", input: { file_path: "package.json" }, resultLength: 120 },
-  { id: "e1", name: "Bash", input: { command: "npm test" }, resultLength: 40, isError: true, errorMessage: "1 test failed" },
+  {
+    id: "e1",
+    name: "Bash",
+    input: { command: "npm test" },
+    resultLength: 40,
+    isError: true,
+    errorMessage: "1 test failed",
+  },
 ];
 
 async function main(): Promise<void> {

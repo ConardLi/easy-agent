@@ -85,14 +85,8 @@ import {
   setPickerSelection,
   subscribeTeammateView,
 } from "../state/teammateViewStore.js";
-import {
-  appendTaskOutput,
-  ensureTaskOutputFile,
-} from "../utils/taskOutput.js";
-import {
-  formatRecordLine,
-  readTaskOutputEvents,
-} from "../utils/taskOutputReader.js";
+import { appendTaskOutput, ensureTaskOutputFile } from "../utils/taskOutput.js";
+import { formatRecordLine, readTaskOutputEvents } from "../utils/taskOutputReader.js";
 
 // ─── Test plumbing ──────────────────────────────────────────────────
 
@@ -114,9 +108,7 @@ function assert(condition: unknown, label: string): void {
  * Cleanup is unconditional so a failing assertion doesn't leak
  * directories into the developer's real ~/.
  */
-async function withTempHome(
-  fn: (tmpHome: string) => Promise<void>,
-): Promise<void> {
+async function withTempHome(fn: (tmpHome: string) => Promise<void>): Promise<void> {
   const tmpHome = await fs.mkdtemp(path.join(os.tmpdir(), "stage21-home-"));
   const prevHome = process.env["HOME"];
   process.env["HOME"] = tmpHome;
@@ -134,10 +126,7 @@ async function withTempHome(
  * Saves + restores both the env var and the `--agent-teams` argv flag
  * if it was already present.
  */
-async function withTeamsFlag<T>(
-  enabled: boolean,
-  fn: () => Promise<T>,
-): Promise<T> {
+async function withTeamsFlag<T>(enabled: boolean, fn: () => Promise<T>): Promise<T> {
   const prevEnv = process.env["EASY_AGENT_TEAMS"];
   if (enabled) process.env["EASY_AGENT_TEAMS"] = "1";
   else delete process.env["EASY_AGENT_TEAMS"];
@@ -178,10 +167,7 @@ async function main(): Promise<void> {
   // Process.argv flag — push + pop so we don't leak into other tests.
   process.argv.push("--agent-teams");
   await withTeamsFlag(false, async () => {
-    assert(
-      isAgentTeamsEnabled() === true,
-      "feature on when --agent-teams in argv",
-    );
+    assert(isAgentTeamsEnabled() === true, "feature on when --agent-teams in argv");
   });
   process.argv.pop();
 
@@ -190,10 +176,7 @@ async function main(): Promise<void> {
 
   assert(sanitizeName("My Team!") === "my-team-", "sanitizeName lowercases + replaces");
   assert(sanitizeName("simple") === "simple", "sanitizeName preserves clean names");
-  assert(
-    formatAgentId("backend", "demo-team") === "backend@demo-team",
-    "formatAgentId joins with @",
-  );
+  assert(formatAgentId("backend", "demo-team") === "backend@demo-team", "formatAgentId joins with @");
 
   await withTempHome(async () => {
     const teamName = "demo-team";
@@ -245,23 +228,20 @@ async function main(): Promise<void> {
 
     await setMemberActive(teamName, "backend", false);
     const idled = await readTeamFileAsync(teamName);
-    assert(
-      idled?.members.find((m) => m.name === "backend")?.isActive === false,
-      "setMemberActive flips the flag",
-    );
+    assert(idled?.members.find((m) => m.name === "backend")?.isActive === false, "setMemberActive flips the flag");
 
     await addTeamMember(teamName, { ...teammate, agentType: "Explore" });
-    assert((await readTeamFileAsync(teamName))?.members.find((m) => m.name === "backend")?.agentType === "Explore", "completed teammate can be started again");
+    assert(
+      (await readTeamFileAsync(teamName))?.members.find((m) => m.name === "backend")?.agentType === "Explore",
+      "completed teammate can be started again",
+    );
 
     await removeTeamMember(teamName, "backend");
     const removed = await readTeamFileAsync(teamName);
     assert(removed?.members.length === 1, "removeTeamMember drops the member");
 
     await cleanupTeamDirectory(teamName);
-    assert(
-      readTeamFile(teamName) === null,
-      "cleanupTeamDirectory removes everything",
-    );
+    assert(readTeamFile(teamName) === null, "cleanupTeamDirectory removes everything");
   });
 
   // ─── [3] teammateMailbox ───────────────────────────────────────
@@ -341,22 +321,10 @@ async function main(): Promise<void> {
       read: false,
     },
   ]);
-  assert(
-    attachment.includes("<teammate-messages>"),
-    "outer wrapper rendered",
-  );
-  assert(
-    attachment.includes("<teammate-message from=\"frontend\""),
-    "inner block includes from attr",
-  );
-  assert(
-    attachment.includes("summary=\"API contract delta\""),
-    "summary surfaces as an attribute",
-  );
-  assert(
-    formatMailboxAttachment([]) === "",
-    "empty list returns empty string",
-  );
+  assert(attachment.includes("<teammate-messages>"), "outer wrapper rendered");
+  assert(attachment.includes('<teammate-message from="frontend"'), "inner block includes from attr");
+  assert(attachment.includes('summary="API contract delta"'), "summary surfaces as an attribute");
+  assert(formatMailboxAttachment([]) === "", "empty list returns empty string");
 
   // ─── [5] teamContext ───────────────────────────────────────────
   console.log("\n[5] teamContext — single-team invariant + subscribe");
@@ -412,42 +380,24 @@ async function main(): Promise<void> {
   clearActiveTeam();
   await withTempHome(async () => {
     await withTeamsFlag(false, async () => {
-      assert(
-        teamCreateTool.isEnabled() === false,
-        "TeamCreate.isEnabled() false without flag",
-      );
+      assert(teamCreateTool.isEnabled() === false, "TeamCreate.isEnabled() false without flag");
     });
 
     await withTeamsFlag(true, async () => {
-      assert(
-        teamCreateTool.isEnabled() === true,
-        "TeamCreate.isEnabled() true with flag",
-      );
+      assert(teamCreateTool.isEnabled() === true, "TeamCreate.isEnabled() true with flag");
 
       const ctx = makeToolContext();
-      const result = await teamCreateTool.call(
-        { team_name: "demo" },
-        ctx,
-      );
+      const result = await teamCreateTool.call({ team_name: "demo" }, ctx);
       assert(!result.isError, "TeamCreate with fresh state succeeds");
-      assert(
-        getActiveTeam()?.teamName === "demo",
-        "teamContext populated after TeamCreate",
-      );
+      assert(getActiveTeam()?.teamName === "demo", "teamContext populated after TeamCreate");
       const onDisk = readTeamFile("demo");
       assert(onDisk !== null, "team.json written to disk");
-      assert(
-        onDisk?.members[0]?.name === TEAM_LEAD_NAME,
-        "lead is sole initial member",
-      );
+      assert(onDisk?.members[0]?.name === TEAM_LEAD_NAME, "lead is sole initial member");
 
       // Second call refuses because a team is already active.
       const dup = await teamCreateTool.call({ team_name: "other" }, ctx);
       assert(dup.isError === true, "second TeamCreate refused");
-      assert(
-        toolResultText(dup.content).includes("already leading"),
-        "refusal mentions current team",
-      );
+      assert(toolResultText(dup.content).includes("already leading"), "refusal mentions current team");
 
       // Empty / blank team_name rejected.
       clearActiveTeam();
@@ -475,20 +425,14 @@ async function main(): Promise<void> {
   clearActiveTeam();
   await withTempHome(async () => {
     await withTeamsFlag(false, async () => {
-      assert(
-        sendMessageTool.isEnabled() === false,
-        "SendMessage disabled without flag",
-      );
+      assert(sendMessageTool.isEnabled() === false, "SendMessage disabled without flag");
     });
 
     await withTeamsFlag(true, async () => {
       const ctx = makeToolContext();
 
       // No active team yet.
-      const noTeam = await sendMessageTool.call(
-        { to: "backend", message: "ping" },
-        ctx,
-      );
+      const noTeam = await sendMessageTool.call({ to: "backend", message: "ping" }, ctx);
       assert(noTeam.isError === true, "SendMessage errors when no team active");
 
       // Create a team and populate two teammates manually.
@@ -507,15 +451,9 @@ async function main(): Promise<void> {
       });
 
       // Unknown recipient.
-      const unknown = await sendMessageTool.call(
-        { to: "nobody", message: "ghost" },
-        ctx,
-      );
+      const unknown = await sendMessageTool.call({ to: "nobody", message: "ghost" }, ctx);
       assert(unknown.isError === true, "SendMessage to unknown name fails");
-      assert(
-        toolResultText(unknown.content).includes("Known members"),
-        "error lists known members",
-      );
+      assert(toolResultText(unknown.content).includes("Known members"), "error lists known members");
 
       // Single recipient.
       const single = await sendMessageTool.call(
@@ -525,10 +463,7 @@ async function main(): Promise<void> {
       assert(!single.isError, "SendMessage to known recipient succeeds");
       const backendInbox = await readMailbox("backend", "send-team");
       assert(backendInbox.length === 1, "one message in backend inbox");
-      assert(
-        backendInbox[0]?.from === TEAM_LEAD_NAME,
-        "from defaults to TEAM_LEAD_NAME for lead-originated sends",
-      );
+      assert(backendInbox[0]?.from === TEAM_LEAD_NAME, "from defaults to TEAM_LEAD_NAME for lead-originated sends");
       assert(backendInbox[0]?.summary === "auth bug", "summary persisted");
 
       // From a teammate identity (ctx.teammateIdentity set).
@@ -539,15 +474,9 @@ async function main(): Promise<void> {
           teamName: "send-team",
         },
       });
-      await sendMessageTool.call(
-        { to: "frontend", message: "the API is at /v2/auth" },
-        teammateCtx,
-      );
+      await sendMessageTool.call({ to: "frontend", message: "the API is at /v2/auth" }, teammateCtx);
       const frontendInbox = await readMailbox("frontend", "send-team");
-      assert(
-        frontendInbox[0]?.from === "backend",
-        "from resolved from teammateIdentity when present",
-      );
+      assert(frontendInbox[0]?.from === "backend", "from resolved from teammateIdentity when present");
 
       // Self-send refused.
       const self = await sendMessageTool.call(
@@ -568,14 +497,8 @@ async function main(): Promise<void> {
       assert(!broadcast.isError, "broadcast succeeds");
       const backendInbox2 = await readMailbox("backend", "send-team");
       const frontendInbox2 = await readMailbox("frontend", "send-team");
-      assert(
-        backendInbox2.length === 2,
-        "broadcast reached backend (1 single + 1 broadcast)",
-      );
-      assert(
-        frontendInbox2.length === 2,
-        "broadcast reached frontend (1 teammate-DM + 1 broadcast)",
-      );
+      assert(backendInbox2.length === 2, "broadcast reached backend (1 single + 1 broadcast)");
+      assert(frontendInbox2.length === 2, "broadcast reached frontend (1 teammate-DM + 1 broadcast)");
 
       // Cleanup.
       clearActiveTeam();
@@ -600,24 +523,15 @@ async function main(): Promise<void> {
       });
       const refused = await teamDeleteTool.call({}, ctx);
       assert(refused.isError === true, "TeamDelete refused while teammate active");
-      assert(
-        toolResultText(refused.content).includes("worker"),
-        "refusal lists the offending teammate",
-      );
-      assert(
-        getActiveTeam() !== null,
-        "teamContext unchanged after refused delete",
-      );
+      assert(toolResultText(refused.content).includes("worker"), "refusal lists the offending teammate");
+      assert(getActiveTeam() !== null, "teamContext unchanged after refused delete");
 
       // Flip to idle and retry.
       await setMemberActive("kill-team", "worker", false);
       const ok = await teamDeleteTool.call({}, ctx);
       assert(!ok.isError, "TeamDelete succeeds after teammate idles");
       assert(getActiveTeam() === null, "teamContext cleared after delete");
-      assert(
-        readTeamFile("kill-team") === null,
-        "team file removed from disk",
-      );
+      assert(readTeamFile("kill-team") === null, "team file removed from disk");
 
       // TeamDelete with no active team → error.
       const empty = await teamDeleteTool.call({}, ctx);
@@ -647,23 +561,14 @@ async function main(): Promise<void> {
         makeToolContext(),
       );
       assert(out.isError === true, "AgentTool refuses name when flag off");
-      assert(
-        toolResultText(out.content).includes("not enabled"),
-        "error mentions feature is not enabled",
-      );
+      assert(toolResultText(out.content).includes("not enabled"), "error mentions feature is not enabled");
     });
 
     await withTeamsFlag(true, async () => {
       const ctx = makeToolContext();
       // (b) name without team_name.
-      const missingTeam = await agentTool.call(
-        { prompt: "ping", description: "test", name: "backend" },
-        ctx,
-      );
-      assert(
-        missingTeam.isError === true,
-        "name without team_name is an error",
-      );
+      const missingTeam = await agentTool.call({ prompt: "ping", description: "test", name: "backend" }, ctx);
+      assert(missingTeam.isError === true, "name without team_name is an error");
 
       // (c) team_name without active team.
       const noActive = await agentTool.call(
@@ -675,10 +580,7 @@ async function main(): Promise<void> {
         },
         ctx,
       );
-      assert(
-        noActive.isError === true,
-        "team_name without active team is an error",
-      );
+      assert(noActive.isError === true, "team_name without active team is an error");
 
       // (d) team_name mismatch.
       await teamCreateTool.call({ team_name: "valid-team" }, ctx);
@@ -691,10 +593,7 @@ async function main(): Promise<void> {
         },
         ctx,
       );
-      assert(
-        mismatch.isError === true,
-        "team_name that doesn't match active team rejected",
-      );
+      assert(mismatch.isError === true, "team_name that doesn't match active team rejected");
 
       // (e) name === TEAM_LEAD_NAME reserved.
       const reserved = await agentTool.call(
@@ -738,10 +637,7 @@ async function main(): Promise<void> {
         },
         ctx,
       );
-      assert(
-        fg.isError === true,
-        "foreground named teammate rejected",
-      );
+      assert(fg.isError === true, "foreground named teammate rejected");
 
       clearActiveTeam();
       await cleanupTeamDirectory("valid-team");
@@ -754,27 +650,15 @@ async function main(): Promise<void> {
   clearActiveTeam();
 
   await withTeamsFlag(false, async () => {
-    assert(
-      formatTeamSystemReminder() === "",
-      "empty string when feature off",
-    );
+    assert(formatTeamSystemReminder() === "", "empty string when feature off");
   });
 
   await withTeamsFlag(true, async () => {
     // No team active → discovery hint.
     const hint = formatTeamSystemReminder();
-    assert(
-      hint.includes("Agent Teams is enabled"),
-      "feature-on / no-team hint mentions enablement",
-    );
-    assert(
-      hint.includes("TeamCreate"),
-      "feature-on / no-team hint points at TeamCreate",
-    );
-    assert(
-      !hint.includes("Team members"),
-      "feature-on / no-team hint does NOT include member list",
-    );
+    assert(hint.includes("Agent Teams is enabled"), "feature-on / no-team hint mentions enablement");
+    assert(hint.includes("TeamCreate"), "feature-on / no-team hint points at TeamCreate");
+    assert(!hint.includes("Team members"), "feature-on / no-team hint does NOT include member list");
 
     // With an active team → full reminder. Use tmp HOME so we can
     // create / inspect the team file.
@@ -795,22 +679,10 @@ async function main(): Promise<void> {
         isActive: false,
       });
       const reminder = formatTeamSystemReminder();
-      assert(
-        reminder.includes("LEAD of team \"render-team\""),
-        "active-team reminder names the lead",
-      );
-      assert(
-        reminder.includes("- backend [active]"),
-        "active teammates rendered with [active] tag",
-      );
-      assert(
-        reminder.includes("- frontend [idle]"),
-        "idle teammates rendered with [idle] tag",
-      );
-      assert(
-        reminder.includes("SendMessage"),
-        "active-team reminder mentions SendMessage",
-      );
+      assert(reminder.includes('LEAD of team "render-team"'), "active-team reminder names the lead");
+      assert(reminder.includes("- backend [active]"), "active teammates rendered with [active] tag");
+      assert(reminder.includes("- frontend [idle]"), "idle teammates rendered with [idle] tag");
+      assert(reminder.includes("SendMessage"), "active-team reminder mentions SendMessage");
       clearActiveTeam();
       await cleanupTeamDirectory("render-team");
     });
@@ -829,17 +701,11 @@ async function main(): Promise<void> {
 
   openTeammatePicker("agent-a");
   assert(getTeammateViewState().mode === "selecting", "openPicker → selecting");
-  assert(
-    getTeammateViewState().selectedAgentId === "agent-a",
-    "openPicker stores initial cursor",
-  );
+  assert(getTeammateViewState().selectedAgentId === "agent-a", "openPicker stores initial cursor");
   assert(viewNotifies >= 1, "subscriber fired on open");
 
   setPickerSelection("agent-b");
-  assert(
-    getTeammateViewState().selectedAgentId === "agent-b",
-    "setPickerSelection moves cursor",
-  );
+  assert(getTeammateViewState().selectedAgentId === "agent-b", "setPickerSelection moves cursor");
 
   // setPickerSelection to same agent is a no-op (no extra notify)
   const beforeNoop = viewNotifies;
@@ -848,14 +714,8 @@ async function main(): Promise<void> {
 
   commitTeammateView("agent-b");
   assert(getTeammateViewState().mode === "viewing", "commit → viewing");
-  assert(
-    getTeammateViewState().viewingAgentId === "agent-b",
-    "commit stores viewing target",
-  );
-  assert(
-    getTeammateViewState().selectedAgentId === null,
-    "commit clears picker cursor",
-  );
+  assert(getTeammateViewState().viewingAgentId === "agent-b", "commit stores viewing target");
+  assert(getTeammateViewState().selectedAgentId === null, "commit clears picker cursor");
 
   closeTeammateView();
   assert(getTeammateViewState().mode === "main", "close returns to main");
@@ -864,20 +724,14 @@ async function main(): Promise<void> {
   // Second close from main → no extra notify
   const beforeIdempotent = viewNotifies;
   closeTeammateView();
-  assert(
-    viewNotifies === beforeIdempotent,
-    "close from main is no-op (no notify)",
-  );
+  assert(viewNotifies === beforeIdempotent, "close from main is no-op (no notify)");
 
   // openTeammatePicker(null) closes the view (called when no agents
   // are running).
   openTeammatePicker("agent-c");
   assert(getTeammateViewState().mode === "selecting", "picker open for test");
   openTeammatePicker(null);
-  assert(
-    getTeammateViewState().mode === "main",
-    "openTeammatePicker(null) returns to main",
-  );
+  assert(getTeammateViewState().mode === "main", "openTeammatePicker(null) returns to main");
 
   unsubView();
 
@@ -928,10 +782,7 @@ async function main(): Promise<void> {
     // formatRecordLine — spot-check each branch.
     const started = formatRecordLine(records[0]!);
     assert(started.startsWith("⏵ Started"), "started line starts with ⏵");
-    assert(
-      started.includes("general-purpose"),
-      "started line includes agentType",
-    );
+    assert(started.includes("general-purpose"), "started line includes agentType");
 
     const text = formatRecordLine(records[1]!);
     assert(text === "Working on it", "text line is the raw text");
@@ -940,25 +791,16 @@ async function main(): Promise<void> {
     assert(toolUse === "⚡ Read", "tool_use line has glyph + name");
 
     const toolResult = formatRecordLine(records[3]!);
-    assert(
-      toolResult.startsWith("  └ ok"),
-      "tool_result success line uses └ ok prefix",
-    );
+    assert(toolResult.startsWith("  └ ok"), "tool_result success line uses └ ok prefix");
 
     const completed = formatRecordLine(records[4]!);
     assert(completed.startsWith("✓ Done"), "completed line uses ✓ glyph");
-    assert(
-      completed.includes("1234ms"),
-      "completed line includes durationMs",
-    );
+    assert(completed.includes("1234ms"), "completed line includes durationMs");
 
     // Robustness: a partial last line shouldn't crash the parser.
     await fs.appendFile(filePath, '{"timestamp":"2026-01-01T00:00:00Z","type":"text","text":"incomplete'); // no closing brace + no newline
     const robust = await readTaskOutputEvents(filePath);
-    assert(
-      robust.length === 5,
-      "partial last line is dropped, valid records preserved",
-    );
+    assert(robust.length === 5, "partial last line is dropped, valid records preserved");
 
     // Truncated text (>160 chars) gets ellipsis.
     const longRec = {
@@ -966,16 +808,11 @@ async function main(): Promise<void> {
       event: { type: "text", text: "a".repeat(200) } as const,
     };
     const longLine = formatRecordLine(longRec);
-    assert(
-      longLine.length <= 161,
-      "long text truncated to ≤161 chars (160 + ellipsis)",
-    );
+    assert(longLine.length <= 161, "long text truncated to ≤161 chars (160 + ellipsis)");
     assert(longLine.endsWith("…"), "truncation marker is the ellipsis char");
 
     // ENOENT → []
-    const missing = await readTaskOutputEvents(
-      path.join(path.dirname(filePath), "does-not-exist.output"),
-    );
+    const missing = await readTaskOutputEvents(path.join(path.dirname(filePath), "does-not-exist.output"));
     assert(missing.length === 0, "missing file → empty list (not throw)");
   });
 

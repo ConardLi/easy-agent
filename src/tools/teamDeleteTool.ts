@@ -17,16 +17,8 @@
 
 import type { Tool, ToolContext, ToolResult } from "./Tool.js";
 import { isAgentTeamsEnabled } from "../utils/agentTeamsEnabled.js";
-import {
-  cleanupTeamDirectory,
-  isProcessAlive,
-  prepareTeamDelete,
-  readTeamFileAsync,
-} from "../utils/teamHelpers.js";
-import {
-  clearActiveTeam,
-  getActiveTeam,
-} from "../state/teamContext.js";
+import { cleanupTeamDirectory, isProcessAlive, prepareTeamDelete, readTeamFileAsync } from "../utils/teamHelpers.js";
+import { clearActiveTeam, getActiveTeam } from "../state/teamContext.js";
 import { removeAgentWorktree } from "../utils/worktree.js";
 import { getTeamTaskListId, resetTaskList } from "../state/taskStore.js";
 
@@ -43,16 +35,19 @@ export const teamDeleteTool: Tool = {
   inputSchema: {
     type: "object",
     properties: {
-      team_name: { type: "string", description: "Existing team name, required when recovering after a process restart." },
-      forceStale: { type: "boolean", description: "Delete a team whose previous members are confirmed stale. Live members are never forced." },
+      team_name: {
+        type: "string",
+        description: "Existing team name, required when recovering after a process restart.",
+      },
+      forceStale: {
+        type: "boolean",
+        description: "Delete a team whose previous members are confirmed stale. Live members are never forced.",
+      },
     },
     additionalProperties: false,
   },
 
-  async call(
-    input: Record<string, unknown>,
-    context: ToolContext,
-  ): Promise<ToolResult> {
+  async call(input: Record<string, unknown>, context: ToolContext): Promise<ToolResult> {
     if (context.teammateIdentity || context.taskScope === "session") {
       return { content: "Error: only the team lead can delete a team.", isError: true };
     }
@@ -75,8 +70,7 @@ export const teamDeleteTool: Tool = {
       // state anyway — a stale teamContext is worse than a missing file.
       if (active) clearActiveTeam();
       return {
-        content:
-          `Team "${teamName}" was already missing on disk. Cleared the in-process team context.`,
+        content: `Team "${teamName}" was already missing on disk. Cleared the in-process team context.`,
       };
     }
     if (!active && isProcessAlive(file.leadPid)) {
@@ -118,15 +112,11 @@ export const teamDeleteTool: Tool = {
         if (!result.ok) {
           // Most likely dirty — log + preserve. The user can review the
           // worktree dir and pick out anything worth keeping.
-          preservedWorktrees.push(
-            `  - ${member.name}: ${member.worktreePath} (${result.error})`,
-          );
+          preservedWorktrees.push(`  - ${member.name}: ${member.worktreePath} (${result.error})`);
         }
       } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : String(error);
-        worktreeWarnings.push(
-          `  - ${member.name}: failed to remove worktree ${member.worktreePath} (${msg})`,
-        );
+        worktreeWarnings.push(`  - ${member.name}: failed to remove worktree ${member.worktreePath} (${msg})`);
       }
     }
 
@@ -134,7 +124,10 @@ export const teamDeleteTool: Tool = {
       await resetTaskList(getTeamTaskListId(teamName));
       await cleanupTeamDirectory(teamName);
     } catch (error) {
-      return { content: `Error: team cleanup failed: ${error instanceof Error ? error.message : String(error)}`, isError: true };
+      return {
+        content: `Error: team cleanup failed: ${error instanceof Error ? error.message : String(error)}`,
+        isError: true,
+      };
     }
     if (active) clearActiveTeam();
 
@@ -143,9 +136,7 @@ export const teamDeleteTool: Tool = {
       preservedWorktrees.length > 0
         ? `Preserved worktrees (likely have uncommitted changes — review manually):\n${preservedWorktrees.join("\n")}`
         : "",
-      worktreeWarnings.length > 0
-        ? `Warnings during worktree cleanup:\n${worktreeWarnings.join("\n")}`
-        : "",
+      worktreeWarnings.length > 0 ? `Warnings during worktree cleanup:\n${worktreeWarnings.join("\n")}` : "",
       "The session is back to single-agent mode. Call TeamCreate again to start a new team.",
     ]
       .filter(Boolean)

@@ -3,17 +3,8 @@
  */
 
 import type { Tool, ToolContext, ToolResult } from "./Tool.js";
-import {
-  readWorkspaceEntry,
-  WorkspaceFileTooLargeError,
-  WorkspacePathError,
-} from "./pathUtils.js";
-import {
-  formatImageSizeError,
-  imageBufferAsBlock,
-  isImagePath,
-  MAX_IMAGE_BYTES,
-} from "./imageUtils.js";
+import { readWorkspaceEntry, WorkspaceFileTooLargeError, WorkspacePathError } from "./pathUtils.js";
+import { formatImageSizeError, imageBufferAsBlock, isImagePath, MAX_IMAGE_BYTES } from "./imageUtils.js";
 
 interface FileReadInput {
   file_path: string;
@@ -26,9 +17,7 @@ function addLineNumbers(content: string, startLine: number): string {
   const maxLineNum = startLine + lines.length - 1;
   const padWidth = String(maxLineNum).length;
 
-  return lines
-    .map((line, index) => `${String(startLine + index).padStart(padWidth, " ")}\t${line}`)
-    .join("\n");
+  return lines.map((line, index) => `${String(startLine + index).padStart(padWidth, " ")}\t${line}`).join("\n");
 }
 
 export const fileReadTool: Tool = {

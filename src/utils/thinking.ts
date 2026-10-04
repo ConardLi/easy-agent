@@ -29,10 +29,7 @@
  *                 the model does not support adaptive mode.
  * - `disabled`  — thinking off entirely.
  */
-export type ThinkingConfig =
-  | { type: "adaptive" }
-  | { type: "enabled"; budgetTokens: number }
-  | { type: "disabled" };
+export type ThinkingConfig = { type: "adaptive" } | { type: "enabled"; budgetTokens: number } | { type: "disabled" };
 
 // ─── Effort level ──────────────────────────────────────────────────
 
@@ -76,8 +73,7 @@ function getClaudeVersion(model: string): { major: number; minor: number } | nul
 
 function isClaudeVersionAtLeast(model: string, major: number, minor: number): boolean {
   const version = getClaudeVersion(model);
-  return version !== null &&
-    (version.major > major || (version.major === major && version.minor >= minor));
+  return version !== null && (version.major > major || (version.major === major && version.minor >= minor));
 }
 
 /**
@@ -104,18 +100,11 @@ export function modelSupportsAdaptiveThinking(model: string): boolean {
   // Opus/Sonnet 4.6 and newer support adaptive thinking. Use a version
   // comparison instead of pinning the allowlist to exactly 4.6, otherwise a
   // newer model such as claude-opus-4-7 incorrectly falls back to budget mode.
-  if (
-    (canonical.includes("opus") || canonical.includes("sonnet")) &&
-    isClaudeVersionAtLeast(model, 4, 6)
-  ) {
+  if ((canonical.includes("opus") || canonical.includes("sonnet")) && isClaudeVersionAtLeast(model, 4, 6)) {
     return true;
   }
   // Exclude known legacy variants (older opus/sonnet/haiku)
-  if (
-    canonical.includes("opus") ||
-    canonical.includes("sonnet") ||
-    canonical.includes("haiku")
-  ) {
+  if (canonical.includes("opus") || canonical.includes("sonnet") || canonical.includes("haiku")) {
     return false;
   }
   // Unknown models: default true
@@ -144,10 +133,7 @@ export function modelSupportsInterleavedThinking(model: string): boolean {
 export function modelSupportsEffort(model: string): boolean {
   if (process.env.CLAUDE_CODE_ALWAYS_ENABLE_EFFORT) return true;
   const m = model.toLowerCase();
-  if (
-    (m.includes("opus") || m.includes("sonnet")) &&
-    isClaudeVersionAtLeast(model, 4, 6)
-  ) return true;
+  if ((m.includes("opus") || m.includes("sonnet")) && isClaudeVersionAtLeast(model, 4, 6)) return true;
   if (m.includes("haiku") || m.includes("sonnet") || m.includes("opus")) return false;
   // Unknown: default true
   return true;
@@ -190,10 +176,7 @@ let sessionEffortLevel: EffortLevel | undefined;
  * startup. Env vars always take precedence over settings (handled inside
  * buildDefaultThinkingConfig).
  */
-export function configureThinkingDefaults(opts: {
-  alwaysThinkingEnabled?: boolean;
-  effortLevel?: EffortLevel;
-}): void {
+export function configureThinkingDefaults(opts: { alwaysThinkingEnabled?: boolean; effortLevel?: EffortLevel }): void {
   if (opts.alwaysThinkingEnabled !== undefined) {
     sessionAlwaysThinkingEnabled = opts.alwaysThinkingEnabled;
   }

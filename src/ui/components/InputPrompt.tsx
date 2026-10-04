@@ -76,7 +76,7 @@ function HighlightedLine({
       </Text>,
     );
   } else if (spans.length === 0) {
-    spans.push(<Text key={key++}>{" "}</Text>);
+    spans.push(<Text key={key++}> </Text>);
   }
   return <Text>{spans}</Text>;
 }

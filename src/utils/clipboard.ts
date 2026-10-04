@@ -13,9 +13,7 @@
 
 import { spawn } from "node:child_process";
 
-export type ClipboardWriteResult =
-  | { ok: true; tool: string }
-  | { ok: false; error: string };
+export type ClipboardWriteResult = { ok: true; tool: string } | { ok: false; error: string };
 
 /** Spawn `bin args`, write `text` to its stdin, resolve when it exits 0. */
 function pipeToProcess(bin: string, args: string[], text: string): Promise<void> {
@@ -62,9 +60,6 @@ export async function writeTextToClipboard(text: string): Promise<ClipboardWrite
       // Tool missing or failed — try the next candidate.
     }
   }
-  const hint =
-    process.platform === "linux"
-      ? " Install one of: wl-copy (wl-clipboard), xclip, or xsel."
-      : "";
+  const hint = process.platform === "linux" ? " Install one of: wl-copy (wl-clipboard), xclip, or xsel." : "";
   return { ok: false, error: `No working clipboard tool found.${hint}` };
 }

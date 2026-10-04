@@ -59,11 +59,7 @@ interface UseTeammateNavigationParams {
  * `direction` is +1 (down) or -1 (up). Returns the next agentId, or
  * null when the running set is empty.
  */
-function nextRunningAgentId(
-  agents: AsyncAgentEntry[],
-  currentId: string | null,
-  direction: 1 | -1,
-): string | null {
+function nextRunningAgentId(agents: AsyncAgentEntry[], currentId: string | null, direction: 1 | -1): string | null {
   const running = agents.filter((a) => a.status === "running");
   if (running.length === 0) return null;
   if (!currentId) return running[0].agentId;
@@ -75,15 +71,23 @@ function nextRunningAgentId(
   return running[nextIdx].agentId;
 }
 
-export function useTeammateNavigation({
-  agents,
-  disabled,
-}: UseTeammateNavigationParams): void {
+export function useTeammateNavigation({ agents, disabled }: UseTeammateNavigationParams): void {
   // Stable handler — we read fresh state inside via getTeammateViewState()
   // rather than capturing it, so re-renders don't churn this callback
   // (and Ink's useInput doesn't either).
   const handleInput = useCallback(
-    (input: string, key: { shift?: boolean; upArrow?: boolean; downArrow?: boolean; return?: boolean; escape?: boolean; ctrl?: boolean; meta?: boolean }) => {
+    (
+      input: string,
+      key: {
+        shift?: boolean;
+        upArrow?: boolean;
+        downArrow?: boolean;
+        return?: boolean;
+        escape?: boolean;
+        ctrl?: boolean;
+        meta?: boolean;
+      },
+    ) => {
       if (disabled) return;
       if (key.ctrl || key.meta) return;
 
@@ -104,19 +108,12 @@ export function useTeammateNavigation({
           // running agent (for ↓) or the last one (for ↑).
           const running = agents.filter((a) => a.status === "running");
           if (running.length === 0) return;
-          const first =
-            direction === 1
-              ? running[0].agentId
-              : running[running.length - 1].agentId;
+          const first = direction === 1 ? running[0].agentId : running[running.length - 1].agentId;
           openTeammatePicker(first);
           return;
         }
         if (view.mode === "selecting") {
-          const next = nextRunningAgentId(
-            agents,
-            view.selectedAgentId,
-            direction,
-          );
+          const next = nextRunningAgentId(agents, view.selectedAgentId, direction);
           if (next) setPickerSelection(next);
           return;
         }

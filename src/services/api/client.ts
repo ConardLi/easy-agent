@@ -119,10 +119,7 @@ export function getAnthropicClientForProfile(profile: {
   // the OpenAI/Gemini paths, which simply omit the auth header. The env token
   // still wins when set; a real api.anthropic.com target (no baseURL) keeps the
   // strict behavior and surfaces the friendly missing-key error.
-  const apiKey =
-    profile.apiKey ??
-    process.env.ANTHROPIC_AUTH_TOKEN ??
-    (baseURL ? "not-required" : undefined);
+  const apiKey = profile.apiKey ?? process.env.ANTHROPIC_AUTH_TOKEN ?? (baseURL ? "not-required" : undefined);
   const key = `${baseURL ?? ""}|${apiKey ?? ""}|${headersCacheKey(defaultHeaders)}`;
   const cached = profileClientCache.get(key);
   if (cached) return cached;

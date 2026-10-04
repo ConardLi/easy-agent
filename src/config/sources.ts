@@ -29,11 +29,7 @@
  */
 
 import * as fs from "node:fs/promises";
-import {
-  getLocalSettingsPath,
-  getProjectSettingsPath,
-  getUserSettingsPath,
-} from "../utils/paths.js";
+import { getLocalSettingsPath, getProjectSettingsPath, getUserSettingsPath } from "../utils/paths.js";
 import { readJsonSettingsFile } from "../utils/settings.js";
 import { getManagedSettingsPath } from "./managedPath.js";
 import { isProjectTrusted } from "./globalState.js";
@@ -42,13 +38,7 @@ import { validateSettings } from "./schema.js";
 export type SettingSource = "user" | "project" | "local" | "flag" | "policy";
 
 /** Source priority, low → high. Later entries override earlier ones. */
-export const SETTING_SOURCE_ORDER: readonly SettingSource[] = [
-  "user",
-  "project",
-  "local",
-  "flag",
-  "policy",
-] as const;
+export const SETTING_SOURCE_ORDER: readonly SettingSource[] = ["user", "project", "local", "flag", "policy"] as const;
 
 export interface LoadedSource {
   source: SettingSource;
@@ -139,8 +129,11 @@ export async function loadSettingSources(cwd: string): Promise<LoadedSource[]> {
   const previous = loading.get(cwd) ?? Promise.resolve([]);
   const next = previous.catch(() => []).then(() => readSettingSources(cwd));
   loading.set(cwd, next);
-  try { return structuredClone(await next); }
-  finally { if (loading.get(cwd) === next) loading.delete(cwd); }
+  try {
+    return structuredClone(await next);
+  } finally {
+    if (loading.get(cwd) === next) loading.delete(cwd);
+  }
 }
 
 async function readSettingSources(cwd: string): Promise<LoadedSource[]> {
@@ -184,11 +177,16 @@ async function readSettingSources(cwd: string): Promise<LoadedSource[]> {
   // stale siblings. Initial loads retain field-level tolerance for compatibility.
   for (const src of sources) {
     const key = `${userPath}|${cwd}|${src.source}|${src.path ?? "flag"}`;
-    const invalid = Boolean(src.parseError || src.validationErrors?.some((error) => !error.includes("unsupported setting")));
+    const invalid = Boolean(
+      src.parseError || src.validationErrors?.some((error) => !error.includes("unsupported setting")),
+    );
     const previous = lastValidSources.get(key);
     if (invalid && previous) {
       src.raw = structuredClone(previous);
-      src.validationErrors = [...(src.validationErrors ?? []), `${src.path ?? src.source}: update rejected; retained last valid source snapshot`];
+      src.validationErrors = [
+        ...(src.validationErrors ?? []),
+        `${src.path ?? src.source}: update rejected; retained last valid source snapshot`,
+      ];
     } else if (!invalid) {
       if (src.raw) lastValidSources.set(key, structuredClone(src.raw));
       else lastValidSources.delete(key);

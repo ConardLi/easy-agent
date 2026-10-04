@@ -3,11 +3,7 @@ import { readdir } from "node:fs/promises";
 import * as path from "node:path";
 import { promisify } from "node:util";
 import type { Tool, ToolContext, ToolResult } from "./Tool.js";
-import {
-  resolveSafePath,
-  withValidatedWorkspacePath,
-  WorkspacePathError,
-} from "./pathUtils.js";
+import { resolveSafePath, withValidatedWorkspacePath, WorkspacePathError } from "./pathUtils.js";
 import { readMergedBooleanSetting } from "../utils/settings.js";
 
 const execFileAsync = promisify(execFile);
@@ -33,7 +29,7 @@ function matchesGlob(candidate: string, pattern: string): boolean {
 
   const withoutLeadingDots = normalizedCandidate
     .split("/")
-    .map((segment) => segment.startsWith(".") ? segment.slice(1) : segment)
+    .map((segment) => (segment.startsWith(".") ? segment.slice(1) : segment))
     .join("/");
   return path.posix.matchesGlob(withoutLeadingDots, normalizedPattern);
 }
@@ -65,33 +61,32 @@ export const globTool: Tool = {
       return { content: "Error: pattern is required", isError: true };
     }
 
-    const respectGitignore = (await readMergedBooleanSetting(context.cwd, "respectGitignore").catch(() => undefined)) !== false;
+    const respectGitignore =
+      (await readMergedBooleanSetting(context.cwd, "respectGitignore").catch(() => undefined)) !== false;
     const displayBasePath = resolveSafePath(input.path ?? ".", context.cwd);
 
     try {
-      return await withValidatedWorkspacePath(
-        input.path ?? ".",
-        context.cwd,
-        async (basePath) => {
-          if (await hasCommand("rg")) {
-            const rgArgs = ["--files", "--hidden", "-g", input.pattern];
-            if (!respectGitignore) rgArgs.push("--no-ignore");
-            const { stdout } = await execFileAsync("rg", rgArgs, {
-              cwd: basePath,
-              maxBuffer: 1024 * 1024,
-            });
-            const output = stdout.trim();
-            return {
-              content: output ? `Matched files under ${displayBasePath}:\n${output}` : `No files matched ${input.pattern}`,
-            };
-          }
-
-          const output = (await findFilesWithNode(basePath, input.pattern)).join("\n");
+      return await withValidatedWorkspacePath(input.path ?? ".", context.cwd, async (basePath) => {
+        if (await hasCommand("rg")) {
+          const rgArgs = ["--files", "--hidden", "-g", input.pattern];
+          if (!respectGitignore) rgArgs.push("--no-ignore");
+          const { stdout } = await execFileAsync("rg", rgArgs, {
+            cwd: basePath,
+            maxBuffer: 1024 * 1024,
+          });
+          const output = stdout.trim();
           return {
-            content: output ? `Matched files under ${displayBasePath}:\n${output}` : `No files matched ${input.pattern}`,
+            content: output
+              ? `Matched files under ${displayBasePath}:\n${output}`
+              : `No files matched ${input.pattern}`,
           };
-        },
-      );
+        }
+
+        const output = (await findFilesWithNode(basePath, input.pattern)).join("\n");
+        return {
+          content: output ? `Matched files under ${displayBasePath}:\n${output}` : `No files matched ${input.pattern}`,
+        };
+      });
     } catch (error: unknown) {
       if (error instanceof WorkspacePathError) {
         return { content: `Error: ${error.message}`, isError: true };

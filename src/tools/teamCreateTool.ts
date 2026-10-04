@@ -38,10 +38,7 @@ import {
   type TeamFile,
 } from "../utils/teamHelpers.js";
 import { releaseMemberTasks } from "../state/taskStore.js";
-import {
-  getActiveTeam,
-  setActiveTeam,
-} from "../state/teamContext.js";
+import { getActiveTeam, setActiveTeam } from "../state/teamContext.js";
 
 interface TeamCreateInput {
   team_name: string;
@@ -52,12 +49,8 @@ interface TeamCreateInput {
 let createInFlight = false;
 
 function readInput(raw: Record<string, unknown>): TeamCreateInput {
-  const team_name =
-    typeof raw["team_name"] === "string" ? raw["team_name"].trim() : "";
-  const description =
-    typeof raw["description"] === "string"
-      ? raw["description"].trim()
-      : undefined;
+  const team_name = typeof raw["team_name"] === "string" ? raw["team_name"].trim() : "";
+  const description = typeof raw["description"] === "string" ? raw["description"].trim() : undefined;
   return {
     team_name,
     ...(description ? { description } : {}),
@@ -71,7 +64,7 @@ export const teamCreateTool: Tool = {
   shouldDefer: true,
   description:
     "Spin up a new Agent Teams session. The current Easy Agent process becomes the team lead. " +
-    "After this call you can spawn named teammates via `Agent({ name: \"<name>\", team_name: \"<team>\", run_in_background: true, ... })` and message them with `SendMessage`. " +
+    'After this call you can spawn named teammates via `Agent({ name: "<name>", team_name: "<team>", run_in_background: true, ... })` and message them with `SendMessage`. ' +
     "Only ONE team can be active per session; call `TeamDelete` first if you want to start over. " +
     "Use this when the user's task naturally splits into long-running parallel roles (e.g. backend + frontend + reviewer). For a single short subtask, prefer plain `Agent(...)` without a team.",
   inputSchema: {
@@ -80,7 +73,7 @@ export const teamCreateTool: Tool = {
       team_name: {
         type: "string",
         description:
-          "Short human-readable team name (e.g. \"refactor-auth\"). Used as the directory segment under ~/.easy-agent/teams/, so it's auto-sanitized to lowercase alphanumeric + hyphen.",
+          'Short human-readable team name (e.g. "refactor-auth"). Used as the directory segment under ~/.easy-agent/teams/, so it\'s auto-sanitized to lowercase alphanumeric + hyphen.',
       },
       description: {
         type: "string",
@@ -89,17 +82,15 @@ export const teamCreateTool: Tool = {
       },
       resume: {
         type: "boolean",
-        description: "Recover an existing team after its lead process stopped. Active members from the previous process are marked stale and their claimed tasks return to pending.",
+        description:
+          "Recover an existing team after its lead process stopped. Active members from the previous process are marked stale and their claimed tasks return to pending.",
       },
     },
     required: ["team_name"],
     additionalProperties: false,
   },
 
-  async call(
-    input: Record<string, unknown>,
-    context: ToolContext,
-  ): Promise<ToolResult> {
+  async call(input: Record<string, unknown>, context: ToolContext): Promise<ToolResult> {
     if (context.teammateIdentity || context.taskScope === "session") {
       return { content: "Error: only the main session can create or resume a team.", isError: true };
     }
@@ -109,8 +100,7 @@ export const teamCreateTool: Tool = {
       const { team_name, description, resume } = readInput(input);
       if (!team_name) {
         return {
-          content:
-            "Error: 'team_name' is required and must be a non-empty string.",
+          content: "Error: 'team_name' is required and must be a non-empty string.",
           isError: true,
         };
       }
@@ -145,14 +135,18 @@ export const teamCreateTool: Tool = {
       if (existing) {
         if (resume) {
           try {
-            const recovered = await resumeTeamFile(team_name, (memberName) => releaseMemberTasks(team_name, memberName));
+            const recovered = await resumeTeamFile(team_name, (memberName) =>
+              releaseMemberTasks(team_name, memberName),
+            );
             setActiveTeam({
               teamName: team_name,
               leadAgentId: recovered.file.leadAgentId,
               teamFilePath: getTeamFilePath(team_name),
               createdAt: recovered.file.createdAt,
             });
-            return { content: `Team "${team_name}" resumed. ${recovered.staleMembers.length} previous teammate(s) marked stale; their in-progress tasks are pending again.` };
+            return {
+              content: `Team "${team_name}" resumed. ${recovered.staleMembers.length} previous teammate(s) marked stale; their in-progress tasks are pending again.`,
+            };
           } catch (error) {
             return { content: `Error: ${error instanceof Error ? error.message : String(error)}`, isError: true };
           }

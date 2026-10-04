@@ -33,7 +33,11 @@ process.chdir(cwd);
 const gitAvailable = (() => {
   try {
     execFileSync("git", ["init", "-q"], { cwd });
-    execFileSync("git", ["-c", "user.email=t@example.com", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "initial"], { cwd });
+    execFileSync(
+      "git",
+      ["-c", "user.email=t@example.com", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "initial"],
+      { cwd },
+    );
     return true;
   } catch {
     return false;
@@ -90,7 +94,10 @@ try {
     const changed = await context.prepareTurn();
     assert.equal(renderSystemPrompt(changed.systemParts), firstPrompt, "the prompt itself is unchanged");
     assert.ok(changed.update?.startsWith(`${CONTEXT_UPDATE_MARKER}\n<system-reminder>`));
-    assert.match(changed.update!, /## Project memory \(AGENT\.md\)\nProject memory \(AGENT\.md\):[\s\S]*Use tabs for indentation\./);
+    assert.match(
+      changed.update!,
+      /## Project memory \(AGENT\.md\)\nProject memory \(AGENT\.md\):[\s\S]*Use tabs for indentation\./,
+    );
     assert.equal((await context.prepareTurn()).update, null, "already reported");
   });
 
@@ -120,26 +127,41 @@ try {
     assert.equal((await context.prepareTurn({ userQuery: "normal question" })).update, null);
   });
 
-  await check("switching output style is a tail update; dropping the coding instructions rebuilds the prompt", async () => {
-    setCustomOutputStyles([
-      { name: "Terse", description: "short", prompt: "Answer in one line.", source: "user", keepCodingInstructions: true },
-      { name: "Owned", description: "own", prompt: "Only follow this style.", source: "user", keepCodingInstructions: false },
-    ]);
-    assert.ok(setActiveOutputStyle("Terse"));
-    const terse = await context.prepareTurn();
-    assert.equal(renderSystemPrompt(terse.systemParts), firstPrompt);
-    assert.match(terse.update!, /## Output style\n# Output Style: Terse\nAnswer in one line\./);
+  await check(
+    "switching output style is a tail update; dropping the coding instructions rebuilds the prompt",
+    async () => {
+      setCustomOutputStyles([
+        {
+          name: "Terse",
+          description: "short",
+          prompt: "Answer in one line.",
+          source: "user",
+          keepCodingInstructions: true,
+        },
+        {
+          name: "Owned",
+          description: "own",
+          prompt: "Only follow this style.",
+          source: "user",
+          keepCodingInstructions: false,
+        },
+      ]);
+      assert.ok(setActiveOutputStyle("Terse"));
+      const terse = await context.prepareTurn();
+      assert.equal(renderSystemPrompt(terse.systemParts), firstPrompt);
+      assert.match(terse.update!, /## Output style\n# Output Style: Terse\nAnswer in one line\./);
 
-    assert.ok(setActiveOutputStyle("Owned"));
-    const owned = await context.prepareTurn();
-    const ownedPrompt = renderSystemPrompt(owned.systemParts);
-    assert.notEqual(ownedPrompt, firstPrompt);
-    assert.ok(ownedPrompt.includes("# Output Style: Owned"));
-    assert.ok(!ownedPrompt.includes("Prefer specialized tools over shell"), "coding instructions dropped");
-    assert.equal(owned.update, null, "the rebuilt prompt already carries the change");
-    clearOutputStyles();
-    await context.prepareTurn();
-  });
+      assert.ok(setActiveOutputStyle("Owned"));
+      const owned = await context.prepareTurn();
+      const ownedPrompt = renderSystemPrompt(owned.systemParts);
+      assert.notEqual(ownedPrompt, firstPrompt);
+      assert.ok(ownedPrompt.includes("# Output Style: Owned"));
+      assert.ok(!ownedPrompt.includes("Prefer specialized tools over shell"), "coding instructions dropped");
+      assert.equal(owned.update, null, "the rebuilt prompt already carries the change");
+      clearOutputStyles();
+      await context.prepareTurn();
+    },
+  );
 
   await check("reset rebuilds the prompt from the current state", async () => {
     await writeFile(AGENT_MD, "Prefer small commits.\n");
@@ -161,7 +183,10 @@ try {
   });
 
   await check("the update message is hidden from the transcript view", () => {
-    assert.equal(isInternalMessage({ role: "user", content: `${CONTEXT_UPDATE_MARKER}\n<system-reminder>x</system-reminder>` }), true);
+    assert.equal(
+      isInternalMessage({ role: "user", content: `${CONTEXT_UPDATE_MARKER}\n<system-reminder>x</system-reminder>` }),
+      true,
+    );
     assert.equal(isInternalMessage({ role: "user", content: "context_update is a normal word" }), false);
   });
 
@@ -174,7 +199,11 @@ try {
     const chunks: Buffer[] = [];
     request.on("data", (chunk: Buffer) => chunks.push(chunk));
     request.on("end", () => {
-      const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as { system?: unknown; messages: MessageParam[]; tools?: unknown[] };
+      const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as {
+        system?: unknown;
+        messages: MessageParam[];
+        tools?: unknown[];
+      };
       if (Array.isArray(body.tools)) {
         const system = Array.isArray(body.system)
           ? (body.system as Array<{ text: string }>).map((block) => block.text).join("\n\n")
@@ -183,14 +212,40 @@ try {
       }
       const sse = (name: string, data: unknown) => `event: ${name}\ndata: ${JSON.stringify(data)}\n\n`;
       response.writeHead(200, { "content-type": "text/event-stream" });
-      response.end([
-        sse("message_start", { type: "message_start", message: { id: `m${requests.length}`, type: "message", role: "assistant", model: "fixture-model", content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 5, output_tokens: 0 } } }),
-        sse("content_block_start", { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } }),
-        sse("content_block_delta", { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "ok" } }),
-        sse("content_block_stop", { type: "content_block_stop", index: 0 }),
-        sse("message_delta", { type: "message_delta", delta: { stop_reason: "end_turn", stop_sequence: null }, usage: { output_tokens: 1 } }),
-        sse("message_stop", { type: "message_stop" }),
-      ].join(""));
+      response.end(
+        [
+          sse("message_start", {
+            type: "message_start",
+            message: {
+              id: `m${requests.length}`,
+              type: "message",
+              role: "assistant",
+              model: "fixture-model",
+              content: [],
+              stop_reason: null,
+              stop_sequence: null,
+              usage: { input_tokens: 5, output_tokens: 0 },
+            },
+          }),
+          sse("content_block_start", {
+            type: "content_block_start",
+            index: 0,
+            content_block: { type: "text", text: "" },
+          }),
+          sse("content_block_delta", {
+            type: "content_block_delta",
+            index: 0,
+            delta: { type: "text_delta", text: "ok" },
+          }),
+          sse("content_block_stop", { type: "content_block_stop", index: 0 }),
+          sse("message_delta", {
+            type: "message_delta",
+            delta: { stop_reason: "end_turn", stop_sequence: null },
+            usage: { output_tokens: 1 },
+          }),
+          sse("message_stop", { type: "message_stop" }),
+        ].join(""),
+      );
     });
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -213,7 +268,9 @@ try {
     const textOf = (message: MessageParam | undefined): string =>
       typeof message?.content === "string"
         ? message.content
-        : (message?.content as Array<{ type: string; text?: string }> | undefined)?.map((block) => block.text ?? "").join("") ?? "";
+        : ((message?.content as Array<{ type: string; text?: string }> | undefined)
+            ?.map((block) => block.text ?? "")
+            .join("") ?? "");
 
     await check("consecutive turns send a byte-identical system prompt", async () => {
       await submit("first question");
@@ -233,7 +290,10 @@ try {
       assert.ok(textOf(messages.at(-2)).startsWith(CONTEXT_UPDATE_MARKER));
       assert.match(textOf(messages.at(-2)), /Always answer in haiku\./);
       const state = engine.getState().messages;
-      assert.ok(state.some((message) => textOf(message).startsWith(CONTEXT_UPDATE_MARKER)), "kept in the conversation");
+      assert.ok(
+        state.some((message) => textOf(message).startsWith(CONTEXT_UPDATE_MARKER)),
+        "kept in the conversation",
+      );
     });
 
     await check("/clear rebuilds the prompt with the current workspace state", async () => {

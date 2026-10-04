@@ -174,9 +174,7 @@ type GeminiNativeEvent =
  * parser, this preserves the per-functionCall `thoughtSignature` (mandatory for
  * Gemini-3 tool continuation) and the model-supplied call id.
  */
-async function* parseGeminiNative(
-  stream: ReadableStream<Uint8Array>,
-): AsyncGenerator<GeminiNativeEvent> {
+async function* parseGeminiNative(stream: ReadableStream<Uint8Array>): AsyncGenerator<GeminiNativeEvent> {
   const reader = stream.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
@@ -201,7 +199,7 @@ async function* parseGeminiNative(
       yield { type: "message_start", id };
     }
     const candidate = (json.candidates as Array<Record<string, unknown>> | undefined)?.[0];
-    const parts = ((candidate?.content as Record<string, unknown> | undefined)?.parts) as
+    const parts = (candidate?.content as Record<string, unknown> | undefined)?.parts as
       | Array<Record<string, unknown>>
       | undefined;
     if (Array.isArray(parts)) {
@@ -210,7 +208,10 @@ async function* parseGeminiNative(
         if (fc && typeof fc.name === "string") {
           yield {
             type: "tool_call",
-            id: typeof fc.id === "string" && fc.id ? fc.id : `call_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+            id:
+              typeof fc.id === "string" && fc.id
+                ? fc.id
+                : `call_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
             name: fc.name,
             args: fc.args ?? {},
             thoughtSignature: typeof part.thoughtSignature === "string" ? part.thoughtSignature : undefined,
@@ -226,7 +227,8 @@ async function* parseGeminiNative(
       usage = {
         input_tokens: typeof um.promptTokenCount === "number" ? um.promptTokenCount : usage?.input_tokens,
         output_tokens: typeof um.candidatesTokenCount === "number" ? um.candidatesTokenCount : usage?.output_tokens,
-        cached_tokens: typeof um.cachedContentTokenCount === "number" ? um.cachedContentTokenCount : usage?.cached_tokens,
+        cached_tokens:
+          typeof um.cachedContentTokenCount === "number" ? um.cachedContentTokenCount : usage?.cached_tokens,
       };
     }
   };
@@ -250,9 +252,7 @@ async function* parseGeminiNative(
  * Assemble a Gemini native stream into our StreamEvent sequence + StreamResult,
  * capturing each functionCall's thoughtSignature onto the tool_use block.
  */
-export async function* assembleGemini(
-  body: ReadableStream<Uint8Array>,
-): AsyncGenerator<StreamEvent, StreamResult> {
+export async function* assembleGemini(body: ReadableStream<Uint8Array>): AsyncGenerator<StreamEvent, StreamResult> {
   const contentBlocks: ContentBlock[] = [];
   let currentText: TextBlock | null = null;
   let currentThinking: ThinkingBlock | null = null;

@@ -14,11 +14,7 @@
 
 import React from "react";
 import { Box, Text, useInput } from "ink";
-import type {
-  PermissionsViewData,
-  PermissionRuleRow,
-  PermissionRuleScope,
-} from "../../core/queryEngine.js";
+import type { PermissionsViewData, PermissionRuleRow, PermissionRuleScope } from "../../core/queryEngine.js";
 import type { SettingSource } from "../../config/sources.js";
 import { theme, glyph } from "../theme.js";
 
@@ -61,12 +57,7 @@ function computeWindow(total: number, index: number): { start: number; end: numb
   return { start, end: start + MAX_VISIBLE };
 }
 
-export function PermissionManager({
-  data,
-  active,
-  onMutate,
-  onClose,
-}: PermissionManagerProps): React.ReactNode {
+export function PermissionManager({ data, active, onMutate, onClose }: PermissionManagerProps): React.ReactNode {
   const [tab, setTab] = React.useState<Tab>("allow");
   const [index, setIndex] = React.useState(0);
   const [mode, setMode] = React.useState<Mode>("list");
@@ -250,7 +241,9 @@ export function PermissionManager({
             {confirming ? (
               <Text color={theme.error}>{"  delete? y/n"}</Text>
             ) : isSession ? (
-              <Text color={theme.muted} dimColor>{"  (not editable)"}</Text>
+              <Text color={theme.muted} dimColor>
+                {"  (not editable)"}
+              </Text>
             ) : null}
           </Box>
         );

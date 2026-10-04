@@ -48,9 +48,7 @@ export const taskListTool: Tool = {
       .sort((a, b) => Number(a.id) - Number(b.id))
       .map((task) => {
         const openBlockers = task.blockedBy.filter((id) => !resolvedIds.has(id));
-        const blocked = openBlockers.length > 0
-          ? ` [blocked by ${openBlockers.map((id) => `#${id}`).join(", ")}]`
-          : "";
+        const blocked = openBlockers.length > 0 ? ` [blocked by ${openBlockers.map((id) => `#${id}`).join(", ")}]` : "";
         return `#${task.id} [${task.status}] ${task.subject}${task.owner ? ` [owner: ${task.owner}]` : ""}${blocked}`;
       });
 

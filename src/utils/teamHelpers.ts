@@ -27,10 +27,7 @@ import { readdir, readFile, rm } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { getTeamsRoot } from "./paths.js";
-import {
-  writePrivateFile,
-  writePrivateFileSync,
-} from "./privateData.js";
+import { writePrivateFile, writePrivateFileSync } from "./privateData.js";
 import {
   ConcurrentFileModificationError,
   parsePersistedJson,
@@ -206,10 +203,7 @@ export function writeTeamFile(teamName: string, file: TeamFile): void {
   });
 }
 
-export async function writeTeamFileAsync(
-  teamName: string,
-  file: TeamFile,
-): Promise<void> {
+export async function writeTeamFileAsync(teamName: string, file: TeamFile): Promise<void> {
   const filePath = getTeamFilePath(teamName);
   await withFileLock(filePath, async () => {
     const current = await readTeamFileAsyncUnlocked(teamName);
@@ -218,10 +212,7 @@ export async function writeTeamFileAsync(
   });
 }
 
-async function mutateTeamFile(
-  teamName: string,
-  update: (file: TeamFile) => TeamFile,
-): Promise<TeamFile | null> {
+async function mutateTeamFile(teamName: string, update: (file: TeamFile) => TeamFile): Promise<TeamFile | null> {
   const filePath = getTeamFilePath(teamName);
   return withFileLock(filePath, async () => {
     const file = await readTeamFileAsyncUnlocked(teamName);
@@ -237,14 +228,14 @@ async function mutateTeamFile(
 /**
  * Append a member to the team. A running member cannot be replaced.
  */
-export async function addTeamMember(
-  teamName: string,
-  member: TeamMember,
-): Promise<TeamFile | null> {
+export async function addTeamMember(teamName: string, member: TeamMember): Promise<TeamFile | null> {
   return mutateTeamFile(teamName, (file) => {
     if (file.status === "shutting_down") throw new Error(`Team "${teamName}" is shutting down`);
-    const mailboxCollision = file.members.find((candidate) => candidate.name !== member.name && sanitizeName(candidate.name) === sanitizeName(member.name));
-    if (mailboxCollision) throw new Error(`Teammate "${member.name}" shares an inbox path with "${mailboxCollision.name}"`);
+    const mailboxCollision = file.members.find(
+      (candidate) => candidate.name !== member.name && sanitizeName(candidate.name) === sanitizeName(member.name),
+    );
+    if (mailboxCollision)
+      throw new Error(`Teammate "${member.name}" shares an inbox path with "${mailboxCollision.name}"`);
     const existing = file.members.find((candidate) => candidate.name === member.name);
     if (existing?.isActive) throw new Error(`Teammate "${member.name}" is already active`);
     const filtered = file.members.filter((existing) => existing.name !== member.name);
@@ -270,7 +261,7 @@ export async function setMemberActive(
       if (expectedRunId && member.runId !== expectedRunId) return member;
       if (member.name === memberName && member.isActive !== isActive) {
         changed = true;
-        return { ...member, isActive, status: isActive ? "running" as const : "completed" as const };
+        return { ...member, isActive, status: isActive ? ("running" as const) : ("completed" as const) };
       }
       return member;
     });
@@ -312,9 +303,9 @@ export async function touchTeamHeartbeat(teamName: string): Promise<void> {
     return {
       ...file,
       leadHeartbeatAt: now,
-      members: file.members.map((member) => member.isActive && member.hostPid === process.pid
-        ? { ...member, heartbeatAt: now }
-        : member),
+      members: file.members.map((member) =>
+        member.isActive && member.hostPid === process.pid ? { ...member, heartbeatAt: now } : member,
+      ),
     };
   });
 }
@@ -332,7 +323,9 @@ export async function resumeTeamFile(
     if (isProcessAlive(file.leadPid)) {
       throw new Error(`Team "${teamName}" still has a live lead process`);
     }
-    const staleMembers = file.members.filter((member) => member.name !== TEAM_LEAD_NAME && (member.isActive || member.status === "stale")).map((member) => member.name);
+    const staleMembers = file.members
+      .filter((member) => member.name !== TEAM_LEAD_NAME && (member.isActive || member.status === "stale"))
+      .map((member) => member.name);
     for (const memberName of staleMembers) await releaseTasks(memberName);
     const now = Date.now();
     const next: TeamFile = {
@@ -341,9 +334,13 @@ export async function resumeTeamFile(
       status: "active",
       leadPid: process.pid,
       leadHeartbeatAt: now,
-      members: file.members.map((member) => member.name === TEAM_LEAD_NAME
-        ? { ...member, hostPid: process.pid, heartbeatAt: now, status: "running", isActive: true }
-        : member.isActive ? { ...member, status: "stale", isActive: false } : member),
+      members: file.members.map((member) =>
+        member.name === TEAM_LEAD_NAME
+          ? { ...member, hostPid: process.pid, heartbeatAt: now, status: "running", isActive: true }
+          : member.isActive
+            ? { ...member, status: "stale", isActive: false }
+            : member,
+      ),
     };
     await writePrivateFile(filePath, JSON.stringify(next, null, 2));
     return { file: next, staleMembers };
@@ -366,16 +363,19 @@ export async function finalizeTeamMember(
     const next: TeamFile = {
       ...file,
       version: (file.version ?? 0) + 1,
-      members: file.members.map((candidate) => candidate === member
-        ? { ...candidate, status, isActive: false }
-        : candidate),
+      members: file.members.map((candidate) =>
+        candidate === member ? { ...candidate, status, isActive: false } : candidate,
+      ),
     };
     await writePrivateFile(filePath, JSON.stringify(next, null, 2));
     return true;
   });
 }
 
-export async function prepareTeamDelete(teamName: string, forceStale: boolean): Promise<{ file: TeamFile; staleMembers: string[] }> {
+export async function prepareTeamDelete(
+  teamName: string,
+  forceStale: boolean,
+): Promise<{ file: TeamFile; staleMembers: string[] }> {
   const filePath = getTeamFilePath(teamName);
   return withFileLock(filePath, async () => {
     const file = await readTeamFileAsyncUnlocked(teamName);
@@ -384,7 +384,10 @@ export async function prepareTeamDelete(teamName: string, forceStale: boolean): 
     const active = file.members.filter((member) => member.name !== TEAM_LEAD_NAME && member.isActive);
     const live = active.filter((member) => isProcessAlive(member.hostPid));
     if (live.length > 0) throw new Error(`Active teammates: ${live.map((member) => member.name).join(", ")}`);
-    if (active.length > 0 && !forceStale) throw new Error(`Stale teammates: ${active.map((member) => member.name).join(", ")}. Retry with forceStale: true after reviewing their work.`);
+    if (active.length > 0 && !forceStale)
+      throw new Error(
+        `Stale teammates: ${active.map((member) => member.name).join(", ")}. Retry with forceStale: true after reviewing their work.`,
+      );
     const next: TeamFile = { ...file, version: (file.version ?? 0) + 1, status: "shutting_down" };
     await writePrivateFile(filePath, JSON.stringify(next, null, 2));
     return { file: next, staleMembers: active.map((member) => member.name) };
@@ -392,10 +395,7 @@ export async function prepareTeamDelete(teamName: string, forceStale: boolean): 
 }
 
 /** Remove a member by name (no-op if not present). */
-export async function removeTeamMember(
-  teamName: string,
-  memberName: string,
-): Promise<TeamFile | null> {
+export async function removeTeamMember(teamName: string, memberName: string): Promise<TeamFile | null> {
   return mutateTeamFile(teamName, (file) => {
     const members = file.members.filter((member) => member.name !== memberName);
     return members.length === file.members.length ? file : { ...file, members };

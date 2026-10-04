@@ -61,9 +61,7 @@ export function subscribePendingNotifications(listener: Listener): () => void {
 }
 
 /** Add one notification to the back of the queue. */
-export function enqueuePendingNotification(
-  notification: Omit<PendingNotification, "enqueuedAt">,
-): void {
+export function enqueuePendingNotification(notification: Omit<PendingNotification, "enqueuedAt">): void {
   queue.push({ ...notification, enqueuedAt: Date.now() });
   notifyListeners();
 }
@@ -134,11 +132,7 @@ export function formatTaskNotification(parts: TaskNotificationParts): string {
   if (parts.error) {
     lines.push(`  <error>${parts.error}</error>`);
   }
-  if (
-    parts.durationMs !== undefined ||
-    parts.totalTokens !== undefined ||
-    parts.toolUseCount !== undefined
-  ) {
+  if (parts.durationMs !== undefined || parts.totalTokens !== undefined || parts.toolUseCount !== undefined) {
     const usageBits: string[] = [];
     if (parts.totalTokens !== undefined) usageBits.push(`tokens=${parts.totalTokens}`);
     if (parts.toolUseCount !== undefined) usageBits.push(`tools=${parts.toolUseCount}`);

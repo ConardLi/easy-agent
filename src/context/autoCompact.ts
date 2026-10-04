@@ -47,10 +47,7 @@ export function getBlockingLimit(model: string): number {
   return Math.max(0, effective - scaleBuffer(MANUAL_COMPACT_BUFFER_TOKENS, effective));
 }
 
-export function calculateTokenWarningState(
-  estimatedTokens: number,
-  model: string,
-): TokenWarningResult {
+export function calculateTokenWarningState(estimatedTokens: number, model: string): TokenWarningResult {
   const contextWindow = getContextWindowForModel(model);
   const effective = getEffectiveContextWindowSize(model);
   const blockingLimit = getBlockingLimit(model);
@@ -79,11 +76,7 @@ export function isAtBlockingLimit(estimatedTokens: number, model: string): boole
   return estimatedTokens >= getBlockingLimit(model);
 }
 
-export function shouldAutoCompact(
-  estimatedTokens: number,
-  model: string,
-  querySource?: string,
-): boolean {
+export function shouldAutoCompact(estimatedTokens: number, model: string, querySource?: string): boolean {
   if (querySource === "compact" || querySource === "session_memory") {
     return false;
   }

@@ -77,11 +77,7 @@ function isBinaryContentType(contentType: string): boolean {
  * redirects are returned as `RedirectInfo` so the model can re-issue WebFetch
  * with the new URL (and re-clear the domain permission).
  */
-export async function fetchUrlContent(
-  url: string,
-  signal?: AbortSignal,
-  depth = 0,
-): Promise<FetchResult> {
+export async function fetchUrlContent(url: string, signal?: AbortSignal, depth = 0): Promise<FetchResult> {
   if (depth > MAX_REDIRECTS) {
     throw new Error(`Too many redirects (exceeded ${MAX_REDIRECTS})`);
   }

@@ -1,13 +1,7 @@
 /** MCP tool discovery and local tool adapters. */
 
-import type {
-  ListToolsResult,
-  Tool as McpTool,
-} from "@modelcontextprotocol/sdk/types.js";
-import {
-  ListToolsResultSchema,
-  ResultSchema,
-} from "@modelcontextprotocol/sdk/types.js";
+import type { ListToolsResult, Tool as McpTool } from "@modelcontextprotocol/sdk/types.js";
+import { ListToolsResultSchema, ResultSchema } from "@modelcontextprotocol/sdk/types.js";
 import type { ConnectedMcpServer } from "../../types/mcp.js";
 import type { Tool, ToolContext, ToolResult } from "../../tools/Tool.js";
 import { debugLog, logWarn } from "../../utils/log.js";
@@ -64,11 +58,12 @@ function buildToolAdapter(connection: ConnectedMcpServer, mcpTool: McpTool): Too
           {
             signal: context.abortSignal,
             onprogress: (progress) => {
-              if (context.toolUseId) setMcpProgress(context.toolUseId, {
-                progress: progress.progress,
-                ...(progress.total !== undefined ? { total: progress.total } : {}),
-                ...(progress.message ? { message: progress.message } : {}),
-              });
+              if (context.toolUseId)
+                setMcpProgress(context.toolUseId, {
+                  progress: progress.progress,
+                  ...(progress.total !== undefined ? { total: progress.total } : {}),
+                  ...(progress.message ? { message: progress.message } : {}),
+                });
             },
           },
         );
@@ -81,7 +76,11 @@ function buildToolAdapter(connection: ConnectedMcpServer, mcpTool: McpTool): Too
         if ((error as { code?: number }).code === 404 && active.sessionId?.() && connection.config.type === "http") {
           const rebuilt = await requestMcpReconnect(connection.name).catch(() => null);
           if (rebuilt?.type === "connected") {
-            try { return await invoke(rebuilt); } catch (retryError) { error = retryError; }
+            try {
+              return await invoke(rebuilt);
+            } catch (retryError) {
+              error = retryError;
+            }
           }
         }
         const message = error instanceof Error ? error.message : String(error);
@@ -102,9 +101,7 @@ function buildToolAdapter(connection: ConnectedMcpServer, mcpTool: McpTool): Too
  * our local Tool interface. Returns `[]` if the server doesn't declare the
  * `tools` capability or if the request fails (logged).
  */
-export async function fetchToolsForConnection(
-  connection: ConnectedMcpServer,
-): Promise<Tool[]> {
+export async function fetchToolsForConnection(connection: ConnectedMcpServer): Promise<Tool[]> {
   if (!connection.capabilities?.tools) {
     debugLog("mcp", `[${connection.name}] no 'tools' capability declared, skipping tools/list`);
     return [];
@@ -112,10 +109,7 @@ export async function fetchToolsForConnection(
 
   let result: ListToolsResult;
   try {
-    result = (await connection.client.request(
-      { method: "tools/list" },
-      ListToolsResultSchema,
-    )) as ListToolsResult;
+    result = (await connection.client.request({ method: "tools/list" }, ListToolsResultSchema)) as ListToolsResult;
   } catch (error) {
     logWarn(`MCP server '${connection.name}' tools/list failed: ${(error as Error).message}`);
     return [];
@@ -126,9 +120,7 @@ export async function fetchToolsForConnection(
     try {
       tools.push(buildToolAdapter(connection, mcpTool));
     } catch (error) {
-      logWarn(
-        `MCP tool '${connection.name}.${mcpTool.name}' failed schema adaptation: ${(error as Error).message}`,
-      );
+      logWarn(`MCP tool '${connection.name}.${mcpTool.name}' failed schema adaptation: ${(error as Error).message}`);
     }
   }
   debugLog("mcp", `[${connection.name}] discovered ${tools.length} tool(s)`);

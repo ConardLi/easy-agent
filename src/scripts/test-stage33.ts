@@ -31,7 +31,9 @@ async function runCommand(engine: QueryEngine, input: string): Promise<void> {
       value.sessions.forEach((s, i) => {
         const cur = s.isCurrent ? " (current)" : "";
         const promptLabel = s.firstPrompt ? `"${s.firstPrompt.slice(0, 40)}"` : "(empty)";
-        process.stdout.write(`  ${i + 1}. ${promptLabel}${cur} · ${s.messageCount} msg · ${s.model} · ${s.sessionId.slice(0, 8)}\n`);
+        process.stdout.write(
+          `  ${i + 1}. ${promptLabel}${cur} · ${s.messageCount} msg · ${s.model} · ${s.sessionId.slice(0, 8)}\n`,
+        );
       });
     } else if (value.type === "diff_view") {
       const { data } = value;
@@ -50,7 +52,9 @@ async function runCommand(engine: QueryEngine, input: string): Promise<void> {
       });
     } else if (value.type === "permissions_view") {
       const { data } = value;
-      process.stdout.write(`[event] permissions_view → mode=${data.mode}, allow=${data.allow.length}, deny=${data.deny.length}\n`);
+      process.stdout.write(
+        `[event] permissions_view → mode=${data.mode}, allow=${data.allow.length}, deny=${data.deny.length}\n`,
+      );
       for (const r of data.allow) process.stdout.write(`  allow ${r.rule} [${r.scope}]\n`);
       for (const r of data.deny) process.stdout.write(`  deny  ${r.rule} [${r.scope}]\n`);
     } else if (value.type === "messages_updated") {
@@ -126,7 +130,9 @@ async function main(): Promise<void> {
   } else {
     process.stdout.write("[error] /init did not expand!\n");
   }
-  process.stdout.write(`[ok] /notacommand expands? ${tryExpandBuiltinPromptCommand("/notacommand") ? "yes (BUG)" : "no"}\n`);
+  process.stdout.write(
+    `[ok] /notacommand expands? ${tryExpandBuiltinPromptCommand("/notacommand") ? "yes (BUG)" : "no"}\n`,
+  );
 
   // ── /permissions + /memory (batch 3) — run against a throwaway cwd so we
   //    never touch the real project's settings or AGENT.md. ──
@@ -147,7 +153,9 @@ async function main(): Promise<void> {
   // Direct mutate path used by the interactive overlay (project scope → temp cwd).
   process.stdout.write("\n\u001b[1m$ engine.mutatePermissionRule('allow', 'Glob', 'project')\u001b[0m\n");
   const afterMutate = await tmpEngine.mutatePermissionRule("allow", "Glob", "project");
-  process.stdout.write(`[ok] view after mutate → allow=${afterMutate.allow.length}: ${afterMutate.allow.map((r) => `${r.rule}[${r.scope}]`).join(", ")}\n`);
+  process.stdout.write(
+    `[ok] view after mutate → allow=${afterMutate.allow.length}: ${afterMutate.allow.map((r) => `${r.rule}[${r.scope}]`).join(", ")}\n`,
+  );
   await tmpEngine.mutatePermissionRule("remove", "Glob", "project");
 
   // No-arg now opens the interactive file picker (memory_picker event).

@@ -42,9 +42,7 @@ function truncateDesc(desc: string, max: number): string {
 
 function buildLine(skill: Skill, descMax: number): string {
   const cappedMax = Math.min(descMax, MAX_LISTING_DESC_CHARS);
-  const fullDesc = skill.whenToUse
-    ? `${skill.description} — ${skill.whenToUse}`
-    : skill.description;
+  const fullDesc = skill.whenToUse ? `${skill.description} — ${skill.whenToUse}` : skill.description;
   const desc = truncateDesc(fullDesc, cappedMax);
   return `- ${skill.name}: ${desc}`;
 }
@@ -63,10 +61,7 @@ function buildNameOnly(skill: Skill): string {
  * Returns an empty string when there are no skills, so callers can
  * unconditionally concatenate it without producing trailing whitespace.
  */
-export function formatSkillsWithinBudget(
-  skills: Skill[],
-  budget: number = getSkillCharBudget(),
-): string {
+export function formatSkillsWithinBudget(skills: Skill[], budget: number = getSkillCharBudget()): string {
   if (skills.length === 0) return "";
 
   const tier1 = skills.map((s) => buildLine(s, MAX_LISTING_DESC_CHARS));
@@ -104,7 +99,7 @@ export function formatSkillsSystemReminder(skills: Skill[]): string {
   return [
     "<system-reminder>",
     "Available skills you can invoke via the `Skill` tool. Each line is `- <name>: <description>`.",
-    "Call `Skill(skill=\"<name>\", args=\"<optional args>\")` when the user's request matches one of these.",
+    'Call `Skill(skill="<name>", args="<optional args>")` when the user\'s request matches one of these.',
     "",
     listing,
     "</system-reminder>",

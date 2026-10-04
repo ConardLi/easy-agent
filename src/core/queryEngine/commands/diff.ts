@@ -23,10 +23,7 @@ import type { CommandContext } from "./context.js";
 const execFileAsync = promisify(execFile);
 
 /** Run a git subcommand in the session cwd; never throws. */
-async function runGit(
-  ctx: CommandContext,
-  args: string[],
-): Promise<{ ok: boolean; stdout: string; error?: string }> {
+async function runGit(ctx: CommandContext, args: string[]): Promise<{ ok: boolean; stdout: string; error?: string }> {
   try {
     const { stdout } = await execFileAsync("git", args, {
       cwd: ctx.cwd,

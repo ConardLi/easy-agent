@@ -124,9 +124,7 @@ export function getMarketplaceManifestPath(marketplaceRoot: string): string {
 
 /** Ordered candidate marketplace manifest paths inside a marketplace root. */
 export function getMarketplaceManifestPathCandidates(marketplaceRoot: string): string[] {
-  return PLUGIN_MANIFEST_DIRS.map((dir) =>
-    path.join(marketplaceRoot, dir, MARKETPLACE_MANIFEST_FILE),
-  );
+  return PLUGIN_MANIFEST_DIRS.map((dir) => path.join(marketplaceRoot, dir, MARKETPLACE_MANIFEST_FILE));
 }
 
 // ─── Variable substitution ────────────────────────────────────────────
@@ -145,11 +143,6 @@ export const PLUGIN_DATA_VAR = "EASY_AGENT_PLUGIN_DATA";
  * Unknown `${...}` tokens are left untouched so we don't clobber a user's own
  * shell variables.
  */
-export function substitutePluginVars(
-  input: string,
-  vars: { root: string; data: string },
-): string {
-  return input
-    .replaceAll(`\${${PLUGIN_ROOT_VAR}}`, vars.root)
-    .replaceAll(`\${${PLUGIN_DATA_VAR}}`, vars.data);
+export function substitutePluginVars(input: string, vars: { root: string; data: string }): string {
+  return input.replaceAll(`\${${PLUGIN_ROOT_VAR}}`, vars.root).replaceAll(`\${${PLUGIN_DATA_VAR}}`, vars.data);
 }

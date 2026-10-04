@@ -22,11 +22,7 @@ export async function detectRisks(cwd: string): Promise<string[]> {
     if (src.source !== "project" && src.source !== "local") continue;
     const raw = src.raw;
     if (!raw) continue;
-    if (
-      raw["env"] &&
-      typeof raw["env"] === "object" &&
-      Object.keys(raw["env"] as Record<string, unknown>).length > 0
-    ) {
+    if (raw["env"] && typeof raw["env"] === "object" && Object.keys(raw["env"] as Record<string, unknown>).length > 0) {
       risks.add("environment variables");
     }
     if (
@@ -35,9 +31,7 @@ export async function detectRisks(cwd: string): Promise<string[]> {
       Object.values(raw["models"] as Record<string, unknown>).some((profile) => {
         if (!profile || typeof profile !== "object" || Array.isArray(profile)) return false;
         const value = profile as Record<string, unknown>;
-        return ["protocol", "baseURL", "apiKey", "headers"].some(
-          (key) => value[key] !== undefined,
-        );
+        return ["protocol", "baseURL", "apiKey", "headers"].some((key) => value[key] !== undefined);
       })
     ) {
       risks.add("model provider endpoints or credentials");
@@ -52,9 +46,7 @@ export async function detectRisks(cwd: string): Promise<string[]> {
     if (
       raw["enabledPlugins"] &&
       typeof raw["enabledPlugins"] === "object" &&
-      Object.values(raw["enabledPlugins"] as Record<string, unknown>).some(
-        (value) => value === true,
-      )
+      Object.values(raw["enabledPlugins"] as Record<string, unknown>).some((value) => value === true)
     ) {
       risks.add("project plugins (may include hooks, MCP, or LSP servers)");
     }

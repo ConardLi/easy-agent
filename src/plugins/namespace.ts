@@ -32,9 +32,7 @@ export function applyNamespace(pluginName: string, localName: string): string {
 }
 
 /** Split `plugin:rest` → { pluginName, rest }, or null when unqualified. */
-export function splitNamespace(
-  qualified: string,
-): { pluginName: string; rest: string } | null {
+export function splitNamespace(qualified: string): { pluginName: string; rest: string } | null {
   const idx = qualified.indexOf(NAMESPACE_SEP);
   if (idx <= 0) return null;
   return { pluginName: qualified.slice(0, idx), rest: qualified.slice(idx + 1) };

@@ -66,19 +66,21 @@ async function runSandboxed(
     let stderr = "";
     let spawnError: Error | undefined;
     const timer = setTimeout(() => child.kill("SIGKILL"), 15_000);
-    child.stdout.on("data", (chunk: Buffer) => { stdout += chunk.toString(); });
-    child.stderr.on("data", (chunk: Buffer) => { stderr += chunk.toString(); });
-    child.once("error", (error) => { spawnError = error; });
+    child.stdout.on("data", (chunk: Buffer) => {
+      stdout += chunk.toString();
+    });
+    child.stderr.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString();
+    });
+    child.once("error", (error) => {
+      spawnError = error;
+    });
     child.once("close", (status) => {
       clearTimeout(timer);
       resolve({ status, stdout, stderr, error: spawnError });
     });
   });
-  const stderr = annotateSandboxFailure(
-    wrapped.commandId,
-    result.stderr || result.error?.message || "",
-    result.status,
-  );
+  const stderr = annotateSandboxFailure(wrapped.commandId, result.stderr || result.error?.message || "", result.status);
   cleanupSandboxCommand(wrapped);
   return {
     code: result.status ?? -1,
@@ -119,11 +121,7 @@ async function main(): Promise<void> {
   console.log("\n[3] denyRead is enforced");
   const secret = path.join(testRoot, "secret.txt");
   fs.writeFileSync(secret, "host-secret");
-  const deniedRead = await runSandboxed(
-    testRoot,
-    `cat '${secret}'`,
-    settings({ denyRead: [secret] }),
-  );
+  const deniedRead = await runSandboxed(testRoot, `cat '${secret}'`, settings({ denyRead: [secret] }));
   expect("denied read fails", deniedRead.code !== 0, `exit=${deniedRead.code}`);
   expect("secret content is not returned", !deniedRead.stdout.includes("host-secret"));
 

@@ -31,11 +31,7 @@ import { randomUUID } from "node:crypto";
 import { getAsyncAgent, killAsyncAgent, requestShutdownAsyncAgent } from "../state/asyncAgentStore.js";
 import { isAgentTeamsEnabled } from "../utils/agentTeamsEnabled.js";
 import { getActiveTeam } from "../state/teamContext.js";
-import {
-  readTeamFileAsync,
-  setMemberStatus,
-  TEAM_LEAD_NAME,
-} from "../utils/teamHelpers.js";
+import { readTeamFileAsync, setMemberStatus, TEAM_LEAD_NAME } from "../utils/teamHelpers.js";
 import { markControlRequestAsRead, writeToMailbox } from "../utils/teammateMailbox.js";
 
 interface SendMessageInput {
@@ -48,10 +44,8 @@ interface SendMessageInput {
 function readInput(raw: Record<string, unknown>): SendMessageInput {
   const to = typeof raw["to"] === "string" ? raw["to"].trim() : "";
   const message = typeof raw["message"] === "string" ? raw["message"] : "";
-  const summary =
-    typeof raw["summary"] === "string" ? raw["summary"].trim() : undefined;
-  const type = raw["type"] === "shutdown_request" || raw["type"] === "abort_request"
-    ? raw["type"] : "message";
+  const summary = typeof raw["summary"] === "string" ? raw["summary"].trim() : undefined;
+  const type = raw["type"] === "shutdown_request" || raw["type"] === "abort_request" ? raw["type"] : "message";
   return {
     to,
     message,
@@ -71,9 +65,7 @@ function readInput(raw: Record<string, unknown>): SendMessageInput {
  * - The lead has no teammateIdentity set; default to TEAM_LEAD_NAME.
  */
 function resolveSenderName(context: ToolContext): string {
-  const identity = (
-    context as ToolContext & { teammateIdentity?: { agentName?: string } }
-  ).teammateIdentity;
+  const identity = (context as ToolContext & { teammateIdentity?: { agentName?: string } }).teammateIdentity;
   return identity?.agentName ?? TEAM_LEAD_NAME;
 }
 
@@ -84,8 +76,8 @@ export const sendMessageTool: Tool = {
   description:
     "Send a message or control request to another teammate in the active Agent Teams session. " +
     "A running recipient sees ordinary messages before its next model call. " +
-    "Use this for coordination (\"backend, the auth endpoint is at /v2/login\") or for status pings (\"reviewer, ready for you to look at PR draft\"). " +
-    "Use `to: \"*\"` to broadcast to every other active teammate. " +
+    'Use this for coordination ("backend, the auth endpoint is at /v2/login") or for status pings ("reviewer, ready for you to look at PR draft"). ' +
+    'Use `to: "*"` to broadcast to every other active teammate. ' +
     "If no team is active, this tool errors — call TeamCreate first.",
   inputSchema: {
     type: "object",
@@ -93,7 +85,7 @@ export const sendMessageTool: Tool = {
       to: {
         type: "string",
         description:
-          "Recipient teammate name (the `name` you passed to `Agent({ name, ... })`), \"team-lead\" for the lead, or \"*\" to broadcast to every active teammate other than yourself.",
+          'Recipient teammate name (the `name` you passed to `Agent({ name, ... })`), "team-lead" for the lead, or "*" to broadcast to every active teammate other than yourself.',
       },
       message: {
         type: "string",
@@ -108,17 +100,15 @@ export const sendMessageTool: Tool = {
       type: {
         type: "string",
         enum: ["message", "shutdown_request", "abort_request"],
-        description: "Use shutdown_request to stop a teammate after its current tool batch, or abort_request to cancel immediately.",
+        description:
+          "Use shutdown_request to stop a teammate after its current tool batch, or abort_request to cancel immediately.",
       },
     },
     required: ["to", "message"],
     additionalProperties: false,
   },
 
-  async call(
-    input: Record<string, unknown>,
-    context: ToolContext,
-  ): Promise<ToolResult> {
+  async call(input: Record<string, unknown>, context: ToolContext): Promise<ToolResult> {
     if (context.taskScope === "session" && !context.teammateIdentity) {
       return { content: "Error: ordinary sub-agents are not team members.", isError: true };
     }
@@ -155,32 +145,23 @@ export const sendMessageTool: Tool = {
 
     const senderName = resolveSenderName(context);
     const timestamp = new Date().toISOString();
-    const summaryField: Pick<{ summary: string }, "summary"> | object =
-      summary ? { summary } : {};
+    const summaryField: Pick<{ summary: string }, "summary"> | object = summary ? { summary } : {};
 
     if (to === "*") {
-      if (type !== "message") return { content: "Error: control requests require a single teammate recipient.", isError: true };
+      if (type !== "message")
+        return { content: "Error: control requests require a single teammate recipient.", isError: true };
       // Broadcast — every active member except the sender.
-      const recipients = teamFile.members.filter(
-        (m) => m.isActive && m.name !== senderName,
-      );
+      const recipients = teamFile.members.filter((m) => m.isActive && m.name !== senderName);
       if (recipients.length === 0) {
         return {
-          content:
-            "No active teammates to broadcast to (you're the only active member).",
+          content: "No active teammates to broadcast to (you're the only active member).",
         };
       }
       for (const r of recipients) {
-        await writeToMailbox(
-          r.name,
-          { from: senderName, text: message, timestamp, ...summaryField },
-          active.teamName,
-        );
+        await writeToMailbox(r.name, { from: senderName, text: message, timestamp, ...summaryField }, active.teamName);
       }
       return {
-        content: `Broadcast message to ${recipients.length} teammate(s): ${recipients
-          .map((r) => r.name)
-          .join(", ")}.`,
+        content: `Broadcast message to ${recipients.length} teammate(s): ${recipients.map((r) => r.name).join(", ")}.`,
       };
     }
 
@@ -201,27 +182,46 @@ export const sendMessageTool: Tool = {
     }
 
     if (type === "shutdown_request" || type === "abort_request") {
-      if (senderName !== TEAM_LEAD_NAME) return { content: "Error: only the team lead can stop a teammate.", isError: true };
+      if (senderName !== TEAM_LEAD_NAME)
+        return { content: "Error: only the team lead can stop a teammate.", isError: true };
       if (!recipient.isActive || !recipient.runId) {
         return { content: `Error: teammate "${to}" is not running in this team.`, isError: true };
       }
       if (getAsyncAgent(recipient.agentId)?.status !== "running") {
-        return { content: `Error: teammate "${to}" is no longer running in this process. Recover the team before retrying.`, isError: true };
+        return {
+          content: `Error: teammate "${to}" is no longer running in this process. Recover the team before retrying.`,
+          isError: true,
+        };
       }
       const requestId = randomUUID();
-      await writeToMailbox(recipient.name, { from: senderName, text: message, timestamp, type, requestId, ...summaryField }, active.teamName);
-      const accepted = type === "shutdown_request"
-        ? requestShutdownAsyncAgent(recipient.agentId, requestId)
-        : killAsyncAgent(recipient.agentId, requestId);
+      await writeToMailbox(
+        recipient.name,
+        { from: senderName, text: message, timestamp, type, requestId, ...summaryField },
+        active.teamName,
+      );
+      const accepted =
+        type === "shutdown_request"
+          ? requestShutdownAsyncAgent(recipient.agentId, requestId)
+          : killAsyncAgent(recipient.agentId, requestId);
       if (!accepted) {
         await markControlRequestAsRead(recipient.name, active.teamName, requestId);
-        return { content: `Error: teammate "${to}" is no longer running in this process. Recover the team before retrying.`, isError: true };
+        return {
+          content: `Error: teammate "${to}" is no longer running in this process. Recover the team before retrying.`,
+          isError: true,
+        };
       }
       try {
-        await setMemberStatus(active.teamName, recipient.name, recipient.runId, type === "shutdown_request" ? "stopping" : "aborting");
+        await setMemberStatus(
+          active.teamName,
+          recipient.name,
+          recipient.runId,
+          type === "shutdown_request" ? "stopping" : "aborting",
+        );
         return { content: `${type} ${requestId} accepted for "${to}".` };
       } catch (error) {
-        return { content: `${type} ${requestId} accepted for "${to}", but team status could not be updated: ${error instanceof Error ? error.message : String(error)}` };
+        return {
+          content: `${type} ${requestId} accepted for "${to}", but team status could not be updated: ${error instanceof Error ? error.message : String(error)}`,
+        };
       }
     }
 

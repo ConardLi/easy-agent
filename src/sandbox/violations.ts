@@ -26,10 +26,7 @@ export function looksLikeSandboxViolation(stderr: string): boolean {
  * Wraps stderr in a sandbox_violations tag IF we believe a sandbox
  * denial caused the failure. Returns the stderr unchanged otherwise.
  */
-export function annotateStderrWithSandboxFailures(
-  stderr: string,
-  exitCode: number | null,
-): string {
+export function annotateStderrWithSandboxFailures(stderr: string, exitCode: number | null): string {
   if (!stderr) return stderr;
   if (exitCode === 0 || exitCode === null) return stderr;
   if (!looksLikeSandboxViolation(stderr)) return stderr;

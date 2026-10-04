@@ -14,10 +14,7 @@
 
 import { findSkill } from "../../../services/skills/registry.js";
 import { findUserCommand } from "../../../commands/userCommands/registry.js";
-import {
-  isBuiltinCommandName,
-  isBuiltinPromptCommand,
-} from "../../../commands/builtinCommandNames.js";
+import { isBuiltinCommandName, isBuiltinPromptCommand } from "../../../commands/builtinCommandNames.js";
 
 export interface InputClassification {
   isSlashCommand: boolean;
@@ -32,26 +29,18 @@ export interface InputClassification {
 
 export function classifyUserInput(trimmed: string): InputClassification {
   const isSlashCommand = trimmed.startsWith("/");
-  const rawCommandName = isSlashCommand
-    ? trimmed.slice(1).split(/\s+/, 1)[0] ?? ""
-    : "";
+  const rawCommandName = isSlashCommand ? (trimmed.slice(1).split(/\s+/, 1)[0] ?? "") : "";
   const skillCommandName = rawCommandName.toLowerCase();
-  const isSkillCommand =
-    isSlashCommand && !!skillCommandName && !!findSkill(skillCommandName);
+  const isSkillCommand = isSlashCommand && !!skillCommandName && !!findSkill(skillCommandName);
   // User-defined commands also engage the full agentic loop (they expand into a
   // real prompt). Skip reserved built-in names so `/help` etc. stay synchronous
   // notices, mirroring the engine's guard.
   const isUserCommand =
-    isSlashCommand &&
-    !!rawCommandName &&
-    !isBuiltinCommandName(rawCommandName) &&
-    !!findUserCommand(rawCommandName);
+    isSlashCommand && !!rawCommandName && !isBuiltinCommandName(rawCommandName) && !!findUserCommand(rawCommandName);
   // Built-in `prompt` commands (`/init`) expand into a real prompt and run a
   // normal model turn, so they too are LLM-triggering.
-  const isPromptCommand =
-    isSlashCommand && isBuiltinPromptCommand(rawCommandName);
-  const isLlmTriggering =
-    !isSlashCommand || isSkillCommand || isUserCommand || isPromptCommand;
+  const isPromptCommand = isSlashCommand && isBuiltinPromptCommand(rawCommandName);
+  const isLlmTriggering = !isSlashCommand || isSkillCommand || isUserCommand || isPromptCommand;
 
   return {
     isSlashCommand,

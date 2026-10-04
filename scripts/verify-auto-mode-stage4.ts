@@ -64,7 +64,11 @@ async function main() {
   // 6. Flag explicit mode beats flag autoMode is moot (same source); check that
   //    a project autoMode does NOT override a trusted flag default.
   const flagDefaultProjAuto = await modeWithFlag(tmpDir("settings.json", { autoMode: true }), { mode: "default" });
-  check("flag mode:'default' + project autoMode:true → default", flagDefaultProjAuto === "default", `got ${flagDefaultProjAuto}`);
+  check(
+    "flag mode:'default' + project autoMode:true → default",
+    flagDefaultProjAuto === "default",
+    `got ${flagDefaultProjAuto}`,
+  );
 
   console.log(`\n${passed}/${total} checks passed.`);
   if (passed !== total) process.exitCode = 1;

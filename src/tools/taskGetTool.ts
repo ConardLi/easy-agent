@@ -17,7 +17,8 @@ export const taskGetTool: Tool = {
   searchHint: "retrieve a task by ID",
   shouldDefer: true,
 
-  description: "Retrieve the full details of a single task by id. Always call this before TaskUpdate to read current state.",
+  description:
+    "Retrieve the full details of a single task by id. Always call this before TaskUpdate to read current state.",
 
   inputSchema: {
     type: "object" as const,
@@ -38,11 +39,7 @@ export const taskGetTool: Tool = {
     const task = await getTask(taskListId, taskId);
     if (!task) return { content: "Task not found" };
 
-    const lines = [
-      `Task #${task.id}: ${task.subject}`,
-      `Status: ${task.status}`,
-      `Description: ${task.description}`,
-    ];
+    const lines = [`Task #${task.id}: ${task.subject}`, `Status: ${task.status}`, `Description: ${task.description}`];
     if (task.activeForm) lines.push(`ActiveForm: ${task.activeForm}`);
     if (task.owner) lines.push(`Owner: ${task.owner}`);
     if (task.blockedBy.length > 0) {

@@ -119,10 +119,7 @@ async function escalatedKill(name: string, pid: number | undefined): Promise<voi
 // ─── connectToServer ─────────────────────────────────────────────────
 
 /** Share concurrent connection attempts for the same server configuration. */
-export function connectToServer(
-  name: string,
-  config: ScopedMcpServerConfig,
-): Promise<McpServerConnection> {
+export function connectToServer(name: string, config: ScopedMcpServerConfig): Promise<McpServerConnection> {
   const key = getCacheKey(name, config);
   const cached = connectionCache.get(key);
   if (cached) return cached;
@@ -185,7 +182,10 @@ function createStdioTransport(
   };
 }
 
-async function createHttpTransport(name: string, config: McpHTTPServerConfig & { scope: string }): Promise<TransportBundle> {
+async function createHttpTransport(
+  name: string,
+  config: McpHTTPServerConfig & { scope: string },
+): Promise<TransportBundle> {
   const auth = await createMcpAuthSession(name, config.url, config.oauth);
   const transport = new StreamableHTTPClientTransport(new URL(config.url), {
     requestInit: { headers: { "User-Agent": USER_AGENT } },
@@ -196,12 +196,17 @@ async function createHttpTransport(name: string, config: McpHTTPServerConfig & {
     transport,
     describe: `http: ${config.url}`,
     collectStderrTail: () => "",
-    preCleanup: async () => { auth?.close(); },
+    preCleanup: async () => {
+      auth?.close();
+    },
     auth,
   };
 }
 
-async function createSseTransport(name: string, config: McpSSEServerConfig & { scope: string }): Promise<TransportBundle> {
+async function createSseTransport(
+  name: string,
+  config: McpSSEServerConfig & { scope: string },
+): Promise<TransportBundle> {
   const auth = await createMcpAuthSession(name, config.url, config.oauth);
   const transport = new SSEClientTransport(new URL(config.url), {
     requestInit: { headers: { "User-Agent": USER_AGENT } },
@@ -212,15 +217,14 @@ async function createSseTransport(name: string, config: McpSSEServerConfig & { s
     transport,
     describe: `sse: ${config.url}`,
     collectStderrTail: () => "",
-    preCleanup: async () => { auth?.close(); },
+    preCleanup: async () => {
+      auth?.close();
+    },
     auth,
   };
 }
 
-async function doConnect(
-  name: string,
-  config: ScopedMcpServerConfig,
-): Promise<McpServerConnection> {
+async function doConnect(name: string, config: ScopedMcpServerConfig): Promise<McpServerConnection> {
   const summary =
     config.type === "http" || config.type === "sse"
       ? `${config.type} ${config.url}`
@@ -242,10 +246,7 @@ async function doConnect(
     return { name, type: "failed", config, error: err };
   }
 
-  const client = new Client(
-    { name: CLIENT_NAME, version: VERSION },
-    { capabilities: {} },
-  );
+  const client = new Client({ name: CLIENT_NAME, version: VERSION }, { capabilities: {} });
 
   const connectPromise = client.connect(bundle.transport);
   const timeoutMs = getConnectTimeoutMs();
@@ -269,16 +270,19 @@ async function doConnect(
       if (bundle.auth) pendingAuthorizations.set(key, bundle.auth);
       logWarn(`MCP server '${name}' requires authorization. Open: ${authorizationUrl}`);
       const transport = bundle.transport as StreamableHTTPClientTransport | SSEClientTransport;
-      void interactive.waitForCode().then(async (code) => {
-        await transport.finishAuth(code);
-        if (pendingAuthorizations.get(key) === bundle.auth) pendingAuthorizations.delete(key);
-        bundle.auth?.close();
-        authorizedListener?.(name, config);
-      }).catch((authError) => {
-        logWarn(`MCP server '${name}' authorization failed: ${(authError as Error).message}`);
-        if (pendingAuthorizations.get(key) === bundle.auth) pendingAuthorizations.delete(key);
-        bundle.auth?.close();
-      });
+      void interactive
+        .waitForCode()
+        .then(async (code) => {
+          await transport.finishAuth(code);
+          if (pendingAuthorizations.get(key) === bundle.auth) pendingAuthorizations.delete(key);
+          bundle.auth?.close();
+          authorizedListener?.(name, config);
+        })
+        .catch((authError) => {
+          logWarn(`MCP server '${name}' authorization failed: ${(authError as Error).message}`);
+          if (pendingAuthorizations.get(key) === bundle.auth) pendingAuthorizations.delete(key);
+          bundle.auth?.close();
+        });
     } else {
       bundle.auth?.close();
     }
@@ -290,7 +294,12 @@ async function doConnect(
     } catch {
       /* best-effort */
     }
-    return { name, type: "failed", config, error: authorizationUrl ? `Authorization required: ${authorizationUrl}` : detail };
+    return {
+      name,
+      type: "failed",
+      config,
+      error: authorizationUrl ? `Authorization required: ${authorizationUrl}` : detail,
+    };
   }
   if (timeoutHandle) clearTimeout(timeoutHandle);
 
@@ -298,31 +307,38 @@ async function doConnect(
   const serverVersion = client.getServerVersion();
   debugLog(
     "mcp",
-    `[${name}] connected via ${bundle.describe} (server=${serverVersion?.name ?? "?"} v${serverVersion?.version ?? "?"} caps=${JSON.stringify({
-      tools: !!capabilities?.tools,
-      resources: !!capabilities?.resources,
-      prompts: !!capabilities?.prompts,
-    })})`,
+    `[${name}] connected via ${bundle.describe} (server=${serverVersion?.name ?? "?"} v${serverVersion?.version ?? "?"} caps=${JSON.stringify(
+      {
+        tools: !!capabilities?.tools,
+        resources: !!capabilities?.resources,
+        prompts: !!capabilities?.prompts,
+      },
+    )})`,
   );
 
   let cleaned = false;
   const interactive = bundle.auth?.interactive;
   if (interactive && "finishAuth" in bundle.transport) {
     const transport = bundle.transport as StreamableHTTPClientTransport | SSEClientTransport;
-    void interactive.waitForCode().then(async (code) => {
-      if (cleaned) return;
-      await transport.finishAuth(code);
-      authorizedListener?.(name, config);
-    }).catch((error) => {
-      logWarn(`MCP server '${name}' authorization failed: ${(error as Error).message}`);
-    });
+    void interactive
+      .waitForCode()
+      .then(async (code) => {
+        if (cleaned) return;
+        await transport.finishAuth(code);
+        authorizedListener?.(name, config);
+      })
+      .catch((error) => {
+        logWarn(`MCP server '${name}' authorization failed: ${(error as Error).message}`);
+      });
   }
   client.onclose = () => {
     if (cleaned) return;
     if (activeConnections.get(name)?.client !== client) return;
     connectionCache.delete(getCacheKey(name, config));
     activeConnections.delete(name);
-    void cleanup().catch((error) => debugLog("mcp", `[${name}] cleanup after disconnect failed: ${(error as Error).message}`));
+    void cleanup().catch((error) =>
+      debugLog("mcp", `[${name}] cleanup after disconnect failed: ${(error as Error).message}`),
+    );
     unexpectedCloseListener?.(name, config);
   };
   const cleanup = async (): Promise<void> => {
@@ -359,10 +375,7 @@ async function doConnect(
  * Drop the cache entry and (if connected) clean up the existing connection,
  * so the next `connectToServer` call re-spawns. Used by `/mcp reconnect`.
  */
-export async function clearServerCache(
-  name: string,
-  config: ScopedMcpServerConfig,
-): Promise<void> {
+export async function clearServerCache(name: string, config: ScopedMcpServerConfig): Promise<void> {
   const key = getCacheKey(name, config);
   const pending = connectionCache.get(key);
   connectionCache.delete(key);

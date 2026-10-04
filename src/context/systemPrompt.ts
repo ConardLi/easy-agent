@@ -2,8 +2,20 @@ import * as os from "node:os";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { loadAgentMdContext } from "./claudeMd.js";
-import { buildMemoryPromptInstructions, ensureMemoryDirExists, formatMemorySystemLocation, readMemoryEntrypoint, shouldIgnoreMemory } from "./memory/memdir.js";
-import { buildMemoryAccessGuidance, buildMemoryExclusionGuidance, buildMemoryPersistenceBoundaryGuidance, buildMemoryTypeGuidance, buildMemoryValidationGuidance } from "./memory/memoryTypes.js";
+import {
+  buildMemoryPromptInstructions,
+  ensureMemoryDirExists,
+  formatMemorySystemLocation,
+  readMemoryEntrypoint,
+  shouldIgnoreMemory,
+} from "./memory/memdir.js";
+import {
+  buildMemoryAccessGuidance,
+  buildMemoryExclusionGuidance,
+  buildMemoryPersistenceBoundaryGuidance,
+  buildMemoryTypeGuidance,
+  buildMemoryValidationGuidance,
+} from "./memory/memoryTypes.js";
 import { formatSkillsSystemReminder } from "../services/skills/budget.js";
 import { getModelVisibleSkills } from "../services/skills/registry.js";
 import { formatAgentsSystemReminder } from "../agents/promptInjection.js";
@@ -18,12 +30,7 @@ import {
   SYSTEM_PROMPT_STATIC_START,
 } from "../constants/systemPromptMarkers.js";
 
-export {
-  SYSTEM_PROMPT_DYNAMIC_END,
-  SYSTEM_PROMPT_DYNAMIC_START,
-  SYSTEM_PROMPT_STATIC_END,
-  SYSTEM_PROMPT_STATIC_START,
-};
+export { SYSTEM_PROMPT_DYNAMIC_END, SYSTEM_PROMPT_DYNAMIC_START, SYSTEM_PROMPT_STATIC_END, SYSTEM_PROMPT_STATIC_START };
 
 const execFileAsync = promisify(execFile);
 
@@ -87,12 +94,12 @@ const CODING_INSTRUCTION_SECTIONS = [
 ];
 
 function getStaticPromptSections(keepCodingInstructions: boolean): string[] {
-  return keepCodingInstructions
-    ? [...IDENTITY_SECTIONS, ...CODING_INSTRUCTION_SECTIONS]
-    : [...IDENTITY_SECTIONS];
+  return keepCodingInstructions ? [...IDENTITY_SECTIONS, ...CODING_INSTRUCTION_SECTIONS] : [...IDENTITY_SECTIONS];
 }
 
-async function getGitContext(cwd: string): Promise<Pick<RuntimeEnvironmentContext, "gitBranch" | "gitStatus" | "gitRecentCommit">> {
+async function getGitContext(
+  cwd: string,
+): Promise<Pick<RuntimeEnvironmentContext, "gitBranch" | "gitStatus" | "gitRecentCommit">> {
   try {
     const [branchResult, statusResult, logResult] = await Promise.all([
       execFileAsync("git", ["rev-parse", "--abbrev-ref", "HEAD"], { cwd, maxBuffer: 32 * 1024 }),
@@ -126,7 +133,7 @@ export async function getRuntimeEnvironmentContext(
   return {
     cwd,
     date: getLocalDateString(now),
-    os:       os.platform() + " " + os.release() + " (" + os.arch() + ")",
+    os: os.platform() + " " + os.release() + " (" + os.arch() + ")",
     ...git,
   };
 }
@@ -165,11 +172,7 @@ export function buildStaticSystemParts(): string[] {
   // decides whether the base coding guidance survives.
   const activeStyle = getActiveOutputStyleConfig();
   const keepCodingInstructions = !activeStyle || activeStyle.keepCodingInstructions !== false;
-  return [
-    SYSTEM_PROMPT_STATIC_START,
-    ...getStaticPromptSections(keepCodingInstructions),
-    SYSTEM_PROMPT_STATIC_END,
-  ];
+  return [SYSTEM_PROMPT_STATIC_START, ...getStaticPromptSections(keepCodingInstructions), SYSTEM_PROMPT_STATIC_END];
 }
 
 /** Join the static block and the non-empty dynamic sections into prompt parts. */
@@ -251,9 +254,7 @@ export async function collectDynamicSections(options: CollectDynamicSectionsOpti
   // section. Placed in the dynamic block (not static) because the user can
   // flip styles at runtime via /output-style; the session prompt context
   // announces such a change at the end of the conversation.
-  const outputStyleSection = activeStyle
-    ? `# Output Style: ${activeStyle.name}\n${activeStyle.prompt}`
-    : "";
+  const outputStyleSection = activeStyle ? `# Output Style: ${activeStyle.name}\n${activeStyle.prompt}` : "";
 
   // Preferred response language (settings `language`). Dynamic so a runtime
   // change takes effect next turn. Phrased as an instruction, not a hard

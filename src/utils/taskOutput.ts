@@ -36,11 +36,7 @@
 
 import * as path from "node:path";
 import { getProjectsRoot } from "./paths.js";
-import {
-  appendPrivateFile,
-  createPrivateFileIfMissing,
-  ensurePrivateDirectory,
-} from "./privateData.js";
+import { appendPrivateFile, createPrivateFileIfMissing, ensurePrivateDirectory } from "./privateData.js";
 
 /** Make a sessionId safe to use as a single directory segment. */
 function encodeSessionDir(sessionId: string): string {
@@ -58,12 +54,7 @@ function encodeSessionDir(sessionId: string): string {
  * that intend to write to the file should call `ensureTaskOutputFile`.
  */
 export function getTaskOutputPath(sessionId: string, agentId: string): string {
-  return path.join(
-    getProjectsRoot(),
-    encodeSessionDir(sessionId),
-    "tasks",
-    `${agentId}.output`,
-  );
+  return path.join(getProjectsRoot(), encodeSessionDir(sessionId), "tasks", `${agentId}.output`);
 }
 
 /**
@@ -74,10 +65,7 @@ export function getTaskOutputPath(sessionId: string, agentId: string): string {
  * with ENOENT during the brief window between `async_launched` returning
  * and the first event being written.
  */
-export async function ensureTaskOutputFile(
-  sessionId: string,
-  agentId: string,
-): Promise<string> {
+export async function ensureTaskOutputFile(sessionId: string, agentId: string): Promise<string> {
   const filePath = getTaskOutputPath(sessionId, agentId);
   await ensurePrivateDirectory(path.dirname(filePath));
   // O_CREAT | O_WRONLY behaviour without truncation — a leftover from
@@ -111,10 +99,7 @@ export type TaskOutputEvent =
  * `timestamp` is added automatically (ISO string) so callers don't have
  * to remember.
  */
-export async function appendTaskOutput(
-  filePath: string,
-  event: TaskOutputEvent,
-): Promise<void> {
+export async function appendTaskOutput(filePath: string, event: TaskOutputEvent): Promise<void> {
   const record = {
     timestamp: new Date().toISOString(),
     ...event,

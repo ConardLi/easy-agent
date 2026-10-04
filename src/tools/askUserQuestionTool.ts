@@ -63,9 +63,7 @@ function parseQuestions(input: Record<string, unknown>): UserQuestion[] | { erro
       seenLabels.add(opt.label);
       options.push({
         label: opt.label,
-        ...(typeof opt.description === "string" && opt.description.trim()
-          ? { description: opt.description }
-          : {}),
+        ...(typeof opt.description === "string" && opt.description.trim() ? { description: opt.description } : {}),
       });
     }
     questions.push({

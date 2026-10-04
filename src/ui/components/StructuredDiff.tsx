@@ -43,9 +43,7 @@ export function StructuredDiff({ oldText, newText, maxLines }: StructuredDiffPro
       {shown.map((line, i) => (
         <DiffRow key={i} line={line} />
       ))}
-      {hidden > 0 ? (
-        <Text color={theme.muted}>{`… +${hidden} more line${hidden === 1 ? "" : "s"}`}</Text>
-      ) : null}
+      {hidden > 0 ? <Text color={theme.muted}>{`… +${hidden} more line${hidden === 1 ? "" : "s"}`}</Text> : null}
     </Box>
   );
 }

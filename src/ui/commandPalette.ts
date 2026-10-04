@@ -26,11 +26,7 @@ const MARKETPLACE_ACTIONS: PaletteEntry[] = [
   { token: "remove", description: "Remove a registered marketplace", completionOnly: true },
 ];
 
-function suggestionsFor(
-  commandPrefix: string,
-  entries: PaletteEntry[],
-  partial: string,
-): CommandSuggestion[] {
+function suggestionsFor(commandPrefix: string, entries: PaletteEntry[], partial: string): CommandSuggestion[] {
   const query = partial.toLowerCase();
   return entries
     .filter((entry) => entry.token.startsWith(query))

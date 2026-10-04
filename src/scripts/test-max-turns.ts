@@ -19,7 +19,10 @@ import * as path from "node:path";
 const root = await mkdtemp(path.join(os.tmpdir(), "easy-agent-max-turns-"));
 const home = path.join(root, "home");
 const cwd = path.join(root, "project");
-await Promise.all([mkdir(path.join(home, ".easy-agent"), { recursive: true }), mkdir(path.join(cwd, ".easy-agent"), { recursive: true })]);
+await Promise.all([
+  mkdir(path.join(home, ".easy-agent"), { recursive: true }),
+  mkdir(path.join(cwd, ".easy-agent"), { recursive: true }),
+]);
 process.env.HOME = home;
 process.env.USERPROFILE = home;
 process.env.EASY_AGENT_DISABLE_HOOKS = "1";
@@ -54,17 +57,40 @@ const server = createServer((request, response) => {
     if (Array.isArray(body.tools) && body.tools.length > 0) loopRequests += 1;
     const id = `toolu_${++requestSeq}`;
     response.writeHead(200, { "content-type": "text/event-stream" });
-    response.end([
-      sse("message_start", { type: "message_start", message: {
-        id: `msg_${requestSeq}`, type: "message", role: "assistant", model: "fixture-model", content: [],
-        stop_reason: null, stop_sequence: null, usage: { input_tokens: 5, output_tokens: 0 },
-      } }),
-      sse("content_block_start", { type: "content_block_start", index: 0, content_block: { type: "tool_use", id, name: "Glob", input: {} } }),
-      sse("content_block_delta", { type: "content_block_delta", index: 0, delta: { type: "input_json_delta", partial_json: "{\"pattern\":\"*.md\"}" } }),
-      sse("content_block_stop", { type: "content_block_stop", index: 0 }),
-      sse("message_delta", { type: "message_delta", delta: { stop_reason: "tool_use", stop_sequence: null }, usage: { output_tokens: 4 } }),
-      sse("message_stop", { type: "message_stop" }),
-    ].join(""));
+    response.end(
+      [
+        sse("message_start", {
+          type: "message_start",
+          message: {
+            id: `msg_${requestSeq}`,
+            type: "message",
+            role: "assistant",
+            model: "fixture-model",
+            content: [],
+            stop_reason: null,
+            stop_sequence: null,
+            usage: { input_tokens: 5, output_tokens: 0 },
+          },
+        }),
+        sse("content_block_start", {
+          type: "content_block_start",
+          index: 0,
+          content_block: { type: "tool_use", id, name: "Glob", input: {} },
+        }),
+        sse("content_block_delta", {
+          type: "content_block_delta",
+          index: 0,
+          delta: { type: "input_json_delta", partial_json: '{"pattern":"*.md"}' },
+        }),
+        sse("content_block_stop", { type: "content_block_stop", index: 0 }),
+        sse("message_delta", {
+          type: "message_delta",
+          delta: { stop_reason: "tool_use", stop_sequence: null },
+          usage: { output_tokens: 4 },
+        }),
+        sse("message_stop", { type: "message_stop" }),
+      ].join(""),
+    );
   });
 });
 await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -81,7 +107,9 @@ async function writeUserSettings(settings: Record<string, unknown> | null): Prom
   await writeFile(USER_SETTINGS, settings ? JSON.stringify(settings) : "{}");
 }
 
-async function runEngine(defaultMaxTurns?: number): Promise<{ reason: unknown; requests: number; endsWithToolResult: boolean }> {
+async function runEngine(
+  defaultMaxTurns?: number,
+): Promise<{ reason: unknown; requests: number; endsWithToolResult: boolean }> {
   loopRequests = 0;
   const engine = new QueryEngine({
     model: "fixture-model",
@@ -94,7 +122,9 @@ async function runEngine(defaultMaxTurns?: number): Promise<{ reason: unknown; r
   let step = await run.next();
   while (!step.done) step = await run.next();
   const last = engine.getState().messages.at(-1);
-  const endsWithToolResult = last?.role === "user" && Array.isArray(last.content) &&
+  const endsWithToolResult =
+    last?.role === "user" &&
+    Array.isArray(last.content) &&
     last.content.some((block: unknown) => (block as { type?: string }).type === "tool_result");
   return { reason: step.value.reason, requests: loopRequests, endsWithToolResult };
 }
@@ -175,10 +205,20 @@ try {
       let stdout = "";
       let stderr = "";
       const timeout = setTimeout(() => child.kill("SIGKILL"), 60_000);
-      child.stdout.on("data", (chunk: Buffer) => { stdout += chunk.toString("utf8"); });
-      child.stderr.on("data", (chunk: Buffer) => { stderr += chunk.toString("utf8"); });
-      child.once("error", (error) => { clearTimeout(timeout); reject(error); });
-      child.once("close", (code) => { clearTimeout(timeout); resolve({ code, stdout, stderr }); });
+      child.stdout.on("data", (chunk: Buffer) => {
+        stdout += chunk.toString("utf8");
+      });
+      child.stderr.on("data", (chunk: Buffer) => {
+        stderr += chunk.toString("utf8");
+      });
+      child.once("error", (error) => {
+        clearTimeout(timeout);
+        reject(error);
+      });
+      child.once("close", (code) => {
+        clearTimeout(timeout);
+        resolve({ code, stdout, stderr });
+      });
       child.stdin.end("");
     });
   }

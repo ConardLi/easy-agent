@@ -29,24 +29,11 @@
 
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import {
-  getLocalSettingsPath,
-  getProjectEasyAgentDir,
-  getProjectSettingsPath,
-  getUserSettingsPath,
-} from "./paths.js";
-import {
-  loadSettingSources,
-  loadTrustedSettingSources,
-  resetSettingsCache,
-} from "../config/sources.js";
+import { getLocalSettingsPath, getProjectEasyAgentDir, getProjectSettingsPath, getUserSettingsPath } from "./paths.js";
+import { loadSettingSources, loadTrustedSettingSources, resetSettingsCache } from "../config/sources.js";
 import { isInheritedCredentialProtected } from "../config/environment.js";
 import { writePrivateFile } from "./privateData.js";
-import {
-  atomicWriteFile,
-  PersistentDataError,
-  withFileLock,
-} from "./atomicFile.js";
+import { atomicWriteFile, PersistentDataError, withFileLock } from "./atomicFile.js";
 
 export interface SettingsFileResult<T = unknown> {
   /** Parsed JSON object, or null if missing / unreadable / invalid. */
@@ -62,9 +49,7 @@ export interface SettingsFileResult<T = unknown> {
  * @param filePath Absolute path to the settings file. Use the path
  *   helpers in `./paths.ts` to construct this; do NOT inline-build it.
  */
-export async function readJsonSettingsFile<T = unknown>(
-  filePath: string,
-): Promise<SettingsFileResult<T>> {
+export async function readJsonSettingsFile<T = unknown>(filePath: string): Promise<SettingsFileResult<T>> {
   let text: string;
   try {
     text = await fs.readFile(filePath, "utf-8");
@@ -106,9 +91,7 @@ export async function readJsonSettingsFile<T = unknown>(
  *     That's all the current callers need.
  *   - Creates `~/.easy-agent/` if it doesn't exist yet.
  */
-export async function updateUserSettings(
-  patch: Record<string, unknown>,
-): Promise<void> {
+export async function updateUserSettings(patch: Record<string, unknown>): Promise<void> {
   await writeSettingsPatch(getUserSettingsPath(), patch, "private-home");
 }
 
@@ -118,10 +101,7 @@ export async function updateUserSettings(
  * A `value === undefined` in the patch deletes that key (mirrors the
  * single-source write semantics in the plan).
  */
-export async function updateProjectSettings(
-  cwd: string,
-  patch: Record<string, unknown>,
-): Promise<void> {
+export async function updateProjectSettings(cwd: string, patch: Record<string, unknown>): Promise<void> {
   await writeSettingsPatch(getProjectSettingsPath(cwd), patch, "shared-project");
 }
 
@@ -130,10 +110,7 @@ export async function updateProjectSettings(
  * (`<cwd>/.easy-agent/settings.local.json`), and make sure that file is
  * gitignored so personal overrides never get committed.
  */
-export async function updateLocalSettings(
-  cwd: string,
-  patch: Record<string, unknown>,
-): Promise<void> {
+export async function updateLocalSettings(cwd: string, patch: Record<string, unknown>): Promise<void> {
   await writeSettingsPatch(getLocalSettingsPath(cwd), patch, "private-project");
   await ensureLocalSettingsGitignored(cwd);
 }
@@ -216,9 +193,7 @@ export interface StatusLineCommandConfig {
  *   - an object       → { type?: "command", command: string, padding?: number }
  * Returns null when unset or malformed (the UI then shows its default line).
  */
-export async function readStatusLineConfig(
-  cwd: string,
-): Promise<StatusLineCommandConfig | null> {
+export async function readStatusLineConfig(cwd: string): Promise<StatusLineCommandConfig | null> {
   // `disableAllHooks` also kills the statusLine (it runs a shell command every
   // turn, same execution surface as hooks).
   if (await isAllHooksDisabled(cwd)) return null;
@@ -250,10 +225,7 @@ export async function readStatusLineConfig(
  * Read a top-level string setting from effective trusted sources. Project and
  * local values participate only after workspace trust; later sources win.
  */
-export async function readMergedStringSetting(
-  cwd: string,
-  key: string,
-): Promise<string | undefined> {
+export async function readMergedStringSetting(cwd: string, key: string): Promise<string | undefined> {
   const sources = await loadTrustedSettingSources(cwd);
   let result: string | undefined;
   for (const src of sources) {
@@ -267,10 +239,7 @@ export async function readMergedStringSetting(
  * Read a top-level numeric setting from effective trusted sources. Later
  * sources win. Returns undefined when no eligible source contains a number.
  */
-export async function readMergedNumberSetting(
-  cwd: string,
-  key: string,
-): Promise<number | undefined> {
+export async function readMergedNumberSetting(cwd: string, key: string): Promise<number | undefined> {
   const sources = await loadTrustedSettingSources(cwd);
   let result: number | undefined;
   for (const src of sources) {
@@ -284,10 +253,7 @@ export async function readMergedNumberSetting(
  * Read a top-level boolean setting from effective trusted sources. Later
  * sources win; callers apply their own default when the key is absent.
  */
-export async function readMergedBooleanSetting(
-  cwd: string,
-  key: string,
-): Promise<boolean | undefined> {
+export async function readMergedBooleanSetting(cwd: string, key: string): Promise<boolean | undefined> {
   const sources = await loadTrustedSettingSources(cwd);
   let result: boolean | undefined;
   for (const src of sources) {
@@ -314,10 +280,7 @@ export async function isAllHooksDisabled(cwd: string): Promise<boolean> {
  * for settings whose value is EXECUTED (e.g. `apiKeyHelper` runs a script), so
  * an untrusted repo can't run code or redirect auth.
  */
-export async function readTrustedStringSetting(
-  cwd: string,
-  key: string,
-): Promise<string | undefined> {
+export async function readTrustedStringSetting(cwd: string, key: string): Promise<string | undefined> {
   const sources = await loadTrustedSettingSources(cwd);
   let result: string | undefined;
   for (const src of sources) {
@@ -340,10 +303,7 @@ export async function readMergedEnv(cwd: string): Promise<Record<string, string>
     if (!env || typeof env !== "object" || Array.isArray(env)) continue;
     for (const [key, value] of Object.entries(env as Record<string, unknown>)) {
       if (value === undefined || value === null) continue;
-      if (
-        (src.source === "project" || src.source === "local") &&
-        isInheritedCredentialProtected(key)
-      ) {
+      if ((src.source === "project" || src.source === "local") && isInheritedCredentialProtected(key)) {
         continue;
       }
       out[key] = typeof value === "string" ? value : String(value);
@@ -357,10 +317,7 @@ export async function readMergedEnv(cwd: string): Promise<Record<string, string>
  * Used by `additionalDirectories`, which widens the filesystem access boundary
  * — so an untrusted repo must not be able to grant itself extra directories.
  */
-export async function readTrustedStringArraySetting(
-  cwd: string,
-  key: string,
-): Promise<string[]> {
+export async function readTrustedStringArraySetting(cwd: string, key: string): Promise<string[]> {
   const sources = await loadTrustedSettingSources(cwd);
   const seen = new Set<string>();
   const out: string[] = [];

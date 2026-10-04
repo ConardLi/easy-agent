@@ -69,9 +69,7 @@ export interface RedactedThinkingBlock {
  */
 export interface ImageBlock {
   type: "image";
-  source:
-    | { type: "base64"; media_type: string; data: string }
-    | { type: "url"; url: string };
+  source: { type: "base64"; media_type: string; data: string } | { type: "url"; url: string };
 }
 
 /**

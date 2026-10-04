@@ -25,14 +25,15 @@ async function main(): Promise<void> {
     await fs.mkdir(path.dirname(settingsPath), { recursive: true });
 
     const writeHooks = async (command: string) => {
-      await fs.writeFile(settingsPath, JSON.stringify({
-        hooks: { UserPromptSubmit: [{ hooks: [{ type: "command", command }] }] },
-      }));
+      await fs.writeFile(
+        settingsPath,
+        JSON.stringify({
+          hooks: { UserPromptSubmit: [{ hooks: [{ type: "command", command }] }] },
+        }),
+      );
       resetSettingsCache();
     };
-    const outputCommand = (value: string) => windows
-      ? `Write-Output '${value}'`
-      : `printf '${value}'`;
+    const outputCommand = (value: string) => (windows ? `Write-Output '${value}'` : `printf '${value}'`);
     const run = () => runUserPromptSubmitHooks({ prompt: "hello", cwd });
 
     await writeHooks(outputCommand("first"));
@@ -50,9 +51,12 @@ async function main(): Promise<void> {
     await fs.writeFile(settingsPath, JSON.stringify({ hooks: { UserPromptSubmit: "invalid" } }));
     resetSettingsCache();
     assert.equal((await run()).additionalContext, "second", "invalid event configuration retains last valid hooks");
-    await fs.writeFile(settingsPath, JSON.stringify({
-      hooks: { UserPromptSubmit: [{ matcher: "(", hooks: [{ command: outputCommand("invalid") }] }] },
-    }));
+    await fs.writeFile(
+      settingsPath,
+      JSON.stringify({
+        hooks: { UserPromptSubmit: [{ matcher: "(", hooks: [{ command: outputCommand("invalid") }] }] },
+      }),
+    );
     resetSettingsCache();
     assert.equal((await run()).additionalContext, "second", "invalid matcher retains last valid hooks");
 
@@ -60,10 +64,13 @@ async function main(): Promise<void> {
     resetSettingsCache();
     assert.equal((await run()).results.length, 0, "valid empty hooks block removes hooks");
 
-    await fs.writeFile(settingsPath, JSON.stringify({
-      disableAllHooks: true,
-      hooks: { UserPromptSubmit: [{ hooks: [{ type: "command", command: outputCommand("disabled") }] }] },
-    }));
+    await fs.writeFile(
+      settingsPath,
+      JSON.stringify({
+        disableAllHooks: true,
+        hooks: { UserPromptSubmit: [{ hooks: [{ type: "command", command: outputCommand("disabled") }] }] },
+      }),
+    );
     resetSettingsCache();
     assert.equal((await run()).results.length, 0, "disableAllHooks update takes effect");
     await fs.writeFile(settingsPath, "{ invalid json");
@@ -73,7 +80,9 @@ async function main(): Promise<void> {
     assert.equal((await run()).additionalContext, "enabled", "clearing disableAllHooks takes effect");
 
     const scriptPath = path.join(cwd, "hook-child.cjs");
-    await fs.writeFile(scriptPath, `
+    await fs.writeFile(
+      scriptPath,
+      `
       let input = '';
       process.stdin.setEncoding('utf8');
       process.stdin.on('data', chunk => input += chunk);
@@ -83,17 +92,19 @@ async function main(): Promise<void> {
         if (process.argv[2] === 'exit') { process.stderr.write('failed'); process.exitCode = 3; }
         if (process.argv[2] === 'sleep') setTimeout(() => {}, 10000);
       });
-    `);
+    `,
+    );
     const command = (mode: string) => `${windows ? "& " : ""}"${process.execPath}" "${scriptPath}" ${mode}`;
     const hookInput = { hook_event_name: "UserPromptSubmit" as const, session_id: "", cwd, prompt: "hello" };
-    const execute = (mode: string, signal?: AbortSignal, timeout = 5) => executeHookCommand({
-      hook: { type: "command", command: command(mode), timeout },
-      hookEvent: "UserPromptSubmit",
-      hookName: "UserPromptSubmit",
-      hookInput,
-      cwd,
-      signal,
-    });
+    const execute = (mode: string, signal?: AbortSignal, timeout = 5) =>
+      executeHookCommand({
+        hook: { type: "command", command: command(mode), timeout },
+        hookEvent: "UserPromptSubmit",
+        hookName: "UserPromptSubmit",
+        hookInput,
+        cwd,
+        signal,
+      });
     const input = await execute("input");
     assert.equal(input.outcome, "success");
     assert.deepEqual(JSON.parse(input.stdout), hookInput, "JSON input reaches child process");
@@ -114,7 +125,10 @@ async function main(): Promise<void> {
     if (windows) {
       const explicitPowerShell = await executeHookCommand({
         hook: { type: "command", command: "Write-Output 'powershell-ready'", shell: "powershell" },
-        hookEvent: "UserPromptSubmit", hookName: "UserPromptSubmit", hookInput, cwd,
+        hookEvent: "UserPromptSubmit",
+        hookName: "UserPromptSubmit",
+        hookInput,
+        cwd,
       });
       assert.equal(explicitPowerShell.stdout.trim(), "powershell-ready");
     }

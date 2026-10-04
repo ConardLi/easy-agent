@@ -24,22 +24,14 @@ import { appendTextToContent, prependTextToContent } from "../tools/contentBlock
 import { resolveProfile } from "../services/api/providers/profile.js";
 import { hasPendingMcpServers } from "../services/mcp/registry.js";
 import { buildSchemaNotSentHint, prepareToolSearchRequest } from "../utils/toolSearch.js";
-import {
-  activateConditionalSkillsForPaths,
-  extractToolFilePaths,
-} from "../services/skills/conditional.js";
+import { activateConditionalSkillsForPaths, extractToolFilePaths } from "../services/skills/conditional.js";
 import { tokenCountWithEstimation } from "../utils/tokens.js";
 import { fileHistoryTrackEdit } from "../session/fileHistory.js";
 import { setToolStatus } from "../state/toolStatusStore.js";
 import * as path from "node:path";
 import { calculateTokenWarningState, type TokenWarningResult } from "../context/autoCompact.js";
 import type { ContentBlock, TextBlock, ToolUseBlock, Usage } from "../types/message.js";
-import {
-  runPreToolUseHooks,
-  runPostToolUseHooks,
-  runStopHooks,
-  runSubagentStopHooks,
-} from "../hooks/index.js";
+import { runPreToolUseHooks, runPostToolUseHooks, runStopHooks, runSubagentStopHooks } from "../hooks/index.js";
 
 /** Default tool-turn limit for one request; Headless runs keep this value. */
 export const MAX_TOOL_TURNS = 50;
@@ -56,12 +48,7 @@ const MAX_OUTPUT_TOKENS_RECOVERY_PROMPT =
   "Output token limit hit. Resume directly — no apology, no recap of what you were doing. " +
   "Pick up mid-thought if that is where the cut happened. Break remaining work into smaller pieces.";
 
-export type LoopTerminationReason =
-  | "completed"
-  | "aborted"
-  | "model_error"
-  | "max_turns"
-  | "blocking_limit";
+export type LoopTerminationReason = "completed" | "aborted" | "model_error" | "max_turns" | "blocking_limit";
 
 export interface LoopState {
   messages: MessageParam[];
@@ -295,7 +282,11 @@ function partitionToolCalls(blocks: ToolUseBlock[], availableTools?: readonly To
     const validated = tool ? validateToolInput(tool, block.input) : undefined;
     let safe = false;
     if (tool && validated?.ok) {
-      try { safe = tool.isConcurrencySafe?.(validated.input) === true; } catch { safe = false; }
+      try {
+        safe = tool.isConcurrencySafe?.(validated.input) === true;
+      } catch {
+        safe = false;
+      }
     }
     const last = batches[batches.length - 1];
     if (safe && last?.isConcurrencySafe) {
@@ -332,9 +323,10 @@ async function runOneToolBlock(
     ? options.availableTools.find((candidate) => candidate.name === block.name)
     : findToolByName(block.name);
   if (!tool) {
-    const toolInput = block.input && typeof block.input === "object" && !Array.isArray(block.input)
-      ? block.input as Record<string, unknown>
-      : {};
+    const toolInput =
+      block.input && typeof block.input === "object" && !Array.isArray(block.input)
+        ? (block.input as Record<string, unknown>)
+        : {};
     const result: ToolResult = {
       content: `Error: Unknown tool "${block.name}"`,
       isError: true,
@@ -346,11 +338,10 @@ async function runOneToolBlock(
 
   const validated = validateToolInput(tool, block.input);
   if (!validated.ok) {
-    const hint = options.toolSearchEnabled === false ? null : buildSchemaNotSentHint(
-      tool,
-      options.conversationMessages ?? [],
-      options.availableTools ?? [],
-    );
+    const hint =
+      options.toolSearchEnabled === false
+        ? null
+        : buildSchemaNotSentHint(tool, options.conversationMessages ?? [], options.availableTools ?? []);
     const content = `Invalid input for ${tool.name}: ${validated.message}`;
     const result: ToolResult = {
       content: hint ? appendTextToContent(content, hint) : content,
@@ -456,15 +447,14 @@ async function runOneToolBlock(
         // Mark this specific card as blocked on the user's approval so the
         // UI can show "Waiting for permission…" on it (not just the prompt).
         setToolStatus(block.id, "waiting-permission");
-        decision = options.onPermissionRequest
-          ? await options.onPermissionRequest(permission.request)
-          : "deny";
+        decision = options.onPermissionRequest ? await options.onPermissionRequest(permission.request) : "deny";
       }
 
       if (decision === "deny") {
-        const denialMessage = options.shouldAvoidPermissionPrompts === true
-          ? buildHeadlessDenialMessage(block.name)
-          : `Permission denied for ${block.name}.`;
+        const denialMessage =
+          options.shouldAvoidPermissionPrompts === true
+            ? buildHeadlessDenialMessage(block.name)
+            : `Permission denied for ${block.name}.`;
         const result: ToolResult = {
           content: denialMessage,
           isError: true,
@@ -498,10 +488,7 @@ async function runOneToolBlock(
     // change, so /rewind can restore it. Runs before tool.call so the
     // backup reflects the original content. Best-effort & non-blocking on
     // failure (handled inside fileHistoryTrackEdit).
-    if (
-      context.messageId &&
-      (block.name === "Write" || block.name === "Edit" || block.name === "MultiEdit")
-    ) {
+    if (context.messageId && (block.name === "Write" || block.name === "Edit" || block.name === "MultiEdit")) {
       const fp = toolInput["file_path"];
       if (typeof fp === "string" && fp) {
         const absPath = path.isAbsolute(fp) ? fp : path.resolve(context.cwd, fp);
@@ -521,11 +508,10 @@ async function runOneToolBlock(
     // almost always a parameter guess. Tell the model to ToolSearch first
     // instead of letting it retry blind.
     if (result.isError) {
-      const hint = options.toolSearchEnabled === false ? null : buildSchemaNotSentHint(
-        tool,
-        options.conversationMessages ?? [],
-        options.availableTools ?? [],
-      );
+      const hint =
+        options.toolSearchEnabled === false
+          ? null
+          : buildSchemaNotSentHint(tool, options.conversationMessages ?? [], options.availableTools ?? []);
       if (hint) {
         result = { ...result, content: appendTextToContent(result.content, hint) };
       }
@@ -559,9 +545,7 @@ async function runOneToolBlock(
         ...result,
         // On an already-errored result we append the block reason; on a
         // previously-successful result the block reason replaces the output.
-        content: result.isError
-          ? appendTextToContent(result.content, `\n\n${blocked}`)
-          : blocked,
+        content: result.isError ? appendTextToContent(result.content, `\n\n${blocked}`) : blocked,
         isError: true,
       };
     }
@@ -586,9 +570,7 @@ async function runOneToolBlock(
       ...(surfacedRequest ? { permissionRequest: surfacedRequest } : {}),
     };
   } catch (error: unknown) {
-    const errorMessage = error instanceof Error
-      ? (error.stack ?? error.message)
-      : String(error);
+    const errorMessage = error instanceof Error ? (error.stack ?? error.message) : String(error);
     const result: ToolResult = {
       content: `Error: ${errorMessage}`,
       isError: true,
@@ -621,9 +603,7 @@ async function runBlocksConcurrently(
   const out: RunOneToolReturn[] = [];
   for (let i = 0; i < blocks.length; i += MAX_TOOL_USE_CONCURRENCY) {
     const chunk = blocks.slice(i, i + MAX_TOOL_USE_CONCURRENCY);
-    const settled = await Promise.all(
-      chunk.map((b) => runOneToolBlock(b, context, options)),
-    );
+    const settled = await Promise.all(chunk.map((b) => runOneToolBlock(b, context, options)));
     out.push(...settled);
   }
   return out;
@@ -638,17 +618,16 @@ export async function runTools(
   executions: ToolExecutionResult[];
   permissionRequests: PermissionRequest[];
 }> {
-  const toolUseBlocks = contentBlocks.filter(
-    (block): block is ToolUseBlock => block.type === "tool_use",
-  );
+  const toolUseBlocks = contentBlocks.filter((block): block is ToolUseBlock => block.type === "tool_use");
 
   const executions: ToolExecutionResult[] = [];
   const permissionRequests: PermissionRequest[] = [];
 
   for (const batch of partitionToolCalls(toolUseBlocks, options.availableTools)) {
-    const results = batch.isConcurrencySafe && batch.blocks.length > 1
-      ? await runBlocksConcurrently(batch.blocks, context, options)
-      : await runBlocksSerially(batch.blocks, context, options);
+    const results =
+      batch.isConcurrencySafe && batch.blocks.length > 1
+        ? await runBlocksConcurrently(batch.blocks, context, options)
+        : await runBlocksSerially(batch.blocks, context, options);
     for (const r of results) {
       executions.push(r.execution);
       if (r.permissionRequest) permissionRequests.push(r.permissionRequest);
@@ -688,9 +667,7 @@ async function runBlocksSerially(
   return out;
 }
 
-export async function* query(
-  params: QueryParams,
-): AsyncGenerator<AgenticLoopEvent, AgenticLoopResult> {
+export async function* query(params: QueryParams): AsyncGenerator<AgenticLoopEvent, AgenticLoopResult> {
   const maxTurns = params.maxTurns ?? MAX_TOOL_TURNS;
   let state: LoopState = {
     messages: [...params.messages],
@@ -757,11 +734,16 @@ export async function* query(
           type: "error",
           error: new Error(
             `Context window limit reached (${estimatedTokens} tokens estimated, blocking limit ${warningState.blockingLimit}, window ${warningState.contextWindow}). ` +
-            `Use /compact to free space.`,
+              `Use /compact to free space.`,
           ),
         };
         yield { type: "turn_complete", reason: "blocking_limit", turnCount: nextTurnCount };
-        return { state: { ...state, turnCount: nextTurnCount }, usage: totalUsage, lastCallUsage, reason: "blocking_limit" };
+        return {
+          state: { ...state, turnCount: nextTurnCount },
+          usage: totalUsage,
+          lastCallUsage,
+          reason: "blocking_limit",
+        };
       }
     }
 
@@ -770,8 +752,7 @@ export async function* query(
     // in the history has loaded them; the rest are announced by name in an
     // <available-deferred-tools> block prepended to the API copy of the
     // history. `state.messages` itself is never mutated by this step.
-    const currentTools = ((params.getTools ? params.getTools() : params.tools) ?? [])
-      .filter(hasValidToolInputSchema);
+    const currentTools = ((params.getTools ? params.getTools() : params.tools) ?? []).filter(hasValidToolInputSchema);
     const featureSettings = await loadFeatureSettings(params.toolContext.cwd);
     // Explicit per-invocation model selection remains authoritative for child
     // agents. Main requests can route thinking or oversized context by role.
@@ -780,10 +761,12 @@ export async function* query(
     const { getContextWindowForModel } = await import("../utils/tokens.js");
     const baseProfile = await resolveProfile(params.model, params.toolContext.cwd);
     const contextTokens = tokenCountWithEstimation(state.messages, { systemPrompt: params.systemPrompt });
-    const roleModel = !params.subagentInfo && !params.explicitModel && typeof getFlagSettings()?.model !== "string"
-      ? (contextTokens > getContextWindowForModel(baseProfile.model) * 0.8 ? featureSettings.modelRoles.longContext : undefined)
-        ?? (thinking.type !== "disabled" ? featureSettings.modelRoles.think : undefined)
-      : undefined;
+    const roleModel =
+      !params.subagentInfo && !params.explicitModel && typeof getFlagSettings()?.model !== "string"
+        ? ((contextTokens > getContextWindowForModel(baseProfile.model) * 0.8
+            ? featureSettings.modelRoles.longContext
+            : undefined) ?? (thinking.type !== "disabled" ? featureSettings.modelRoles.think : undefined))
+        : undefined;
     const requestModel = roleModel ?? params.model;
     const profile = roleModel ? await resolveProfile(requestModel, params.toolContext.cwd) : baseProfile;
     const prepared = prepareToolSearchRequest({
@@ -882,11 +865,7 @@ export async function* query(
     if (streamError) {
       // Prompt-too-long → summarize the history once and retry the turn.
       // Guarded by hasAttemptedReactiveCompact so we never loop on it.
-      if (
-        streamError.category === "prompt_too_long" &&
-        !hasAttemptedReactiveCompact &&
-        state.messages.length > 0
-      ) {
+      if (streamError.category === "prompt_too_long" && !hasAttemptedReactiveCompact && state.messages.length > 0) {
         hasAttemptedReactiveCompact = true;
         try {
           const compactResult = await compactMessages(state.messages, undefined, {
@@ -1029,8 +1008,7 @@ export async function* query(
               signal: params.abortSignal,
             });
 
-        const continuationText =
-          stopOutcome.blockingError || stopOutcome.additionalContext;
+        const continuationText = stopOutcome.blockingError || stopOutcome.additionalContext;
         if (continuationText) {
           stopHookFired = true;
           const continuationMessage: MessageParam = {

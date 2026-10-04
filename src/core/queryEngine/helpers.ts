@@ -71,9 +71,7 @@ export function parseGitStatus(status: string): Map<string, string> {
 }
 
 /** Parse `git diff --shortstat` ("N files changed, A insertions(+), D deletions(-)"). */
-export function parseShortStat(
-  shortstat: string,
-): { files: number; insertions: number; deletions: number } | null {
+export function parseShortStat(shortstat: string): { files: number; insertions: number; deletions: number } | null {
   const text = shortstat.trim();
   if (!text) return null;
   const files = Number(/(\d+) files? changed/.exec(text)?.[1] ?? 0);

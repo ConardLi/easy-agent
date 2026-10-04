@@ -34,15 +34,8 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import {
-  executeHookCommand,
-} from "../hooks/executor.js";
-import {
-  findMatchingHooks,
-  hasHookForEvent,
-  hooksGloballyDisabled,
-  loadHooksSettings,
-} from "../hooks/settings.js";
+import { executeHookCommand } from "../hooks/executor.js";
+import { findMatchingHooks, hasHookForEvent, hooksGloballyDisabled, loadHooksSettings } from "../hooks/settings.js";
 import {
   runPreToolUseHooks,
   runPostToolUseHooks,
@@ -83,9 +76,7 @@ function assert(condition: unknown, label: string): void {
  * Cleanup is unconditional so a failing assertion doesn't leak
  * directories into the developer's real ~/.
  */
-async function withTempHome(
-  fn: (tmpHome: string, tmpCwd: string) => Promise<void>,
-): Promise<void> {
+async function withTempHome(fn: (tmpHome: string, tmpCwd: string) => Promise<void>): Promise<void> {
   const tmpHome = await fs.mkdtemp(path.join(os.tmpdir(), "stage22-home-"));
   const tmpCwd = await fs.mkdtemp(path.join(os.tmpdir(), "stage22-cwd-"));
   const prevHome = process.env["HOME"];
@@ -146,22 +137,10 @@ async function main(): Promise<void> {
     const pre = settings.PreToolUse;
     assert(Array.isArray(pre) && pre.length === 1, "1 valid matcher group survives normalization");
     assert(pre?.[0]?.hooks.length === 2, "2 valid hook commands survive within the group");
-    assert(
-      pre?.[0]?.hooks[0]?.timeout === 5,
-      "explicit timeout preserved",
-    );
-    assert(
-      pre?.[0]?.hooks[1]?.timeout === 60,
-      "default timeout = 60s applied when omitted",
-    );
-    assert(
-      settings.PostToolUse === undefined,
-      "events absent from disk stay absent",
-    );
-    assert(
-      (settings as Record<string, unknown>).UnknownEvent === undefined,
-      "unknown event names filtered out",
-    );
+    assert(pre?.[0]?.hooks[0]?.timeout === 5, "explicit timeout preserved");
+    assert(pre?.[0]?.hooks[1]?.timeout === 60, "default timeout = 60s applied when omitted");
+    assert(settings.PostToolUse === undefined, "events absent from disk stay absent");
+    assert((settings as Record<string, unknown>).UnknownEvent === undefined, "unknown event names filtered out");
   });
 
   // ─── [2] Settings merge — user + project ───────────────────────
@@ -169,35 +148,23 @@ async function main(): Promise<void> {
 
   await withTempHome(async (home, cwd) => {
     await writeUserSettings(home, {
-      UserPromptSubmit: [
-        { hooks: [{ type: "command", command: "echo user" }] },
-      ],
+      UserPromptSubmit: [{ hooks: [{ type: "command", command: "echo user" }] }],
     });
     await writeProjectSettings(cwd, {
-      UserPromptSubmit: [
-        { hooks: [{ type: "command", command: "echo project" }] },
-      ],
+      UserPromptSubmit: [{ hooks: [{ type: "command", command: "echo project" }] }],
     });
     _resetHooksSettingsCache();
     // Stage 25: project hooks are trust-gated (they run shell commands), so
     // they only merge once the folder is trusted. Trust it to verify the
     // merge contract; the untrusted path is covered in smoke-config.ts.
-    const { trustProject, resetGlobalStateCache } = await import(
-      "../config/globalState.js"
-    );
+    const { trustProject, resetGlobalStateCache } = await import("../config/globalState.js");
     resetGlobalStateCache();
     await trustProject(cwd);
     const settings = await loadHooksSettings(cwd);
     const groups = settings.UserPromptSubmit ?? [];
     assert(groups.length === 2, "both user + project groups concatenate");
-    assert(
-      groups[0]?.hooks[0]?.command === "echo user",
-      "user group comes first",
-    );
-    assert(
-      groups[1]?.hooks[0]?.command === "echo project",
-      "project group comes second",
-    );
+    assert(groups[0]?.hooks[0]?.command === "echo user", "user group comes first");
+    assert(groups[1]?.hooks[0]?.command === "echo project", "project group comes second");
   });
 
   // ─── [3] findMatchingHooks ─────────────────────────────────────
@@ -210,9 +177,7 @@ async function main(): Promise<void> {
       { matcher: "Edit|Write", hooks: [{ type: "command", command: "edit-or-write" }] },
       { hooks: [{ type: "command", command: "no-matcher" }] },
     ],
-    UserPromptSubmit: [
-      { hooks: [{ type: "command", command: "prompt-1" }] },
-    ],
+    UserPromptSubmit: [{ hooks: [{ type: "command", command: "prompt-1" }] }],
   };
 
   const bashHooks = findMatchingHooks(settings, "PreToolUse", "Bash");
@@ -244,14 +209,8 @@ async function main(): Promise<void> {
     "events with no configured hooks return empty",
   );
 
-  assert(
-    hasHookForEvent(settings, "PreToolUse", "Bash") === true,
-    "hasHookForEvent true for configured tool",
-  );
-  assert(
-    hasHookForEvent(settings, "Stop") === false,
-    "hasHookForEvent false for unconfigured event",
-  );
+  assert(hasHookForEvent(settings, "PreToolUse", "Bash") === true, "hasHookForEvent true for configured tool");
+  assert(hasHookForEvent(settings, "Stop") === false, "hasHookForEvent false for unconfigured event");
 
   // ─── [4] Executor — basic spawn + capture ──────────────────────
   console.log("\n[4] executor — spawn, stdin payload, env var");
@@ -272,10 +231,7 @@ async function main(): Promise<void> {
       cwd,
     });
     assert(result.outcome === "success", "cat hook succeeds (exit 0)");
-    assert(
-      result.stdout.includes('"tool_name":"Bash"'),
-      "cat echoes the JSON hook input from stdin",
-    );
+    assert(result.stdout.includes('"tool_name":"Bash"'), "cat echoes the JSON hook input from stdin");
 
     // env var EASY_AGENT_PROJECT_DIR is exposed
     const envResult = await executeHookCommand({
@@ -292,10 +248,7 @@ async function main(): Promise<void> {
       },
       cwd,
     });
-    assert(
-      envResult.stdout.trim() === cwd,
-      "EASY_AGENT_PROJECT_DIR env var matches cwd",
-    );
+    assert(envResult.stdout.trim() === cwd, "EASY_AGENT_PROJECT_DIR env var matches cwd");
   });
 
   // ─── [4b] Executor — exit code 0 plain text path ───────────────
@@ -315,10 +268,7 @@ async function main(): Promise<void> {
       },
       cwd,
     });
-    assert(
-      r1.additionalContext === "from-stdout",
-      "UserPromptSubmit + plain stdout → additionalContext",
-    );
+    assert(r1.additionalContext === "from-stdout", "UserPromptSubmit + plain stdout → additionalContext");
 
     const r2 = await executeHookCommand({
       hook: { type: "command", command: "echo from-stdout" },
@@ -364,10 +314,7 @@ async function main(): Promise<void> {
     });
     assert(r.outcome === "blocking", "exit 2 → outcome=blocking");
     assert(r.permissionBehavior === "deny", "exit 2 → permissionBehavior=deny");
-    assert(
-      r.blockingError === "forbidden by hook",
-      "stderr surfaces as blockingError",
-    );
+    assert(r.blockingError === "forbidden by hook", "stderr surfaces as blockingError");
   }
 
   // ─── [4d] Executor — exit code 1 non-blocking error ────────────
@@ -390,14 +337,8 @@ async function main(): Promise<void> {
       },
       cwd,
     });
-    assert(
-      r.outcome === "non_blocking_error",
-      "exit 1 + no JSON → non_blocking_error",
-    );
-    assert(
-      r.blockingError === undefined,
-      "non-blocking error does NOT set blockingError",
-    );
+    assert(r.outcome === "non_blocking_error", "exit 1 + no JSON → non_blocking_error");
+    assert(r.blockingError === undefined, "non-blocking error does NOT set blockingError");
     assert(r.stderr.includes("oops"), "stderr preserved");
   }
 
@@ -410,8 +351,7 @@ async function main(): Promise<void> {
     const denied = await executeHookCommand({
       hook: {
         type: "command",
-        command:
-          "printf '%s' '{\"decision\":\"block\",\"reason\":\"no Bash in tests\"}'",
+        command: 'printf \'%s\' \'{"decision":"block","reason":"no Bash in tests"}\'',
       },
       hookEvent: "PreToolUse",
       hookName: "PreToolUse:json",
@@ -425,14 +365,8 @@ async function main(): Promise<void> {
       },
       cwd,
     });
-    assert(
-      denied.permissionBehavior === "deny",
-      "JSON decision=block → permissionBehavior=deny",
-    );
-    assert(
-      denied.blockingError === "no Bash in tests",
-      "JSON decision=block surfaces reason as blockingError",
-    );
+    assert(denied.permissionBehavior === "deny", "JSON decision=block → permissionBehavior=deny");
+    assert(denied.blockingError === "no Bash in tests", "JSON decision=block surfaces reason as blockingError");
     assert(denied.outcome === "blocking", "outcome=blocking for JSON block");
 
     // (b) hookSpecificOutput.permissionDecision = "ask"
@@ -440,7 +374,7 @@ async function main(): Promise<void> {
       hook: {
         type: "command",
         command:
-          "printf '%s' '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"ask\",\"permissionDecisionReason\":\"think first\"}}'",
+          'printf \'%s\' \'{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"think first"}}\'',
       },
       hookEvent: "PreToolUse",
       hookName: "PreToolUse:json-ask",
@@ -454,21 +388,15 @@ async function main(): Promise<void> {
       },
       cwd,
     });
-    assert(
-      ask.permissionBehavior === "ask",
-      "JSON permissionDecision=ask honored",
-    );
-    assert(
-      ask.permissionDecisionReason === "think first",
-      "permissionDecisionReason surfaces",
-    );
+    assert(ask.permissionBehavior === "ask", "JSON permissionDecision=ask honored");
+    assert(ask.permissionDecisionReason === "think first", "permissionDecisionReason surfaces");
 
     // (c) additionalContext via hookSpecificOutput
     const ctx = await executeHookCommand({
       hook: {
         type: "command",
         command:
-          "printf '%s' '{\"hookSpecificOutput\":{\"hookEventName\":\"UserPromptSubmit\",\"additionalContext\":\"git status: clean\"}}'",
+          'printf \'%s\' \'{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":"git status: clean"}}\'',
       },
       hookEvent: "UserPromptSubmit",
       hookName: "UserPromptSubmit:json",
@@ -480,17 +408,13 @@ async function main(): Promise<void> {
       },
       cwd,
     });
-    assert(
-      ctx.additionalContext === "git status: clean",
-      "JSON additionalContext extracted",
-    );
+    assert(ctx.additionalContext === "git status: clean", "JSON additionalContext extracted");
 
     // (d) continue: false → preventContinuation
     const halt = await executeHookCommand({
       hook: {
         type: "command",
-        command:
-          "printf '%s' '{\"continue\":false,\"stopReason\":\"daily token budget exhausted\"}'",
+        command: 'printf \'%s\' \'{"continue":false,"stopReason":"daily token budget exhausted"}\'',
       },
       hookEvent: "Stop",
       hookName: "Stop:halt",
@@ -501,14 +425,8 @@ async function main(): Promise<void> {
       },
       cwd,
     });
-    assert(
-      halt.preventContinuation === true,
-      "continue=false → preventContinuation",
-    );
-    assert(
-      halt.stopReason === "daily token budget exhausted",
-      "stopReason surfaces",
-    );
+    assert(halt.preventContinuation === true, "continue=false → preventContinuation");
+    assert(halt.stopReason === "daily token budget exhausted", "stopReason surfaces");
   }
 
   // ─── [6] Executor — timeout + abort + missing binary ───────────
@@ -534,14 +452,8 @@ async function main(): Promise<void> {
       cwd,
     });
     const elapsed = Date.now() - start;
-    assert(
-      slow.outcome === "non_blocking_error",
-      "timed-out hook → non_blocking_error",
-    );
-    assert(
-      slow.stderr.includes("timed out"),
-      "timeout message present in stderr",
-    );
+    assert(slow.outcome === "non_blocking_error", "timed-out hook → non_blocking_error");
+    assert(slow.stderr.includes("timed out"), "timeout message present in stderr");
     assert(elapsed < 3000, `timeout actually triggers around 1s (was ${elapsed}ms)`);
 
     // (b) Abort — fire signal AFTER spawn
@@ -562,10 +474,7 @@ async function main(): Promise<void> {
       cwd,
       signal: controller.signal,
     });
-    assert(
-      aborted.outcome === "cancelled",
-      "abort signal → outcome=cancelled",
-    );
+    assert(aborted.outcome === "cancelled", "abort signal → outcome=cancelled");
   }
 
   // ─── [7] Aggregator — precedence rules ──────────────────────────
@@ -581,17 +490,16 @@ async function main(): Promise<void> {
             {
               type: "command",
               command:
-                "printf '%s' '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"ask\"}}'",
+                'printf \'%s\' \'{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask"}}\'',
+            },
+            {
+              type: "command",
+              command: ">&2 echo 'absolutely not'; exit 2",
             },
             {
               type: "command",
               command:
-                ">&2 echo 'absolutely not'; exit 2",
-            },
-            {
-              type: "command",
-              command:
-                "printf '%s' '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"allow\"}}'",
+                'printf \'%s\' \'{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow"}}\'',
             },
           ],
         },
@@ -605,18 +513,9 @@ async function main(): Promise<void> {
       cwd,
     });
 
-    assert(
-      outcome.results.length === 4,
-      "4 hooks ran, 4 results returned",
-    );
-    assert(
-      outcome.permissionBehavior === "deny",
-      "deny wins over ask + allow (precedence)",
-    );
-    assert(
-      outcome.blockingError === "absolutely not",
-      "first blockingError is preserved",
-    );
+    assert(outcome.results.length === 4, "4 hooks ran, 4 results returned");
+    assert(outcome.permissionBehavior === "deny", "deny wins over ask + allow (precedence)");
+    assert(outcome.blockingError === "absolutely not", "first blockingError is preserved");
   });
 
   // ─── [8] runPreToolUseHooks round-trip ─────────────────────────
@@ -631,7 +530,7 @@ async function main(): Promise<void> {
             {
               type: "command",
               command:
-                "printf '%s' '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"no shell please\"}}'",
+                'printf \'%s\' \'{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"no shell please"}}\'',
             },
           ],
         },
@@ -645,10 +544,7 @@ async function main(): Promise<void> {
       cwd,
     });
     assert(outcome.permissionBehavior === "deny", "deny round-trip");
-    assert(
-      outcome.permissionDecisionReason === "no shell please",
-      "reason round-trip",
-    );
+    assert(outcome.permissionDecisionReason === "no shell please", "reason round-trip");
 
     // Tool not matched → no hook fires
     const other = await runPreToolUseHooks({
@@ -657,10 +553,7 @@ async function main(): Promise<void> {
       toolUseId: "tu-2",
       cwd,
     });
-    assert(
-      other.results.length === 0,
-      "non-matching tool → no hook fires",
-    );
+    assert(other.results.length === 0, "non-matching tool → no hook fires");
   });
 
   console.log("\n[8b] runPostToolUseHooks — additionalContext appended");
@@ -670,9 +563,7 @@ async function main(): Promise<void> {
       PostToolUse: [
         {
           matcher: "*",
-          hooks: [
-            { type: "command", command: "echo 'tool finished'" },
-          ],
+          hooks: [{ type: "command", command: "echo 'tool finished'" }],
         },
       ],
     });
@@ -696,9 +587,7 @@ async function main(): Promise<void> {
     await writeUserSettings(home, {
       UserPromptSubmit: [
         {
-          hooks: [
-            { type: "command", command: "echo 'context-prefix'" },
-          ],
+          hooks: [{ type: "command", command: "echo 'context-prefix'" }],
         },
       ],
     });
@@ -707,10 +596,7 @@ async function main(): Promise<void> {
       prompt: "implement feature X",
       cwd,
     });
-    assert(
-      outcome.additionalContext === "context-prefix",
-      "UserPromptSubmit additionalContext extracted",
-    );
+    assert(outcome.additionalContext === "context-prefix", "UserPromptSubmit additionalContext extracted");
   });
 
   console.log("\n[8d] runSessionStartHooks");
@@ -733,19 +619,13 @@ async function main(): Promise<void> {
       source: "startup",
       cwd,
     });
-    assert(
-      startup.additionalContext === "boot-up",
-      "SessionStart matcher='startup' fires the startup hook",
-    );
+    assert(startup.additionalContext === "boot-up", "SessionStart matcher='startup' fires the startup hook");
 
     const resume = await runSessionStartHooks({
       source: "resume",
       cwd,
     });
-    assert(
-      resume.additionalContext === "welcome-back",
-      "SessionStart matcher='resume' fires the resume hook",
-    );
+    assert(resume.additionalContext === "welcome-back", "SessionStart matcher='resume' fires the resume hook");
   });
 
   console.log("\n[8e] runStopHooks");
@@ -754,9 +634,7 @@ async function main(): Promise<void> {
     await writeUserSettings(home, {
       Stop: [
         {
-          hooks: [
-            { type: "command", command: "echo 'remember to commit'" },
-          ],
+          hooks: [{ type: "command", command: "echo 'remember to commit'" }],
         },
       ],
     });
@@ -765,14 +643,8 @@ async function main(): Promise<void> {
       lastAssistantMessage: "I'm done.",
       cwd,
     });
-    assert(
-      outcome.results.length === 1,
-      "Stop hook fires with no matcher field",
-    );
-    assert(
-      outcome.results[0]?.outcome === "success",
-      "stop hook succeeded",
-    );
+    assert(outcome.results.length === 1, "Stop hook fires with no matcher field");
+    assert(outcome.results[0]?.outcome === "success", "stop hook succeeded");
   });
 
   console.log("\n[8f] runSubagentStopHooks");
@@ -782,9 +654,7 @@ async function main(): Promise<void> {
       SubagentStop: [
         {
           matcher: "general-purpose",
-          hooks: [
-            { type: "command", command: "echo 'log subagent finish'" },
-          ],
+          hooks: [{ type: "command", command: "echo 'log subagent finish'" }],
         },
       ],
     });
@@ -794,20 +664,14 @@ async function main(): Promise<void> {
       agentType: "general-purpose",
       cwd,
     });
-    assert(
-      outcome.results.length === 1,
-      "SubagentStop matcher='general-purpose' fires",
-    );
+    assert(outcome.results.length === 1, "SubagentStop matcher='general-purpose' fires");
 
     const wrong = await runSubagentStopHooks({
       agentId: "sub-2",
       agentType: "Explore",
       cwd,
     });
-    assert(
-      wrong.results.length === 0,
-      "non-matching agent_type → no hook fires",
-    );
+    assert(wrong.results.length === 0, "non-matching agent_type → no hook fires");
   });
 
   // ─── [9] Master kill-switch ────────────────────────────────────
@@ -815,9 +679,7 @@ async function main(): Promise<void> {
 
   await withTempHome(async (home, cwd) => {
     await writeUserSettings(home, {
-      UserPromptSubmit: [
-        { hooks: [{ type: "command", command: "echo should-not-run" }] },
-      ],
+      UserPromptSubmit: [{ hooks: [{ type: "command", command: "echo should-not-run" }] }],
     });
 
     const prevKill = process.env["EASY_AGENT_DISABLE_HOOKS"];
@@ -829,10 +691,7 @@ async function main(): Promise<void> {
         prompt: "hi",
         cwd,
       });
-      assert(
-        outcome.results.length === 0,
-        "kill switch short-circuits ALL hooks regardless of settings.json",
-      );
+      assert(outcome.results.length === 0, "kill switch short-circuits ALL hooks regardless of settings.json");
     } finally {
       if (prevKill !== undefined) process.env["EASY_AGENT_DISABLE_HOOKS"] = prevKill;
       else delete process.env["EASY_AGENT_DISABLE_HOOKS"];

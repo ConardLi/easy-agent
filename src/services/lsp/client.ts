@@ -3,7 +3,12 @@ import { pathToFileURL } from "node:url";
 import type { LspServerConfig } from "./schema.js";
 
 const MAX_FRAME = 8 * 1024 * 1024;
-type Pending = { resolve: (value: unknown) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout>; cleanup: () => void };
+type Pending = {
+  resolve: (value: unknown) => void;
+  reject: (error: Error) => void;
+  timer: ReturnType<typeof setTimeout>;
+  cleanup: () => void;
+};
 
 /** Bounded LSP/JSON-RPC stdio session. No shell interpolation or unsolicited edits. */
 export class LspClient {
@@ -19,14 +24,21 @@ export class LspClient {
   status: "stopped" | "starting" | "ready" | "failed" = "stopped";
   error?: string;
 
-  constructor(readonly config: LspServerConfig, readonly cwd: string) {}
+  constructor(
+    readonly config: LspServerConfig,
+    readonly cwd: string,
+  ) {}
 
   async start(): Promise<void> {
     if (this.status === "ready") return;
     if (this.startPromise) return this.startPromise;
     if (this.stopping) throw new Error("LSP server is stopping");
     this.startPromise = this.initialize();
-    try { await this.startPromise; } finally { this.startPromise = undefined; }
+    try {
+      await this.startPromise;
+    } finally {
+      this.startPromise = undefined;
+    }
   }
 
   private async initialize(): Promise<void> {
@@ -35,13 +47,21 @@ export class LspClient {
     this.buffer = Buffer.alloc(0);
     this.documents.clear();
     const child = spawn(this.config.command, this.config.args, {
-      cwd: this.cwd, env: { ...process.env, ...this.config.env },
-      stdio: ["pipe", "pipe", "pipe"], windowsHide: true, detached: process.platform !== "win32",
+      cwd: this.cwd,
+      env: { ...process.env, ...this.config.env },
+      stdio: ["pipe", "pipe", "pipe"],
+      windowsHide: true,
+      detached: process.platform !== "win32",
     });
     this.child = child;
     child.stdout.on("data", (chunk: Buffer) => {
       if (this.child !== child) return;
-      try { this.consume(chunk); } catch (error) { this.fail(error as Error); this.terminate(child); }
+      try {
+        this.consume(chunk);
+      } catch (error) {
+        this.fail(error as Error);
+        this.terminate(child);
+      }
     });
     // Drain stderr without retaining potentially unbounded or sensitive content.
     child.stderr.on("data", () => {});
@@ -53,12 +73,20 @@ export class LspClient {
       this.fail(new Error(`LSP process exited (${code ?? "signal"})`));
     });
     try {
-      const initialized = await this.requestRaw("initialize", {
-        processId: process.pid, rootUri: pathToFileURL(this.cwd).href,
-        workspaceFolders: [{ uri: pathToFileURL(this.cwd).href, name: "workspace" }],
-        capabilities: { workspace: { configuration: true }, textDocument: { synchronization: { dynamicRegistration: false } } },
-        initializationOptions: this.config.initializationOptions,
-      }, this.config.startupTimeout);
+      const initialized = await this.requestRaw(
+        "initialize",
+        {
+          processId: process.pid,
+          rootUri: pathToFileURL(this.cwd).href,
+          workspaceFolders: [{ uri: pathToFileURL(this.cwd).href, name: "workspace" }],
+          capabilities: {
+            workspace: { configuration: true },
+            textDocument: { synchronization: { dynamicRegistration: false } },
+          },
+          initializationOptions: this.config.initializationOptions,
+        },
+        this.config.startupTimeout,
+      );
       this.capabilities = (initialized as { capabilities?: Record<string, unknown> })?.capabilities ?? {};
       this.notify("initialized", {});
       if (this.config.settings) this.notify("workspace/didChangeConfiguration", { settings: this.config.settings });
@@ -73,7 +101,11 @@ export class LspClient {
   private fail(error: Error): void {
     this.status = this.stopping ? "stopped" : "failed";
     this.error = this.stopping ? undefined : error.message;
-    for (const item of this.pending.values()) { clearTimeout(item.timer); item.cleanup(); item.reject(error); }
+    for (const item of this.pending.values()) {
+      clearTimeout(item.timer);
+      item.cleanup();
+      item.reject(error);
+    }
     this.pending.clear();
   }
 
@@ -86,7 +118,9 @@ export class LspClient {
     stdin.write(Buffer.concat([Buffer.from(`Content-Length: ${body.length}\r\n\r\n`), body]));
   }
 
-  notify(method: string, params: unknown): void { this.send({ jsonrpc: "2.0", method, params }); }
+  notify(method: string, params: unknown): void {
+    this.send({ jsonrpc: "2.0", method, params });
+  }
 
   private requestRaw(method: string, params: unknown, timeout: number, signal?: AbortSignal): Promise<unknown> {
     if (signal?.aborted) return Promise.reject(new Error("LSP request cancelled"));
@@ -96,8 +130,14 @@ export class LspClient {
       const cancel = (message: string) => {
         const pending = this.pending.get(id);
         if (!pending) return;
-        this.pending.delete(id); clearTimeout(pending.timer); pending.cleanup();
-        try { this.notify("$/cancelRequest", { id }); } catch { /* Connection already closed. */ }
+        this.pending.delete(id);
+        clearTimeout(pending.timer);
+        pending.cleanup();
+        try {
+          this.notify("$/cancelRequest", { id });
+        } catch {
+          /* Connection already closed. */
+        }
         reject(new Error(message));
       };
       const abort = () => cancel("LSP request cancelled");
@@ -105,14 +145,21 @@ export class LspClient {
       const cleanup = () => signal?.removeEventListener("abort", abort);
       this.pending.set(id, { resolve, reject, timer, cleanup });
       signal?.addEventListener("abort", abort, { once: true });
-      try { this.send({ jsonrpc: "2.0", id, method, params }); }
-      catch (error) { clearTimeout(timer); cleanup(); this.pending.delete(id); reject(error); }
+      try {
+        this.send({ jsonrpc: "2.0", id, method, params });
+      } catch (error) {
+        clearTimeout(timer);
+        cleanup();
+        this.pending.delete(id);
+        reject(error);
+      }
     });
   }
 
   async request(method: string, params: unknown, signal?: AbortSignal): Promise<unknown> {
     if (this.status === "failed") {
-      if (!this.config.restartOnCrash || this.restarts >= this.config.maxRestarts) throw new Error(this.error ?? "LSP restart budget exhausted");
+      if (!this.config.restartOnCrash || this.restarts >= this.config.maxRestarts)
+        throw new Error(this.error ?? "LSP restart budget exhausted");
       this.restarts++;
     }
     await this.start();
@@ -122,7 +169,8 @@ export class LspClient {
   async openDocument(uri: string, languageId: string, text: string): Promise<void> {
     if (Buffer.byteLength(text) > MAX_FRAME / 2) throw new Error("LSP document exceeds size limit");
     if (this.status === "failed") {
-      if (!this.config.restartOnCrash || this.restarts >= this.config.maxRestarts) throw new Error(this.error ?? "LSP restart budget exhausted");
+      if (!this.config.restartOnCrash || this.restarts >= this.config.maxRestarts)
+        throw new Error(this.error ?? "LSP restart budget exhausted");
       this.restarts++;
     }
     await this.start();
@@ -136,7 +184,11 @@ export class LspClient {
       if (kind === 2) {
         this.notify("textDocument/didClose", { textDocument: { uri } });
         this.notify("textDocument/didOpen", { textDocument: { uri, languageId, version: version + 1, text } });
-      } else this.notify("textDocument/didChange", { textDocument: { uri, version: version + 1 }, contentChanges: [{ text }] });
+      } else
+        this.notify("textDocument/didChange", {
+          textDocument: { uri, version: version + 1 },
+          contentChanges: [{ text }],
+        });
       this.documents.set(uri, version + 1);
     }
   }
@@ -145,7 +197,10 @@ export class LspClient {
     this.buffer = Buffer.concat([this.buffer, chunk]);
     while (this.buffer.length) {
       const boundary = this.buffer.indexOf("\r\n\r\n");
-      if (boundary < 0) { if (this.buffer.length > 8192) throw new Error("Invalid LSP header"); return; }
+      if (boundary < 0) {
+        if (this.buffer.length > 8192) throw new Error("Invalid LSP header");
+        return;
+      }
       const header = this.buffer.subarray(0, boundary).toString("ascii");
       const match = /^Content-Length:\s*(\d+)\s*$/im.exec(header);
       const size = match ? Number(match[1]) : NaN;
@@ -156,12 +211,28 @@ export class LspClient {
       if (message.method && message.id !== undefined) {
         if (message.method === "workspace/configuration") {
           const items = message.params?.items ?? [];
-          this.send({ jsonrpc: "2.0", id: message.id, result: items.map((item: { section?: string }) => item.section?.split(".").reduce((v: any, key: string) => v?.[key], this.config.settings) ?? this.config.settings ?? null) });
-        } else this.send({ jsonrpc: "2.0", id: message.id, error: { code: -32601, message: "Client request not supported" } });
+          this.send({
+            jsonrpc: "2.0",
+            id: message.id,
+            result: items.map(
+              (item: { section?: string }) =>
+                item.section?.split(".").reduce((v: any, key: string) => v?.[key], this.config.settings) ??
+                this.config.settings ??
+                null,
+            ),
+          });
+        } else
+          this.send({
+            jsonrpc: "2.0",
+            id: message.id,
+            error: { code: -32601, message: "Client request not supported" },
+          });
       } else if (typeof message.id === "number") {
         const item = this.pending.get(message.id);
         if (!item) continue;
-        this.pending.delete(message.id); clearTimeout(item.timer); item.cleanup();
+        this.pending.delete(message.id);
+        clearTimeout(item.timer);
+        item.cleanup();
         if (message.error) item.reject(new Error(`LSP error ${message.error.code}: request failed`));
         else item.resolve(message.result);
       }
@@ -171,10 +242,19 @@ export class LspClient {
   private terminate(child: ChildProcessWithoutNullStreams): void {
     if (!child.pid) return;
     if (process.platform === "win32") {
-      const killer = spawn("taskkill.exe", ["/PID", String(child.pid), "/T", "/F"], { stdio: "ignore", windowsHide: true });
+      const killer = spawn("taskkill.exe", ["/PID", String(child.pid), "/T", "/F"], {
+        stdio: "ignore",
+        windowsHide: true,
+      });
       killer.on("error", () => child.kill());
       killer.unref();
-    } else { try { process.kill(-child.pid, "SIGKILL"); } catch { /* Already exited. */ } }
+    } else {
+      try {
+        process.kill(-child.pid, "SIGKILL");
+      } catch {
+        /* Already exited. */
+      }
+    }
   }
 
   async stop(): Promise<void> {
@@ -182,7 +262,12 @@ export class LspClient {
     const child = this.child;
     if (child) {
       if (this.status === "ready") {
-        try { await this.requestRaw("shutdown", null, 500); this.notify("exit", undefined); } catch { /* Forced cleanup below. */ }
+        try {
+          await this.requestRaw("shutdown", null, 500);
+          this.notify("exit", undefined);
+        } catch {
+          /* Forced cleanup below. */
+        }
       }
       this.terminate(child);
     }
@@ -190,5 +275,8 @@ export class LspClient {
     this.child = undefined;
   }
 
-  forceStop(): void { this.stopping = true; if (this.child) this.terminate(this.child); }
+  forceStop(): void {
+    this.stopping = true;
+    if (this.child) this.terminate(this.child);
+  }
 }

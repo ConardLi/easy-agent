@@ -9,11 +9,7 @@
 
 import type Anthropic from "@anthropic-ai/sdk";
 import type { MessageParam } from "@anthropic-ai/sdk/resources/messages.js";
-import {
-  getAnthropicClientForProfile,
-  DEFAULT_MODEL,
-  DEFAULT_MAX_TOKENS,
-} from "./client.js";
+import { getAnthropicClientForProfile, DEFAULT_MODEL, DEFAULT_MAX_TOKENS } from "./client.js";
 import { resolveProfile } from "./providers/profile.js";
 import { streamViaProvider, collectViaProvider } from "./providers/providerStream.js";
 import type {
@@ -38,18 +34,8 @@ import {
 import { writeStreamDebug } from "../../utils/streamDebug.js";
 import type { ApiToolParam } from "../../tools/Tool.js";
 import { normalizeToolReferencesForAPI } from "../../utils/toolSearch.js";
-import {
-  classifyAPIError,
-  getUserFacingErrorMessage,
-  toFriendlyError,
-} from "./errors.js";
-import {
-  callWithRetry,
-  decideRetry,
-  getMaxRetries,
-  sleep,
-  type QuerySource,
-} from "./withRetry.js";
+import { classifyAPIError, getUserFacingErrorMessage, toFriendlyError } from "./errors.js";
+import { callWithRetry, decideRetry, getMaxRetries, sleep, type QuerySource } from "./withRetry.js";
 import { applyAnthropicPromptCache, isPromptCachingDisabled } from "./promptCache.js";
 
 // ─── Request Parameters ────────────────────────────────────────────
@@ -130,9 +116,7 @@ export interface StreamResult {
  * it lets them propagate so the retry wrapper can decide whether to re-issue
  * the request. (The retry decision must live above a single attempt.)
  */
-async function* streamOnce(
-  params: StreamRequestParams,
-): AsyncGenerator<StreamEvent, StreamResult> {
+async function* streamOnce(params: StreamRequestParams): AsyncGenerator<StreamEvent, StreamResult> {
   // Resolve the model handle into a profile. Non-Anthropic protocols
   // (OpenAI Chat/Responses, Gemini) are translated at the edge via llm-bridge;
   // the Anthropic path below is unchanged except it sources its client/model
@@ -147,25 +131,17 @@ async function* streamOnce(
   const maxTokens = profile.maxTokens ?? params.maxTokens ?? DEFAULT_MAX_TOKENS;
 
   // ─── Thinking + interleaved beta + effort ─────────────────────────
-  const thinkingCfg: ThinkingConfig =
-    params.thinking ?? buildDefaultThinkingConfig();
+  const thinkingCfg: ThinkingConfig = params.thinking ?? buildDefaultThinkingConfig();
   const hasThinking =
-    thinkingCfg.type !== "disabled" &&
-    !process.env.CLAUDE_CODE_DISABLE_THINKING &&
-    modelSupportsThinking(model);
+    thinkingCfg.type !== "disabled" && !process.env.CLAUDE_CODE_DISABLE_THINKING && modelSupportsThinking(model);
 
   let thinkingParam: Record<string, unknown> | undefined;
   if (hasThinking) {
-    if (
-      !process.env.CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING &&
-      modelSupportsAdaptiveThinking(model)
-    ) {
+    if (!process.env.CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING && modelSupportsAdaptiveThinking(model)) {
       thinkingParam = { type: "adaptive" };
     } else {
       let budget =
-        thinkingCfg.type === "enabled" && thinkingCfg.budgetTokens
-          ? thinkingCfg.budgetTokens
-          : maxTokens - 1;
+        thinkingCfg.type === "enabled" && thinkingCfg.budgetTokens ? thinkingCfg.budgetTokens : maxTokens - 1;
       budget = Math.min(maxTokens - 1, budget);
       thinkingParam = { type: "enabled", budget_tokens: budget };
     }
@@ -201,7 +177,12 @@ async function* streamOnce(
     max_tokens: maxTokens,
     stream: true as const,
     ...(promptCaching
-      ? applyAnthropicPromptCache({ system: params.system, tools: params.tools, messages: normalizedMessages, markMessages: true })
+      ? applyAnthropicPromptCache({
+          system: params.system,
+          tools: params.tools,
+          messages: normalizedMessages,
+          markMessages: true,
+        })
       : {
           messages: normalizedMessages,
           ...(params.system && { system: params.system }),
@@ -212,7 +193,8 @@ async function* streamOnce(
   // Pass thinking / output_config as extra body entries to avoid strict-SDK
   // type conflicts (they are new beta params not yet in the SDK types in all
   // versions). The SDK forwards unknown top-level keys as-is.
-  const requestParams: Anthropic.MessageCreateParamsStreaming = baseParams as unknown as Anthropic.MessageCreateParamsStreaming;
+  const requestParams: Anthropic.MessageCreateParamsStreaming =
+    baseParams as unknown as Anthropic.MessageCreateParamsStreaming;
   const extraBody: Record<string, unknown> = {};
   if (thinkingParam) extraBody.thinking = thinkingParam;
   if (outputConfig) extraBody.output_config = outputConfig;
@@ -267,168 +249,166 @@ async function* streamOnce(
   });
 
   for await (const event of stream) {
-      writeStreamDebug("event", event);
-      switch (event.type) {
-        // ── Message lifecycle ──────────────────────────────
-        case "message_start": {
-          messageId = event.message.id;
-          // Capture initial usage (input token count + cache tokens)
-          if (event.message.usage) {
-            usage.input_tokens = event.message.usage.input_tokens;
-            usage.output_tokens = event.message.usage.output_tokens;
-            const u = event.message.usage as unknown as Record<string, unknown>;
-            if (typeof u.cache_creation_input_tokens === "number") {
-              usage.cache_creation_input_tokens = u.cache_creation_input_tokens;
-            }
-            if (typeof u.cache_read_input_tokens === "number") {
-              usage.cache_read_input_tokens = u.cache_read_input_tokens;
-            }
+    writeStreamDebug("event", event);
+    switch (event.type) {
+      // ── Message lifecycle ──────────────────────────────
+      case "message_start": {
+        messageId = event.message.id;
+        // Capture initial usage (input token count + cache tokens)
+        if (event.message.usage) {
+          usage.input_tokens = event.message.usage.input_tokens;
+          usage.output_tokens = event.message.usage.output_tokens;
+          const u = event.message.usage as unknown as Record<string, unknown>;
+          if (typeof u.cache_creation_input_tokens === "number") {
+            usage.cache_creation_input_tokens = u.cache_creation_input_tokens;
           }
-          yield { type: "message_start", messageId };
-          break;
-        }
-
-        case "message_delta": {
-          // Final usage update + stop reason
-          if (event.usage) {
-            usage.output_tokens = event.usage.output_tokens;
-            // Some providers (e.g. MiniMax) report input_tokens in message_delta
-            // rather than message_start — pick it up as a fallback.
-            const du = event.usage as unknown as Record<string, unknown>;
-            if (typeof du.input_tokens === "number" && du.input_tokens > 0) {
-              usage.input_tokens = du.input_tokens;
-            }
-            if (typeof du.cache_creation_input_tokens === "number") {
-              usage.cache_creation_input_tokens = du.cache_creation_input_tokens;
-            }
-            if (typeof du.cache_read_input_tokens === "number") {
-              usage.cache_read_input_tokens = du.cache_read_input_tokens;
-            }
+          if (typeof u.cache_read_input_tokens === "number") {
+            usage.cache_read_input_tokens = u.cache_read_input_tokens;
           }
-          stopReason = event.delta.stop_reason ?? "";
-          break;
         }
-
-        case "message_stop": {
-          // Stream complete — yield the final done event
-          yield { type: "message_done", stopReason, usage };
-          break;
-        }
-
-        // ── Content block lifecycle ────────────────────────
-        case "content_block_start": {
-          const index = event.index;
-
-          if (event.content_block.type === "text") {
-            contentBlocks[index] = {
-              type: "text",
-              text: "",
-            };
-          } else if (event.content_block.type === "thinking") {
-            // Preserve thinking blocks so we can echo them (with their
-            // signature) back to the model on the next turn. Some providers
-            // (e.g. MiniMax) and Anthropic's extended-thinking mode will
-            // behave erratically — duplicating tool calls or emitting empty
-            // inputs — if the prior turn's thinking is missing from history.
-            const tb = event.content_block as { thinking?: string };
-            contentBlocks[index] = {
-              type: "thinking",
-              thinking: tb.thinking ?? "",
-            };
-            yield { type: "thinking_start" };
-          } else if ((event.content_block.type as string) === "redacted_thinking") {
-            const rtb = event.content_block as { data?: string };
-            const rtBlock: RedactedThinkingBlock = {
-              type: "redacted_thinking",
-              data: rtb.data ?? "",
-            };
-            contentBlocks[index] = rtBlock;
-            yield { type: "redacted_thinking", data: rtBlock.data };
-          } else if (event.content_block.type === "tool_use") {
-            const block = event.content_block;
-            // Some providers pre-populate the full input object on start
-            // instead of streaming it via input_json_delta. Preserve whatever
-            // is already there so we don't overwrite a valid non-empty input
-            // with `{}` at content_block_stop.
-            const seedInput =
-              block.input && typeof block.input === "object"
-                ? (block.input as Record<string, unknown>)
-                : {};
-            contentBlocks[index] = {
-              type: "tool_use",
-              id: block.id,
-              name: block.name,
-              input: seedInput,
-            };
-            toolInputJsonByIndex.set(index, "");
-            yield { type: "tool_use_start", id: block.id, name: block.name };
-          }
-          break;
-        }
-
-        case "content_block_delta": {
-          const delta = event.delta;
-          const index = event.index;
-
-          if (delta.type === "text_delta") {
-            // Accumulate text
-            const block = contentBlocks[index] as TextBlock;
-            block.text += delta.text;
-            yield { type: "text", text: delta.text };
-          } else if ((delta as { type: string }).type === "thinking_delta") {
-            const block = contentBlocks[index] as ThinkingBlock | undefined;
-            if (block && block.type === "thinking") {
-              const chunk = (delta as unknown as { thinking: string }).thinking ?? "";
-              block.thinking += chunk;
-              yield { type: "thinking_delta", thinking: chunk };
-            }
-          } else if ((delta as { type: string }).type === "signature_delta") {
-            const block = contentBlocks[index] as ThinkingBlock | undefined;
-            if (block && block.type === "thinking") {
-              const sig = (delta as unknown as { signature: string }).signature ?? "";
-              block.signature = (block.signature ?? "") + sig;
-            }
-          } else if (delta.type === "input_json_delta") {
-            // Accumulate tool input JSON **per block index** — blocks may
-            // overlap on some providers, so we must never share one buffer.
-            const prev = toolInputJsonByIndex.get(index) ?? "";
-            toolInputJsonByIndex.set(index, prev + delta.partial_json);
-            const idBlock = contentBlocks[index];
-            if (idBlock && idBlock.type === "tool_use") {
-              yield {
-                   type: "tool_use_input",
-                id: (idBlock as ToolUseBlock).id,
-                partial_json: delta.partial_json,
-              };
-            }
-          }
-          break;
-        }
-
-        case "content_block_stop": {
-          const index = event.index;
-          const block = contentBlocks[index];
-          const accumulated = toolInputJsonByIndex.get(index);
-          if (block && block.type === "tool_use" && accumulated) {
-            try {
-              block.input = JSON.parse(accumulated);
-            } catch {
-              // Keep the raw string so callers can surface it for debugging
-              // rather than silently pretending the call had no input.
-              block.input = { _raw: accumulated };
-            }
-          }
-          if (block && block.type === "thinking") {
-            yield {
-              type: "thinking_done",
-              thinking: (block as ThinkingBlock).thinking,
-              signature: (block as ThinkingBlock).signature,
-            };
-          }
-          toolInputJsonByIndex.delete(index);
-          break;
-        }
+        yield { type: "message_start", messageId };
+        break;
       }
+
+      case "message_delta": {
+        // Final usage update + stop reason
+        if (event.usage) {
+          usage.output_tokens = event.usage.output_tokens;
+          // Some providers (e.g. MiniMax) report input_tokens in message_delta
+          // rather than message_start — pick it up as a fallback.
+          const du = event.usage as unknown as Record<string, unknown>;
+          if (typeof du.input_tokens === "number" && du.input_tokens > 0) {
+            usage.input_tokens = du.input_tokens;
+          }
+          if (typeof du.cache_creation_input_tokens === "number") {
+            usage.cache_creation_input_tokens = du.cache_creation_input_tokens;
+          }
+          if (typeof du.cache_read_input_tokens === "number") {
+            usage.cache_read_input_tokens = du.cache_read_input_tokens;
+          }
+        }
+        stopReason = event.delta.stop_reason ?? "";
+        break;
+      }
+
+      case "message_stop": {
+        // Stream complete — yield the final done event
+        yield { type: "message_done", stopReason, usage };
+        break;
+      }
+
+      // ── Content block lifecycle ────────────────────────
+      case "content_block_start": {
+        const index = event.index;
+
+        if (event.content_block.type === "text") {
+          contentBlocks[index] = {
+            type: "text",
+            text: "",
+          };
+        } else if (event.content_block.type === "thinking") {
+          // Preserve thinking blocks so we can echo them (with their
+          // signature) back to the model on the next turn. Some providers
+          // (e.g. MiniMax) and Anthropic's extended-thinking mode will
+          // behave erratically — duplicating tool calls or emitting empty
+          // inputs — if the prior turn's thinking is missing from history.
+          const tb = event.content_block as { thinking?: string };
+          contentBlocks[index] = {
+            type: "thinking",
+            thinking: tb.thinking ?? "",
+          };
+          yield { type: "thinking_start" };
+        } else if ((event.content_block.type as string) === "redacted_thinking") {
+          const rtb = event.content_block as { data?: string };
+          const rtBlock: RedactedThinkingBlock = {
+            type: "redacted_thinking",
+            data: rtb.data ?? "",
+          };
+          contentBlocks[index] = rtBlock;
+          yield { type: "redacted_thinking", data: rtBlock.data };
+        } else if (event.content_block.type === "tool_use") {
+          const block = event.content_block;
+          // Some providers pre-populate the full input object on start
+          // instead of streaming it via input_json_delta. Preserve whatever
+          // is already there so we don't overwrite a valid non-empty input
+          // with `{}` at content_block_stop.
+          const seedInput =
+            block.input && typeof block.input === "object" ? (block.input as Record<string, unknown>) : {};
+          contentBlocks[index] = {
+            type: "tool_use",
+            id: block.id,
+            name: block.name,
+            input: seedInput,
+          };
+          toolInputJsonByIndex.set(index, "");
+          yield { type: "tool_use_start", id: block.id, name: block.name };
+        }
+        break;
+      }
+
+      case "content_block_delta": {
+        const delta = event.delta;
+        const index = event.index;
+
+        if (delta.type === "text_delta") {
+          // Accumulate text
+          const block = contentBlocks[index] as TextBlock;
+          block.text += delta.text;
+          yield { type: "text", text: delta.text };
+        } else if ((delta as { type: string }).type === "thinking_delta") {
+          const block = contentBlocks[index] as ThinkingBlock | undefined;
+          if (block && block.type === "thinking") {
+            const chunk = (delta as unknown as { thinking: string }).thinking ?? "";
+            block.thinking += chunk;
+            yield { type: "thinking_delta", thinking: chunk };
+          }
+        } else if ((delta as { type: string }).type === "signature_delta") {
+          const block = contentBlocks[index] as ThinkingBlock | undefined;
+          if (block && block.type === "thinking") {
+            const sig = (delta as unknown as { signature: string }).signature ?? "";
+            block.signature = (block.signature ?? "") + sig;
+          }
+        } else if (delta.type === "input_json_delta") {
+          // Accumulate tool input JSON **per block index** — blocks may
+          // overlap on some providers, so we must never share one buffer.
+          const prev = toolInputJsonByIndex.get(index) ?? "";
+          toolInputJsonByIndex.set(index, prev + delta.partial_json);
+          const idBlock = contentBlocks[index];
+          if (idBlock && idBlock.type === "tool_use") {
+            yield {
+              type: "tool_use_input",
+              id: (idBlock as ToolUseBlock).id,
+              partial_json: delta.partial_json,
+            };
+          }
+        }
+        break;
+      }
+
+      case "content_block_stop": {
+        const index = event.index;
+        const block = contentBlocks[index];
+        const accumulated = toolInputJsonByIndex.get(index);
+        if (block && block.type === "tool_use" && accumulated) {
+          try {
+            block.input = JSON.parse(accumulated);
+          } catch {
+            // Keep the raw string so callers can surface it for debugging
+            // rather than silently pretending the call had no input.
+            block.input = { _raw: accumulated };
+          }
+        }
+        if (block && block.type === "thinking") {
+          yield {
+            type: "thinking_done",
+            thinking: (block as ThinkingBlock).thinking,
+            signature: (block as ThinkingBlock).signature,
+          };
+        }
+        toolInputJsonByIndex.delete(index);
+        break;
+      }
+    }
   }
 
   writeStreamDebug("assembled", {
@@ -480,9 +460,7 @@ async function* streamOnce(
  * `error` event carrying a friendly, category-tagged message (matching the
  * pre-Stage-27 contract: the caller sees one `error` event and stops).
  */
-export async function* streamMessage(
-  params: StreamRequestParams,
-): AsyncGenerator<StreamEvent, StreamResult> {
+export async function* streamMessage(params: StreamRequestParams): AsyncGenerator<StreamEvent, StreamResult> {
   const maxRetries = getMaxRetries();
   const model = params.model ?? DEFAULT_MODEL;
   let attempt = 0;
@@ -500,11 +478,7 @@ export async function* streamMessage(
         if (done) {
           return value;
         }
-        if (
-          value.type === "text" ||
-          value.type === "tool_use_start" ||
-          value.type === "tool_use_input"
-        ) {
+        if (value.type === "text" || value.type === "tool_use_start" || value.type === "tool_use_input") {
           hasYieldedContent = true;
         }
         yield value;
@@ -604,28 +578,33 @@ export async function createMessage(
   // thinking blocks that would otherwise 400 a thinking-disabled request.
   // Single-shot callers default to tool search off. Explicitly enabled
   // callers get the same reference normalization as the streaming path.
-  const bgMessages = normalizeToolReferencesForAPI(
-    normalizeMessagesForAPI(params.messages, model, false),
-    {
-      toolSearchEnabled: params.toolSearchEnabled === true,
-      availableToolNames: new Set((params.tools ?? []).map((t) => t.name)),
-    },
-  );
+  const bgMessages = normalizeToolReferencesForAPI(normalizeMessagesForAPI(params.messages, model, false), {
+    toolSearchEnabled: params.toolSearchEnabled === true,
+    availableToolNames: new Set((params.tools ?? []).map((t) => t.name)),
+  });
   const cachePrefix = params.cacheStablePrefix === true && !isPromptCachingDisabled();
   const response = await callWithRetry(
     () =>
-      client.messages.create({
-        model,
-        max_tokens: maxTokens,
-        ...(cachePrefix
-          ? applyAnthropicPromptCache({ system: params.system, tools: params.tools, messages: bgMessages, markMessages: false })
-          : {
-              messages: bgMessages,
-              ...(params.system && { system: params.system }),
-              ...(params.tools && params.tools.length > 0 && { tools: params.tools }),
-            }),
-        ...(params.toolChoice && { tool_choice: params.toolChoice }),
-      }, params.betaHeaders?.length ? { headers: { "anthropic-beta": params.betaHeaders.join(",") } } : undefined),
+      client.messages.create(
+        {
+          model,
+          max_tokens: maxTokens,
+          ...(cachePrefix
+            ? applyAnthropicPromptCache({
+                system: params.system,
+                tools: params.tools,
+                messages: bgMessages,
+                markMessages: false,
+              })
+            : {
+                messages: bgMessages,
+                ...(params.system && { system: params.system }),
+                ...(params.tools && params.tools.length > 0 && { tools: params.tools }),
+              }),
+          ...(params.toolChoice && { tool_choice: params.toolChoice }),
+        },
+        params.betaHeaders?.length ? { headers: { "anthropic-beta": params.betaHeaders.join(",") } } : undefined,
+      ),
     {
       querySource: params.querySource ?? "background",
       onRetry: ({ attempt, delayMs, category }) =>
@@ -691,8 +670,7 @@ function isThinkingOnlyContent(content: unknown): boolean {
     (b: unknown) =>
       typeof b === "object" &&
       b !== null &&
-      ((b as { type?: string }).type === "thinking" ||
-        (b as { type?: string }).type === "redacted_thinking"),
+      ((b as { type?: string }).type === "thinking" || (b as { type?: string }).type === "redacted_thinking"),
   );
 }
 
@@ -724,10 +702,7 @@ export function normalizeMessagesForAPI(
 
   // Detect an endpoint switch: signatures from the previous endpoint are
   // invalid on the new one, so strip them this request.
-  const endpointChanged =
-    endpointKey !== undefined &&
-    lastEndpointKey !== undefined &&
-    endpointKey !== lastEndpointKey;
+  const endpointChanged = endpointKey !== undefined && lastEndpointKey !== undefined && endpointKey !== lastEndpointKey;
   if (endpointKey !== undefined) {
     lastEndpointKey = endpointKey;
   }
@@ -749,19 +724,14 @@ export function normalizeMessagesForAPI(
     let trimIndex = content.length - 1;
     while (
       trimIndex >= 0 &&
-      (content[trimIndex]?.type === "thinking" ||
-        content[trimIndex]?.type === "redacted_thinking")
+      (content[trimIndex]?.type === "thinking" || content[trimIndex]?.type === "redacted_thinking")
     ) {
       trimIndex--;
     }
     if (trimIndex < content.length - 1) {
-      const trimmed = trimIndex >= 0
-        ? content.slice(0, trimIndex + 1)
-        : [{ type: "text", text: "[No message content]" }];
-      normalized = [
-        ...normalized.slice(0, -1),
-        { ...last, content: trimmed as unknown as MessageParam["content"] },
-      ];
+      const trimmed =
+        trimIndex >= 0 ? content.slice(0, trimIndex + 1) : [{ type: "text", text: "[No message content]" }];
+      normalized = [...normalized.slice(0, -1), { ...last, content: trimmed as unknown as MessageParam["content"] }];
     }
   }
 

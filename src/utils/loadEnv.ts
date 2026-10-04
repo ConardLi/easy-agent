@@ -51,10 +51,7 @@ async function hasDotenv(cwd: string): Promise<boolean> {
   }
 }
 
-function increment(
-  counts: Partial<Record<EnvironmentConfigSource, number>>,
-  source: EnvironmentConfigSource,
-): void {
+function increment(counts: Partial<Record<EnvironmentConfigSource, number>>, source: EnvironmentConfigSource): void {
   counts[source] = (counts[source] ?? 0) + 1;
 }
 
@@ -72,11 +69,7 @@ export async function loadEnv(
     protectedCredentialOverrides: {},
   };
 
-  const apply = (
-    source: EnvironmentConfigSource,
-    values: Record<string, string>,
-    projectScoped: boolean,
-  ): void => {
+  const apply = (source: EnvironmentConfigSource, values: Record<string, string>, projectScoped: boolean): void => {
     for (const [key, value] of Object.entries(values)) {
       if (projectScoped && !projectTrusted) {
         increment(report.ignoredBySource, source);

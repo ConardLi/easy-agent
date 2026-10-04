@@ -16,7 +16,6 @@ export interface MemoryDocument extends MemoryEntry {
   relativePath: string;
 }
 
-
 export interface MemoryHeader extends MemoryEntry {
   frontmatter: MemoryFrontmatter;
   relativePath: string;
@@ -29,11 +28,13 @@ export interface ProjectPathInfo {
 }
 
 function sanitizeSlug(input: string): string {
-  return input
-    .toLowerCase()
-    .replace(/[^a-z0-9._-]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 80) || "project";
+  return (
+    input
+      .toLowerCase()
+      .replace(/[^a-z0-9._-]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 80) || "project"
+  );
 }
 
 function normalizeLine(value: string): string {
@@ -133,9 +134,10 @@ function truncateEntrypoint(raw: string): { content: string; warning?: string } 
     byteTruncated = true;
   }
 
-  const warning = lineTruncated || byteTruncated
-    ? `> WARNING: MEMORY.md was truncated${lineTruncated ? " by line limit" : ""}${lineTruncated && byteTruncated ? " and" : ""}${byteTruncated ? " by byte limit" : ""}.`
-    : undefined;
+  const warning =
+    lineTruncated || byteTruncated
+      ? `> WARNING: MEMORY.md was truncated${lineTruncated ? " by line limit" : ""}${lineTruncated && byteTruncated ? " and" : ""}${byteTruncated ? " by byte limit" : ""}.`
+      : undefined;
 
   return { content: content.trim(), ...(warning ? { warning } : {}) };
 }
@@ -211,7 +213,10 @@ export function formatMemoryManifest(headers: readonly MemoryHeader[]): string {
     .join("\n");
 }
 
-export async function loadMemoryDocumentBodies(cwd: string, relativePaths: readonly string[]): Promise<MemoryDocument[]> {
+export async function loadMemoryDocumentBodies(
+  cwd: string,
+  relativePaths: readonly string[],
+): Promise<MemoryDocument[]> {
   const memoryDir = await ensureMemoryDirExists(cwd);
   const uniquePaths = [...new Set(relativePaths)];
   const docs = await Promise.all(
@@ -237,7 +242,10 @@ export async function loadMemoryDocumentBodies(cwd: string, relativePaths: reado
 
 export async function listMemoryFiles(cwd: string): Promise<MemoryDocument[]> {
   const headers = await loadMemoryHeaders(cwd);
-  return loadMemoryDocumentBodies(cwd, headers.map((header) => header.relativePath));
+  return loadMemoryDocumentBodies(
+    cwd,
+    headers.map((header) => header.relativePath),
+  );
 }
 
 function slugifyMemoryFileName(name: string): string {
@@ -299,19 +307,24 @@ export async function writeProjectMemory(input: {
 
   await writePrivateFile(filePath, body);
   const docs = await listMemoryFiles(input.cwd);
-  await rewriteEntrypoint(memoryDir, docs.map((doc) => ({
-    fileName: doc.fileName,
-    filePath: doc.filePath,
-    title: doc.frontmatter.name,
-    hook: doc.frontmatter.description,
-  })));
+  await rewriteEntrypoint(
+    memoryDir,
+    docs.map((doc) => ({
+      fileName: doc.fileName,
+      filePath: doc.filePath,
+      title: doc.frontmatter.name,
+      hook: doc.frontmatter.description,
+    })),
+  );
 
   return { filePath, fileName, updatedExisting: Boolean(existingFileName) };
 }
 
 export function shouldIgnoreMemory(query: string): boolean {
   const normalized = query.toLowerCase();
-  return ["ignore memory", "don't use memory", "do not use memory", "忽略记忆", "不要用记忆", "别用记忆"].some((term) => normalized.includes(term));
+  return ["ignore memory", "don't use memory", "do not use memory", "忽略记忆", "不要用记忆", "别用记忆"].some((term) =>
+    normalized.includes(term),
+  );
 }
 
 export function buildMemoryPromptInstructions(): string[] {

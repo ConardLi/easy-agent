@@ -20,7 +20,7 @@ async function main() {
 
   // 1. Registry
   const tools = getAllTools();
-  console.log(`✓ getAllTools() returned ${tools.length} tool(s): [${tools.map(t => t.name).join(", ")}]`);
+  console.log(`✓ getAllTools() returned ${tools.length} tool(s): [${tools.map((t) => t.name).join(", ")}]`);
 
   const readTool = findToolByName("Read");
   if (!readTool) {

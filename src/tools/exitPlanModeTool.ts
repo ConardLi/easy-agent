@@ -70,7 +70,10 @@ export const exitPlanModeTool: Tool = {
   async call(input: Record<string, unknown>, context: ToolContext): Promise<ToolResult> {
     const currentMode = context.getPermissionMode?.();
     if (currentMode !== "plan") {
-      return { content: "Not currently in plan mode. ExitPlanMode can only be called while in plan mode.", isError: true };
+      return {
+        content: "Not currently in plan mode. ExitPlanMode can only be called while in plan mode.",
+        isError: true,
+      };
     }
 
     const planPath = getPlanFilePath();
@@ -107,9 +110,7 @@ export const exitPlanModeTool: Tool = {
     ];
 
     if (planContent) {
-      const header = planWasEdited
-        ? "## Approved Plan (edited by user)"
-        : "## Approved Plan";
+      const header = planWasEdited ? "## Approved Plan (edited by user)" : "## Approved Plan";
       lines.push(header, "", planContent);
     } else {
       lines.push("(No plan content found on disk)");

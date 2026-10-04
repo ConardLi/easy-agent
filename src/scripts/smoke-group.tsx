@@ -1,4 +1,3 @@
-
 import { PassThrough } from "node:stream";
 import { Box, render } from "ink";
 import chalk from "chalk";
@@ -56,7 +55,7 @@ const messages: MessageParam[] = [
     content: [
       { type: "text", text: "Now let me run the action commands." },
       toolUse("a1", "Bash", { command: "npm run build" }),
-      toolUse("a4", "Bash", { command: "grep -rn \"foo\" src" }),
+      toolUse("a4", "Bash", { command: 'grep -rn "foo" src' }),
       toolUse("a2", "Bash", { command: "vitest run" }),
       toolUse("a5", "Bash", { command: "ls -la" }),
       toolUse("a3", "Bash", { command: "git status" }),

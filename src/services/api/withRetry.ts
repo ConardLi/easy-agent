@@ -17,12 +17,7 @@
  * immediately, so we don't amplify load 3-10× through the gateway.
  */
 
-import {
-  classifyAPIError,
-  getRetryAfterMs,
-  is529Error,
-  isRetryableError,
-} from "./errors.js";
+import { classifyAPIError, getRetryAfterMs, is529Error, isRetryableError } from "./errors.js";
 
 /**
  * Where a query originated. Two buckets are all the 529 retry policy needs:
@@ -41,8 +36,7 @@ export const MAX_529_RETRIES = 3;
  * honored too for parity with source.
  */
 export function getMaxRetries(): number {
-  const raw =
-    process.env.EASY_AGENT_MAX_RETRIES ?? process.env.CLAUDE_CODE_MAX_RETRIES;
+  const raw = process.env.EASY_AGENT_MAX_RETRIES ?? process.env.CLAUDE_CODE_MAX_RETRIES;
   if (raw) {
     const parsed = parseInt(raw, 10);
     if (Number.isFinite(parsed) && parsed >= 0) return parsed;
@@ -60,11 +54,7 @@ export function getMaxRetries(): number {
  * thundering-herd: without it, every throttled client retries in lockstep and
  * re-stampedes the server at exactly the same instants.
  */
-export function getRetryDelay(
-  attempt: number,
-  retryAfterMs?: number | null,
-  maxDelayMs = MAX_DELAY_MS,
-): number {
+export function getRetryDelay(attempt: number, retryAfterMs?: number | null, maxDelayMs = MAX_DELAY_MS): number {
   if (retryAfterMs !== null && retryAfterMs !== undefined && retryAfterMs > 0) {
     return retryAfterMs;
   }
@@ -112,9 +102,7 @@ export function decideRetry(
     return { retry: false, delayMs: 0, consecutive529: consecutive529Prev };
   }
 
-  const consecutive529 = is529Error(error)
-    ? consecutive529Prev + 1
-    : consecutive529Prev;
+  const consecutive529 = is529Error(error) ? consecutive529Prev + 1 : consecutive529Prev;
 
   // Even foreground gives up on a sustained 529 storm.
   if (is529Error(error) && consecutive529 >= MAX_529_RETRIES) {
@@ -166,11 +154,7 @@ export async function callWithRetry<T>(
     maxRetries?: number;
     querySource?: QuerySource;
     signal?: AbortSignal;
-    onRetry?: (info: {
-      attempt: number;
-      delayMs: number;
-      category: string;
-    }) => void;
+    onRetry?: (info: { attempt: number; delayMs: number; category: string }) => void;
   } = {},
 ): Promise<T> {
   const maxRetries = options.maxRetries ?? getMaxRetries();

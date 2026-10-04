@@ -1,12 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { formatCapturedOutput, runControlledProcess } from "../utils/controlledProcess.js";
-import type {
-  HookCommand,
-  HookEvent,
-  HookInput,
-  HookJSONOutput,
-  HookResult,
-} from "./types.js";
+import type { HookCommand, HookEvent, HookInput, HookJSONOutput, HookResult } from "./types.js";
 
 const DEFAULT_TIMEOUT_SEC = 60;
 const MAX_HOOK_OUTPUT_BYTES = 64 * 1024;
@@ -107,11 +101,7 @@ function tryParseJsonOutput(stdout: string): HookJSONOutput | undefined {
 }
 
 /** Decode a JSON hook response into the runtime decision fields. */
-function decodeJsonOutput(
-  json: HookJSONOutput,
-  hookEvent: HookEvent,
-  commandLabel: string,
-): Partial<HookResult> {
+function decodeJsonOutput(json: HookJSONOutput, hookEvent: HookEvent, commandLabel: string): Partial<HookResult> {
   const out: Partial<HookResult> = {};
 
   // ─── Continue / stop the loop ─────────────────────────────────────
@@ -125,8 +115,7 @@ function decodeJsonOutput(
     out.permissionBehavior = "allow";
   } else if (json.decision === "block") {
     out.permissionBehavior = "deny";
-    out.blockingError =
-      json.reason || `Blocked by ${hookEvent} hook (${commandLabel})`;
+    out.blockingError = json.reason || `Blocked by ${hookEvent} hook (${commandLabel})`;
   }
 
   if (json.systemMessage) out.systemMessage = json.systemMessage;
@@ -134,10 +123,7 @@ function decodeJsonOutput(
   // ─── hookSpecificOutput overrides (most specific, runs last) ─────
   const spec = json.hookSpecificOutput;
   if (spec) {
-    if (
-      spec.hookEventName &&
-      spec.hookEventName !== hookEvent
-    ) {
+    if (spec.hookEventName && spec.hookEventName !== hookEvent) {
       // Keep processing the response to preserve its decision fields.
     }
 
@@ -152,9 +138,7 @@ function decodeJsonOutput(
         case "deny":
           out.permissionBehavior = "deny";
           out.blockingError =
-            spec.permissionDecisionReason ||
-            json.reason ||
-            `Blocked by PreToolUse hook (${commandLabel})`;
+            spec.permissionDecisionReason || json.reason || `Blocked by PreToolUse hook (${commandLabel})`;
           break;
       }
       if (spec.permissionDecisionReason) {
@@ -167,11 +151,7 @@ function decodeJsonOutput(
     }
   }
 
-  if (
-    out.permissionBehavior !== undefined &&
-    out.permissionDecisionReason === undefined &&
-    json.reason
-  ) {
+  if (out.permissionBehavior !== undefined && out.permissionDecisionReason === undefined && json.reason) {
     out.permissionDecisionReason = json.reason;
   }
 
@@ -220,9 +200,7 @@ export async function executeHookCommand(params: {
       durationMs: run.durationMs,
       outcome: "non_blocking_error",
       stdout: run.stdout,
-      stderr:
-        run.stderr ||
-        `Hook timed out after ${hook.timeout ?? DEFAULT_TIMEOUT_SEC}s`,
+      stderr: run.stderr || `Hook timed out after ${hook.timeout ?? DEFAULT_TIMEOUT_SEC}s`,
       exitCode: run.exitCode,
     };
   }
@@ -248,8 +226,7 @@ export async function executeHookCommand(params: {
     const decoded = decodeJsonOutput(json, hookEvent, commandLabel);
     // Exit code 2 takes precedence over a JSON approval.
     if (run.exitCode === 2 && !decoded.blockingError) {
-      decoded.blockingError =
-        run.stderr.trim() || `Hook returned exit code 2 (${commandLabel})`;
+      decoded.blockingError = run.stderr.trim() || `Hook returned exit code 2 (${commandLabel})`;
       decoded.permissionBehavior ??= "deny";
     }
     const outcome: HookResult["outcome"] = decoded.blockingError
@@ -274,10 +251,7 @@ export async function executeHookCommand(params: {
     // Successful plain text from these events becomes model context.
     const stdoutTrimmed = run.stdout.trim();
     const additionalContext =
-      stdoutTrimmed &&
-      (hookEvent === "UserPromptSubmit" ||
-        hookEvent === "SessionStart" ||
-        hookEvent === "PostToolUse")
+      stdoutTrimmed && (hookEvent === "UserPromptSubmit" || hookEvent === "SessionStart" || hookEvent === "PostToolUse")
         ? stdoutTrimmed
         : undefined;
     return {
@@ -303,8 +277,7 @@ export async function executeHookCommand(params: {
       stderr: run.stderr,
       exitCode: run.exitCode,
       permissionBehavior: "deny",
-      blockingError:
-        run.stderr.trim() || `Hook returned exit code 2 (${commandLabel})`,
+      blockingError: run.stderr.trim() || `Hook returned exit code 2 (${commandLabel})`,
     };
   }
 

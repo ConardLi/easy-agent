@@ -1,6 +1,4 @@
-import {
-  ResultSchema,
-} from "@modelcontextprotocol/sdk/types.js";
+import { ResultSchema } from "@modelcontextprotocol/sdk/types.js";
 import type { Tool, ToolContext, ToolResult } from "./Tool.js";
 import { getMcpRegistry } from "../services/mcp/registry.js";
 import type { ConnectedMcpServer } from "../types/mcp.js";
@@ -42,11 +40,12 @@ export const readMcpResourceTool: Tool = {
 
     const server = findConnected(input.server);
     if (!server) {
-      const available = getMcpRegistry()
-        .map((e) => e.connection)
-        .filter((c) => c.type === "connected")
-        .map((c) => c.name)
-        .join(", ") || "(none)";
+      const available =
+        getMcpRegistry()
+          .map((e) => e.connection)
+          .filter((c) => c.type === "connected")
+          .map((c) => c.name)
+          .join(", ") || "(none)";
       return {
         content: `Error: MCP server "${input.server}" not connected. Available: ${available}`,
         isError: true,
@@ -58,10 +57,14 @@ export const readMcpResourceTool: Tool = {
 
     let result: Record<string, unknown>;
     try {
-      result = await withMcpReadRecovery(server, async (current) => (await current.client.request(
-        { method: "resources/read", params: { uri: input.uri } },
-        ResultSchema,
-      )) as Record<string, unknown>);
+      result = await withMcpReadRecovery(
+        server,
+        async (current) =>
+          (await current.client.request(
+            { method: "resources/read", params: { uri: input.uri } },
+            ResultSchema,
+          )) as Record<string, unknown>,
+      );
     } catch (error) {
       return {
         content: `Error reading resource "${input.uri}" from "${input.server}": ${
@@ -74,7 +77,10 @@ export const readMcpResourceTool: Tool = {
     try {
       return await adaptMcpResourceResult(result);
     } catch (error) {
-      return { content: `Error processing resource "${input.uri}": ${error instanceof Error ? error.message : String(error)}`, isError: true };
+      return {
+        content: `Error processing resource "${input.uri}": ${error instanceof Error ? error.message : String(error)}`,
+        isError: true,
+      };
     }
   },
   isReadOnly(): boolean {

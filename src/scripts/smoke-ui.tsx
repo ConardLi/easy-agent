@@ -39,8 +39,8 @@ const messages: MessageParam[] = [
         name: "Edit",
         input: {
           file_path: "src/ui/theme.ts",
-          old_string: "  brand: \"#D77757\",\n  brandLight: \"#F59575\",\n  assistant: \"#D77757\",",
-          new_string: "  brand: \"#E07A5F\",\n  brandLight: \"#F2A07B\",\n  assistant: \"#E07A5F\",",
+          old_string: '  brand: "#D77757",\n  brandLight: "#F59575",\n  assistant: "#D77757",',
+          new_string: '  brand: "#E07A5F",\n  brandLight: "#F2A07B",\n  assistant: "#E07A5F",',
         },
       },
       {
@@ -59,7 +59,10 @@ const messages: MessageParam[] = [
         type: "tool_use",
         id: "t4",
         name: "Write",
-        input: { file_path: "src/ui/newFile.ts", content: "export const x = 1;\nexport const y = 2;\nexport const z = 3;" },
+        input: {
+          file_path: "src/ui/newFile.ts",
+          content: "export const x = 1;\nexport const y = 2;\nexport const z = 3;",
+        },
       },
       {
         type: "tool_use",
@@ -73,10 +76,23 @@ const messages: MessageParam[] = [
     role: "user",
     content: [
       { type: "tool_result", tool_use_id: "t1", content: "Updated file: /abs/src/ui/theme.ts\nPreview: ..." },
-      { type: "tool_result", tool_use_id: "t2", content: "src/ui/theme.ts (42 lines)\n  1\texport const theme = {\n  2\t  brand: \"#D77757\"," },
-      { type: "tool_result", tool_use_id: "t3", content: "src/ui/theme.ts:3:  brandLight: \"#F59575\",\nsrc/ui/WelcomeBanner.tsx:26:  brandLight" },
+      {
+        type: "tool_result",
+        tool_use_id: "t2",
+        content: 'src/ui/theme.ts (42 lines)\n  1\texport const theme = {\n  2\t  brand: "#D77757",',
+      },
+      {
+        type: "tool_result",
+        tool_use_id: "t3",
+        content: 'src/ui/theme.ts:3:  brandLight: "#F59575",\nsrc/ui/WelcomeBanner.tsx:26:  brandLight',
+      },
       { type: "tool_result", tool_use_id: "t4", content: "Created file: /abs/src/ui/newFile.ts (52 chars)" },
-      { type: "tool_result", tool_use_id: "t5", content: "Command: npm run build && ls dist\nRead-only: false\nSandbox: disabled\nExit code: 0\n\nSTDOUT:\n> easy-agent@0.1.0 build\n> tsc\n\nentrypoint\ncore\ntools\nui" },
+      {
+        type: "tool_result",
+        tool_use_id: "t5",
+        content:
+          "Command: npm run build && ls dist\nRead-only: false\nSandbox: disabled\nExit code: 0\n\nSTDOUT:\n> easy-agent@0.1.0 build\n> tsc\n\nentrypoint\ncore\ntools\nui",
+      },
     ] as unknown as MessageParam["content"],
   },
 ];

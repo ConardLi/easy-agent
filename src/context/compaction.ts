@@ -107,9 +107,7 @@ function collectToolResultIdsFromMessage(message: MessageParam): string[] {
 
 function microCompactToolResultContent(content: unknown): string | null {
   if (Array.isArray(content)) {
-    const hasOnlyBinary = content.every(
-      (b: any) => b.type === "image" || b.type === "document",
-    );
+    const hasOnlyBinary = content.every((b: any) => b.type === "image" || b.type === "document");
     if (hasOnlyBinary) return "[image]";
   }
   return null;
@@ -159,7 +157,10 @@ function microCompactMessage(message: MessageParam): { message: MessageParam; co
   };
 }
 
-export function microCompactMessages(messages: MessageParam[]): { messages: MessageParam[]; compactedToolIds: string[] } {
+export function microCompactMessages(messages: MessageParam[]): {
+  messages: MessageParam[];
+  compactedToolIds: string[];
+} {
   if (messages.length < MICROCOMPACT_MIN_MESSAGES) {
     return { messages, compactedToolIds: [] };
   }
@@ -188,14 +189,16 @@ function makeCompactBoundary(metadata: CompactBoundaryMetadata): CompactBoundary
       metadata.reason ? `reason=${metadata.reason}` : "",
       metadata.compactedToolIds?.length ? `compacted_tool_ids=${metadata.compactedToolIds.join(",")}` : "",
       metadata.discoveredTools?.length ? `${COMPACT_DISCOVERED_TOOLS_KEY}=${metadata.discoveredTools.join(",")}` : "",
-    ].filter(Boolean).join(" "),
+    ]
+      .filter(Boolean)
+      .join(" "),
   };
 }
 
 export function getMessagesAfterCompactBoundary(messages: MessageParam[]): MessageParam[] {
-  const boundaryIndex = [...messages].reverse().findIndex((message) =>
-    typeof message.content === "string" && message.content.startsWith("[CompactBoundary]"),
-  );
+  const boundaryIndex = [...messages]
+    .reverse()
+    .findIndex((message) => typeof message.content === "string" && message.content.startsWith("[CompactBoundary]"));
 
   if (boundaryIndex === -1) return messages;
   const absoluteIndex = messages.length - boundaryIndex - 1;
@@ -306,9 +309,10 @@ export async function compactMessages(
 
   const summary = await summarizeMessages(microCompacted, focus, options.model);
   const desiredTailCount = 8;
-  const tailStart = microCompacted.length <= desiredTailCount
-    ? microCompacted.length               // short conversation: summary covers everything, no tail
-    : findPreservedTailStart(microCompacted, desiredTailCount);
+  const tailStart =
+    microCompacted.length <= desiredTailCount
+      ? microCompacted.length // short conversation: summary covers everything, no tail
+      : findPreservedTailStart(microCompacted, desiredTailCount);
   const tail = microCompacted.slice(tailStart);
   const compacted: MessageParam[] = [
     {

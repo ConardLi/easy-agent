@@ -7,9 +7,9 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { Ajv } from "ajv";
 
-const validateOutput = new Ajv({ strictRequired: false, allowUnionTypes: true }).compile(JSON.parse(
-  await readFile(new URL("../../docs/headless-output.schema.json", import.meta.url), "utf8"),
-));
+const validateOutput = new Ajv({ strictRequired: false, allowUnionTypes: true }).compile(
+  JSON.parse(await readFile(new URL("../../docs/headless-output.schema.json", import.meta.url), "utf8")),
+);
 
 function assertOutput(payload: Record<string, unknown>): void {
   assert.ok(validateOutput(payload), JSON.stringify(validateOutput.errors));
@@ -21,11 +21,7 @@ function assertOutput(payload: Record<string, unknown>): void {
 
 const PROJECT_ROOT = path.resolve(import.meta.dirname, "../..");
 const CLI_PATH = path.join(PROJECT_ROOT, "src", "entrypoint", "cli.ts");
-const GOLDEN_PATH = path.join(
-  import.meta.dirname,
-  "__golden__",
-  "cli-headless-characterization.golden.txt",
-);
+const GOLDEN_PATH = path.join(import.meta.dirname, "__golden__", "cli-headless-characterization.golden.txt");
 const TSX_IMPORT = import.meta.resolve("tsx");
 const FIXTURE_MODEL = "fixture-model";
 const FIXTURE_REPLY = "fixture reply";
@@ -83,13 +79,7 @@ function anthropicStream(): string {
   ].join("");
 }
 
-async function runCli(
-  cwd: string,
-  home: string,
-  baseURL: string,
-  args: string[],
-  stdin = "",
-): Promise<CliResult> {
+async function runCli(cwd: string, home: string, baseURL: string, args: string[], stdin = ""): Promise<CliResult> {
   return new Promise<CliResult>((resolve, reject) => {
     const child = spawn(process.execPath, ["--import", TSX_IMPORT, CLI_PATH, ...args], {
       cwd,
@@ -197,7 +187,12 @@ async function buildRecording(): Promise<string> {
       });
       if (requests.at(-1)?.body.model === "fixture-failure") {
         response.writeHead(401, { "content-type": "application/json" });
-        response.end(JSON.stringify({ type: "error", error: { type: "authentication_error", message: "fixture authentication failure" } }));
+        response.end(
+          JSON.stringify({
+            type: "error",
+            error: { type: "authentication_error", message: "fixture authentication failure" },
+          }),
+        );
         return;
       }
       response.writeHead(200, { "content-type": "text/event-stream" });
@@ -222,12 +217,7 @@ async function buildRecording(): Promise<string> {
     assert.equal(help.code, 0);
     sections.push(`### help\n${selectedHelpLines(help.stdout)}`);
 
-    const invalidFormat = await runCli(cwd, home, baseURL, [
-      "--print",
-      "hello",
-      "--output-format",
-      "xml",
-    ]);
+    const invalidFormat = await runCli(cwd, home, baseURL, ["--print", "hello", "--output-format", "xml"]);
     assert.equal(invalidFormat.code, 1);
     sections.push(`### invalid-format\nstderr: ${invalidFormat.stderr.trim()}`);
 
@@ -283,18 +273,34 @@ async function buildRecording(): Promise<string> {
     ]);
     assert.equal(streamResult.code, 0, streamResult.stderr);
     assert.equal(requests.length, beforeStream + 1);
-    const streamPayloads = streamResult.stdout.trim().split(/\r?\n/).map((line) => JSON.parse(line) as Record<string, unknown>);
+    const streamPayloads = streamResult.stdout
+      .trim()
+      .split(/\r?\n/)
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
     streamPayloads.forEach(assertOutput);
     assert.ok(streamPayloads.length >= 3, "stream-json emits init, events, and result");
-    assert.ok(streamPayloads.every((payload) => payload.schema_version === 1), "every stream-json message declares schema v1");
+    assert.ok(
+      streamPayloads.every((payload) => payload.schema_version === 1),
+      "every stream-json message declares schema v1",
+    );
     assert.equal(streamPayloads.at(-1)?.total_cost_usd, null, "stream result reports unknown cost as null");
     sections.push(
       `### stream-json\n${normalizedStructuredLines(streamResult.stdout)}\nrequest: ${requestSummary(requests.at(-1)!)}`,
     );
     for (const format of ["json", "stream-json"]) {
-      const failed = await runCli(cwd, home, baseURL, ["--print", "Fail deterministically", "--model", "fixture-failure", "--output-format", format]);
+      const failed = await runCli(cwd, home, baseURL, [
+        "--print",
+        "Fail deterministically",
+        "--model",
+        "fixture-failure",
+        "--output-format",
+        format,
+      ]);
       assert.equal(failed.code, 1, failed.stderr);
-      const payloads = failed.stdout.trim().split(/\r?\n/).map((line) => JSON.parse(line) as Record<string, unknown>);
+      const payloads = failed.stdout
+        .trim()
+        .split(/\r?\n/)
+        .map((line) => JSON.parse(line) as Record<string, unknown>);
       payloads.forEach(assertOutput);
       const result = payloads.at(-1)!;
       assert.equal(result.type, "result");
@@ -326,10 +332,12 @@ async function main(): Promise<void> {
 
   const golden = (await readFile(GOLDEN_PATH, "utf8")).replace(/\r\n?/g, "\n");
   assert.equal(recording, golden, "CLI/headless characterization mismatch; use --update only for intentional changes");
-  process.stdout.write(`[pass] CLI/headless characterization matches golden (${recording.split("\n").length} lines).\n`);
+  process.stdout.write(
+    `[pass] CLI/headless characterization matches golden (${recording.split("\n").length} lines).\n`,
+  );
 }
 
 void main().catch((error: unknown) => {
-  process.stderr.write(`${error instanceof Error ? error.stack ?? error.message : String(error)}\n`);
+  process.stderr.write(`${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`);
   process.exitCode = 1;
 });

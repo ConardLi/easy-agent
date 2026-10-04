@@ -9,11 +9,7 @@ import type {
 } from "../../types/mcp.js";
 import * as path from "node:path";
 import { logWarn } from "../../utils/log.js";
-import {
-  loadSettingSources,
-  loadTrustedSettingSources,
-  type SettingSource,
-} from "../../config/sources.js";
+import { loadSettingSources, loadTrustedSettingSources, type SettingSource } from "../../config/sources.js";
 import { isProjectTrusted } from "../../config/globalState.js";
 import { readJsonSettingsFile } from "../../utils/settings.js";
 
@@ -109,29 +105,53 @@ function validateRemoteConfig(
       if (typeof v !== "string") {
         return { ok: false, error: `mcpServers.${name} (${scope}): headers.${k} must be a string` };
       }
-      try { new Headers({ [k]: v }); } catch { return { ok: false, error: `mcpServers.${name} (${scope}): headers.${k} is invalid` }; }
+      try {
+        new Headers({ [k]: v });
+      } catch {
+        return { ok: false, error: `mcpServers.${name} (${scope}): headers.${k} is invalid` };
+      }
     }
   }
   const headers = obj.headers as Record<string, string> | undefined;
   let headersEnv: Record<string, string> | undefined;
   if (obj.headersEnv !== undefined) {
     if (!obj.headersEnv || typeof obj.headersEnv !== "object" || Array.isArray(obj.headersEnv)) {
-      return { ok: false, error: `mcpServers.${name} (${scope}): 'headersEnv' must be a string→environment-variable map` };
+      return {
+        ok: false,
+        error: `mcpServers.${name} (${scope}): 'headersEnv' must be a string→environment-variable map`,
+      };
     }
     headersEnv = {};
     for (const [header, envName] of Object.entries(obj.headersEnv)) {
       if (typeof envName !== "string" || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(envName)) {
-        return { ok: false, error: `mcpServers.${name} (${scope}): headersEnv.${header} must name an environment variable` };
+        return {
+          ok: false,
+          error: `mcpServers.${name} (${scope}): headersEnv.${header} must name an environment variable`,
+        };
       }
-      try { new Headers({ [header]: "value" }); } catch { return { ok: false, error: `mcpServers.${name} (${scope}): headersEnv.${header} is invalid` }; }
+      try {
+        new Headers({ [header]: "value" });
+      } catch {
+        return { ok: false, error: `mcpServers.${name} (${scope}): headersEnv.${header} is invalid` };
+      }
       headersEnv[header] = envName;
     }
   }
   let headersHelper: { command: string; args?: string[] } | undefined;
   if (obj.headersHelper !== undefined) {
     const helper = obj.headersHelper as Record<string, unknown> | null;
-    if (!helper || typeof helper !== "object" || Array.isArray(helper) || typeof helper.command !== "string" || !helper.command.trim() || (helper.args !== undefined && (!Array.isArray(helper.args) || helper.args.some((arg) => typeof arg !== "string")))) {
-      return { ok: false, error: `mcpServers.${name} (${scope}): 'headersHelper' requires command and optional string args` };
+    if (
+      !helper ||
+      typeof helper !== "object" ||
+      Array.isArray(helper) ||
+      typeof helper.command !== "string" ||
+      !helper.command.trim() ||
+      (helper.args !== undefined && (!Array.isArray(helper.args) || helper.args.some((arg) => typeof arg !== "string")))
+    ) {
+      return {
+        ok: false,
+        error: `mcpServers.${name} (${scope}): 'headersHelper' requires command and optional string args`,
+      };
     }
     headersHelper = { command: helper.command, ...(helper.args ? { args: helper.args as string[] } : {}) };
   }
@@ -139,7 +159,10 @@ function validateRemoteConfig(
   if (obj.oauth !== undefined) {
     const raw = obj.oauth === true ? { type: "authorization_code" } : obj.oauth;
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-      return { ok: false, error: `mcpServers.${name} (${scope}): 'oauth' must be true or an OAuth configuration object` };
+      return {
+        ok: false,
+        error: `mcpServers.${name} (${scope}): 'oauth' must be true or an OAuth configuration object`,
+      };
     }
     const auth = raw as Record<string, unknown>;
     const authType = auth.type ?? "authorization_code";
@@ -149,19 +172,38 @@ function validateRemoteConfig(
     if (auth.clientId !== undefined && (typeof auth.clientId !== "string" || !auth.clientId.trim())) {
       return { ok: false, error: `mcpServers.${name} (${scope}): oauth.clientId must be non-empty` };
     }
-    if (auth.clientSecretEnv !== undefined && (typeof auth.clientSecretEnv !== "string" || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(auth.clientSecretEnv))) {
-      return { ok: false, error: `mcpServers.${name} (${scope}): oauth.clientSecretEnv must name an environment variable` };
+    if (
+      auth.clientSecretEnv !== undefined &&
+      (typeof auth.clientSecretEnv !== "string" || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(auth.clientSecretEnv))
+    ) {
+      return {
+        ok: false,
+        error: `mcpServers.${name} (${scope}): oauth.clientSecretEnv must name an environment variable`,
+      };
     }
     if (auth.scope !== undefined && typeof auth.scope !== "string") {
       return { ok: false, error: `mcpServers.${name} (${scope}): oauth.scope must be a string` };
     }
     if (authType === "client_credentials") {
       if (typeof auth.clientId !== "string" || typeof auth.clientSecretEnv !== "string") {
-        return { ok: false, error: `mcpServers.${name} (${scope}): client_credentials requires clientId and clientSecretEnv` };
+        return {
+          ok: false,
+          error: `mcpServers.${name} (${scope}): client_credentials requires clientId and clientSecretEnv`,
+        };
       }
-      oauth = { type: "client_credentials", clientId: auth.clientId, clientSecretEnv: auth.clientSecretEnv, ...(typeof auth.scope === "string" ? { scope: auth.scope } : {}) };
+      oauth = {
+        type: "client_credentials",
+        clientId: auth.clientId,
+        clientSecretEnv: auth.clientSecretEnv,
+        ...(typeof auth.scope === "string" ? { scope: auth.scope } : {}),
+      };
     } else {
-      if (auth.redirectPort !== undefined && (!Number.isSafeInteger(auth.redirectPort) || (auth.redirectPort as number) < 1 || (auth.redirectPort as number) > 65535)) {
+      if (
+        auth.redirectPort !== undefined &&
+        (!Number.isSafeInteger(auth.redirectPort) ||
+          (auth.redirectPort as number) < 1 ||
+          (auth.redirectPort as number) > 65535)
+      ) {
         return { ok: false, error: `mcpServers.${name} (${scope}): oauth.redirectPort must be a TCP port` };
       }
       if (auth.clientId && auth.redirectPort === undefined) {
@@ -170,14 +212,22 @@ function validateRemoteConfig(
       if (auth.clientSecretEnv && !auth.clientId) {
         return { ok: false, error: `mcpServers.${name} (${scope}): oauth.clientSecretEnv requires clientId` };
       }
-      oauth = { type: "authorization_code", ...(typeof auth.clientId === "string" ? { clientId: auth.clientId } : {}), ...(typeof auth.clientSecretEnv === "string" ? { clientSecretEnv: auth.clientSecretEnv } : {}), ...(typeof auth.scope === "string" ? { scope: auth.scope } : {}), ...(typeof auth.redirectPort === "number" ? { redirectPort: auth.redirectPort } : {}) };
+      oauth = {
+        type: "authorization_code",
+        ...(typeof auth.clientId === "string" ? { clientId: auth.clientId } : {}),
+        ...(typeof auth.clientSecretEnv === "string" ? { clientSecretEnv: auth.clientSecretEnv } : {}),
+        ...(typeof auth.scope === "string" ? { scope: auth.scope } : {}),
+        ...(typeof auth.redirectPort === "number" ? { redirectPort: auth.redirectPort } : {}),
+      };
     }
-    const authorizationHeaders = [
-      ...Object.keys(headers ?? {}),
-      ...Object.keys(headersEnv ?? {}),
-    ].some((header) => header.toLowerCase() === "authorization");
+    const authorizationHeaders = [...Object.keys(headers ?? {}), ...Object.keys(headersEnv ?? {})].some(
+      (header) => header.toLowerCase() === "authorization",
+    );
     if (authorizationHeaders || headersHelper) {
-      return { ok: false, error: `mcpServers.${name} (${scope}): OAuth cannot be combined with custom authorization headers or headersHelper` };
+      return {
+        ok: false,
+        error: `mcpServers.${name} (${scope}): OAuth cannot be combined with custom authorization headers or headersHelper`,
+      };
     }
   }
   return {
@@ -218,7 +268,10 @@ function extractScopedServers(
 
 function asStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
-  return value.filter((v): v is string => typeof v === "string").map((v) => v.trim()).filter(Boolean);
+  return value
+    .filter((v): v is string => typeof v === "string")
+    .map((v) => v.trim())
+    .filter(Boolean);
 }
 
 /**
@@ -278,10 +331,7 @@ async function loadProjectMcpJson(
  * warning, so one malformed entry cannot prevent other servers from loading.
  */
 export async function loadMcpConfigs(cwd: string): Promise<McpConfigLoadResult> {
-  const [allSources, sources] = await Promise.all([
-    loadSettingSources(cwd),
-    loadTrustedSettingSources(cwd),
-  ]);
+  const [allSources, sources] = await Promise.all([loadSettingSources(cwd), loadTrustedSettingSources(cwd)]);
 
   const errors: string[] = [];
   const servers: Record<string, ScopedMcpServerConfig> = {};
@@ -302,22 +352,13 @@ export async function loadMcpConfigs(cwd: string): Promise<McpConfigLoadResult> 
   }
 
   // .mcp.json first, so a same-named entry in settings.json overrides it.
-  const projectMcp = await loadProjectMcpJson(
-    cwd,
-    { enableAll, enabled, disabled },
-    errors,
-  );
+  const projectMcp = await loadProjectMcpJson(cwd, { enableAll, enabled, disabled }, errors);
   Object.assign(servers, projectMcp.approved);
 
   for (const src of sources) {
     if (src.parseError) errors.push(src.parseError);
     if (!src.raw) continue;
-    const scoped = extractScopedServers(
-      src.raw as RawSettings,
-      src.source,
-      src.path ?? `<${src.source}>`,
-      errors,
-    );
+    const scoped = extractScopedServers(src.raw as RawSettings, src.source, src.path ?? `<${src.source}>`, errors);
     // Later source wins on name conflicts.
     Object.assign(servers, scoped);
   }

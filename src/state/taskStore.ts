@@ -26,16 +26,8 @@ import * as path from "node:path";
 import type { Task, TaskStatus } from "../types/task.js";
 import { TASK_STATUSES } from "../types/task.js";
 import { getTasksRoot } from "../utils/paths.js";
-import {
-  createPrivateFileIfMissing,
-  ensurePrivateDirectory,
-  writePrivateFile,
-} from "../utils/privateData.js";
-import {
-  parsePersistedJson,
-  PersistentDataError,
-  withFileLock,
-} from "../utils/atomicFile.js";
+import { createPrivateFileIfMissing, ensurePrivateDirectory, writePrivateFile } from "../utils/privateData.js";
+import { parsePersistedJson, PersistentDataError, withFileLock } from "../utils/atomicFile.js";
 
 const HIGH_WATER_MARK_FILE = ".highwatermark";
 const LOCK_FILE = ".lock";
@@ -95,11 +87,7 @@ async function withTaskListLock<T>(taskListId: string, operation: () => Promise<
   return withFileLock(await ensureTaskListLockFile(taskListId), operation);
 }
 
-async function withTaskFileLock<T>(
-  taskListId: string,
-  taskId: string,
-  operation: () => Promise<T>,
-): Promise<T> {
+async function withTaskFileLock<T>(taskListId: string, taskId: string, operation: () => Promise<T>): Promise<T> {
   return withFileLock(getTaskPath(taskListId, taskId), operation);
 }
 
@@ -217,10 +205,7 @@ function notifyTasksUpdated(taskListId: string): void {
  * Create a new task. Uses a list-level lock so concurrent creators
  * can't collide on the same id.
  */
-export async function createTask(
-  taskListId: string,
-  data: Omit<Task, "id">,
-): Promise<string> {
+export async function createTask(taskListId: string, data: Omit<Task, "id">): Promise<string> {
   return withTaskListLock(taskListId, async () => {
     const highest = await findHighestTaskId(taskListId);
     const id = String(highest + 1);
@@ -284,9 +269,7 @@ export async function updateTask(
   taskId: string,
   updates: Partial<Omit<Task, "id">>,
 ): Promise<Task | null> {
-  return withTaskFileLock(taskListId, taskId, () =>
-    updateTaskUnsafe(taskListId, taskId, updates),
-  );
+  return withTaskFileLock(taskListId, taskId, () => updateTaskUnsafe(taskListId, taskId, updates));
 }
 
 /**
@@ -327,10 +310,7 @@ export async function deleteTask(taskListId: string, taskId: string, actor?: str
     for (const sibling of siblings) {
       const newBlocks = sibling.blocks.filter((id) => id !== taskId);
       const newBlockedBy = sibling.blockedBy.filter((id) => id !== taskId);
-      if (
-        newBlocks.length !== sibling.blocks.length ||
-        newBlockedBy.length !== sibling.blockedBy.length
-      ) {
+      if (newBlocks.length !== sibling.blocks.length || newBlockedBy.length !== sibling.blockedBy.length) {
         await updateTask(taskListId, sibling.id, {
           blocks: newBlocks,
           blockedBy: newBlockedBy,
@@ -349,37 +329,39 @@ export async function updateTeamTask(
   actor: string,
   updates: Partial<Omit<Task, "id">>,
 ): Promise<Task | null> {
-  return withTaskListLock(taskListId, () => withTaskFileLock(taskListId, taskId, async () => {
-    const current = await getTask(taskListId, taskId);
-    if (!current) return null;
-    if (current.owner && current.owner !== actor) throw new Error(`Task #${taskId} is owned by ${current.owner}`);
-    if (current.status === "completed" && Object.keys(updates).length > 0) {
-      throw new Error(`Task #${taskId} is already completed`);
-    }
+  return withTaskListLock(taskListId, () =>
+    withTaskFileLock(taskListId, taskId, async () => {
+      const current = await getTask(taskListId, taskId);
+      if (!current) return null;
+      if (current.owner && current.owner !== actor) throw new Error(`Task #${taskId} is owned by ${current.owner}`);
+      if (current.status === "completed" && Object.keys(updates).length > 0) {
+        throw new Error(`Task #${taskId} is already completed`);
+      }
 
-    const next: Task = { ...current, ...updates, id: taskId };
-    if (updates.status === "in_progress") {
-      if (current.status !== "pending" && !(current.status === "in_progress" && current.owner === actor)) {
-        throw new Error(`Task #${taskId} cannot be claimed from ${current.status}`);
+      const next: Task = { ...current, ...updates, id: taskId };
+      if (updates.status === "in_progress") {
+        if (current.status !== "pending" && !(current.status === "in_progress" && current.owner === actor)) {
+          throw new Error(`Task #${taskId} cannot be claimed from ${current.status}`);
+        }
+        for (const blockerId of current.blockedBy) {
+          const blocker = await getTask(taskListId, blockerId);
+          if (blocker && blocker.status !== "completed") throw new Error(`Task #${taskId} is blocked by #${blockerId}`);
+        }
+        next.owner = actor;
+      } else if (updates.status === "pending") {
+        if (current.status === "completed") throw new Error(`Task #${taskId} is already completed`);
+        next.owner = undefined;
+      } else if (updates.status === "completed") {
+        if (current.status !== "in_progress" || current.owner !== actor) {
+          throw new Error(`Task #${taskId} must be claimed by ${actor} before completion`);
+        }
+        next.owner = actor;
       }
-      for (const blockerId of current.blockedBy) {
-        const blocker = await getTask(taskListId, blockerId);
-        if (blocker && blocker.status !== "completed") throw new Error(`Task #${taskId} is blocked by #${blockerId}`);
-      }
-      next.owner = actor;
-    } else if (updates.status === "pending") {
-      if (current.status === "completed") throw new Error(`Task #${taskId} is already completed`);
-      next.owner = undefined;
-    } else if (updates.status === "completed") {
-      if (current.status !== "in_progress" || current.owner !== actor) {
-        throw new Error(`Task #${taskId} must be claimed by ${actor} before completion`);
-      }
-      next.owner = actor;
-    }
-    await writePrivateFile(getTaskPath(taskListId, taskId), JSON.stringify(next, null, 2));
-    notifyTasksUpdated(taskListId);
-    return next;
-  }));
+      await writePrivateFile(getTaskPath(taskListId, taskId), JSON.stringify(next, null, 2));
+      notifyTasksUpdated(taskListId);
+      return next;
+    }),
+  );
 }
 
 export async function releaseMemberTasks(teamName: string, memberName: string): Promise<number> {
@@ -392,7 +374,10 @@ export async function releaseMemberTasks(teamName: string, memberName: string): 
       await withTaskFileLock(taskListId, task.id, async () => {
         const current = await getTask(taskListId, task.id);
         if (current?.owner !== memberName || current.status !== "in_progress") return;
-        await writePrivateFile(getTaskPath(taskListId, task.id), JSON.stringify({ ...current, owner: undefined, status: "pending" }, null, 2));
+        await writePrivateFile(
+          getTaskPath(taskListId, task.id),
+          JSON.stringify({ ...current, owner: undefined, status: "pending" }, null, 2),
+        );
         released++;
         notifyTasksUpdated(taskListId);
       });
@@ -415,10 +400,7 @@ export async function blockTask(
   actor?: string,
 ): Promise<boolean> {
   return withTaskListLock(taskListId, async () => {
-    const [from, to] = await Promise.all([
-      getTask(taskListId, fromTaskId),
-      getTask(taskListId, toTaskId),
-    ]);
+    const [from, to] = await Promise.all([getTask(taskListId, fromTaskId), getTask(taskListId, toTaskId)]);
     if (!from || !to) return false;
     if (actor) {
       if (from.owner && from.owner !== actor) throw new Error(`Task #${fromTaskId} is owned by ${from.owner}`);

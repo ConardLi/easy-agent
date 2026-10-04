@@ -15,13 +15,7 @@
  * "finished with it, throw it away" flow one call instead of two.
  */
 
-import {
-  blockTask,
-  deleteTask,
-  getTask,
-  updateTask,
-  updateTeamTask,
-} from "../state/taskStore.js";
+import { blockTask, deleteTask, getTask, updateTask, updateTeamTask } from "../state/taskStore.js";
 import { isTaskGraphEnabled, resolveTaskScope, validateTaskActor, withActiveTaskActor } from "./taskScope.js";
 import type { Task, TaskStatus } from "../types/task.js";
 import { TASK_STATUSES } from "../types/task.js";

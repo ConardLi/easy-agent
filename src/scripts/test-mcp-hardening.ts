@@ -13,7 +13,12 @@ import { randomUUID } from "node:crypto";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
-import { connectToServer, clearServerCache, _resetMcpClientForTesting, setMcpConnectionListeners } from "../services/mcp/client.js";
+import {
+  connectToServer,
+  clearServerCache,
+  _resetMcpClientForTesting,
+  setMcpConnectionListeners,
+} from "../services/mcp/client.js";
 import { getMcpRegistryEntry } from "../services/mcp/registry.js";
 import { createMcpFetch } from "../services/mcp/remoteHeaders.js";
 import { resolveMcpHeaders } from "../services/mcp/remoteHeaders.js";
@@ -47,13 +52,21 @@ const result = {
 };
 
 const client = {
-  request: async (request: { method: string }, _schema: unknown, options?: { onprogress?: (progress: { progress: number; total: number; message: string }) => void }) => {
-    if (request.method === "tools/list") return { tools: [{ name: "mixed", description: "Mixed MCP result", inputSchema: { type: "object", properties: {} } }] };
+  request: async (
+    request: { method: string },
+    _schema: unknown,
+    options?: { onprogress?: (progress: { progress: number; total: number; message: string }) => void },
+  ) => {
+    if (request.method === "tools/list")
+      return {
+        tools: [{ name: "mixed", description: "Mixed MCP result", inputSchema: { type: "object", properties: {} } }],
+      };
     if (request.method === "tools/call") {
       options?.onprogress?.({ progress: 1, total: 2, message: "working" });
       return result;
     }
-    if (request.method === "resources/read") return { contents: [{ uri: "memo://two", blob: binary, mimeType: "application/octet-stream" }] };
+    if (request.method === "resources/read")
+      return { contents: [{ uri: "memo://two", blob: binary, mimeType: "application/octet-stream" }] };
     throw new Error(`Unexpected method ${request.method}`);
   },
 } as unknown as Client;
@@ -72,7 +85,9 @@ try {
   const [tool] = await fetchToolsForConnection(connection);
   assert.ok(tool);
   const progressEvents: Array<{ progress: number; total?: number; message?: string } | null> = [];
-  const unsubscribe = subscribeMcpProgress((id, progress) => { if (id === "mixed-call") progressEvents.push(progress); });
+  const unsubscribe = subscribeMcpProgress((id, progress) => {
+    if (id === "mixed-call") progressEvents.push(progress);
+  });
   const adapted = await tool.call({}, { cwd: home, toolUseId: "mixed-call" });
   unsubscribe();
   assert.deepEqual(progressEvents[0], { progress: 1, total: 2, message: "working" });
@@ -87,29 +102,55 @@ try {
   const raw = (adapted as typeof adapted & { mcpResult?: typeof result }).mcpResult;
   assert.deepEqual(raw?.structuredContent, result.structuredContent);
   assert.deepEqual(raw?._meta, result._meta);
-  const plainError = await adaptMcpToolResult({ content: [{ type: "text", text: "failure" }], isError: true, _meta: { traceId: "error" } });
+  const plainError = await adaptMcpToolResult({
+    content: [{ type: "text", text: "failure" }],
+    isError: true,
+    _meta: { traceId: "error" },
+  });
   assert.equal(plainError.content, "failure");
   assert.equal(plainError.isError, true);
   assert.deepEqual(plainError.mcpResult?._meta, { traceId: "error" });
-  const plainSuccess = await adaptMcpToolResult({ content: [
-    { type: "text", text: "first" },
-    { type: "resource", resource: { uri: "memo://text", text: "embedded" } },
-    { type: "text", text: "last" },
-  ] });
+  const plainSuccess = await adaptMcpToolResult({
+    content: [
+      { type: "text", text: "first" },
+      { type: "resource", resource: { uri: "memo://text", text: "embedded" } },
+      { type: "text", text: "last" },
+    ],
+  });
   assert.equal(plainSuccess.content, "first\nembedded\nlast");
   await assert.rejects(storeMcpArtifact("not base64!", "application/octet-stream"), /base64/);
-  await assert.rejects(adaptMcpToolResult({ content: [{ type: "image", mimeType: "image/png", data: "not base64!" }] }), /base64/);
+  await assert.rejects(
+    adaptMcpToolResult({ content: [{ type: "image", mimeType: "image/png", data: "not base64!" }] }),
+    /base64/,
+  );
 
   const validationProject = path.join(home, "validation");
   await mkdir(path.join(validationProject, ".easy-agent"), { recursive: true });
-  await writeFile(path.join(validationProject, ".easy-agent", "settings.json"), JSON.stringify({
-    mcpServers: {
-      valid: { type: "http", url: "https://mcp.example.test/api", headersEnv: { Authorization: "MCP_HARDENING_TOKEN" }, headersHelper: { command: process.execPath, args: [] } },
-      oauth: { type: "http", url: "https://mcp.example.test/api", oauth: true },
-      conflicting: { type: "http", url: "https://mcp.example.test/api", oauth: true, headers: { Authorization: "Bearer secret" } },
-      badHeader: { type: "http", url: "https://mcp.example.test/api", headersEnv: { "Bad Header": "MCP_HARDENING_TOKEN" } },
-    },
-  }));
+  await writeFile(
+    path.join(validationProject, ".easy-agent", "settings.json"),
+    JSON.stringify({
+      mcpServers: {
+        valid: {
+          type: "http",
+          url: "https://mcp.example.test/api",
+          headersEnv: { Authorization: "MCP_HARDENING_TOKEN" },
+          headersHelper: { command: process.execPath, args: [] },
+        },
+        oauth: { type: "http", url: "https://mcp.example.test/api", oauth: true },
+        conflicting: {
+          type: "http",
+          url: "https://mcp.example.test/api",
+          oauth: true,
+          headers: { Authorization: "Bearer secret" },
+        },
+        badHeader: {
+          type: "http",
+          url: "https://mcp.example.test/api",
+          headersEnv: { "Bad Header": "MCP_HARDENING_TOKEN" },
+        },
+      },
+    }),
+  );
   await trustProjectForSession(validationProject);
   const validated = await loadMcpConfigs(validationProject);
   assert.equal(validated.servers.valid?.type, "http");
@@ -125,7 +166,11 @@ try {
 
   let bearer = "one";
   process.env.MCP_HARDENING_TOKEN = bearer;
-  const headersConfig = { type: "http" as const, url: "http://127.0.0.1:1/mcp", headersEnv: { Authorization: "MCP_HARDENING_TOKEN" } };
+  const headersConfig = {
+    type: "http" as const,
+    url: "http://127.0.0.1:1/mcp",
+    headersEnv: { Authorization: "MCP_HARDENING_TOKEN" },
+  };
   const observed: string[] = [];
   const dynamicFetch = createMcpFetch(headersConfig);
   const originalFetch = globalThis.fetch;
@@ -139,11 +184,16 @@ try {
     process.env.MCP_HARDENING_TOKEN = bearer;
     await dynamicFetch(headersConfig.url);
     assert.deepEqual(observed, ["one", "two"]);
-  } finally { globalThis.fetch = originalFetch; }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
   const helperHeaders = await resolveMcpHeaders({
     type: "http",
     url: headersConfig.url,
-    headersHelper: { command: process.execPath, args: ["-e", "process.stdout.write(JSON.stringify({Authorization: 'Bearer helper-token'}))"] },
+    headersHelper: {
+      command: process.execPath,
+      args: ["-e", "process.stdout.write(JSON.stringify({Authorization: 'Bearer helper-token'}))"],
+    },
   });
   assert.equal(helperHeaders.get("Authorization"), "Bearer helper-token");
 
@@ -155,10 +205,16 @@ try {
   let sawRootsCapability = false;
   const httpServer = createServer(async (request, response) => {
     try {
-      if (request.method === "GET") { response.writeHead(405).end(); return; }
+      if (request.method === "GET") {
+        response.writeHead(405).end();
+        return;
+      }
       const sessionId = request.headers["mcp-session-id"];
       const sessionKey = typeof sessionId === "string" ? sessionId : undefined;
-      if (sessionKey && !sessions.has(sessionKey)) { response.writeHead(404).end(); return; }
+      if (sessionKey && !sessions.has(sessionKey)) {
+        response.writeHead(404).end();
+        return;
+      }
       if (sessionKey && listSeen && expireOnce && request.method === "POST") {
         expireOnce = false;
         sessions.delete(sessionKey);
@@ -186,7 +242,9 @@ try {
         const transport = new StreamableHTTPServerTransport({
           sessionIdGenerator: randomUUID,
           enableJsonResponse: true,
-          onsessioninitialized: (id) => { sessions.set(id, { server, transport }); },
+          onsessioninitialized: (id) => {
+            sessions.set(id, { server, transport });
+          },
         });
         await server.connect(transport);
         current = { server, transport };
@@ -217,23 +275,33 @@ try {
 
     let attempted = 0;
     const uncertainClient = {
-      request: async () => { attempted += 1; throw new Error("Connection closed after request"); },
+      request: async () => {
+        attempted += 1;
+        throw new Error("Connection closed after request");
+      },
     } as unknown as Client;
     const uncertainConnection: ConnectedMcpServer = { ...connected, name: "uncertain", client: uncertainClient };
-    const [uncertainTool] = await fetchToolsForConnection({ ...uncertainConnection, client: {
-      request: async (request: { method: string }) => request.method === "tools/list"
-        ? { tools: [{ name: "change", inputSchema: { type: "object", properties: {} } }] }
-        : uncertainClient.request(request as never, {} as never),
-    } as unknown as Client });
+    const [uncertainTool] = await fetchToolsForConnection({
+      ...uncertainConnection,
+      client: {
+        request: async (request: { method: string }) =>
+          request.method === "tools/list"
+            ? { tools: [{ name: "change", inputSchema: { type: "object", properties: {} } }] }
+            : uncertainClient.request(request as never, {} as never),
+      } as unknown as Client,
+    });
     assert.equal((await uncertainTool!.call({}, { cwd: home })).isError, true);
     assert.equal(attempted, 1, "ambiguous failure does not replay side-effecting calls");
     await clearServerCache("remote-hardening", remoteConfig);
 
     const project = path.join(home, "project");
     await mkdir(path.join(project, ".easy-agent"), { recursive: true });
-    await writeFile(path.join(project, ".easy-agent", "settings.json"), JSON.stringify({
-      mcpServers: { recoverable: { type: "http", url: remoteConfig.url } },
-    }));
+    await writeFile(
+      path.join(project, ".easy-agent", "settings.json"),
+      JSON.stringify({
+        mcpServers: { recoverable: { type: "http", url: remoteConfig.url } },
+      }),
+    );
     await trustProjectForSession(project);
     const bootstrapped = await bootstrapMcp(project);
     const first = bootstrapped.connections[0];
@@ -261,7 +329,11 @@ try {
     assert.equal(getMcpRegistryEntry(pluginName), undefined);
     const instancesAfterDisable = serverInstances;
     await new Promise((resolve) => setTimeout(resolve, 1_200));
-    assert.equal(serverInstances, instancesAfterDisable, "disabled plugin server must not be restarted by a queued retry");
+    assert.equal(
+      serverInstances,
+      instancesAfterDisable,
+      "disabled plugin server must not be restarted by a queued retry",
+    );
   } finally {
     await new Promise<void>((resolve) => httpServer.close(() => resolve()));
   }
@@ -272,45 +344,69 @@ try {
   const oauthServer = createServer(async (request, response) => {
     const origin = `http://127.0.0.1:${(oauthServer.address() as { port: number }).port}`;
     if (request.url === "/.well-known/oauth-protected-resource/mcp") {
-      response.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({
-        resource: `${origin}/mcp`, authorization_servers: [origin],
-      }));
+      response.writeHead(200, { "Content-Type": "application/json" }).end(
+        JSON.stringify({
+          resource: `${origin}/mcp`,
+          authorization_servers: [origin],
+        }),
+      );
       return;
     }
     if (request.url === "/.well-known/oauth-authorization-server") {
-      response.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({
-        issuer: origin,
-        authorization_endpoint: `${origin}/authorize`,
-        token_endpoint: `${origin}/token`,
-        response_types_supported: ["code"],
-        grant_types_supported: ["client_credentials"],
-        token_endpoint_auth_methods_supported: ["client_secret_basic"],
-      }));
+      response.writeHead(200, { "Content-Type": "application/json" }).end(
+        JSON.stringify({
+          issuer: origin,
+          authorization_endpoint: `${origin}/authorize`,
+          token_endpoint: `${origin}/token`,
+          response_types_supported: ["code"],
+          grant_types_supported: ["client_credentials"],
+          token_endpoint_auth_methods_supported: ["client_secret_basic"],
+        }),
+      );
       return;
     }
     if (request.url === "/token") {
       assert.equal(request.headers.authorization, `Basic ${Buffer.from("client:secret").toString("base64")}`);
       tokenNumber += 1;
       acceptedToken = `token-${tokenNumber}`;
-      response.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({
-        access_token: acceptedToken, token_type: "Bearer", expires_in: 3600,
-      }));
+      response.writeHead(200, { "Content-Type": "application/json" }).end(
+        JSON.stringify({
+          access_token: acceptedToken,
+          token_type: "Bearer",
+          expires_in: 3600,
+        }),
+      );
       return;
     }
-    if (request.url !== "/mcp") { response.writeHead(404).end(); return; }
+    if (request.url !== "/mcp") {
+      response.writeHead(404).end();
+      return;
+    }
     if (request.headers.authorization !== `Bearer ${acceptedToken}` || tokenNumber === 0) {
-      response.writeHead(401, { "WWW-Authenticate": `Bearer resource_metadata="${origin}/.well-known/oauth-protected-resource/mcp"` }).end();
+      response
+        .writeHead(401, {
+          "WWW-Authenticate": `Bearer resource_metadata="${origin}/.well-known/oauth-protected-resource/mcp"`,
+        })
+        .end();
       return;
     }
-    if (request.method === "GET") { response.writeHead(405).end(); return; }
+    if (request.method === "GET") {
+      response.writeHead(405).end();
+      return;
+    }
     const server = new Server({ name: "oauth-fixture", version: "1.0" }, { capabilities: { tools: {} } });
-    server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: [{ name: "ping", inputSchema: { type: "object", properties: {} } }] }));
+    server.setRequestHandler(ListToolsRequestSchema, async () => ({
+      tools: [{ name: "ping", inputSchema: { type: "object", properties: {} } }],
+    }));
     server.setRequestHandler(CallToolRequestSchema, async () => {
       oauthCalls += 1;
       return { content: [{ type: "text", text: `oauth:${oauthCalls}` }] };
     });
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
-    response.on("close", () => { void transport.close(); void server.close(); });
+    response.on("close", () => {
+      void transport.close();
+      void server.close();
+    });
     await server.connect(transport);
     await transport.handleRequest(request, response);
   });
@@ -346,20 +442,31 @@ try {
   const seenSseHeaders: string[] = [];
   const sseServer = createServer(async (request, response) => {
     seenSseHeaders.push(request.headers.authorization ?? "");
-    if (request.headers.authorization !== "Bearer sse-token") { response.writeHead(401).end(); return; }
+    if (request.headers.authorization !== "Bearer sse-token") {
+      response.writeHead(401).end();
+      return;
+    }
     if (request.url === "/sse" && request.method === "GET") {
       const server = new Server({ name: "sse-fixture", version: "1.0" }, { capabilities: { tools: {} } });
-      server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: [{ name: "ping", inputSchema: { type: "object", properties: {} } }] }));
+      server.setRequestHandler(ListToolsRequestSchema, async () => ({
+        tools: [{ name: "ping", inputSchema: { type: "object", properties: {} } }],
+      }));
       server.setRequestHandler(CallToolRequestSchema, async () => ({ content: [{ type: "text", text: "sse-ok" }] }));
       const transport = new SSEServerTransport("/messages", response);
       sseSessions.set(transport.sessionId, { server, transport });
-      response.on("close", () => { sseSessions.delete(transport.sessionId); void server.close(); });
+      response.on("close", () => {
+        sseSessions.delete(transport.sessionId);
+        void server.close();
+      });
       await server.connect(transport);
       return;
     }
     const requestUrl = new URL(request.url ?? "/", "http://127.0.0.1");
     const session = sseSessions.get(requestUrl.searchParams.get("sessionId") ?? "");
-    if (requestUrl.pathname !== "/messages" || !session) { response.writeHead(404).end(); return; }
+    if (requestUrl.pathname !== "/messages" || !session) {
+      response.writeHead(404).end();
+      return;
+    }
     await session.transport.handlePostMessage(request, response);
   });
   await new Promise<void>((resolve) => sseServer.listen(0, "127.0.0.1", resolve));
@@ -389,7 +496,11 @@ try {
       scope: "user" as const,
     };
     const staticSseConnection = await connectToServer("sse-static-headers", staticSseConfig);
-    assert.equal(staticSseConnection.type, "connected", staticSseConnection.type === "failed" ? staticSseConnection.error : "");
+    assert.equal(
+      staticSseConnection.type,
+      "connected",
+      staticSseConnection.type === "failed" ? staticSseConnection.error : "",
+    );
     if (staticSseConnection.type !== "connected") throw new Error("Static SSE headers fixture failed to connect");
     const staticSseTools = await fetchToolsForConnection(staticSseConnection);
     assert.equal((await staticSseTools[0]!.call({}, { cwd: home })).content, "sse-ok");
@@ -404,24 +515,39 @@ try {
   let issuedCode = "";
   const authCodeServer = createServer(async (request, response) => {
     const origin = `http://127.0.0.1:${(authCodeServer.address() as { port: number }).port}`;
-    if (request.url === "/.well-known/oauth-protected-resource/mcp" || request.url === "/.well-known/oauth-protected-resource/mcp-live") {
-      response.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ resource: `${origin}/${request.url.endsWith("mcp-live") ? "mcp-live" : "mcp"}`, authorization_servers: [origin] }));
+    if (
+      request.url === "/.well-known/oauth-protected-resource/mcp" ||
+      request.url === "/.well-known/oauth-protected-resource/mcp-live"
+    ) {
+      response.writeHead(200, { "Content-Type": "application/json" }).end(
+        JSON.stringify({
+          resource: `${origin}/${request.url.endsWith("mcp-live") ? "mcp-live" : "mcp"}`,
+          authorization_servers: [origin],
+        }),
+      );
       return;
     }
     if (request.url === "/.well-known/oauth-authorization-server") {
-      response.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({
-        issuer: origin, authorization_endpoint: `${origin}/authorize`, token_endpoint: `${origin}/token`,
-        registration_endpoint: `${origin}/register`, response_types_supported: ["code"],
-        grant_types_supported: ["authorization_code", "refresh_token"],
-        code_challenge_methods_supported: ["S256"],
-      }));
+      response.writeHead(200, { "Content-Type": "application/json" }).end(
+        JSON.stringify({
+          issuer: origin,
+          authorization_endpoint: `${origin}/authorize`,
+          token_endpoint: `${origin}/token`,
+          registration_endpoint: `${origin}/register`,
+          response_types_supported: ["code"],
+          grant_types_supported: ["authorization_code", "refresh_token"],
+          code_challenge_methods_supported: ["S256"],
+        }),
+      );
       return;
     }
     if (request.url === "/register") {
       let body = "";
       for await (const chunk of request) body += chunk.toString();
       registeredRedirect = (JSON.parse(body) as { redirect_uris: string[] }).redirect_uris[0]!;
-      response.writeHead(201, { "Content-Type": "application/json" }).end(JSON.stringify({ client_id: "registered-client", redirect_uris: [registeredRedirect] }));
+      response
+        .writeHead(201, { "Content-Type": "application/json" })
+        .end(JSON.stringify({ client_id: "registered-client", redirect_uris: [registeredRedirect] }));
       return;
     }
     if (request.url?.startsWith("/authorize?")) {
@@ -438,20 +564,36 @@ try {
       let body = "";
       for await (const chunk of request) body += chunk.toString();
       assert.equal(new URLSearchParams(body).get("code"), issuedCode);
-      response.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ access_token: "code-token", token_type: "Bearer", refresh_token: "refresh-token" }));
+      response
+        .writeHead(200, { "Content-Type": "application/json" })
+        .end(JSON.stringify({ access_token: "code-token", token_type: "Bearer", refresh_token: "refresh-token" }));
       return;
     }
     if (request.url === "/mcp-live") {
       if (request.headers.authorization !== "Bearer code-token") {
-        response.writeHead(401, { "WWW-Authenticate": `Bearer resource_metadata="${origin}/.well-known/oauth-protected-resource/mcp-live"` }).end();
+        response
+          .writeHead(401, {
+            "WWW-Authenticate": `Bearer resource_metadata="${origin}/.well-known/oauth-protected-resource/mcp-live"`,
+          })
+          .end();
         return;
       }
-      if (request.method === "GET") { response.writeHead(405).end(); return; }
+      if (request.method === "GET") {
+        response.writeHead(405).end();
+        return;
+      }
       const server = new Server({ name: "auth-code-fixture", version: "1.0" }, { capabilities: { tools: {} } });
-      server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: [{ name: "ping", inputSchema: { type: "object", properties: {} } }] }));
-      server.setRequestHandler(CallToolRequestSchema, async () => ({ content: [{ type: "text", text: "authorized" }] }));
+      server.setRequestHandler(ListToolsRequestSchema, async () => ({
+        tools: [{ name: "ping", inputSchema: { type: "object", properties: {} } }],
+      }));
+      server.setRequestHandler(CallToolRequestSchema, async () => ({
+        content: [{ type: "text", text: "authorized" }],
+      }));
       const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
-      response.on("close", () => { void transport.close(); void server.close(); });
+      response.on("close", () => {
+        void transport.close();
+        void server.close();
+      });
       await server.connect(transport);
       await transport.handleRequest(request, response);
       return;
@@ -481,9 +623,12 @@ try {
     const project = path.join(home, "oauth-project");
     const liveUrl = `http://127.0.0.1:${address.port}/mcp-live`;
     await mkdir(path.join(project, ".easy-agent"), { recursive: true });
-    await writeFile(path.join(project, ".easy-agent", "settings.json"), JSON.stringify({
-      mcpServers: { interactive: { type: "http", url: liveUrl, oauth: true } },
-    }));
+    await writeFile(
+      path.join(project, ".easy-agent", "settings.json"),
+      JSON.stringify({
+        mcpServers: { interactive: { type: "http", url: liveUrl, oauth: true } },
+      }),
+    );
     await trustProjectForSession(project);
     const started = await bootstrapMcp(project);
     const initial = started.connections[0];
@@ -514,7 +659,9 @@ try {
   delete process.env.MCP_HARDENING_TOKEN;
   _resetMcpClientForTesting();
   clearMcpRegistry();
-  if (originalHome === undefined) delete process.env.HOME; else process.env.HOME = originalHome;
-  if (originalProfile === undefined) delete process.env.USERPROFILE; else process.env.USERPROFILE = originalProfile;
+  if (originalHome === undefined) delete process.env.HOME;
+  else process.env.HOME = originalHome;
+  if (originalProfile === undefined) delete process.env.USERPROFILE;
+  else process.env.USERPROFILE = originalProfile;
   await rm(home, { recursive: true, force: true });
 }

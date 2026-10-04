@@ -25,14 +25,16 @@ function resolveExecutable(): string {
 export const powerShellTool: Tool = {
   name: "PowerShell",
   searchHint: "execute Windows PowerShell commands",
-  description:
-    "Execute a PowerShell command on Windows and return stdout/stderr. Use this instead of Bash on Windows.",
+  description: "Execute a PowerShell command on Windows and return stdout/stderr. Use this instead of Bash on Windows.",
   inputSchema: {
     type: "object" as const,
     properties: {
       command: { type: "string", description: "PowerShell command to execute" },
       timeout: { type: "number", description: "Timeout in milliseconds (default 120000)" },
-      idleTimeout: { type: "number", description: "Stop after this many milliseconds without output (default: command timeout)" },
+      idleTimeout: {
+        type: "number",
+        description: "Stop after this many milliseconds without output (default: command timeout)",
+      },
     },
     required: ["command"],
   },
@@ -43,7 +45,12 @@ export const powerShellTool: Tool = {
     }
     const timeoutMs = typeof input.timeout === "number" ? input.timeout : DEFAULT_TIMEOUT_MS;
     const idleTimeoutMs = typeof input.idleTimeout === "number" ? input.idleTimeout : timeoutMs;
-    if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0 || !Number.isSafeInteger(idleTimeoutMs) || idleTimeoutMs <= 0) {
+    if (
+      !Number.isSafeInteger(timeoutMs) ||
+      timeoutMs <= 0 ||
+      !Number.isSafeInteger(idleTimeoutMs) ||
+      idleTimeoutMs <= 0
+    ) {
       return { content: "Error: timeout and idleTimeout must be positive integer milliseconds", isError: true };
     }
 
@@ -101,10 +108,15 @@ export const powerShellTool: Tool = {
         run.signal ? `Signal: ${run.signal}` : "",
         run.stdout ? `\nSTDOUT:\n${formatCapturedOutput(run.stdout, run.stdoutOmittedBytes)}` : "",
         run.stderr ? `\nSTDERR:\n${formatCapturedOutput(run.stderr, run.stderrOmittedBytes)}` : "",
-      ].filter(Boolean).join("\n");
+      ]
+        .filter(Boolean)
+        .join("\n");
       return { content: output, isError: (run.exitCode ?? 1) !== 0 };
     } catch (error) {
-      return { content: `Failed to run PowerShell: ${error instanceof Error ? error.message : String(error)}`, isError: true };
+      return {
+        content: `Failed to run PowerShell: ${error instanceof Error ? error.message : String(error)}`,
+        isError: true,
+      };
     }
   },
   isReadOnly(): boolean {

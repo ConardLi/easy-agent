@@ -85,12 +85,18 @@ async function main(): Promise<void> {
   sources.setFlagSettings({ outputStyle: "flag-style" });
   assert((await settings.readMergedStringSetting(proj, "outputStyle")) === "flag-style", "flag overrides everything");
   sources.setFlagSettings(null);
-  assert((await settings.readMergedStringSetting(proj, "outputStyle")) === "local-style", "clearing flag reverts to local");
+  assert(
+    (await settings.readMergedStringSetting(proj, "outputStyle")) === "local-style",
+    "clearing flag reverts to local",
+  );
 
   // model resolves through the same chain (the fix for --model)
   await writeJson(userFile, { outputStyle: "user-style", model: "user-model" });
   sources.setFlagSettings({ model: "flag-model" });
-  assert((await settings.readMergedStringSetting(proj, "model")) === "flag-model", "--model (flag) wins for model resolution");
+  assert(
+    (await settings.readMergedStringSetting(proj, "model")) === "flag-model",
+    "--model (flag) wins for model resolution",
+  );
   sources.setFlagSettings(null);
   assert((await settings.readMergedStringSetting(proj, "model")) === "user-model", "model falls back to user settings");
 
@@ -125,7 +131,10 @@ async function main(): Promise<void> {
   assert(!threw, "loadPermissionSettings does NOT throw on malformed JSON");
   assert(ps.allow.includes("Bash(npm *)"), "valid user rules still apply when project file is broken");
   const diags = await settings.loadSettingsDiagnostics(proj);
-  assert(diags.some((d) => d.includes(projFile)), "loadSettingsDiagnostics reports the broken file");
+  assert(
+    diags.some((d) => d.includes(projFile)),
+    "loadSettingsDiagnostics reports the broken file",
+  );
   // restore valid project file
   await writeJson(projFile, { allow: ["Edit"] });
 
@@ -181,7 +190,13 @@ async function main(): Promise<void> {
   const wlocalRaw = JSON.parse(await fs.readFile(paths.getLocalSettingsPath(wproj), "utf-8"));
   assert(wlocalRaw.model === "local-written", "updateLocalSettings round-trips");
   const gitignore = await fs.readFile(path.join(wproj, ".easy-agent", ".gitignore"), "utf-8").catch(() => "");
-  assert(gitignore.split("\n").map((l) => l.trim()).includes("settings.local.json"), "local settings auto-added to .gitignore");
+  assert(
+    gitignore
+      .split("\n")
+      .map((l) => l.trim())
+      .includes("settings.local.json"),
+    "local settings auto-added to .gitignore",
+  );
 
   // delete-key semantics
   await settings.updateProjectSettings(wproj, { model: undefined });
@@ -211,10 +226,7 @@ async function main(): Promise<void> {
   );
 
   const vps = await perms.loadPermissionSettings(vproj);
-  assert(
-    vps.allow.includes("GoodRule") && vps.allow.includes("Another"),
-    "valid permission rules survive",
-  );
+  assert(vps.allow.includes("GoodRule") && vps.allow.includes("Another"), "valid permission rules survive");
   assert(
     !vps.allow.includes("5") && !vps.allow.some((r) => r.trim() === ""),
     "malformed permission rules (number / blank) are dropped per-rule",
@@ -225,9 +237,18 @@ async function main(): Promise<void> {
   assert(vProjSrc?.raw?.["customKey"] === "keep-me", "unknown field is preserved (passthrough)");
 
   const vdiags = await settings.loadSettingsDiagnostics(vproj);
-  assert(vdiags.some((d) => d.includes('ignored invalid field "model"')), "diagnostics report ignored model field");
-  assert(vdiags.some((d) => d.includes('ignored invalid field "mode"')), "diagnostics report ignored mode field");
-  assert(vdiags.some((d) => d.includes('invalid rule(s) in "allow"')), "diagnostics report dropped allow rules");
+  assert(
+    vdiags.some((d) => d.includes('ignored invalid field "model"')),
+    "diagnostics report ignored model field",
+  );
+  assert(
+    vdiags.some((d) => d.includes('ignored invalid field "mode"')),
+    "diagnostics report ignored mode field",
+  );
+  assert(
+    vdiags.some((d) => d.includes('invalid rule(s) in "allow"')),
+    "diagnostics report dropped allow rules",
+  );
 
   // ─── [8] cache invalidation (P1) ─────────────────────────────────────────
   section("[8] Read cache — invalidates on file change / write / flag");
@@ -276,7 +297,10 @@ async function main(): Promise<void> {
   // [9b] language → system prompt
   section("[9b] Tier 1: language → system prompt");
   await writeJson(userFile, { language: "Japanese" });
-  assert((await settings.readMergedStringSetting(t1, "language")) === "Japanese", "language resolves via merged settings");
+  assert(
+    (await settings.readMergedStringSetting(t1, "language")) === "Japanese",
+    "language resolves via merged settings",
+  );
   const { buildSystemPrompt, renderSystemPrompt } = await import("../context/systemPrompt.js");
   const prompt = renderSystemPrompt(await buildSystemPrompt({ cwd: t1 }));
   assert(/Respond to the user in Japanese/.test(prompt), "language instruction appears in the system prompt");
@@ -289,7 +313,10 @@ async function main(): Promise<void> {
   state.resetGlobalStateCache();
   assert((await resolveApiKeyFromHelper(t2)) === null, "untrusted project apiKeyHelper does NOT run");
   await state.trustProject(t2);
-  assert((await resolveApiKeyFromHelper(t2)) === "proj-token", "trusted project apiKeyHelper runs; stdout is the token");
+  assert(
+    (await resolveApiKeyFromHelper(t2)) === "proj-token",
+    "trusted project apiKeyHelper runs; stdout is the token",
+  );
   await writeJson(userFile, { apiKeyHelper: "echo user-token" });
   const t3 = await fs.mkdtemp(path.join(os.tmpdir(), "ea-cfg-t3-"));
   assert((await resolveApiKeyFromHelper(t3)) === "user-token", "user apiKeyHelper runs even in an untrusted dir");
@@ -316,7 +343,13 @@ async function main(): Promise<void> {
   await storage.applySessionRetentionPolicy(t4);
   assert(storage.isSessionPersistenceEnabled() === false, "persistence disabled when period == 0");
   assert(!fssync.existsSync(newFile), "period 0 deletes existing transcripts");
-  const init = await storage.initSessionStorage({ sessionId: "s1", cwd: t4, startedAt: new Date().toISOString(), updatedAt: new Date().toISOString(), model: "m" });
+  const init = await storage.initSessionStorage({
+    sessionId: "s1",
+    cwd: t4,
+    startedAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    model: "m",
+  });
   assert(!fssync.existsSync(init.transcriptPath), "with persistence off, initSessionStorage writes nothing");
   storage.configureSessionPersistence(true); // restore for any later use
 
@@ -365,7 +398,10 @@ async function main(): Promise<void> {
   await writeJson(paths.getProjectSettingsPath(t6), { statusLine: "echo hi", disableAllHooks: false });
   await hooks.refreshHookDisableFromSettings(t6);
   assert(hooks.hooksGloballyDisabled() === false, "clearing disableAllHooks re-enables hooks");
-  assert((await settings.readStatusLineConfig(t6))?.command === "echo hi", "statusLine returns once disableAllHooks is off");
+  assert(
+    (await settings.readStatusLineConfig(t6))?.command === "echo hi",
+    "statusLine returns once disableAllHooks is off",
+  );
 
   // [10b] .mcp.json + approval gate
   section("[10b] Tier 2: .mcp.json approval gate");
@@ -380,7 +416,10 @@ async function main(): Promise<void> {
   assert(!mcp.servers.alpha && !mcp.servers.beta, "untrusted .mcp.json servers are NOT loaded");
   await state.trustProject(t7);
   mcp = await mcpConfig.loadMcpConfigs(t7);
-  assert(!mcp.servers.alpha && (mcp.pending ?? []).includes("alpha") && (mcp.pending ?? []).includes("beta"), "trusted-but-unapproved .mcp.json servers are pending, not loaded");
+  assert(
+    !mcp.servers.alpha && (mcp.pending ?? []).includes("alpha") && (mcp.pending ?? []).includes("beta"),
+    "trusted-but-unapproved .mcp.json servers are pending, not loaded",
+  );
   await writeJson(userFile, { enabledMcpjsonServers: ["alpha"] });
   mcp = await mcpConfig.loadMcpConfigs(t7);
   assert(!!mcp.servers.alpha && !mcp.servers.beta, "enabledMcpjsonServers approves only the listed server");
@@ -389,7 +428,10 @@ async function main(): Promise<void> {
   assert(!!mcp.servers.alpha && !!mcp.servers.beta, "enableAllProjectMcpServers approves all .mcp.json servers");
   await writeJson(userFile, { enableAllProjectMcpServers: true, disabledMcpjsonServers: ["beta"] });
   mcp = await mcpConfig.loadMcpConfigs(t7);
-  assert(!!mcp.servers.alpha && !mcp.servers.beta && !(mcp.pending ?? []).includes("beta"), "disabledMcpjsonServers wins over enableAll (rejected, not pending)");
+  assert(
+    !!mcp.servers.alpha && !mcp.servers.beta && !(mcp.pending ?? []).includes("beta"),
+    "disabledMcpjsonServers wins over enableAll (rejected, not pending)",
+  );
 
   // [10c] claudeMdExcludes
   section("[10c] Tier 2: claudeMdExcludes");
@@ -410,11 +452,19 @@ async function main(): Promise<void> {
   section("[10d] Tier 2: respectGitignore");
   const t9 = await fs.mkdtemp(path.join(os.tmpdir(), "ea-cfg-t9-"));
   await writeJson(userFile, { respectGitignore: false });
-  assert((await settings.readMergedBooleanSetting(t9, "respectGitignore")) === false, "respectGitignore resolves false");
+  assert(
+    (await settings.readMergedBooleanSetting(t9, "respectGitignore")) === false,
+    "respectGitignore resolves false",
+  );
   await writeJson(userFile, {});
-  assert((await settings.readMergedBooleanSetting(t9, "respectGitignore")) === undefined, "respectGitignore defaults to unset (treated as true)");
+  assert(
+    (await settings.readMergedBooleanSetting(t9, "respectGitignore")) === undefined,
+    "respectGitignore defaults to unset (treated as true)",
+  );
   const { execFile } = await import("node:child_process");
-  const rgAvailable = await new Promise<boolean>((resolve) => execFile("sh", ["-lc", "command -v rg"], (e) => resolve(!e)));
+  const rgAvailable = await new Promise<boolean>((resolve) =>
+    execFile("sh", ["-lc", "command -v rg"], (e) => resolve(!e)),
+  );
   if (rgAvailable) {
     await fs.writeFile(path.join(t9, "secret.txt"), "NEEDLE-IN-IGNORED\n", "utf-8");
     await fs.writeFile(path.join(t9, ".ignore"), "secret.txt\n", "utf-8");
@@ -425,7 +475,10 @@ async function main(): Promise<void> {
     assert(/No matches/.test(toolResultText(r1.content)), "default respects .ignore — ignored file is skipped");
     await writeJson(userFile, { respectGitignore: false });
     const r2 = await grepTool.call({ pattern: "NEEDLE-IN-IGNORED" }, toolCtx);
-    assert(/secret\.txt/.test(toolResultText(r2.content)), "respectGitignore:false searches ignored files (--no-ignore)");
+    assert(
+      /secret\.txt/.test(toolResultText(r2.content)),
+      "respectGitignore:false searches ignored files (--no-ignore)",
+    );
     await writeJson(userFile, {});
   } else {
     console.log("  · rg not available — skipping functional respectGitignore check");

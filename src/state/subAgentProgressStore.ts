@@ -102,10 +102,7 @@ export function startSubAgentProgress(
  * the store does the merge. Returns silently if the entry was never
  * started (defensive: shouldn't happen, but tests / hot reloads).
  */
-export function updateSubAgentProgress(
-  toolUseId: string,
-  patch: Partial<Omit<SubAgentProgress, "startTime">>,
-): void {
+export function updateSubAgentProgress(toolUseId: string, patch: Partial<Omit<SubAgentProgress, "startTime">>): void {
   const cur = store.get(toolUseId);
   if (!cur) return;
   const next: SubAgentProgress = { ...cur, ...patch };

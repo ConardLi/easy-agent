@@ -1,11 +1,7 @@
 import React from "react";
 import { Box, Text } from "ink";
 import { theme } from "../theme.js";
-import {
-  getUiNotices,
-  subscribeUiNotices,
-  type UiNotice,
-} from "../../state/uiNoticeStore.js";
+import { getUiNotices, subscribeUiNotices, type UiNotice } from "../../state/uiNoticeStore.js";
 
 const EMPTY: readonly UiNotice[] = [];
 
@@ -27,11 +23,7 @@ function toneStyle(tone: UiNotice["tone"]): { color: string; glyph: string } {
  * unobtrusive enough to ignore. Returns nothing when there's nothing to say.
  */
 export function StartupNotices(): React.ReactNode {
-  const notices = React.useSyncExternalStore(
-    subscribeUiNotices,
-    getUiNotices,
-    () => EMPTY,
-  );
+  const notices = React.useSyncExternalStore(subscribeUiNotices, getUiNotices, () => EMPTY);
 
   if (notices.length === 0) {
     return null;

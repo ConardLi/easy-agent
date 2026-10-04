@@ -22,11 +22,7 @@ assert.deepEqual(loaded, {
   stat: "loaded",
 });
 
-const failed = summarizeTool(
-  "Skill",
-  { skill: "missing" },
-  'Skill "missing" not found.',
-);
+const failed = summarizeTool("Skill", { skill: "missing" }, 'Skill "missing" not found.');
 assert.deepEqual(failed, {
   label: "Skill",
   target: "missing",

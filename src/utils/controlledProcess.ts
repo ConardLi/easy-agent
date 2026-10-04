@@ -78,10 +78,10 @@ class OutputTail {
     if (this.retainedBytes < this.limitBytes) {
       return this.ring.subarray(0, this.retainedBytes).toString("utf8");
     }
-    return Buffer.concat([
-      this.ring.subarray(this.nextOffset),
-      this.ring.subarray(0, this.nextOffset),
-    ], this.limitBytes).toString("utf8");
+    return Buffer.concat(
+      [this.ring.subarray(this.nextOffset), this.ring.subarray(0, this.nextOffset)],
+      this.limitBytes,
+    ).toString("utf8");
   }
 }
 
@@ -109,7 +109,11 @@ function signalProcessTree(child: ChildProcess, signal: NodeJS.Signals): Promise
         finished = true;
         clearTimeout(watchdog);
         if (fallback) {
-          try { child.kill(); } catch { /* Already exited. */ }
+          try {
+            child.kill();
+          } catch {
+            /* Already exited. */
+          }
         }
         resolve();
       };
@@ -125,7 +129,11 @@ function signalProcessTree(child: ChildProcess, signal: NodeJS.Signals): Promise
     process.kill(-child.pid, signal);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ESRCH") {
-      try { child.kill(signal); } catch { /* Already exited. */ }
+      try {
+        child.kill(signal);
+      } catch {
+        /* Already exited. */
+      }
     }
   }
 }
@@ -134,13 +142,10 @@ function signalProcessTree(child: ChildProcess, signal: NodeJS.Signals): Promise
  * Run a subprocess with bounded capture and one shutdown path for timeout,
  * idle timeout and cancellation. Resolves only after stdio has closed.
  */
-export async function runControlledProcess(
-  options: ControlledProcessOptions,
-): Promise<ControlledProcessResult> {
+export async function runControlledProcess(options: ControlledProcessOptions): Promise<ControlledProcessResult> {
   const timeoutMs = positiveLimit(options.timeoutMs, "timeoutMs");
-  const idleTimeoutMs = options.idleTimeoutMs === undefined
-    ? undefined
-    : positiveLimit(options.idleTimeoutMs, "idleTimeoutMs");
+  const idleTimeoutMs =
+    options.idleTimeoutMs === undefined ? undefined : positiveLimit(options.idleTimeoutMs, "idleTimeoutMs");
   const maxOutputBytes = positiveLimit(options.maxOutputBytes ?? DEFAULT_OUTPUT_LIMIT_BYTES, "maxOutputBytes");
   const terminationGraceMs = positiveLimit(
     options.terminationGraceMs ?? DEFAULT_TERMINATION_GRACE_MS,
@@ -152,10 +157,18 @@ export async function runControlledProcess(
 
   if (options.signal?.aborted) {
     return {
-      stdout: "", stderr: "", stdoutBytes: 0, stderrBytes: 0,
-      stdoutOmittedBytes: 0, stderrOmittedBytes: 0,
-      stdoutTruncated: false, stderrTruncated: false,
-      exitCode: null, signal: null, reason: "aborted", durationMs: 0,
+      stdout: "",
+      stderr: "",
+      stdoutBytes: 0,
+      stderrBytes: 0,
+      stdoutOmittedBytes: 0,
+      stderrOmittedBytes: 0,
+      stdoutTruncated: false,
+      stderrTruncated: false,
+      exitCode: null,
+      signal: null,
+      reason: "aborted",
+      durationMs: 0,
     };
   }
 
@@ -198,14 +211,19 @@ export async function runControlledProcess(
     options.signal?.addEventListener("abort", onAbort, { once: true });
     if (options.signal?.aborted) onAbort();
 
-    const onData = (target: OutputTail, decoder: StringDecoder, observe: ((chunk: string) => void) | undefined) =>
+    const onData =
+      (target: OutputTail, decoder: StringDecoder, observe: ((chunk: string) => void) | undefined) =>
       (chunk: Buffer) => {
         target.append(chunk);
         resetIdleTimer();
         if (observe) {
           const text = decoder.write(chunk);
           if (text) {
-            try { observe(text); } catch { /* Observers cannot interrupt cleanup. */ }
+            try {
+              observe(text);
+            } catch {
+              /* Observers cannot interrupt cleanup. */
+            }
           }
         }
       };
@@ -232,17 +250,31 @@ export async function runControlledProcess(
       const remainingStdout = stdoutDecoder.end();
       const remainingStderr = stderrDecoder.end();
       if (remainingStdout) {
-        try { options.onStdout?.(remainingStdout); } catch { /* Observer failed. */ }
+        try {
+          options.onStdout?.(remainingStdout);
+        } catch {
+          /* Observer failed. */
+        }
       }
       if (remainingStderr) {
-        try { options.onStderr?.(remainingStderr); } catch { /* Observer failed. */ }
+        try {
+          options.onStderr?.(remainingStderr);
+        } catch {
+          /* Observer failed. */
+        }
       }
       resolve({
-        stdout: stdout.text(), stderr: stderr.text(),
-        stdoutBytes: stdout.totalBytes, stderrBytes: stderr.totalBytes,
-        stdoutOmittedBytes: stdout.omittedBytes, stderrOmittedBytes: stderr.omittedBytes,
-        stdoutTruncated: stdout.truncated, stderrTruncated: stderr.truncated,
-        exitCode, signal: exitSignal, reason,
+        stdout: stdout.text(),
+        stderr: stderr.text(),
+        stdoutBytes: stdout.totalBytes,
+        stderrBytes: stderr.totalBytes,
+        stdoutOmittedBytes: stdout.omittedBytes,
+        stderrOmittedBytes: stderr.omittedBytes,
+        stdoutTruncated: stdout.truncated,
+        stderrTruncated: stderr.truncated,
+        exitCode,
+        signal: exitSignal,
+        reason,
         ...(spawnError ? { spawnError } : {}),
         ...(stdinError ? { stdinError } : {}),
         durationMs: Date.now() - startedAt,

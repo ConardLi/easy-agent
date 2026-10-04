@@ -24,9 +24,7 @@ export interface SingleEdit {
 export class EditError extends Error {}
 
 export function normalizeQuotes(value: string): string {
-  return value
-    .replace(/[\u2018\u2019]/g, "'")
-    .replace(/[\u201C\u201D]/g, '"');
+  return value.replace(/[\u2018\u2019]/g, "'").replace(/[\u201C\u201D]/g, '"');
 }
 
 export function countOccurrences(haystack: string, needle: string): number {
@@ -46,10 +44,7 @@ export function countOccurrences(haystack: string, needle: string): number {
  * IO and atomicity. Throws `EditError` with a model-facing message when the
  * edit can't be applied unambiguously.
  */
-export function applyEditToContent(
-  content: string,
-  edit: SingleEdit,
-): { content: string; replacements: number } {
+export function applyEditToContent(content: string, edit: SingleEdit): { content: string; replacements: number } {
   const oldString = normalizeQuotes(edit.old_string);
   const newString = normalizeQuotes(edit.new_string);
 
@@ -70,9 +65,7 @@ export function applyEditToContent(
     );
   }
 
-  const updated = edit.replace_all
-    ? content.split(oldString).join(newString)
-    : content.replace(oldString, newString);
+  const updated = edit.replace_all ? content.split(oldString).join(newString) : content.replace(oldString, newString);
 
   return { content: updated, replacements: edit.replace_all ? occurrences : 1 };
 }
@@ -106,9 +99,5 @@ export function applyEditsToContent(
 export function buildEditPreview(oldString: string, newString: string): string {
   const oldLines = oldString.split("\n").slice(0, 3);
   const newLines = newString.split("\n").slice(0, 3);
-  return [
-    "Preview:",
-    ...oldLines.map((line) => `- ${line}`),
-    ...newLines.map((line) => `+ ${line}`),
-  ].join("\n");
+  return ["Preview:", ...oldLines.map((line) => `- ${line}`), ...newLines.map((line) => `+ ${line}`)].join("\n");
 }

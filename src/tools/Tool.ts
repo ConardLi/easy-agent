@@ -84,9 +84,7 @@ export interface ToolContext {
    * user cancels or no interactive frontend is attached (headless). Tools
    * other than AskUserQuestion ignore it.
    */
-  requestUserQuestion?: (
-    request: UserQuestionRequest,
-  ) => Promise<UserQuestionResponse | null>;
+  requestUserQuestion?: (request: UserQuestionRequest) => Promise<UserQuestionResponse | null>;
 
   // ─── Sub-agent spawning support ───────────────────────────────────
   //
@@ -248,19 +246,14 @@ export interface Tool {
 }
 
 /** Truncate tool result content to the specified max size. */
-export function truncateToolResult(
-  content: string | ContentBlock[],
-  maxChars?: number,
-): string | ContentBlock[] {
+export function truncateToolResult(content: string | ContentBlock[], maxChars?: number): string | ContentBlock[] {
   const limit = maxChars ?? DEFAULT_MAX_RESULT_SIZE_CHARS;
   // Array content (multimodal results): only truncate text blocks; never
   // touch image blocks — slicing base64 would corrupt the image and the
   // byte budget for images is handled separately (size guard in the tool).
   if (Array.isArray(content)) {
     return content.map((block) =>
-      block.type === "text"
-        ? { ...block, text: truncateToolResult(block.text, maxChars) as string }
-        : block,
+      block.type === "text" ? { ...block, text: truncateToolResult(block.text, maxChars) as string } : block,
     );
   }
   if (content.length <= limit) return content;

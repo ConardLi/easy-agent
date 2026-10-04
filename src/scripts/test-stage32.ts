@@ -20,12 +20,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import {
-  imageMediaType,
-  isImagePath,
-  readImageAsBlock,
-  MAX_IMAGE_BYTES,
-} from "../tools/imageUtils.js";
+import { imageMediaType, isImagePath, readImageAsBlock, MAX_IMAGE_BYTES } from "../tools/imageUtils.js";
 import { fileReadTool } from "../tools/fileReadTool.js";
 import { buildUserMessageContent } from "../core/attachImages.js";
 import { microCompactMessages } from "../context/compaction.js";
@@ -77,8 +72,7 @@ async function main(): Promise<void> {
   );
   const bigAttachment = await buildUserMessageContent(`look at @${big}`, tmp);
   assert(
-    typeof bigAttachment.content === "string" &&
-      bigAttachment.errors.some((error) => /too large/i.test(error)),
+    typeof bigAttachment.content === "string" && bigAttachment.errors.some((error) => /too large/i.test(error)),
     "@image rejects an oversized image without attaching it",
   );
 
@@ -106,7 +100,10 @@ async function main(): Promise<void> {
   if (Array.isArray(withImg.content)) {
     const text = withImg.content.find((b) => b.type === "text") as { text?: string } | undefined;
     assert(text?.text?.includes("@public/img/banner.jpeg") === true, "original prompt text preserved verbatim");
-    assert(withImg.content.some((b) => b.type === "image"), "image block appended");
+    assert(
+      withImg.content.some((b) => b.type === "image"),
+      "image block appended",
+    );
   }
 
   const noImg = await buildUserMessageContent("just edit @src/index.ts thanks", process.cwd());
@@ -130,7 +127,10 @@ async function main(): Promise<void> {
   assert(Array.isArray(pasted.content), "[Image #N] chip → block array");
   assert(pasted.attached.length === 1, "pasted chip attaches exactly one image");
   if (Array.isArray(pasted.content)) {
-    assert(pasted.content.some((b) => b.type === "image"), "pasted image block appended from registry");
+    assert(
+      pasted.content.some((b) => b.type === "image"),
+      "pasted image block appended from registry",
+    );
   }
   const reusedAfterConsume = await buildUserMessageContent(`again ${imageRefToken(pastedId)}`, process.cwd());
   assert(typeof reusedAfterConsume.content === "string", "chip is consumed once (no double-send)");
@@ -170,14 +170,14 @@ async function main(): Promise<void> {
 
   try {
     // openai-chat
-    let cap = captureFetch(`data: {"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}]}\n\n` + `data: [DONE]\n\n`);
+    let cap = captureFetch(
+      `data: {"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}]}\n\n` + `data: [DONE]\n\n`,
+    );
     await drain({ id: "gpt5", protocol: "openai-chat", model: "gpt-5.1", apiKey: "x" }, userImageMessages);
     const chatMsgs = cap.body().messages as Array<Record<string, unknown>>;
     const chatUser = chatMsgs.find((m) => m.role === "user");
     const chatParts = (chatUser?.content as Array<Record<string, unknown>>) ?? [];
-    const chatImg = chatParts.find((p) => p.type === "image_url") as
-      | { image_url?: { url?: string } }
-      | undefined;
+    const chatImg = chatParts.find((p) => p.type === "image_url") as { image_url?: { url?: string } } | undefined;
     assert(Array.isArray(chatUser?.content), "openai-chat: user content is a parts array");
     assert(
       chatImg?.image_url?.url?.startsWith("data:image/jpeg;base64,") === true,
@@ -196,11 +196,15 @@ async function main(): Promise<void> {
     );
 
     // gemini
-    cap = captureFetch(`data: {"candidates":[{"content":{"parts":[{"text":"ok"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":1,"candidatesTokenCount":1}}\n\n`);
+    cap = captureFetch(
+      `data: {"candidates":[{"content":{"parts":[{"text":"ok"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":1,"candidatesTokenCount":1}}\n\n`,
+    );
     await drain({ id: "gemini", protocol: "gemini", model: "gemini-3.5-flash", apiKey: "x" }, userImageMessages);
     const contents = cap.body().contents as Array<Record<string, unknown>>;
     const geminiParts = contents.flatMap((c) => (c.parts as Array<Record<string, unknown>>) ?? []);
-    const inline = geminiParts.find((p) => p.inlineData) as { inlineData?: { mimeType?: string; data?: string } } | undefined;
+    const inline = geminiParts.find((p) => p.inlineData) as
+      | { inlineData?: { mimeType?: string; data?: string } }
+      | undefined;
     assert(inline?.inlineData?.mimeType === "image/jpeg", "gemini: image becomes inlineData with mimeType");
     assert((inline?.inlineData?.data?.length ?? 0) > 0, "gemini: inlineData carries base64 bytes");
 
@@ -222,7 +226,9 @@ async function main(): Promise<void> {
         ],
       },
     ];
-    cap = captureFetch(`data: {"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}]}\n\n` + `data: [DONE]\n\n`);
+    cap = captureFetch(
+      `data: {"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}]}\n\n` + `data: [DONE]\n\n`,
+    );
     await drain({ id: "gpt5", protocol: "openai-chat", model: "gpt-5.1", apiKey: "x" }, toolImageHistory);
     const histMsgs = cap.body().messages as Array<Record<string, unknown>>;
     const toolMsg = histMsgs.find((m) => m.role === "tool");
@@ -262,17 +268,15 @@ async function main(): Promise<void> {
   // ── [6] UI flatten renders an image-attachment turn ───────────────────────
   section("[6] UI: image-attachment user turn is rendered");
   const { flattenConversation } = await import("../ui/components/ConversationView.js");
-  const items = flattenConversation(
-    [
-      {
-        role: "user",
-        content: [
-          { type: "text", text: "see this" },
-          { type: "image", source: { type: "base64", media_type: "image/png", data: "QUJD" } },
-        ],
-      },
-    ] as never,
-  );
+  const items = flattenConversation([
+    {
+      role: "user",
+      content: [
+        { type: "text", text: "see this" },
+        { type: "image", source: { type: "base64", media_type: "image/png", data: "QUJD" } },
+      ],
+    },
+  ] as never);
   assert(items.length === 1 && items[0]!.key === "u0", "image-attachment user message yields a render item");
 
   await fs.rm(tmp, { recursive: true, force: true });

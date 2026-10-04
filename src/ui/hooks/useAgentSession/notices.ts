@@ -33,9 +33,7 @@ export function markToolCallComplete(
   id: string,
   completion: ToolCallCompletion,
 ): ToolCallInfo[] {
-  return toolCalls.map((toolCall) =>
-    toolCall.id === id ? { ...toolCall, ...completion } : toolCall,
-  );
+  return toolCalls.map((toolCall) => (toolCall.id === id ? { ...toolCall, ...completion } : toolCall));
 }
 
 /**
@@ -129,10 +127,7 @@ export function tokenWarningNotice(warning: TokenWarningResult): SystemNotice | 
  * Notice for a `turn_complete` event. Only the two "stopped short" reasons
  * surface a notice; a clean completion / abort returns null.
  */
-export function turnCompleteNotice(
-  reason: LoopTerminationReason,
-  turnCount: number,
-): SystemNotice | null {
+export function turnCompleteNotice(reason: LoopTerminationReason, turnCount: number): SystemNotice | null {
   if (reason === "max_turns") {
     return {
       tone: "error",

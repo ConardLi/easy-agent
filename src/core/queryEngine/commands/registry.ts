@@ -11,12 +11,7 @@ import { getMcpRegistry, getMcpRegistryEntry } from "../../../services/mcp/regis
 import { reconnectMcpServer } from "../../../services/mcp/bootstrap.js";
 import { getAllUserInvocableSkills } from "../../../services/skills/registry.js";
 import { getAllAgents } from "../../../agents/registry.js";
-import {
-  loadHooksDiagnosticReport,
-  HOOK_EVENTS,
-  type HookEvent,
-  type HooksSettings,
-} from "../../../hooks/index.js";
+import { loadHooksDiagnosticReport, HOOK_EVENTS, type HookEvent, type HooksSettings } from "../../../hooks/index.js";
 import type { ScopedMcpServerConfig } from "../../../types/mcp.js";
 import type { QueryEngineEvent } from "../types.js";
 import type { CommandContext } from "./context.js";
@@ -136,9 +131,7 @@ export async function* handleAgentsCommand(): AsyncGenerator<QueryEngineEvent, {
     if (agent.maxTurns !== undefined) tags.push(`maxTurns: ${agent.maxTurns}`);
     if (agent.permissionMode) tags.push(`mode: ${agent.permissionMode}`);
 
-    const desc = agent.whenToUse.length > 200
-      ? `${agent.whenToUse.slice(0, 197)}…`
-      : agent.whenToUse;
+    const desc = agent.whenToUse.length > 200 ? `${agent.whenToUse.slice(0, 197)}…` : agent.whenToUse;
     lines.push(`  ${agent.agentType} — ${desc}`);
     lines.push(`    ${tags.join(" · ")}`);
     if (agent.filePath) {
@@ -156,9 +149,7 @@ export async function* handleAgentsCommand(): AsyncGenerator<QueryEngineEvent, {
 }
 
 /** Render the current user and project Hook configuration for `/hooks`. */
-export async function* handleHooksCommand(
-  ctx: CommandContext,
-): AsyncGenerator<QueryEngineEvent, { handled: boolean }> {
+export async function* handleHooksCommand(ctx: CommandContext): AsyncGenerator<QueryEngineEvent, { handled: boolean }> {
   const report = await loadHooksDiagnosticReport(ctx.cwd);
   const lines: string[] = [];
 
@@ -175,12 +166,7 @@ export async function* handleHooksCommand(
   if (report.errors.length > 0) lines.push("");
 
   const totalHookCount = (scope: HooksSettings): number =>
-    HOOK_EVENTS.reduce(
-      (sum, ev) =>
-        sum +
-        (scope[ev] ?? []).reduce((s, g) => s + g.hooks.length, 0),
-      0,
-    );
+    HOOK_EVENTS.reduce((sum, ev) => sum + (scope[ev] ?? []).reduce((s, g) => s + g.hooks.length, 0), 0);
   const userTotal = totalHookCount(report.userHooks);
   const projectTotal = totalHookCount(report.projectHooks);
 
@@ -224,9 +210,7 @@ export async function* handleHooksCommand(
         const matcher = group.matcher && group.matcher !== "*" ? group.matcher : "*";
         lines.push(`  ${event}  matcher=${matcher}`);
         for (const hook of group.hooks) {
-          const cmdPreview = hook.command.length > 80
-            ? `${hook.command.slice(0, 77)}...`
-            : hook.command;
+          const cmdPreview = hook.command.length > 80 ? `${hook.command.slice(0, 77)}...` : hook.command;
           lines.push(`    - $ ${cmdPreview}    (timeout: ${hook.timeout ?? 60}s)`);
         }
       }
@@ -260,9 +244,7 @@ export async function* handleHooksCommand(
  * The output is rendered as a system notice (info/error tone), never sent
  * to the model. A text-only listing is enough here; no TUI panel is needed.
  */
-export async function* handleMcpCommand(
-  args: string[],
-): AsyncGenerator<QueryEngineEvent, { handled: boolean }> {
+export async function* handleMcpCommand(args: string[]): AsyncGenerator<QueryEngineEvent, { handled: boolean }> {
   const describeTransport = (config: ScopedMcpServerConfig): string => {
     if (config.type === "http") return `http: ${config.url}`;
     if (config.type === "sse") return `sse: ${config.url}`;
@@ -279,7 +261,7 @@ export async function* handleMcpCommand(
         kind: "info",
         message:
           "MCP Servers (0 configured)\n\n" +
-          "No MCP servers configured. Add them under \"mcpServers\" in:\n" +
+          'No MCP servers configured. Add them under "mcpServers" in:\n' +
           "  ~/.easy-agent/settings.json   (user-wide)\n" +
           "  .easy-agent/settings.json      (project-only)",
       };
@@ -357,7 +339,11 @@ export async function* handleMcpCommand(
     try {
       const next = await reconnectMcpServer(target);
       if (!next) {
-        yield { type: "command", kind: "error", message: `MCP server '${target}' was removed before reconnect completed.` };
+        yield {
+          type: "command",
+          kind: "error",
+          message: `MCP server '${target}' was removed before reconnect completed.`,
+        };
         return { handled: true };
       }
       if (next.type === "connected") {

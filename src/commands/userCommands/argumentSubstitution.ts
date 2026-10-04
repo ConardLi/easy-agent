@@ -69,11 +69,7 @@ export function parseArguments(args: string): string[] {
  * @param appendIfNoPlaceholder When true and the template had no placeholder
  *                but args were passed, append "ARGUMENTS: <args>".
  */
-export function substituteArguments(
-  content: string,
-  args: string | undefined,
-  appendIfNoPlaceholder = true,
-): string {
+export function substituteArguments(content: string, args: string | undefined, appendIfNoPlaceholder = true): string {
   if (args === undefined || args === null) return content;
 
   const parsed = parseArguments(args);
@@ -85,7 +81,7 @@ export function substituteArguments(
   // Guard against matching $1abc by requiring a non-word boundary.
   content = content.replace(/\$(\d+)(?!\w)/g, (_, idx: string) => {
     const n = Number(idx);
-    return n >= 1 ? parsed[n - 1] ?? "" : "";
+    return n >= 1 ? (parsed[n - 1] ?? "") : "";
   });
   // $ARGUMENTS (full string) — replace last so it doesn't eat the indexed forms.
   content = content.replaceAll("$ARGUMENTS", args);

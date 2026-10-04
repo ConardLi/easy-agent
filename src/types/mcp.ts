@@ -46,10 +46,7 @@ export type McpOAuthConfig =
   | { type: "authorization_code"; clientId?: string; clientSecretEnv?: string; scope?: string; redirectPort?: number }
   | { type: "client_credentials"; clientId: string; clientSecretEnv: string; scope?: string };
 
-export type McpServerConfig =
-  | McpStdioServerConfig
-  | McpHTTPServerConfig
-  | McpSSEServerConfig;
+export type McpServerConfig = McpStdioServerConfig | McpHTTPServerConfig | McpSSEServerConfig;
 
 /** Top-level config shape inside settings.json. */
 export interface McpJsonConfig {
@@ -101,8 +98,4 @@ export interface PendingMcpServer {
   startedAt: number;
 }
 
-export type McpServerConnection =
-  | ConnectedMcpServer
-  | FailedMcpServer
-  | DisabledMcpServer
-  | PendingMcpServer;
+export type McpServerConnection = ConnectedMcpServer | FailedMcpServer | DisabledMcpServer | PendingMcpServer;

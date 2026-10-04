@@ -49,9 +49,7 @@ export function TranscriptOverlay({
   const position =
     lines.length === 0
       ? "empty"
-      : `${scroll + 1}–${end} / ${lines.length}` +
-        (atTop ? "  (top)" : "") +
-        (atBottom ? "  (bottom)" : "");
+      : `${scroll + 1}–${end} / ${lines.length}` + (atTop ? "  (top)" : "") + (atBottom ? "  (bottom)" : "");
 
   return (
     <Box flexDirection="column" height={rows}>
@@ -71,7 +69,7 @@ export function TranscriptOverlay({
         <Box>
           <Text color={theme.brand}>{"/"}</Text>
           <Text>{search.query}</Text>
-          {search.active ? <Text inverse>{" "}</Text> : null}
+          {search.active ? <Text inverse> </Text> : null}
           <Text color={theme.muted}>
             {search.query
               ? search.matchCount > 0

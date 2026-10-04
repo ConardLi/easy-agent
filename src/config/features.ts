@@ -13,7 +13,9 @@ export interface FeatureSettings {
 }
 
 /** Preserve the legacy boolean and auto:N spellings during the migration window. */
-export function parseLegacyToolSearch(value: string): Pick<FeatureSettings, "toolSearch" | "toolSearchAutoThreshold"> | null {
+export function parseLegacyToolSearch(
+  value: string,
+): Pick<FeatureSettings, "toolSearch" | "toolSearchAutoThreshold"> | null {
   const normalized = value.trim().toLowerCase();
   if (["true", "1", "yes", "on"].includes(normalized)) return { toolSearch: "on", toolSearchAutoThreshold: 10 };
   if (["false", "0", "no", "off"].includes(normalized)) return { toolSearch: "off", toolSearchAutoThreshold: 10 };
@@ -21,14 +23,26 @@ export function parseLegacyToolSearch(value: string): Pick<FeatureSettings, "too
   if (normalized.startsWith("auto:")) {
     const n = Number.parseInt(normalized.slice(5), 10);
     const threshold = Number.isFinite(n) ? Math.max(0, Math.min(100, n)) : 10;
-    return { toolSearch: threshold === 0 ? "on" : threshold === 100 ? "off" : "auto", toolSearchAutoThreshold: threshold };
+    return {
+      toolSearch: threshold === 0 ? "on" : threshold === 100 ? "off" : "auto",
+      toolSearchAutoThreshold: threshold,
+    };
   }
   return null;
 }
 
-export function resolveFeatureSettings(sources: readonly LoadedSource[], env: NodeJS.ProcessEnv = process.env): FeatureSettings {
-  const result: FeatureSettings = { toolSearch: "on", toolSearchAutoThreshold: 10,
-    toolSearchExplicit: false, modelRoles: {}, sources: { toolSearch: "default", toolSearchAutoThreshold: "default", modelRoles: "default" }, warnings: [] };
+export function resolveFeatureSettings(
+  sources: readonly LoadedSource[],
+  env: NodeJS.ProcessEnv = process.env,
+): FeatureSettings {
+  const result: FeatureSettings = {
+    toolSearch: "on",
+    toolSearchAutoThreshold: 10,
+    toolSearchExplicit: false,
+    modelRoles: {},
+    sources: { toolSearch: "default", toolSearchAutoThreshold: "default", modelRoles: "default" },
+    warnings: [],
+  };
   const apply = (source: LoadedSource) => {
     const raw = source.raw;
     if (!raw) return;
@@ -52,7 +66,8 @@ export function resolveFeatureSettings(sources: readonly LoadedSource[], env: No
   // Managed policy remains the highest-priority authority. Parent environment
   // overrides file preferences, while explicit CLI flags override environment.
   for (const source of sources) if (source.source !== "flag" && source.source !== "policy") apply(source);
-  const legacyKey = env.EASY_AGENT_ENABLE_TOOL_SEARCH !== undefined ? "EASY_AGENT_ENABLE_TOOL_SEARCH" : "ENABLE_TOOL_SEARCH";
+  const legacyKey =
+    env.EASY_AGENT_ENABLE_TOOL_SEARCH !== undefined ? "EASY_AGENT_ENABLE_TOOL_SEARCH" : "ENABLE_TOOL_SEARCH";
   const legacyValue = env[legacyKey];
   if (legacyValue !== undefined) {
     const legacy = parseLegacyToolSearch(legacyValue);
@@ -61,7 +76,9 @@ export function resolveFeatureSettings(sources: readonly LoadedSource[], env: No
       result.toolSearchExplicit = true;
       result.sources.toolSearch = `environment:${legacyKey}`;
       result.sources.toolSearchAutoThreshold = `environment:${legacyKey}`;
-      result.warnings.push(`${legacyKey} is deprecated; use toolSearch/toolSearchAutoThreshold in settings or --tool-search. Supported throughout 0.x; removal no earlier than 1.0 with a migration notice.`);
+      result.warnings.push(
+        `${legacyKey} is deprecated; use toolSearch/toolSearchAutoThreshold in settings or --tool-search. Supported throughout 0.x; removal no earlier than 1.0 with a migration notice.`,
+      );
     } else result.warnings.push(`${legacyKey}: invalid mode ignored; expected on, off, auto or auto:N.`);
   }
   for (const source of sources) if (source.source === "flag" || source.source === "policy") apply(source);

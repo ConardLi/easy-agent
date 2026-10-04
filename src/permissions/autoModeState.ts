@@ -62,10 +62,7 @@ export function recordClassifierSuccess(): void {
  * auto-denying and ask the human instead.
  */
 export function shouldFallbackToPrompting(): boolean {
-  return (
-    state.consecutiveDenials >= DENIAL_LIMITS.maxConsecutive ||
-    state.totalDenials >= DENIAL_LIMITS.maxTotal
-  );
+  return state.consecutiveDenials >= DENIAL_LIMITS.maxConsecutive || state.totalDenials >= DENIAL_LIMITS.maxTotal;
 }
 
 // ── Circuit breaker ────────────────────────────────────────────────
@@ -77,10 +74,7 @@ export function shouldFallbackToPrompting(): boolean {
  */
 export function recordClassifierFailure(): void {
   state.consecutiveFailures += 1;
-  if (
-    !state.circuitBroken &&
-    state.consecutiveFailures >= CLASSIFIER_FAILURE_LIMIT
-  ) {
+  if (!state.circuitBroken && state.consecutiveFailures >= CLASSIFIER_FAILURE_LIMIT) {
     state.circuitBroken = true;
   }
 }

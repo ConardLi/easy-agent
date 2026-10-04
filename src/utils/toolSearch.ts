@@ -224,10 +224,7 @@ export interface ToolSearchRequestEnv {
 function calculateDeferredToolDefinitionChars(tools: readonly Tool[]): number {
   return tools
     .filter(isDeferredTool)
-    .reduce(
-      (total, t) => total + t.name.length + t.description.length + JSON.stringify(t.inputSchema).length,
-      0,
-    );
+    .reduce((total, t) => total + t.name.length + t.description.length + JSON.stringify(t.inputSchema).length, 0);
 }
 
 /**
@@ -235,7 +232,11 @@ function calculateDeferredToolDefinitionChars(tools: readonly Tool[]): number {
  * Threshold = contextWindow × N%. Without a token-count API we use the
  * character heuristic (2.5 chars/token) directly.
  */
-function checkAutoThreshold(model: string, tools: readonly Tool[], settings?: FeatureSettings): {
+function checkAutoThreshold(
+  model: string,
+  tools: readonly Tool[],
+  settings?: FeatureSettings,
+): {
   enabled: boolean;
   chars: number;
   charThreshold: number;
@@ -422,8 +423,7 @@ export interface PreparedToolSearchRequest {
  */
 export function prepareToolSearchRequest(params: PrepareToolSearchRequestParams): PreparedToolSearchRequest {
   const { tools, messages, model, env } = params;
-  const toApi = (tool: Tool, deferLoading: boolean): ApiToolParam =>
-    toolToApiParam(tool, { deferLoading });
+  const toApi = (tool: Tool, deferLoading: boolean): ApiToolParam => toolToApiParam(tool, { deferLoading });
 
   let enabled = isToolSearchEnabled(model, tools, env, params.source);
 
@@ -472,9 +472,7 @@ export function prepareToolSearchRequest(params: PrepareToolSearchRequestParams)
   return {
     enabled: true,
     tools: apiTools,
-    messages: deferredList
-      ? prependDeferredToolsAnnouncement(messages, deferredList)
-      : [...messages],
+    messages: deferredList ? prependDeferredToolsAnnouncement(messages, deferredList) : [...messages],
     betaHeaders: env.protocol === "anthropic" ? [TOOL_SEARCH_BETA_HEADER] : [],
     deferredToolNames,
     discoveredToolNames,
@@ -488,10 +486,7 @@ export function prepareToolSearchRequest(params: PrepareToolSearchRequestParams)
  * one well-formed opening message. Never persisted to the session — the
  * caller passes the shaped copy to the API only.
  */
-function prependDeferredToolsAnnouncement(
-  messages: readonly MessageParam[],
-  deferredList: string,
-): MessageParam[] {
+function prependDeferredToolsAnnouncement(messages: readonly MessageParam[], deferredList: string): MessageParam[] {
   const announcement = `<available-deferred-tools>\n${deferredList}\n</available-deferred-tools>`;
   const first = messages[0];
   if (!first || first.role !== "user") {
@@ -574,9 +569,7 @@ export function stripUnavailableToolReferencesFromUserMessage(
 export function appendToolReferenceTurnBoundary(msg: MessageParam): MessageParam {
   if (!contentHasToolReference(msg.content)) return msg;
   const blocks = msg.content as unknown as ContentBlock[];
-  const alreadyHas = blocks.some(
-    (b) => b.type === "text" && b.text.startsWith(TOOL_REFERENCE_TURN_BOUNDARY),
-  );
+  const alreadyHas = blocks.some((b) => b.type === "text" && b.text.startsWith(TOOL_REFERENCE_TURN_BOUNDARY));
   if (alreadyHas) return msg;
   return {
     ...msg,
@@ -622,10 +615,7 @@ export function normalizeToolReferencesForAPI(
  * request's own tool list (discovered tools are re-included by
  * `prepareToolSearchRequest`, so they are always present).
  */
-export function renderToolReferencesAsText(
-  messages: MessageParam[],
-  tools: readonly ApiToolParam[],
-): MessageParam[] {
+export function renderToolReferencesAsText(messages: MessageParam[], tools: readonly ApiToolParam[]): MessageParam[] {
   const byName = new Map(tools.map((t) => [t.name, t]));
   return messages.map((msg) =>
     mapToolResultBlocks(msg, (block) => {

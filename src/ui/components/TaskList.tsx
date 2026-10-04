@@ -37,7 +37,9 @@ function TaskListInner({ tasks }: TaskListProps): React.ReactNode {
   return (
     <Box flexDirection="column" marginTop={1}>
       <Box marginLeft={2}>
-        <Text bold color="cyan">{"\u25A2 Tasks "}</Text>
+        <Text bold color="cyan">
+          {"\u25A2 Tasks "}
+        </Text>
         <Text dimColor>
           {`(${completed}/${sorted.length} done`}
           {inProgress > 0 ? `, ${inProgress} in progress` : ""}
@@ -46,11 +48,7 @@ function TaskListInner({ tasks }: TaskListProps): React.ReactNode {
         </Text>
       </Box>
       {sorted.map((task) => (
-        <TaskRow
-          key={task.id}
-          task={task}
-          openBlockers={task.blockedBy.filter((id) => unresolvedIds.has(id))}
-        />
+        <TaskRow key={task.id} task={task} openBlockers={task.blockedBy.filter((id) => unresolvedIds.has(id))} />
       ))}
     </Box>
   );
@@ -64,7 +62,9 @@ function TaskRow({ task, openBlockers }: { task: Task; openBlockers: string[] })
       <Box marginLeft={4}>
         <Text color="green">{"\u2713 "}</Text>
         <Text dimColor>{`#${task.id} `}</Text>
-        <Text strikethrough dimColor>{task.subject}</Text>
+        <Text strikethrough dimColor>
+          {task.subject}
+        </Text>
       </Box>
     );
   }

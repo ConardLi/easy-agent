@@ -1,8 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import {
-  readStatusLineConfig,
-  type StatusLineCommandConfig,
-} from "../../utils/settings.js";
+import { readStatusLineConfig, type StatusLineCommandConfig } from "../../utils/settings.js";
 import { runControlledProcess } from "../../utils/controlledProcess.js";
 
 /**
@@ -78,18 +75,20 @@ export function useStatusLine(context: StatusLineContext): { custom: string | nu
         timeoutMs: RUN_TIMEOUT_MS,
         idleTimeoutMs: RUN_TIMEOUT_MS,
         maxOutputBytes: MAX_STATUS_OUTPUT_BYTES,
-      }).then((run) => {
-        if (cancelled) return;
-        if (run.reason !== "completed" || run.stdoutTruncated) {
-          setCustom(null);
-          return;
-        }
-        // The footer stays one row even when a command emits several lines.
-        const line = run.stdout.replace(/\n+$/, "").split("\n")[0]?.slice(0, 512) ?? "";
-        setCustom(line || null);
-      }).catch(() => {
-        if (!cancelled) setCustom(null);
-      });
+      })
+        .then((run) => {
+          if (cancelled) return;
+          if (run.reason !== "completed" || run.stdoutTruncated) {
+            setCustom(null);
+            return;
+          }
+          // The footer stays one row even when a command emits several lines.
+          const line = run.stdout.replace(/\n+$/, "").split("\n")[0]?.slice(0, 512) ?? "";
+          setCustom(line || null);
+        })
+        .catch(() => {
+          if (!cancelled) setCustom(null);
+        });
     }, DEBOUNCE_MS);
 
     return () => {

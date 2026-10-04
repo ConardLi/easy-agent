@@ -53,11 +53,14 @@ export const SettingsSchema = z.looseObject({
   // Default profile id (or raw model name) when no --model is given.
   defaultModel: z.string().trim().min(1).optional(),
   // Role names match runtime invocation classes. Unknown roles are rejected.
-  modelRoles: z.object({
-    background: z.string().trim().min(1).optional(),
-    think: z.string().trim().min(1).optional(),
-    longContext: z.string().trim().min(1).optional(),
-  }).strict().optional(),
+  modelRoles: z
+    .object({
+      background: z.string().trim().min(1).optional(),
+      think: z.string().trim().min(1).optional(),
+      longContext: z.string().trim().min(1).optional(),
+    })
+    .strict()
+    .optional(),
   toolSearch: z.enum(["off", "auto", "on"]).optional(),
   toolSearchAutoThreshold: z.number().min(0).max(100).optional(),
   mode: z.enum(["default", "plan", "auto"]).optional(),

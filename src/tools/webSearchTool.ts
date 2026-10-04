@@ -1,9 +1,5 @@
 import type { Tool, ToolContext, ToolResult } from "./Tool.js";
-import {
-  BingSearchAdapter,
-  createAdapter,
-  type SearchResult,
-} from "./webSearch/adapters.js";
+import { BingSearchAdapter, createAdapter, type SearchResult } from "./webSearch/adapters.js";
 
 /**
  * WebSearch — search the web and return a list of result links.

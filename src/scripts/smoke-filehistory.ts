@@ -78,9 +78,7 @@ async function main(): Promise<void> {
 
   // ── Diff stats preview for rewinding to t1 ──────────────────────────
   const stats = await fileHistoryGetDiffStats("t1");
-  console.log(
-    `Rewind-to-t1 preview: ${stats.filesChanged.length} file(s), +${stats.insertions} -${stats.deletions}`,
-  );
+  console.log(`Rewind-to-t1 preview: ${stats.filesChanged.length} file(s), +${stats.insertions} -${stats.deletions}`);
   check("diff preview reports changed files", stats.filesChanged.length >= 1);
   check("diff preview counts line changes", stats.insertions + stats.deletions > 0);
 
@@ -160,7 +158,9 @@ async function main(): Promise<void> {
   const paths = await getSessionPaths(tmp3, sid);
   await fs.rm(tmp3, { recursive: true, force: true }).catch(() => {});
   await fs.rm(path.dirname(paths.transcriptPath), { recursive: true, force: true }).catch(() => {});
-  await fs.rm(path.join(os.homedir(), ".easy-agent", "file-history", sid), { recursive: true, force: true }).catch(() => {});
+  await fs
+    .rm(path.join(os.homedir(), ".easy-agent", "file-history", sid), { recursive: true, force: true })
+    .catch(() => {});
 
   console.log(failures === 0 ? "\nAll checks passed." : `\n${failures} check(s) FAILED.`);
   process.exit(failures === 0 ? 0 : 1);

@@ -1,14 +1,14 @@
-import { hooksGloballyDisabled, loadHooksSettings, findMatchingHooks, resetHooksSettingsSnapshot, refreshHookDisableFromSettings } from "./settings.js";
+import {
+  hooksGloballyDisabled,
+  loadHooksSettings,
+  findMatchingHooks,
+  resetHooksSettingsSnapshot,
+  refreshHookDisableFromSettings,
+} from "./settings.js";
 import { executeHookCommand, newHookCorrelationId } from "./executor.js";
 import { getActivePluginHooks } from "../plugins/runtime.js";
 import { HOOK_EVENTS } from "./types.js";
-import type {
-  AggregatedHookOutcome,
-  HookEvent,
-  HookInput,
-  HookResult,
-  HooksSettings,
-} from "./types.js";
+import type { AggregatedHookOutcome, HookEvent, HookInput, HookResult, HooksSettings } from "./types.js";
 
 async function getSettings(cwd: string): Promise<HooksSettings> {
   const base = await loadHooksSettings(cwd);
@@ -228,9 +228,7 @@ export async function runStopHooks(params: {
       hook_event_name: "Stop",
       session_id: params.sessionId ?? "",
       cwd: params.cwd,
-      ...(params.lastAssistantMessage
-        ? { last_assistant_message: params.lastAssistantMessage }
-        : {}),
+      ...(params.lastAssistantMessage ? { last_assistant_message: params.lastAssistantMessage } : {}),
     },
   });
 }
@@ -254,9 +252,7 @@ export async function runSubagentStopHooks(params: {
       cwd: params.cwd,
       agent_id: params.agentId,
       agent_type: params.agentType,
-      ...(params.lastAssistantMessage
-        ? { last_assistant_message: params.lastAssistantMessage }
-        : {}),
+      ...(params.lastAssistantMessage ? { last_assistant_message: params.lastAssistantMessage } : {}),
     },
   });
 }

@@ -27,7 +27,7 @@ function mediaToImageUrl(media: { url?: string; data?: string; mimeType?: string
 
 function systemText(system: UniversalBody["system"]): string {
   if (!system) return "";
-  return typeof system === "string" ? system : system.content ?? "";
+  return typeof system === "string" ? system : (system.content ?? "");
 }
 
 interface OpenAIChatToolCall {
@@ -35,9 +35,7 @@ interface OpenAIChatToolCall {
   type: "function";
   function: { name: string; arguments: string };
 }
-type OpenAIChatContentPart =
-  | { type: "text"; text: string }
-  | { type: "image_url"; image_url: { url: string } };
+type OpenAIChatContentPart = { type: "text"; text: string } | { type: "image_url"; image_url: { url: string } };
 interface OpenAIChatMessage {
   role: "system" | "user" | "assistant" | "tool";
   content: string | null | OpenAIChatContentPart[];
@@ -86,7 +84,7 @@ export function universalToOpenAIChatMessages(universal: UniversalBody): OpenAIC
       // Assistants never emit images in this pipeline; keep text-only.
       const m: OpenAIChatMessage = {
         role: "assistant",
-        content: toolCalls.length > 0 ? (text || null) : text,
+        content: toolCalls.length > 0 ? text || null : text,
       };
       if (toolCalls.length > 0) m.tool_calls = toolCalls;
       out.push(m);
@@ -110,9 +108,7 @@ export function universalToOpenAIChatMessages(universal: UniversalBody): OpenAIC
   return out;
 }
 
-type ResponsesContentPart =
-  | { type: "input_text"; text: string }
-  | { type: "input_image"; image_url: string };
+type ResponsesContentPart = { type: "input_text"; text: string } | { type: "input_image"; image_url: string };
 type ResponsesItem =
   | { role: "system" | "user" | "assistant"; content: string | ResponsesContentPart[] }
   | { type: "function_call"; call_id: string; name: string; arguments: string }

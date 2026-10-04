@@ -22,27 +22,12 @@ import * as path from "node:path";
 import { readFile, writeFile, mkdtemp, mkdir, rm } from "node:fs/promises";
 import assert from "node:assert";
 import type { MessageParam } from "@anthropic-ai/sdk/resources/messages.js";
-import {
-  QueryEngine,
-  type QueryEngineEvent,
-  type QueryEngineOptions,
-} from "../core/queryEngine.js";
-import {
-  initSessionStorage,
-  appendTranscriptEntry,
-  getSessionPaths,
-} from "../session/storage.js";
+import { QueryEngine, type QueryEngineEvent, type QueryEngineOptions } from "../core/queryEngine.js";
+import { initSessionStorage, appendTranscriptEntry, getSessionPaths } from "../session/storage.js";
 import { getTaskMode, setTaskMode } from "../state/taskModeStore.js";
-import {
-  resetGlobalStateCache,
-  trustProjectForSession,
-} from "../config/globalState.js";
+import { resetGlobalStateCache, trustProjectForSession } from "../config/globalState.js";
 
-const GOLDEN_PATH = path.join(
-  import.meta.dirname,
-  "__golden__",
-  "queryengine-characterization.golden.txt",
-);
+const GOLDEN_PATH = path.join(import.meta.dirname, "__golden__", "queryengine-characterization.golden.txt");
 
 const FIXED_MODEL = "claude-sonnet-4-20250514";
 
@@ -80,10 +65,7 @@ function normalize(text: string): string {
       out = out.replace(from, to);
     }
   }
-  out = out.replace(
-    /<(?:TMP|TMPDIR|CWD|PERMCWD|MEMCWD|CFGCWD|HOME)>[^\n]*/g,
-    (line) => line.replace(/\\/g, "/"),
-  );
+  out = out.replace(/<(?:TMP|TMPDIR|CWD|PERMCWD|MEMCWD|CFGCWD|HOME)>[^\n]*/g, (line) => line.replace(/\\/g, "/"));
   // ISO timestamps → <TIME>
   out = out.replace(/\d{4}-\d{2}-\d{2}T[\d:.]+Z/g, "<TIME>");
   // Node version → <NODE>
@@ -113,13 +95,13 @@ function normalize(text: string): string {
   // The host sandbox capability is exercised by the separate platform group.
   out = out.replace(/[✓⚠✗] Sandbox:[^\n]*/g, "<SANDBOX_STATUS>");
   // POSIX reports concrete modes while Windows reports inherited profile ACLs.
-  out = out.replace(
-    /[✓⚠✗] Local data permissions:[^\n]*/g,
-    "<LOCAL_DATA_PERMISSIONS>",
-  );
+  out = out.replace(/[✓⚠✗] Local data permissions:[^\n]*/g, "<LOCAL_DATA_PERMISSIONS>");
   // Empty command-output rows are formatted as `"  | "` for readability in
   // memory, but the golden should not carry invisible trailing whitespace.
-  return out.split("\n").map((line) => line.trimEnd()).join("\n");
+  return out
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .join("\n");
 }
 
 // ─── Event formatting ───────────────────────────────────────────────────────
@@ -175,9 +157,7 @@ function formatEvent(e: QueryEngineEvent): string {
     case "open_editor":
       return `open_editor ${e.label}: ${e.filePath}`;
     case "memory_picker": {
-      const rows = e.items
-        .map((it, i) => `  ${i + 1}. ${it.label} (${it.exists ? "exists" : "new"})`)
-        .join("\n");
+      const rows = e.items.map((it, i) => `  ${i + 1}. ${it.label} (${it.exists ? "exists" : "new"})`).join("\n");
       return `memory_picker (${e.items.length}):\n${rows}`;
     }
     case "permissions_view": {
@@ -288,12 +268,12 @@ async function buildRecording(): Promise<string> {
   await section("tasks", async () => {
     const original = getTaskMode();
     const e = makeEngine(isolatedCwd);
-    const out = [
-      await record(e, "/tasks"),
-      await record(e, `/tasks ${original}`),
-      await record(e, "/tasks bogus"),
-    ];
-    assert.doesNotMatch(out.join("\n"), /Task V2|TodoWrite V1/, "task commands must not expose internal iteration names");
+    const out = [await record(e, "/tasks"), await record(e, `/tasks ${original}`), await record(e, "/tasks bogus")];
+    assert.doesNotMatch(
+      out.join("\n"),
+      /Task V2|TodoWrite V1/,
+      "task commands must not expose internal iteration names",
+    );
     assert.match(out[0]!, /persistent task list|session-only todo list/, "task status uses stable product concepts");
     setTaskMode(original);
     return out;
@@ -337,7 +317,11 @@ async function buildRecording(): Promise<string> {
     globalThis.fetch = (async () => new Response(null, { status: 401 })) as typeof fetch;
     try {
       const output = await record(makeEngine(isolatedCwd), "/doctor");
-      assert.match(output, /Node\.js .*\(requires 22\+\)/, "doctor reports the same Node requirement as runtime preflight");
+      assert.match(
+        output,
+        /Node\.js .*\(requires 22\+\)/,
+        "doctor reports the same Node requirement as runtime preflight",
+      );
       assert.match(output, /Active model: claude-sonnet-4-20250514/);
       assert.match(output, /Provider: anthropic/);
       assert.match(output, /Profile: raw model name \(source: default\)/);
@@ -396,10 +380,7 @@ async function buildRecording(): Promise<string> {
       message: { role: "assistant", content: [{ type: "text", text: "Reply from OLD." }] },
     });
     const e = makeEngine(isolatedCwd, { initialMessages: SEED_MESSAGES });
-    const out = [
-      await record(e, "/resume"),
-      await record(e, `/resume ${targetId}`),
-    ];
+    const out = [await record(e, "/resume"), await record(e, `/resume ${targetId}`)];
     const { transcriptPath } = await getSessionPaths(isolatedCwd, targetId);
     await rm(transcriptPath, { force: true });
     return out;
@@ -408,11 +389,7 @@ async function buildRecording(): Promise<string> {
   // diff (non-git dir → isRepo false) -----------------------------------------
   await section("diff", async () => {
     const e = makeEngine(isolatedCwd);
-    return [
-      await record(e, "/diff"),
-      await record(e, "/diff 2"),
-      await record(e, "/diff xyz"),
-    ];
+    return [await record(e, "/diff"), await record(e, "/diff 2"), await record(e, "/diff xyz")];
   });
 
   // permissions ---------------------------------------------------------------
@@ -475,11 +452,7 @@ async function buildRecording(): Promise<string> {
   await section("hooks", async () => [await record(makeEngine(isolatedCwd), "/hooks")]);
   await section("mcp", async () => {
     const e = makeEngine(isolatedCwd);
-    return [
-      await record(e, "/mcp"),
-      await record(e, "/mcp tools"),
-      await record(e, "/mcp reconnect nonexistent"),
-    ];
+    return [await record(e, "/mcp"), await record(e, "/mcp tools"), await record(e, "/mcp reconnect nonexistent")];
   });
 
   // unknown command -----------------------------------------------------------
@@ -548,9 +521,7 @@ async function main(): Promise<void> {
       process.stderr.write(`  actual ${i + 1}: ${JSON.stringify(a[i])}\n`);
     }
   }
-  process.stderr.write(
-    `\nIf this change is INTENTIONAL, re-run with --update. Otherwise it's a regression.\n`,
-  );
+  process.stderr.write(`\nIf this change is INTENTIONAL, re-run with --update. Otherwise it's a regression.\n`);
   // Use a real assertion so the process exit code is non-zero.
   assert.strictEqual(recording, golden, "QueryEngine characterization mismatch");
 }

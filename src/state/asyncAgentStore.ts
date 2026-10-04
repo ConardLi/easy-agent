@@ -138,12 +138,7 @@ export function updateAsyncAgentProgress(
   patch: Partial<
     Pick<
       AsyncAgentEntry,
-      | "toolUseCount"
-      | "lastToolName"
-      | "totalTokens"
-      | "inputTokens"
-      | "outputTokens"
-      | "turnCount"
+      "toolUseCount" | "lastToolName" | "totalTokens" | "inputTokens" | "outputTokens" | "turnCount"
     >
   >,
 ): void {
@@ -181,11 +176,7 @@ export function completeAsyncAgent(
 }
 
 /** Mark as failed with an error message. */
-export function failAsyncAgent(
-  agentId: string,
-  error: string,
-  durationMs: number,
-): void {
+export function failAsyncAgent(agentId: string, error: string, durationMs: number): void {
   const cur = entries.get(agentId);
   if (!cur) return;
   const next: AsyncAgentEntry = {

@@ -107,9 +107,7 @@ export function SubAgentCard({ toolCall }: SubAgentCardProps): React.ReactNode {
   // cards and the user can't tell which is which. The agentType still
   // travels along after a "·" because seeing the underlying agent
   // definition is useful for debugging custom roles.
-  const label = progress.teammateName
-    ? `${progress.teammateName} · ${progress.agentType}`
-    : progress.agentType;
+  const label = progress.teammateName ? `${progress.teammateName} · ${progress.agentType}` : progress.agentType;
   const header = (
     <Box>
       <Text color={color}>
@@ -120,9 +118,7 @@ export function SubAgentCard({ toolCall }: SubAgentCardProps): React.ReactNode {
       <Text bold color={color}>
         {`[${label}]`}
       </Text>
-      {progress.description ? (
-        <Text>{`  ${progress.description}`}</Text>
-      ) : null}
+      {progress.description ? <Text>{`  ${progress.description}`}</Text> : null}
       <Text dimColor>{`  · ${statusLabel(progress.status)}`}</Text>
     </Box>
   );
@@ -138,9 +134,7 @@ export function SubAgentCard({ toolCall }: SubAgentCardProps): React.ReactNode {
   if (isRunning) {
     const parts: string[] = [];
     if (progress.toolUseCount > 0) {
-      parts.push(
-        `${progress.toolUseCount} tool use${progress.toolUseCount === 1 ? "" : "s"}`,
-      );
+      parts.push(`${progress.toolUseCount} tool use${progress.toolUseCount === 1 ? "" : "s"}`);
     }
     if (progress.totalTokens && progress.totalTokens > 0) {
       parts.push(`${formatNumber(progress.totalTokens)} tokens`);
@@ -159,9 +153,7 @@ export function SubAgentCard({ toolCall }: SubAgentCardProps): React.ReactNode {
     );
   } else {
     const parts: string[] = [];
-    parts.push(
-      `${progress.toolUseCount} tool use${progress.toolUseCount === 1 ? "" : "s"}`,
-    );
+    parts.push(`${progress.toolUseCount} tool use${progress.toolUseCount === 1 ? "" : "s"}`);
     if (progress.totalTokens && progress.totalTokens > 0) {
       parts.push(`${formatNumber(progress.totalTokens)} tokens`);
     }

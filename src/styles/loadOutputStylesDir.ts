@@ -20,14 +20,8 @@
 
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import {
-  getEasyAgentPath,
-  getProjectEasyAgentDir,
-} from "../utils/paths.js";
-import {
-  extractFallbackDescription,
-  splitFrontmatter,
-} from "../services/skills/parseFrontmatter.js";
+import { getEasyAgentPath, getProjectEasyAgentDir } from "../utils/paths.js";
+import { extractFallbackDescription, splitFrontmatter } from "../services/skills/parseFrontmatter.js";
 import type { OutputStyleConfig, OutputStyleSource } from "./registry.js";
 
 /** ~/.easy-agent/output-styles */
@@ -61,9 +55,7 @@ async function loadFromOneDir(dir: string, source: OutputStyleSource): Promise<L
   let entries: string[];
   try {
     const dirents = await fs.readdir(dir, { withFileTypes: true });
-    entries = dirents
-      .filter((d) => d.isFile() && d.name.endsWith(".md"))
-      .map((d) => d.name);
+    entries = dirents.filter((d) => d.isFile() && d.name.endsWith(".md")).map((d) => d.name);
   } catch (error: unknown) {
     const err = error as NodeJS.ErrnoException;
     if (err?.code === "ENOENT") return { styles: [], warnings: [] };
@@ -90,12 +82,14 @@ async function loadFromOneDir(dir: string, source: OutputStyleSource): Promise<L
     }
 
     const styleName = fileName.replace(/\.md$/, "");
-    const name = typeof split.raw["name"] === "string" && (split.raw["name"] as string).trim()
-      ? (split.raw["name"] as string).trim()
-      : styleName;
-    const description = typeof split.raw["description"] === "string" && (split.raw["description"] as string).trim()
-      ? (split.raw["description"] as string).trim()
-      : extractFallbackDescription(split.body) || `Custom ${styleName} output style`;
+    const name =
+      typeof split.raw["name"] === "string" && (split.raw["name"] as string).trim()
+        ? (split.raw["name"] as string).trim()
+        : styleName;
+    const description =
+      typeof split.raw["description"] === "string" && (split.raw["description"] as string).trim()
+        ? (split.raw["description"] as string).trim()
+        : extractFallbackDescription(split.body) || `Custom ${styleName} output style`;
 
     const prompt = split.body.trim();
     if (!prompt) {

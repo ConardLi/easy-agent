@@ -1,4 +1,3 @@
-
 import { PassThrough } from "node:stream";
 import { Box, render } from "ink";
 import chalk from "chalk";
@@ -46,18 +45,11 @@ const messages: MessageParam[] = [
     role: "user",
     content: [
       toolResult("c1", bashResult("cat README.md", 0, "line one\nline two\nline three\nline four\nline five")),
-      toolResult(
-        "c2",
-        bashResult("npm run build", 0, "> tsc\ncompiling…", "warning: deprecated flag --foo"),
-      ),
+      toolResult("c2", bashResult("npm run build", 0, "> tsc\ncompiling…", "warning: deprecated flag --foo")),
       toolResult("c3", "Command timed out after 120000ms", true),
       toolResult("c4", bashResult("mkdir -p tmp/out", 0)),
       toolResult("c5", bashResult("git add .", 0)),
-      toolResult(
-        "c6",
-        bashResult("npm run lint", 1, "", "src/a.ts:3:1 error: unexpected token\n1 problem"),
-        true,
-      ),
+      toolResult("c6", bashResult("npm run lint", 1, "", "src/a.ts:3:1 error: unexpected token\n1 problem"), true),
     ] as unknown as MessageParam["content"],
   },
 ];

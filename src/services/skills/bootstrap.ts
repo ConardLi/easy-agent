@@ -23,9 +23,7 @@ export async function bootstrapSkills(cwd: string): Promise<SkillsBootstrapResul
   const { skills, warnings } = await loadAllSkills(cwd);
   setSkills(skills);
 
-  const conditionalCount = skills.filter(
-    (s) => s.frontmatter.paths && s.frontmatter.paths.length > 0,
-  ).length;
+  const conditionalCount = skills.filter((s) => s.frontmatter.paths && s.frontmatter.paths.length > 0).length;
 
   for (const warning of warnings) {
     console.warn(`[easy-agent] ${warning}`);

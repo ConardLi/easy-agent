@@ -22,8 +22,8 @@ async function main(): Promise<void> {
   if (!process.env.ANTHROPIC_AUTH_TOKEN) {
     console.error(
       "\x1b[31m✗ ANTHROPIC_AUTH_TOKEN is not set.\x1b[0m\n" +
-      "  Export it first:\n" +
-      "  export ANTHROPIC_AUTH_TOKEN=sk-ant-...\n"
+        "  Export it first:\n" +
+        "  export ANTHROPIC_AUTH_TOKEN=sk-ant-...\n",
     );
     process.exit(1);
   }
@@ -81,9 +81,7 @@ async function main(): Promise<void> {
     console.log(`   Stop reason:   ${result.stopReason}`);
     console.log(`   Total input:   ${result.usage.input_tokens} tokens`);
     console.log(`   Total output:  ${result.usage.output_tokens} tokens`);
-    console.log(
-      `   Content blocks: ${result.assistantMessage.content.length}`,
-    );
+    console.log(`   Content blocks: ${result.assistantMessage.content.length}`);
 
     // Show block types
     if (Array.isArray(result.assistantMessage.content)) {

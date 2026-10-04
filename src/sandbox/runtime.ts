@@ -1,8 +1,5 @@
 import { randomUUID } from "node:crypto";
-import {
-  SandboxManager,
-  type SandboxRuntimeConfig,
-} from "@anthropic-ai/sandbox-runtime";
+import { SandboxManager, type SandboxRuntimeConfig } from "@anthropic-ai/sandbox-runtime";
 import { getSandboxCapability } from "./availability.js";
 import type { SandboxBackend, SandboxProfile } from "./types.js";
 import { annotateStderrWithSandboxFailures } from "./violations.js";
@@ -68,11 +65,7 @@ export function toSandboxRuntimeConfig(profile: SandboxProfile): SandboxRuntimeC
 
 async function initialize(config: SandboxRuntimeConfig, signature: string): Promise<void> {
   try {
-    await SandboxManager.initialize(
-      config,
-      allowUnlistedPublicDestination,
-      process.platform === "darwin",
-    );
+    await SandboxManager.initialize(config, allowUnlistedPublicDestination, process.platform === "darwin");
     initialized = true;
     activeConfigSignature = signature;
   } catch (error) {
@@ -170,11 +163,7 @@ export async function wrapWithSandbox(params: {
   }
 }
 
-export function annotateSandboxFailure(
-  commandId: string,
-  stderr: string,
-  exitCode: number | null,
-): string {
+export function annotateSandboxFailure(commandId: string, stderr: string, exitCode: number | null): string {
   const runtimeAnnotated = SandboxManager.annotateStderrWithSandboxFailures(commandId, stderr);
   return annotateStderrWithSandboxFailures(runtimeAnnotated, exitCode);
 }

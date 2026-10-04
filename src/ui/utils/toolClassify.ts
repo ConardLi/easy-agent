@@ -15,16 +15,7 @@
  */
 
 // Search commands (grep, find, …) — pattern-matching across the tree.
-const BASH_SEARCH_COMMANDS = new Set([
-  "find",
-  "grep",
-  "rg",
-  "ag",
-  "ack",
-  "locate",
-  "which",
-  "whereis",
-]);
+const BASH_SEARCH_COMMANDS = new Set(["find", "grep", "rg", "ag", "ack", "locate", "which", "whereis"]);
 
 // Read/view commands (cat, head, …) plus the data-processing tools that
 // commonly appear downstream of them in a pipe.
@@ -179,10 +170,7 @@ export function mcpServerNameOf(name: string, input: Record<string, unknown> | u
  * Bucket precedence for Bash: list → search
  * → read (a `cat file | grep x` pipe is reported as a search).
  */
-export function classifyToolForCollapse(
-  name: string,
-  input: Record<string, unknown> | undefined,
-): CollapseKind | null {
+export function classifyToolForCollapse(name: string, input: Record<string, unknown> | undefined): CollapseKind | null {
   if (isMcpToolName(name)) return "mcp";
   switch (name) {
     case "Read":

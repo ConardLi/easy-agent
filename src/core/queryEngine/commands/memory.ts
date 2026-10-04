@@ -16,11 +16,7 @@ import {
   resolve as resolvePath,
 } from "node:path";
 import { AGENT_MD_NAME, getAgentMdFiles } from "../../../context/claudeMd.js";
-import {
-  loadMemoryHeaders,
-  getProjectMemoryDir,
-  MEMORY_ENTRYPOINT,
-} from "../../../context/memory/memdir.js";
+import { loadMemoryHeaders, getProjectMemoryDir, MEMORY_ENTRYPOINT } from "../../../context/memory/memdir.js";
 import { getGlobalAgentMdPath } from "../../../utils/paths.js";
 import { createPrivateFileIfMissing } from "../../../utils/privateData.js";
 import type { QueryEngineEvent } from "../types.js";
@@ -62,9 +58,7 @@ export async function collectMemoryTargets(cwd: string): Promise<MemoryTarget[]>
       isGlobal: fp === globalPath || i === 0,
     })),
   );
-  const projectHasMemoryFile = agentFiles.some(
-    (f) => f.exists && !f.isGlobal && dirnamePath(f.fp) === projectDir,
-  );
+  const projectHasMemoryFile = agentFiles.some((f) => f.exists && !f.isGlobal && dirnamePath(f.fp) === projectDir);
   for (const { fp, exists, size, isGlobal } of agentFiles) {
     const name = basenamePath(fp);
     const isCwd = !isGlobal && dirnamePath(fp) === projectDir;
@@ -119,8 +113,7 @@ export async function* handleMemoryCommand(
   const cwd = ctx.cwd;
   const first = (args[0] ?? "").toLowerCase();
 
-  const formatSize = (n: number): string =>
-    n < 1024 ? `${n} B` : `${(n / 1024).toFixed(1)} KB`;
+  const formatSize = (n: number): string => (n < 1024 ? `${n} B` : `${(n / 1024).toFixed(1)} KB`);
 
   // Resolve a selection index from either `/memory edit <n>` or `/memory <n>`.
   let editArg: string | undefined;
@@ -147,11 +140,9 @@ export async function* handleMemoryCommand(
           await createPrivateFileIfMissing(target.path);
         } else {
           await mkdir(dirnamePath(target.path), { recursive: true });
-          await writeFile(target.path, "", { encoding: "utf-8", flag: "wx" }).catch(
-            (e: unknown) => {
-              if ((e as NodeJS.ErrnoException)?.code !== "EEXIST") throw e;
-            },
-          );
+          await writeFile(target.path, "", { encoding: "utf-8", flag: "wx" }).catch((e: unknown) => {
+            if ((e as NodeJS.ErrnoException)?.code !== "EEXIST") throw e;
+          });
         }
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
@@ -180,10 +171,7 @@ export async function* handleMemoryCommand(
         lines.push(`     ${shown}  (${meta})`);
       });
     }
-    lines.push(
-      "",
-      "Usage: /memory edit <n>   open a file in $EDITOR (set $EDITOR or $VISUAL)",
-    );
+    lines.push("", "Usage: /memory edit <n>   open a file in $EDITOR (set $EDITOR or $VISUAL)");
     yield { type: "command", kind: "info", message: lines.join("\n") };
     return { handled: true };
   }

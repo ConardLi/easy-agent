@@ -1,4 +1,3 @@
-
 import { PassThrough } from "node:stream";
 import { render } from "ink";
 import chalk from "chalk";
@@ -24,8 +23,8 @@ const messages: MessageParam[] = [
         name: "Edit",
         input: {
           file_path: "src/ui/theme.ts",
-          old_string: "  brand: \"#D77757\",\n  brandLight: \"#F59575\",",
-          new_string: "  brand: \"#E07A5F\",\n  brandLight: \"#F2A07B\",",
+          old_string: '  brand: "#D77757",\n  brandLight: "#F59575",',
+          new_string: '  brand: "#E07A5F",\n  brandLight: "#F2A07B",',
         },
       },
       { type: "tool_use", id: "t2", name: "Read", input: { file_path: "src/ui/theme.ts" } },
@@ -64,10 +63,11 @@ async function main(): Promise<void> {
   (fakeStdout as unknown as { columns: number }).columns = cols;
   (fakeStdout as unknown as { rows: number }).rows = rows;
 
-  const instance = render(
-    <TranscriptOverlay lines={lines} scroll={scroll} viewportHeight={viewport} rows={rows} />,
-    { stdout: fakeStdout, debug: true, exitOnCtrlC: false },
-  );
+  const instance = render(<TranscriptOverlay lines={lines} scroll={scroll} viewportHeight={viewport} rows={rows} />, {
+    stdout: fakeStdout,
+    debug: true,
+    exitOnCtrlC: false,
+  });
   await new Promise((r) => setTimeout(r, 80));
   instance.unmount();
   instance.cleanup();

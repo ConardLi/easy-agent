@@ -36,12 +36,7 @@ import {
   isPluginManifestDir,
   MARKETPLACE_MANIFEST_FILE,
 } from "./paths.js";
-import {
-  readKnownMarketplaces,
-  updateKnownMarketplaces,
-  upsertMarketplace,
-  withPluginOperationLock,
-} from "./state.js";
+import { readKnownMarketplaces, updateKnownMarketplaces, upsertMarketplace, withPluginOperationLock } from "./state.js";
 import { gitClone } from "./git.js";
 
 function isInsideManagedMarketplaceRoot(candidate: string): boolean {
@@ -94,8 +89,7 @@ export async function readMarketplaceManifest(sourcePath: string): Promise<Marke
   } else {
     // A directory: accept `.easy-agent-plugin/` or `.claude-plugin/`.
     const candidates = getMarketplaceManifestPathCandidates(sourcePath);
-    manifestPath =
-      (await firstExistingFile(candidates)) ?? candidates[0];
+    manifestPath = (await firstExistingFile(candidates)) ?? candidates[0];
     root = sourcePath;
   }
 
@@ -146,11 +140,12 @@ async function addMarketplaceUnlocked(source: MarketplaceSource): Promise<KnownM
     await gitClone(source.url, tmp, source.ref);
     const { manifest } = await readMarketplaceManifest(tmp);
     dest = getManagedMarketplaceDir(manifest.name);
-    rollback = getManagedMarketplaceDir(
-      `.rollback-${manifest.name}-${process.pid}-${Date.now()}`,
-    );
+    rollback = getManagedMarketplaceDir(`.rollback-${manifest.name}-${process.pid}-${Date.now()}`);
 
-    const targetExists = await fs.stat(dest).then(() => true).catch(() => false);
+    const targetExists = await fs
+      .stat(dest)
+      .then(() => true)
+      .catch(() => false);
     if (targetExists) await fs.rename(dest, rollback);
     try {
       await fs.rename(tmp, dest);
@@ -167,7 +162,10 @@ async function addMarketplaceUnlocked(source: MarketplaceSource): Promise<KnownM
       return entry;
     } catch (error) {
       if (swapped) await fs.rm(dest, { recursive: true, force: true }).catch(() => {});
-      const rollbackExists = await fs.stat(rollback).then(() => true).catch(() => false);
+      const rollbackExists = await fs
+        .stat(rollback)
+        .then(() => true)
+        .catch(() => false);
       if (rollbackExists) await fs.rename(rollback, dest);
       throw error;
     }
@@ -197,18 +195,14 @@ async function updateMarketplaceUnlocked(name: string): Promise<KnownMarketplace
   if (existing.source.kind === "git") {
     assertManagedMarketplacePath(existing.installLocation, existing.name);
     const tmp = getManagedMarketplaceDir(`.pending-update-${process.pid}-${Date.now()}`);
-    const rollback = getManagedMarketplaceDir(
-      `.rollback-${existing.name}-${process.pid}-${Date.now()}`,
-    );
+    const rollback = getManagedMarketplaceDir(`.rollback-${existing.name}-${process.pid}-${Date.now()}`);
     let swapped = false;
     try {
       await fs.mkdir(getManagedMarketplaceRoot(), { recursive: true });
       await gitClone(existing.source.url, tmp, existing.source.ref);
       const { manifest } = await readMarketplaceManifest(tmp);
       if (manifest.name !== existing.name) {
-        throw new Error(
-          `marketplace update changed its name from "${existing.name}" to "${manifest.name}"`,
-        );
+        throw new Error(`marketplace update changed its name from "${existing.name}" to "${manifest.name}"`);
       }
       await fs.rename(existing.installLocation, rollback);
       try {
@@ -225,7 +219,10 @@ async function updateMarketplaceUnlocked(name: string): Promise<KnownMarketplace
         if (swapped) {
           await fs.rm(existing.installLocation, { recursive: true, force: true }).catch(() => {});
         }
-        const rollbackExists = await fs.stat(rollback).then(() => true).catch(() => false);
+        const rollbackExists = await fs
+          .stat(rollback)
+          .then(() => true)
+          .catch(() => false);
         if (rollbackExists) await fs.rename(rollback, existing.installLocation);
         throw error;
       }
@@ -270,9 +267,7 @@ export interface ResolvedPluginEntry {
   marketplace: KnownMarketplace;
   entry: MarketplacePluginEntry;
   /** How to obtain the plugin's files. */
-  pluginSource:
-    | { kind: "local"; path: string }
-    | { kind: "git"; url: string; ref?: string };
+  pluginSource: { kind: "local"; path: string } | { kind: "git"; url: string; ref?: string };
 }
 
 /**
@@ -286,9 +281,7 @@ export async function resolvePlugin(pluginRef: string): Promise<ResolvedPluginEn
   const marketplaceName = at > 0 ? pluginRef.slice(at + 1) : undefined;
 
   const all = await listMarketplaces();
-  const candidates = marketplaceName
-    ? all.filter((m) => m.name === marketplaceName)
-    : all;
+  const candidates = marketplaceName ? all.filter((m) => m.name === marketplaceName) : all;
   if (candidates.length === 0) {
     throw new Error(
       marketplaceName
@@ -335,10 +328,7 @@ export function componentPathsFromEntry(entry: MarketplacePluginEntry): PluginCo
   return paths;
 }
 
-function toPluginSource(
-  entry: MarketplacePluginEntry,
-  marketplaceRoot: string,
-): ResolvedPluginEntry["pluginSource"] {
+function toPluginSource(entry: MarketplacePluginEntry, marketplaceRoot: string): ResolvedPluginEntry["pluginSource"] {
   const src = entry.source;
   // A Git URL is either scp-like (git@host:...) or has a scheme.
   if (/^[a-z]+:\/\//i.test(src) || /^git@/.test(src)) {

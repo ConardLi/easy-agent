@@ -26,7 +26,7 @@ The numbered roadmap is complete through **Stage 36**. The `eagent` package is p
 Tests are smoke/characterization scripts listed in `scripts/verify-production.ts`; the release workflow runs the Stage 36 verification before publishing.
 
 - **Offline tests:** `npm test` runs the `core`, `extensions`, and `ui` groups (the same set as `verify:production`, without typecheck/lint/build). `npm test -- --list` prints them.
-- **Lint / format:** Biome, configured in `biome.jsonc`. `npm run lint` (errors and warnings fail; part of `verify:production`), `npm run format`, `npm run format:check`. Rules switched off in `biome.jsonc` carry a reason; keep it that way.
+- **Lint / format:** Biome, configured in `biome.jsonc`. `npm run lint` (errors and warnings fail) and `npm run format:check` are both part of `verify:production`; run `npm run format` before committing. Rules switched off in `biome.jsonc` carry a reason; keep it that way. The formatter collapses repeated spaces in JSX text, so write aligned text as a string expression: `<Text>{"  ↳ "}{label}</Text>`.
 - **Typecheck:** `npm run typecheck` → `tsc --noEmit`
 - **Source hygiene:** `npm run check:source-hygiene` (part of `verify:production`) rejects roadmap stage numbers, development-plan references, reference-implementation pointers, and tutorial wording in `src/` (excluding `src/scripts/`). Legitimate matches go into `ALLOWED_MATCHES` in `scripts/check-source-hygiene.ts` with a reason.
 - **Build:** `npm run build` → `tsup` (outputs the bundled `dist/eagent.js` + sourcemap)

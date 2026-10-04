@@ -52,10 +52,7 @@ function tabLabel(tab: Tab, data: PluginViewData): string {
 
 function computeWindow(total: number, index: number): { start: number; end: number } {
   if (total <= MAX_VISIBLE) return { start: 0, end: total };
-  const start = Math.max(
-    0,
-    Math.min(index - Math.floor(MAX_VISIBLE / 2), total - MAX_VISIBLE),
-  );
+  const start = Math.max(0, Math.min(index - Math.floor(MAX_VISIBLE / 2), total - MAX_VISIBLE));
   return { start, end: start + MAX_VISIBLE };
 }
 
@@ -65,9 +62,7 @@ function matches(query: string, ...values: Array<string | undefined>): boolean {
   return values.some((value) => value?.toLowerCase().includes(needle));
 }
 
-function componentSummary(
-  components: PluginViewData["installed"][number]["components"],
-): string {
+function componentSummary(components: PluginViewData["installed"][number]["components"]): string {
   const parts: string[] = [];
   if (components.skills) parts.push(`${components.skills} skill`);
   if (components.agents) parts.push(`${components.agents} agent`);
@@ -101,13 +96,7 @@ function previewSummary(preview: PluginInstallPreview): string {
   return counts || "no components";
 }
 
-export function PluginManager({
-  data,
-  active,
-  onMutate,
-  onPreview,
-  onClose,
-}: PluginManagerProps): React.ReactNode {
+export function PluginManager({ data, active, onMutate, onPreview, onClose }: PluginManagerProps): React.ReactNode {
   const [tab, setTab] = React.useState<Tab>("installed");
   const [mode, setMode] = React.useState<Mode>("list");
   const [index, setIndex] = React.useState(0);
@@ -125,12 +114,8 @@ export function PluginManager({
   const installed = data.installed.filter((row) =>
     matches(query, row.pluginId, row.name, row.marketplace, row.description, row.author),
   );
-  const marketplaces = data.marketplaces.filter((row) =>
-    matches(query, row.name, row.kind, row.location),
-  );
-  const errors = data.errors.filter((row) =>
-    matches(query, row.pluginId, row.scope, row.message),
-  );
+  const marketplaces = data.marketplaces.filter((row) => matches(query, row.name, row.kind, row.location));
+  const errors = data.errors.filter((row) => matches(query, row.pluginId, row.scope, row.message));
 
   const total =
     tab === "discover"
@@ -143,10 +128,7 @@ export function PluginManager({
   const selectedIndex = total === 0 ? 0 : Math.min(index, total - 1);
   const selectedAvailable = tab === "discover" ? available[selectedIndex] : undefined;
   const selectedInstalled = tab === "installed" ? installed[selectedIndex] : undefined;
-  const selectedMarketplace =
-    tab === "marketplaces" && selectedIndex > 0
-      ? marketplaces[selectedIndex - 1]
-      : undefined;
+  const selectedMarketplace = tab === "marketplaces" && selectedIndex > 0 ? marketplaces[selectedIndex - 1] : undefined;
   const selectedError = tab === "errors" ? errors[selectedIndex] : undefined;
 
   React.useEffect(() => {
@@ -261,10 +243,7 @@ export function PluginManager({
           if (mode === "search") {
             setQuery(buffer.trim());
           } else if (buffer.trim()) {
-            run(
-              { op: "marketplace-add", source: buffer.trim() },
-              `Added marketplace ${buffer.trim()}`,
-            );
+            run({ op: "marketplace-add", source: buffer.trim() }, `Added marketplace ${buffer.trim()}`);
           }
           setBuffer("");
           setIndex(0);
@@ -354,9 +333,7 @@ export function PluginManager({
             {
               op: selectedInstalled.enabled ? "disable" : "enable",
               pluginId: selectedInstalled.pluginId,
-              scope: selectedInstalled.enabled
-                ? (selectedInstalled.scope ?? scope)
-                : scope,
+              scope: selectedInstalled.enabled ? (selectedInstalled.scope ?? scope) : scope,
             },
             `${selectedInstalled.enabled ? "Disabled" : "Enabled"} ${selectedInstalled.pluginId}`,
           );
@@ -386,10 +363,7 @@ export function PluginManager({
           setBuffer("");
           setMode("addMarketplace");
         } else if (selectedMarketplace && (key.return || input === "u")) {
-          run(
-            { op: "marketplace-update", name: selectedMarketplace.name },
-            `Refreshed ${selectedMarketplace.name}`,
-          );
+          run({ op: "marketplace-update", name: selectedMarketplace.name }, `Refreshed ${selectedMarketplace.name}`);
         } else if (selectedMarketplace && input === "x") {
           ask({
             action: { op: "marketplace-remove", name: selectedMarketplace.name },
@@ -419,9 +393,7 @@ export function PluginManager({
           <Text color={theme.brand}>█</Text>
         </Box>
         <Text color={theme.muted} dimColor>
-          {adding
-            ? "owner/repo · Git URL · local directory"
-            : "Enter apply · Esc clear and return"}
+          {adding ? "owner/repo · Git URL · local directory" : "Enter apply · Esc clear and return"}
         </Text>
       </Box>
     );
@@ -437,7 +409,8 @@ export function PluginManager({
         paddingX={1}
       >
         <Text color={pending.danger ? theme.warn : theme.brand} bold>
-          {pending.danger ? "⚠ " : ""}{pending.title}
+          {pending.danger ? "⚠ " : ""}
+          {pending.title}
         </Text>
         <Text>{pending.body}</Text>
         <Text color={theme.muted}>Enter/y confirm · n/Esc cancel</Text>
@@ -449,18 +422,13 @@ export function PluginManager({
     return (
       <Box flexDirection="column" marginTop={1} borderStyle="round" borderColor={theme.borderDim} paddingX={1}>
         <Text color={theme.brand} bold>
-          {selectedInstalled?.pluginId ??
-            selectedAvailable?.pluginId ??
-            selectedError?.pluginId ??
-            "Plugin details"}
+          {selectedInstalled?.pluginId ?? selectedAvailable?.pluginId ?? selectedError?.pluginId ?? "Plugin details"}
         </Text>
         {selectedInstalled ? (
           <>
             <Text color={theme.muted}>
               v{selectedInstalled.version} · {selectedInstalled.marketplace} ·{" "}
-              {selectedInstalled.enabled
-                ? `enabled (${selectedInstalled.scope ?? "inherited"})`
-                : "disabled"}
+              {selectedInstalled.enabled ? `enabled (${selectedInstalled.scope ?? "inherited"})` : "disabled"}
             </Text>
             {selectedInstalled.description ? <Text>{selectedInstalled.description}</Text> : null}
             {selectedInstalled.author ? <Text color={theme.muted}>Author: {selectedInstalled.author}</Text> : null}
@@ -479,7 +447,9 @@ export function PluginManager({
               </Text>
             ) : null}
             {selectedInstalled.warnings.map((warning, warningIndex) => (
-              <Text key={warningIndex} color={theme.warn}>warning: {warning}</Text>
+              <Text key={warningIndex} color={theme.warn}>
+                warning: {warning}
+              </Text>
             ))}
             <Text color={theme.muted}>u update · i/Esc back</Text>
           </>
@@ -497,7 +467,9 @@ export function PluginManager({
           </>
         ) : selectedError ? (
           <>
-            <Text color={theme.error}>[{selectedError.scope}] {selectedError.message}</Text>
+            <Text color={theme.error}>
+              [{selectedError.scope}] {selectedError.message}
+            </Text>
             <Text color={theme.muted}>Run /doctor for the complete diagnostic report · i/Esc back</Text>
           </>
         ) : null}
@@ -511,9 +483,12 @@ export function PluginManager({
     <Box flexDirection="column" marginTop={1}>
       <Box>
         <Text color={theme.info}>{glyph.toolDot} </Text>
-        <Text color={theme.info} bold>Plugins</Text>
+        <Text color={theme.info} bold>
+          Plugins
+        </Text>
         <Text color={theme.muted}>
-          {"  "}{scopeLabel(scope)} scope{data.projectTrusted ? "" : " · project untrusted"}
+          {"  "}
+          {scopeLabel(scope)} scope{data.projectTrusted ? "" : " · project untrusted"}
         </Text>
       </Box>
 
@@ -531,7 +506,12 @@ export function PluginManager({
           <Text color={theme.muted}> · / edit · Esc close</Text>
         </Box>
       ) : null}
-      {start > 0 ? <Text color={theme.muted}>  ↑ {start} more</Text> : null}
+      {start > 0 ? (
+        <Text color={theme.muted}>
+          {"  ↑ "}
+          {start} more
+        </Text>
+      ) : null}
 
       {total === 0 ? (
         <Box marginLeft={2} paddingY={1}>
@@ -555,10 +535,21 @@ export function PluginManager({
             return (
               <Box key={row.pluginId}>
                 <Text color={selected ? theme.brand : undefined} bold={selected}>
-                  {selected ? "› " : "  "}{row.pluginId}
+                  {selected ? "› " : "  "}
+                  {row.pluginId}
                 </Text>
-                {row.version ? <Text color={theme.muted}>  v{row.version}</Text> : null}
-                {row.description ? <Text color={theme.muted} wrap="truncate-end">  {row.description}</Text> : null}
+                {row.version ? (
+                  <Text color={theme.muted}>
+                    {"  v"}
+                    {row.version}
+                  </Text>
+                ) : null}
+                {row.description ? (
+                  <Text color={theme.muted} wrap="truncate-end">
+                    {"  "}
+                    {row.description}
+                  </Text>
+                ) : null}
               </Box>
             );
           })
@@ -570,16 +561,23 @@ export function PluginManager({
             return (
               <Box key={row.pluginId}>
                 <Text color={row.enabled ? theme.ok : theme.muted}>
-                  {selected ? "› " : "  "}{row.enabled ? "● " : "○ "}
+                  {selected ? "› " : "  "}
+                  {row.enabled ? "● " : "○ "}
                 </Text>
                 <Text color={selected ? theme.brand : undefined} bold={selected}>
                   {row.pluginId}
                 </Text>
                 <Text color={theme.muted}>
-                  {"  "}v{row.version}{row.scope ? ` · ${row.scope}` : ""}
+                  {"  "}v{row.version}
+                  {row.scope ? ` · ${row.scope}` : ""}
                 </Text>
-                {row.hasExecutableComponents ? <Text color={theme.warn}>  ⚡</Text> : null}
-                {row.errorCount ? <Text color={theme.error}>  {row.errorCount} issue</Text> : null}
+                {row.hasExecutableComponents ? <Text color={theme.warn}>{"  ⚡"}</Text> : null}
+                {row.errorCount ? (
+                  <Text color={theme.error}>
+                    {"  "}
+                    {row.errorCount} issue
+                  </Text>
+                ) : null}
               </Box>
             );
           })
@@ -592,23 +590,23 @@ export function PluginManager({
               {selectedIndex === 0 ? "› " : "  "}⊕ Add marketplace…
             </Text>
           ) : null}
-          {marketplaces
-            .slice(Math.max(0, start - 1), Math.max(0, end - 1))
-            .map((row, offset) => {
-              const rowIndex = Math.max(0, start - 1) + offset + 1;
-              const selected = rowIndex === selectedIndex;
-              return (
-                <Box key={row.name}>
-                  <Text color={selected ? theme.brand : undefined} bold={selected}>
-                    {selected ? "› " : "  "}{row.name}
-                  </Text>
-                  <Text color={theme.muted}>
-                    {"  "}{row.kind} · {row.pluginCount ?? "?"} plugin(s)
-                  </Text>
-                  {row.error ? <Text color={theme.error}>  unreadable</Text> : null}
-                </Box>
-              );
-            })}
+          {marketplaces.slice(Math.max(0, start - 1), Math.max(0, end - 1)).map((row, offset) => {
+            const rowIndex = Math.max(0, start - 1) + offset + 1;
+            const selected = rowIndex === selectedIndex;
+            return (
+              <Box key={row.name}>
+                <Text color={selected ? theme.brand : undefined} bold={selected}>
+                  {selected ? "› " : "  "}
+                  {row.name}
+                </Text>
+                <Text color={theme.muted}>
+                  {"  "}
+                  {row.kind} · {row.pluginCount ?? "?"} plugin(s)
+                </Text>
+                {row.error ? <Text color={theme.error}>{"  unreadable"}</Text> : null}
+              </Box>
+            );
+          })}
         </>
       ) : null}
 
@@ -618,24 +616,46 @@ export function PluginManager({
             return (
               <Box key={`${row.pluginId}:${row.scope}:${offset}`}>
                 <Text color={selected ? theme.brand : theme.error} bold={selected}>
-                  {selected ? "› " : "  "}{row.pluginId}
+                  {selected ? "› " : "  "}
+                  {row.pluginId}
                 </Text>
-                <Text color={theme.muted}>  [{row.scope}] </Text>
-                <Text color={theme.muted} wrap="truncate-end">{row.message}</Text>
+                <Text color={theme.muted}>
+                  {"  ["}
+                  {row.scope}
+                  {"] "}
+                </Text>
+                <Text color={theme.muted} wrap="truncate-end">
+                  {row.message}
+                </Text>
               </Box>
             );
           })
         : null}
 
-      {total - end > 0 ? <Text color={theme.muted}>  ↓ {total - end} more</Text> : null}
+      {total - end > 0 ? (
+        <Text color={theme.muted}>
+          {"  ↓ "}
+          {total - end} more
+        </Text>
+      ) : null}
 
       {busy ? (
         <Box marginLeft={2} marginTop={1}>
           <Spinner label={busy} showHint={false} />
         </Box>
       ) : null}
-      {success ? <Text color={theme.ok}>  ✓ {success}</Text> : null}
-      {failure ? <Text color={theme.error} wrap="wrap">  ✗ {failure}</Text> : null}
+      {success ? (
+        <Text color={theme.ok}>
+          {"  ✓ "}
+          {success}
+        </Text>
+      ) : null}
+      {failure ? (
+        <Text color={theme.error} wrap="wrap">
+          {"  ✗ "}
+          {failure}
+        </Text>
+      ) : null}
 
       <Box marginLeft={2} marginTop={1}>
         <Text color={theme.muted}>
