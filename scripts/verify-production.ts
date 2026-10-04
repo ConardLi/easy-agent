@@ -30,6 +30,7 @@ const TESTS: TestDefinition[] = [
   { id: "query-engine", group: "core", file: "src/scripts/test-queryengine-characterization.ts" },
   { id: "interactive-session", group: "core", file: "src/scripts/test-interactive-session-characterization.tsx" },
   { id: "session-sdk", group: "core", file: "src/scripts/test-sdk-session.ts" },
+  { id: "headless-session", group: "core", file: "src/scripts/test-headless-session.ts" },
   { id: "provider-stream", group: "core", file: "src/scripts/test-providerstream-characterization.ts" },
   { id: "prompt-caching", group: "core", file: "src/scripts/test-prompt-caching.ts" },
   { id: "session-prompt-context", group: "core", file: "src/scripts/test-session-prompt-context.ts" },

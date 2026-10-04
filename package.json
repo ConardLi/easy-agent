@@ -47,6 +47,7 @@
     "test:queryengine": "tsx src/scripts/test-queryengine-characterization.ts",
     "test:interactive-session": "node --import tsx src/scripts/test-interactive-session-characterization.tsx",
     "test:sdk": "node --import tsx src/scripts/test-sdk-session.ts",
+    "test:headless-session": "node --import tsx src/scripts/test-headless-session.ts",
     "test:cli-headless": "node --import tsx src/scripts/test-cli-headless-characterization.ts",
     "test:user-output": "node --import tsx src/scripts/test-user-output-contract.ts",
     "test:config-session": "node --import tsx src/scripts/test-config-session-characterization.ts",

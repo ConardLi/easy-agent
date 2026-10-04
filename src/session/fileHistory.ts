@@ -105,16 +105,26 @@ function isEnvTruthy(value: string | undefined): boolean {
 
 /**
  * Read the `checkpointingEnabled` setting (default on) and bind the session
- * id + cwd used for backup paths / path shortening. Called once at startup,
- * mirroring storage.ts's `configureSessionPersistence`. An explicit
- * `checkpointingEnabled: false` or the `EASY_AGENT_DISABLE_CHECKPOINTING`
- * env var disables the whole feature.
+ * id + cwd used for backup paths / path shortening. Called when a session
+ * opens or switches. An explicit `checkpointingEnabled: false`, the
+ * `EASY_AGENT_DISABLE_CHECKPOINTING` env var, or `enabled: false` disables
+ * the whole feature for the session.
  */
-export async function configureFileHistory(projectCwd: string, currentSessionId: string): Promise<void> {
+export async function configureFileHistory(
+  projectCwd: string,
+  currentSessionId: string,
+  options: { enabled?: boolean } = {},
+): Promise<void> {
   const current = binding();
   current.cwd = projectCwd;
   current.sessionId = currentSessionId;
   current.state = emptyState();
+  // A session that keeps nothing on disk (headless runs) takes no
+  // checkpoints: no backups, and no snapshot records in any transcript.
+  if (options.enabled === false) {
+    current.enabled = false;
+    return;
+  }
   let setting: boolean | undefined;
   try {
     setting = await readMergedBooleanSetting(projectCwd, "checkpointingEnabled");

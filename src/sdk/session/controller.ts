@@ -134,7 +134,9 @@ export class SessionController {
       () => this.#sessionId,
       () => this.getState(),
     );
-    this.#recorder = this.#persist ? new TranscriptRecorder(this.cwd, () => this.#sessionId) : null;
+    this.#recorder = this.#persist
+      ? new TranscriptRecorder(this.cwd, () => this.#sessionId, init.initialMessages)
+      : null;
     this.#broker = new InteractionBroker(
       new Set(init.options.interactions ?? ALL_INTERACTIONS),
       init.options.handlers ?? {},
@@ -170,10 +172,9 @@ export class SessionController {
   /** Build a controller inside its scope and bind file history to the session. */
   static async create(init: SessionControllerInit): Promise<SessionController> {
     return runInSessionScope(init.scope, async () => {
-      if (init.options.persist !== false) {
-        await configureFileHistory(init.cwd, init.sessionId);
-        if (init.fileHistorySnapshots.length > 0) restoreFileHistorySnapshots(init.fileHistorySnapshots);
-      }
+      const persist = init.options.persist !== false;
+      await configureFileHistory(init.cwd, init.sessionId, { enabled: persist });
+      if (persist && init.fileHistorySnapshots.length > 0) restoreFileHistorySnapshots(init.fileHistorySnapshots);
       const controller = new SessionController(init);
       controller.#observeStores();
       return controller;
@@ -246,17 +247,21 @@ export class SessionController {
     return new Promise((resolve) => this.#idleWaiters.push(resolve));
   }
 
+  /**
+   * Stop the running turn. A pending confirmation is denied (a question is
+   * cancelled) first, so the tool call it guards gets a result and the
+   * conversation stays well-formed; the turn then ends instead of handing the
+   * denial back to the model.
+   */
   interrupt(): InterruptOutcome {
     if (this.#closed) return "idle";
     const permission = this.#broker.find(PERMISSION_KINDS);
-    if (permission) {
-      this.#broker.dismiss(permission.id, "interrupt");
-      return "permission_denied";
-    }
-    const question = this.#broker.find(["question"]);
-    if (question) {
-      this.#broker.dismiss(question.id, "interrupt");
-      return "question_cancelled";
+    const question = permission ? undefined : this.#broker.find(["question"]);
+    const pending = permission ?? question;
+    if (pending) {
+      this.#broker.dismiss(pending.id, "interrupt");
+      this.#engine.interrupt();
+      return permission ? "permission_denied" : "question_cancelled";
     }
     return this.#engine.interrupt() ? "turn_aborted" : "idle";
   }
@@ -305,13 +310,10 @@ export class SessionController {
     let outcome: { handled: boolean; reason?: TurnResult["reason"] };
     let toolTurns: number | undefined;
     try {
-      // Persist what the user typed, not the expanded skill or command body,
-      // so a resumed session shows the same prompt. Background wake-ups have
-      // no typed prompt; the drained notifications are the turn's input.
-      if (isLlmTriggering && text.length > 0) {
-        const messageId = this.#engine.beginUserTurn();
-        await this.#recorder?.userPrompt(text, messageId);
-      }
+      // Open the turn before the engine adds the prompt, so its messages and
+      // file-history snapshot share one id. Background wake-ups have no typed
+      // prompt; the engine opens their turn itself.
+      if (isLlmTriggering && text.length > 0) this.#engine.beginUserTurn();
       const run = this.#engine.submitMessage(text);
       for (;;) {
         const step = await run.next();
@@ -322,7 +324,9 @@ export class SessionController {
         if (step.value.type === "turn_complete") toolTurns = step.value.turnCount;
         await this.#onEngineEvent(step.value);
       }
+      await this.#recorder?.flush();
     } catch (error) {
+      await this.#recorder?.flush().catch(() => {});
       this.#endTurn();
       this.#continuation = null;
       this.#emit({ type: "turn_failed", turnId, error: serializeError(error) });
@@ -366,6 +370,7 @@ export class SessionController {
       if (!planContent) return null;
       const prompt = this.#engine.clearContextAndImplement(planContent);
       this.#messages = [];
+      await this.#recorder?.cleared();
       clearTodos(this.#sessionId);
       this.#emit({ type: "messages_changed", messages: [] });
       this.#emit({
@@ -435,17 +440,16 @@ export class SessionController {
         return;
       case "assistant_message":
         this.#emit({ type: "assistant_message", message: event.message });
-        await this.#recorder?.assistantMessage(event.message, this.#engine.getCurrentMessageId());
         return;
       case "tool_result_message":
         this.#emit({ type: "tool_results", message: event.message });
         // The committed results replace the live cards; drop their progress.
         this.#clearToolProgress();
-        await this.#recorder?.toolResults(event.message, this.#engine.getCurrentMessageId());
         return;
       case "messages_updated":
         this.#messages = event.messages;
         this.#emit({ type: "messages_changed", messages: event.messages });
+        await this.#recorder?.sync(event.messages, this.#engine.getCurrentMessageId());
         return;
       case "usage_updated":
         this.#usage = {
@@ -511,6 +515,7 @@ export class SessionController {
       case "session_cleared":
         this.#clearToolProgress();
         clearTodos(this.#sessionId);
+        await this.#recorder?.cleared();
         this.#emit({ type: "session_cleared" });
         return;
       case "session_switched":
@@ -554,6 +559,8 @@ export class SessionController {
     this.#sessionId = sessionId;
     this.#messages = [...messages];
     this.#usage = { total: { ...totalUsage }, turn: null, lastCall: null, context: null };
+    // The restored messages are already in the target session's file.
+    this.#recorder?.rebase(this.#engine.getState().messages);
     if (this.#persist) {
       try {
         await configureFileHistory(this.cwd, sessionId);

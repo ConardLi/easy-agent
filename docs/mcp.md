@@ -1,6 +1,6 @@
 # MCP servers
 
-Configure MCP servers under `mcpServers` in user or trusted project settings. Easy Agent supports stdio, Streamable HTTP, and legacy SSE servers. Run `/mcp` to see connection status and discovered tools, or `/mcp reconnect <name>` after changing a server configuration.
+Configure MCP servers under `mcpServers` in user or trusted project settings. Easy Agent supports stdio, Streamable HTTP, and legacy SSE servers. Run `/mcp` to see connection status and discovered tools, or `/mcp reconnect <name>` after changing a server configuration. The interactive UI connects servers in the background so a slow server does not delay the first frame; headless runs (`eagent -p`) connect them before sending the request.
 
 ```json
 {

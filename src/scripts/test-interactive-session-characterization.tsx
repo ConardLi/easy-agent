@@ -185,6 +185,9 @@ async function recordTranscript(sessionId: string): Promise<void> {
       case "system":
         out(`    system[${entry.level}] ${clip(String(entry.message))}`);
         break;
+      case "compaction":
+        out(`    compaction trigger=${entry.trigger}${entry.reason ? ` reason=${entry.reason}` : ""}`);
+        break;
       case "file_history_snapshot": {
         const snapshot = entry.snapshot as { trackedFileBackups?: Record<string, unknown> };
         const files = Object.keys(snapshot.trackedFileBackups ?? {}).map((file) => normalize(file).replace(/\\/g, "/"));
@@ -345,8 +348,8 @@ async function buildRecording(): Promise<void> {
   await scenario(
     "interrupt while a permission prompt is open",
     [
+      // Interrupting ends the turn: the model is not called again.
       { kind: "tool", name: "Write", input: { file_path: "interrupted.txt", content: "x\n" } },
-      { kind: "text", text: "Stopped as asked." },
     ],
     async () => {
       out('>>> submit "Create interrupted.txt."');
@@ -396,7 +399,6 @@ async function buildRecording(): Promise<void> {
           questions: [{ question: "Which size?", header: "Size", options: [{ label: "S" }, { label: "L" }] }],
         },
       },
-      { kind: "text", text: "No answer, moving on." },
     ],
     async () => {
       out('>>> submit "Pick a size with me."');

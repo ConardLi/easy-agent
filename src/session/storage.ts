@@ -89,7 +89,19 @@ export type TranscriptEntry =
     }
   | { type: "usage"; timestamp: string; turn: Usage; total: Usage }
   | { type: "system"; timestamp: string; level: "info" | "error"; message: string }
-  | { type: "compaction"; timestamp: string; trigger: "auto" | "manual" }
+  | {
+      /**
+       * A boundary: resume starts from the messages written after the last
+       * one. Compaction writes the compacted conversation after it; clearing
+       * the context (`/clear`, a plan approved with a context clear) writes
+       * none and marks `reason: "clear"`. Readers that predate `reason` treat
+       * a clear as a manual compaction to an empty conversation.
+       */
+      type: "compaction";
+      timestamp: string;
+      trigger: "auto" | "manual";
+      reason?: "clear";
+    }
   | { type: "file_history_snapshot"; timestamp: string; snapshot: FileHistorySnapshotRecord };
 
 export interface RestoredSession {
@@ -212,6 +224,7 @@ function parseJsonLine(line: string): TranscriptEntry | null {
           type: "compaction",
           timestamp: parsed.timestamp,
           trigger: parsed.trigger,
+          ...(parsed.reason === "clear" ? { reason: "clear" as const } : {}),
         };
       }
       return null;
@@ -446,12 +459,20 @@ export async function appendCompactionSnapshot(
   sessionId: string,
   trigger: "auto" | "manual",
   messages: MessageParam[],
+  options: { reason?: "clear" } = {},
 ): Promise<void> {
   if (!persistenceEnabled) return;
   const paths = await getSessionPaths(cwd, sessionId);
   await ensureSessionDir(paths);
   const lines: string[] = [];
-  lines.push(JSON.stringify({ type: "compaction", timestamp: new Date().toISOString(), trigger }));
+  lines.push(
+    JSON.stringify({
+      type: "compaction",
+      timestamp: new Date().toISOString(),
+      trigger,
+      ...(options.reason ? { reason: options.reason } : {}),
+    }),
+  );
   for (const msg of messages) {
     lines.push(
       JSON.stringify({
