@@ -44,7 +44,7 @@
     tool_event start Write
     message assistant [turn]: tool_use(Write {"file_path":"notes.txt","content":"one\n"})
     file_history_snapshot files=[notes.txt]
-    tool_event done Write isError=false length=129
+    tool_event done Write isError=false length=result
     message user [turn]: tool_result(Created file: <CWD>/notes.txt (4 chars))
     message assistant [turn]: text(Wrote notes.txt.)
     usage turn=20/10 total=20/10
@@ -73,7 +73,7 @@
     file_history_snapshot files=[]
     tool_event start Write
     message assistant [turn]: tool_use(Write {"file_path":"denied.txt","content":"no\n"})
-    tool_event done Write isError=true length=28
+    tool_event done Write isError=true length=result
     message user [turn]: tool_result(error Permission denied for Write.)
     message assistant [turn]: text(Understood, not writing it.)
     usage turn=20/10 total=20/10
@@ -104,7 +104,7 @@
     file_history_snapshot files=[]
     tool_event start Write
     message assistant [turn]: tool_use(Write {"file_path":"interrupted.txt","content":"x\n"})
-    tool_event done Write isError=true length=28
+    tool_event done Write isError=true length=result
     message user [turn]: tool_result(error Permission denied for Write.)
     message assistant [turn]: text(Stopped as asked.)
     usage turn=20/10 total=20/10
@@ -134,7 +134,7 @@
     file_history_snapshot files=[]
     tool_event start AskUserQuestion
     message assistant [turn]: tool_use(AskUserQuestion {"questions":[{"question":"Which color?","header":"Color","o…(105))
-    tool_event done AskUserQuestion isError=false length=100
+    tool_event done AskUserQuestion isError=false length=result
     message user [turn]: tool_result(User has answered your questions: "Which color?" = "Blue". Continue wi…(100))
     message assistant [turn]: text(Blue it is.)
     usage turn=20/10 total=20/10
@@ -165,7 +165,7 @@
     file_history_snapshot files=[]
     tool_event start AskUserQuestion
     message assistant [turn]: tool_use(AskUserQuestion {"questions":[{"question":"Which size?","header":"Size","opt…(98))
-    tool_event done AskUserQuestion isError=false length=44
+    tool_event done AskUserQuestion isError=false length=result
     message user [turn]: tool_result(The user declined to answer the question(s).)
     message assistant [turn]: text(No answer, moving on.)
     usage turn=20/10 total=20/10
@@ -196,7 +196,7 @@
     file_history_snapshot files=[]
     tool_event start ExitPlanMode
     message assistant [turn]: tool_use(ExitPlanMode {"summary":"Add the feature"})
-    tool_event done ExitPlanMode isError=false length=373
+    tool_event done ExitPlanMode isError=false length=result
     message user [turn]: tool_result(Plan approved by user. Full tool access restored.\n\nIMPORTANT: Immedi…(296))
     usage turn=10/5 total=10/5
     message user [turn]: text(Implement the following plan:\n\n1. Add the feature.\n2. Add tests.)
@@ -240,7 +240,7 @@
     file_history_snapshot files=[]
     tool_event start ExitPlanMode
     message assistant [turn]: tool_use(ExitPlanMode {"summary":"Add the feature"})
-    tool_event done ExitPlanMode isError=true length=35
+    tool_event done ExitPlanMode isError=true length=result
     message user [turn]: tool_result(error Permission denied for ExitPlanMode.)
     message assistant [turn]: text(Noted, revising.)
     usage turn=20/10 total=20/10

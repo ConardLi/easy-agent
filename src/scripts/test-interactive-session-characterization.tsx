@@ -137,9 +137,24 @@ function recordState(session: Session): void {
 async function recordTranscript(sessionId: string): Promise<void> {
   const { transcriptPath } = await getSessionPaths(cwd, sessionId);
   const raw = await readFile(transcriptPath, "utf8");
+  const entries = raw
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line) as Record<string, unknown>);
+  // Result lengths include absolute paths, so the golden records whether each
+  // length matches the tool result it describes instead of the raw number.
+  const resultLengths = entries.flatMap((entry) => {
+    const content = (entry.message as { content?: unknown } | undefined)?.content;
+    if (entry.type !== "message" || !Array.isArray(content)) return [];
+    return content
+      .filter((block: { type?: string }) => block.type === "tool_result")
+      .map((block: { content?: unknown }) =>
+        typeof block.content === "string" ? block.content.length : JSON.stringify(block.content).length,
+      );
+  });
+  let resultIndex = 0;
   out("  transcript:");
-  for (const line of raw.split("\n").filter(Boolean)) {
-    const entry = JSON.parse(line) as Record<string, unknown>;
+  for (const entry of entries) {
     switch (entry.type) {
       case "session_meta":
         out(`    session_meta model=${entry.model}`);
@@ -149,12 +164,16 @@ async function recordTranscript(sessionId: string): Promise<void> {
         out(`    message ${message.role}${entry.messageId ? " [turn]" : ""}: ${describeContent(message.content)}`);
         break;
       }
-      case "tool_event":
-        out(
-          `    tool_event ${entry.phase} ${entry.name}` +
-            (entry.phase === "done" ? ` isError=${entry.isError === true} length=${entry.resultLength}` : ""),
-        );
+      case "tool_event": {
+        let detail = "";
+        if (entry.phase === "done") {
+          const expected = resultLengths[resultIndex++];
+          const length = entry.resultLength === expected ? "result" : String(entry.resultLength);
+          detail = ` isError=${entry.isError === true} length=${length}`;
+        }
+        out(`    tool_event ${entry.phase} ${entry.name}${detail}`);
         break;
+      }
       case "usage": {
         const turn = entry.turn as { input_tokens: number; output_tokens: number };
         const total = entry.total as { input_tokens: number; output_tokens: number };
