@@ -1,0 +1,368 @@
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/jetbrains-mono";
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ------------------------------------------------------------------ */
+/* Design tokens                                                       */
+/* ------------------------------------------------------------------ */
+
+:root {
+  --bg: #f4f4f2;
+  --canvas: #ffffff;
+  --surface: #fafaf9;
+  --surface-2: #f2f2f0;
+  --surface-3: #e9e9e6;
+  --elevated: #ffffff;
+  --line: rgb(24 24 27 / 0.08);
+  --line-strong: rgb(24 24 27 / 0.14);
+  --fg: #17171a;
+  --fg-2: #55555e;
+  --fg-3: #8b8b94;
+  --fg-4: #b4b4bb;
+
+  --success: #16a36a;
+  --warning: #c98a0c;
+  --danger: #e5484d;
+  --info: #2f7ae5;
+
+  --diff-add: rgb(22 163 106 / 0.1);
+  --diff-add-strong: rgb(22 163 106 / 0.22);
+  --diff-del: rgb(229 72 77 / 0.09);
+  --diff-del-strong: rgb(229 72 77 / 0.2);
+
+  --sh-canvas: 0 0 0 1px rgb(24 24 27 / 0.04), 0 1px 2px rgb(24 24 27 / 0.04), 0 8px 24px -12px rgb(24 24 27 / 0.08);
+  --sh-pop: 0 0 0 1px rgb(24 24 27 / 0.06), 0 12px 32px -8px rgb(24 24 27 / 0.18), 0 4px 10px -4px rgb(24 24 27 / 0.08);
+  --sh-composer: 0 0 0 1px rgb(24 24 27 / 0.07), 0 10px 30px -14px rgb(24 24 27 / 0.22), 0 2px 6px -2px rgb(24 24 27 / 0.05);
+
+  --chat-size: 15px;
+  --chat-leading: 1.72;
+}
+
+.dark {
+  --bg: #0c0c0e;
+  --canvas: #131315;
+  --surface: #18181b;
+  --surface-2: #1f1f23;
+  --surface-3: #27272c;
+  --elevated: #1b1b1f;
+  --line: rgb(255 255 255 / 0.065);
+  --line-strong: rgb(255 255 255 / 0.11);
+  --fg: #ececee;
+  --fg-2: #a3a3ac;
+  --fg-3: #6e6e78;
+  --fg-4: #48484f;
+
+  --success: #3dd68c;
+  --warning: #f5b544;
+  --danger: #ff6369;
+  --info: #5eb1ff;
+
+  --diff-add: rgb(61 214 140 / 0.09);
+  --diff-add-strong: rgb(61 214 140 / 0.2);
+  --diff-del: rgb(255 99 105 / 0.09);
+  --diff-del-strong: rgb(255 99 105 / 0.2);
+
+  --sh-canvas: 0 0 0 1px rgb(255 255 255 / 0.05), 0 16px 40px -20px rgb(0 0 0 / 0.7);
+  --sh-pop: 0 0 0 1px rgb(255 255 255 / 0.07), 0 18px 40px -10px rgb(0 0 0 / 0.65), 0 4px 12px -4px rgb(0 0 0 / 0.4);
+  --sh-composer: 0 0 0 1px rgb(255 255 255 / 0.075), 0 18px 40px -18px rgb(0 0 0 / 0.8), 0 1px 0 0 rgb(255 255 255 / 0.04) inset;
+}
+
+[data-accent="iris"] {
+  --accent: #6e74f7;
+  --accent-hover: #5c62ec;
+  --accent-fg: #ffffff;
+}
+[data-accent="ember"] {
+  --accent: #f2703c;
+  --accent-hover: #e3602c;
+  --accent-fg: #ffffff;
+}
+[data-accent="jade"] {
+  --accent: #14a874;
+  --accent-hover: #0f9465;
+  --accent-fg: #ffffff;
+}
+[data-accent="sky"] {
+  --accent: #1d8fe0;
+  --accent-hover: #167ec7;
+  --accent-fg: #ffffff;
+}
+[data-accent="rose"] {
+  --accent: #e5487a;
+  --accent-hover: #d43a6b;
+  --accent-fg: #ffffff;
+}
+[data-accent="graphite"] {
+  --accent: #27272a;
+  --accent-hover: #3f3f46;
+  --accent-fg: #ffffff;
+}
+
+.dark[data-accent="iris"] {
+  --accent: #8187ff;
+  --accent-hover: #9196ff;
+}
+.dark[data-accent="ember"] {
+  --accent: #ff8a57;
+  --accent-hover: #ff9b6e;
+}
+.dark[data-accent="jade"] {
+  --accent: #34d399;
+  --accent-hover: #4ade9f;
+  --accent-fg: #052e1c;
+}
+.dark[data-accent="sky"] {
+  --accent: #4cb4ff;
+  --accent-hover: #6cc1ff;
+  --accent-fg: #04233b;
+}
+.dark[data-accent="rose"] {
+  --accent: #ff6b9a;
+  --accent-hover: #ff82aa;
+}
+.dark[data-accent="graphite"] {
+  --accent: #ececee;
+  --accent-hover: #ffffff;
+  --accent-fg: #131315;
+}
+
+:root {
+  --accent-soft: color-mix(in oklab, var(--accent) 12%, transparent);
+  --accent-softer: color-mix(in oklab, var(--accent) 7%, transparent);
+  --accent-line: color-mix(in oklab, var(--accent) 38%, transparent);
+}
+
+[data-size="14"] {
+  --chat-size: 14px;
+  --chat-leading: 1.7;
+}
+[data-size="15"] {
+  --chat-size: 15px;
+  --chat-leading: 1.72;
+}
+[data-size="16"] {
+  --chat-size: 16px;
+  --chat-leading: 1.74;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-elevated: var(--elevated);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-fg: var(--fg);
+  --color-fg-2: var(--fg-2);
+  --color-fg-3: var(--fg-3);
+  --color-fg-4: var(--fg-4);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-fg: var(--accent-fg);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-softer: var(--accent-softer);
+  --color-accent-line: var(--accent-line);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-info: var(--info);
+
+  --font-sans: "Inter Variable", "PingFang SC", "HarmonyOS Sans SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono Variable", "SF Mono", ui-monospace, Menlo, monospace;
+
+  --shadow-canvas: var(--sh-canvas);
+  --shadow-pop: var(--sh-pop);
+  --shadow-composer: var(--sh-composer);
+
+  --animate-shimmer: shimmer 2.2s linear infinite;
+  --animate-pulse-soft: pulse-soft 1.8s ease-in-out infinite;
+  --animate-caret: caret 1s steps(1) infinite;
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+@keyframes pulse-soft {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(0.85);
+  }
+}
+@keyframes caret {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Base                                                                */
+/* ------------------------------------------------------------------ */
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  html {
+    font-family: var(--font-sans);
+    font-feature-settings: "cv11", "ss01", "ss03";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-size: 13.5px;
+    line-height: 1.5;
+    overflow: hidden;
+  }
+  /* Until the theme is applied, show the window background, which already matches it. */
+  html:not(.dark):not(.light) body {
+    background: transparent;
+  }
+  ::selection {
+    background: color-mix(in oklab, var(--accent) 28%, transparent);
+  }
+  button {
+    cursor: default;
+  }
+  :focus-visible {
+    outline: 2px solid var(--accent-line);
+    outline-offset: 1px;
+  }
+  code,
+  pre,
+  kbd {
+    font-family: var(--font-mono);
+  }
+}
+
+/* Theme switches fade instead of flashing. */
+.theme-transition,
+.theme-transition * {
+  transition:
+    background-color 220ms ease,
+    border-color 220ms ease,
+    color 220ms ease !important;
+}
+
+/* Thin scrollbars that only show up against the surface they sit on. */
+.scroll-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+.scroll-thin::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+.scroll-thin::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+.scroll-thin::-webkit-scrollbar-thumb:hover {
+  background-color: var(--fg-4);
+}
+.scroll-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scroll-none {
+  scrollbar-width: none;
+}
+.scroll-none::-webkit-scrollbar {
+  display: none;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Text that shimmers while the agent is working on it. */
+.text-shimmer {
+  background: linear-gradient(90deg, var(--fg-3) 0%, var(--fg-3) 35%, var(--fg) 50%, var(--fg-3) 65%, var(--fg-3) 100%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: shimmer 2.2s linear infinite;
+}
+
+/* ------------------------------------------------------------------ */
+/* Window chrome                                                       */
+/* ------------------------------------------------------------------ */
+
+.drag {
+  -webkit-app-region: drag;
+}
+.no-drag {
+  -webkit-app-region: no-drag;
+}
+
+/* Windows and Linux draw their window buttons over the right end of the top bar. */
+:is([data-platform="win32"], [data-platform="linux"]) .titlebar-end {
+  padding-right: max(12px, calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + 4px));
+}
+
+/* ------------------------------------------------------------------ */
+/* Popover motion                                                      */
+/* ------------------------------------------------------------------ */
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(var(--pop-y, -3px)) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.pop-in {
+  transform-origin: var(--radix-dropdown-menu-content-transform-origin, var(--radix-popover-content-transform-origin, center));
+}
+.pop-in[data-state="open"] {
+  animation: pop-in 150ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.pop-in[data-side="top"] {
+  --pop-y: 3px;
+}
+.tip-in[data-state="delayed-open"],
+.tip-in[data-state="instant-open"] {
+  animation: fade-in 120ms ease-out;
+}
+.overlay-in[data-state="open"] {
+  animation: fade-in 160ms ease-out;
+}
+.dialog-in[data-state="open"] {
+  animation: pop-in 200ms cubic-bezier(0.16, 1, 0.3, 1);
+  --pop-y: 6px;
+}

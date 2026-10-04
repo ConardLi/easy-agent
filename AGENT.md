@@ -9,7 +9,7 @@ Easy Agent is a **terminal-native agentic coding CLI** published as the `eagent`
 - Runtime: Node 22+, ESM, strict TS, target ES2022, JSX `react-jsx`
 - TUI: React 19 + Ink 7 (no web framework)
 - Package manager: **npm** (`package-lock.json` is canonical — no pnpm/yarn/bun lockfiles)
-- Single-package repo (no monorepo)
+- Single published package. `apps/desktop/` is the Electron desktop client: a separate npm project with its own lockfile and Biome config, not an npm workspace. The root `npm run lint` skips `apps/`, and `.github/workflows/desktop.yml` checks it
 
 The code is organized into five broad layers:
 

@@ -6,6 +6,8 @@
       "**",
       // Milestone snapshot scripts are maintained apart from src/.
       "!step",
+      // Projects under apps/ have their own package, lockfile, and Biome config.
+      "!apps",
       "!src/scripts/__golden__",
       "!package-lock.json",
       "!docs/headless-output.schema.json",

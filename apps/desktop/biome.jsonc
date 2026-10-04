@@ -1,0 +1,48 @@
+{
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  "root": true,
+  "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
+  "files": {
+    "includes": ["**", "!package-lock.json", "!tests/visual/baseline"]
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 160
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "double",
+      "semicolons": "always",
+      "trailingCommas": "all",
+      "arrowParentheses": "always"
+    }
+  },
+  "css": {
+    // Tailwind v4 directives such as @theme and @custom-variant.
+    "parser": { "tailwindDirectives": true }
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "recommended",
+      "style": {
+        "noNonNullAssertion": "off"
+      },
+      "complexity": {
+        // The theme fade in tokens.css has to override every component's own transition.
+        "noImportantStyles": "off"
+      },
+      "correctness": {
+        // Hook dependency lists decide when effects re-run; changing them changes behavior.
+        "useExhaustiveDependencies": "off"
+      },
+      "suspicious": {
+        // Lists rendered from static arrays.
+        "noArrayIndexKey": "off"
+      }
+    }
+  },
+  "assist": { "enabled": false }
+}
