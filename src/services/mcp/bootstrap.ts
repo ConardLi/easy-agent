@@ -147,6 +147,31 @@ async function connectAndRegister(
   return { connection, toolCount: tools.length };
 }
 
+/**
+ * Connect servers supplied while running, such as the ones an editor passes
+ * over ACP. A name already in the registry keeps its server. Call after
+ * `bootstrapMcp`, which resets the registry.
+ */
+export async function connectAdditionalMcpServers(
+  servers: Record<string, PendingMcpServer["config"]>,
+): Promise<{ added: string[]; skipped: string[] }> {
+  registerMcpProcessCleanup();
+  const added: string[] = [];
+  const skipped: string[] = [];
+  const startedAt = Date.now();
+  for (const [name, config] of Object.entries(servers)) {
+    if (getMcpRegistryEntry(name)) {
+      skipped.push(name);
+      continue;
+    }
+    setMcpRegistryEntry(name, { name, type: "pending", config, startedAt }, []);
+    added.push(name);
+  }
+  refreshGlobalToolRegistry();
+  await Promise.allSettled(added.map((name) => connectAndRegister(name, servers[name]!)));
+  return { added, skipped };
+}
+
 /** Flatten every registered MCP server's tools and push them to the global Tool registry. */
 function refreshGlobalToolRegistry(): void {
   const allTools = getMcpRegistry().flatMap((entry) => entry.tools);

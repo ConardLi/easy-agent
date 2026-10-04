@@ -147,6 +147,10 @@ export class QueryEngine {
   /** Keeps the system prompt fixed for the session; see sessionPromptContext.ts. */
   private readonly promptContext: SessionPromptContext;
   private abortController: AbortController | null = null;
+  /** A submission is running, possibly before it has an abort controller. */
+  private submitting = false;
+  /** An interrupt arrived before the running submission could be aborted. */
+  private interruptRequested = false;
   private usageAnchorIndex: number = -1;
   private lastCallUsage: Usage = { input_tokens: 0, output_tokens: 0 };
   private modeChangeCallback?: (mode: PermissionMode, previousMode: PermissionMode) => void;
@@ -212,7 +216,8 @@ export class QueryEngine {
     this.modeChangeCallback = callback;
   }
 
-  private setPermissionMode(mode: PermissionMode): void {
+  /** Switch the permission mode; restores the pre-plan mode when leaving plan mode. */
+  setPermissionMode(mode: PermissionMode): void {
     const previous = this.currentPermissionMode;
     if (mode === "plan" && previous !== "plan") {
       this.prePlanMode = previous;
@@ -277,16 +282,53 @@ export class QueryEngine {
     return this.currentMessageId;
   }
 
-  interrupt(): boolean {
-    if (!this.abortController) {
-      return false;
+  /**
+   * Abort the running request. While a submission is still preparing (hooks,
+   * snapshots, context), or when `pending` says the caller is about to submit,
+   * the next request is aborted as soon as it starts.
+   */
+  interrupt(options: { pending?: boolean } = {}): boolean {
+    if (this.abortController) {
+      this.abortController.abort();
+      this.abortController = null;
+      return true;
     }
-    this.abortController.abort();
-    this.abortController = null;
-    return true;
+    if (this.submitting || options.pending) {
+      this.interruptRequested = true;
+      return true;
+    }
+    return false;
+  }
+
+  /** Drop an interrupt that no request picked up. */
+  clearPendingInterrupt(): void {
+    this.interruptRequested = false;
+  }
+
+  /** The abort controller of the request about to run, already aborted if an interrupt came first. */
+  private beginAbortable(): AbortController {
+    const controller = new AbortController();
+    this.abortController = controller;
+    if (this.interruptRequested) {
+      this.interruptRequested = false;
+      controller.abort();
+    }
+    return controller;
   }
 
   async *submitMessage(
+    input: string,
+  ): AsyncGenerator<QueryEngineEvent, { handled: boolean; reason?: LoopTerminationReason }> {
+    this.submitting = true;
+    try {
+      return yield* this.runSubmission(input);
+    } finally {
+      this.submitting = false;
+      this.interruptRequested = false;
+    }
+  }
+
+  private async *runSubmission(
     input: string,
   ): AsyncGenerator<QueryEngineEvent, { handled: boolean; reason?: LoopTerminationReason }> {
     const trimmed = input.trim();
@@ -368,11 +410,11 @@ export class QueryEngine {
       if (skillExpansion) {
         if (skillExpansion.skill.frontmatter.hasForkContext) {
           const { executeForkSkill } = await import("../services/skills/fork.js");
-          this.abortController = new AbortController();
+          const forkAbort = this.beginAbortable();
           try {
             const result = await executeForkSkill(skillExpansion.skill, skillExpansion.bodyText, {
               ...this.toolContext,
-              abortSignal: this.abortController.signal,
+              abortSignal: forkAbort.signal,
               defaultModel: this.getActiveModel(),
               availableTools: getToolsForMode(this.currentPermissionMode),
               getPermissionMode: () => this.currentPermissionMode,
@@ -740,8 +782,7 @@ export class QueryEngine {
       yield { type: "messages_updated", messages: [...this.messages] };
     }
 
-    const abortController = new AbortController();
-    this.abortController = abortController;
+    const abortController = this.beginAbortable();
 
     try {
       const systemPrompt = renderSystemPrompt(turnContext.systemParts);

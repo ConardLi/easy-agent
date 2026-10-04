@@ -17,9 +17,14 @@ All notable changes to Easy Agent are documented in this file.
 - RPC mode: `eagent --rpc` serves the session SDK as JSON-RPC 2.0 over stdio for editors, desktop apps, and other languages. Version negotiation on `initialize`, the workspace trust mode chosen by the client, session events as notifications, permission, plan-approval, and question requests answered with `session/respond`, concurrent requests, and saved-session management. The protocol is documented in `docs/rpc.md` with a generated JSON Schema (`docs/rpc-protocol.schema.json`) and a minimal client in `examples/rpc-client.mjs`.
 - Saved sessions can be renamed, forked, and deleted through the SDK (`renameSession`, `forkSession`, `deleteSession`) and RPC. A title is stored next to the transcript, so earlier versions still read the session, and the `/resume` picker shows it in place of the first prompt.
 - Permission and plan-approval requests carry `toolUseId`, the tool call they guard.
+- ACP mode: `eagent --acp` runs Easy Agent as an Agent Client Protocol v1 agent for Zed, JetBrains IDEs, and other ACP editors. Sessions can be created, loaded with replay, resumed, listed, closed, and deleted; prompts accept text, images, and embedded files; tool calls carry titles, kinds, file locations, and diffs; permission requests, plan approval, and questions (as form elicitations) go to the editor; permission modes are session modes; MCP servers configured in the editor are connected. It passes the ACP Test Compatibility Kit v1 suite. See `docs/acp.md`.
+- `eagent --login` saves a model API key, base URL, and model in the user settings. ACP editors offer it as terminal login when no credentials are configured.
+- `npm run acp:registry-entry` writes the ACP Registry entry (`agent.json`, `icon.svg`) for the current version.
+- SDK: `send()` takes images, `AgentRuntime.connectMcpServers()` adds MCP servers at runtime, and `AgentRuntime.hasModelCredentials()` reports whether the model has credentials. RPC `session/send` accepts `images`.
 
 ### Changed
 
+- SDK: `AgentSession.setPermissionMode()` switches the mode right away, also while a turn runs, and returns nothing; it ran `/mode` as a turn.
 - The npm description and keywords describe product capabilities.
 - The development milestone table moved from the README to `docs/learning-path.md`.
 - The system prompt is written once per session so later turns reuse the provider prompt cache. The date has day precision and git status is a session-start snapshot. Changes to AGENT.md, memory, language, output style, skills, agents, or the date reach the model as a hidden context update before the next message. `/clear`, compaction, and resume rebuild the prompt. Anthropic markers now cover both system blocks, so a full conversation is read from cache on the next user message.
@@ -33,6 +38,7 @@ All notable changes to Easy Agent are documented in this file.
 
 ### Fixed
 
+- Interrupting while the model is responding ends the turn as interrupted; it was reported as a model error, `Request was aborted.` An interrupt that arrives while a turn is still being prepared (hooks, checkpoints, context) now stops it before the model is called; it was lost.
 - A session's label in `/resume` and `listSessions()` is the first prompt the user typed again. Since transcripts record hidden context, the label could show a plan-mode reminder or a background notification instead.
 - Session transcripts record the conversation the model saw, including plan-mode reminders, background-agent notifications, context updates, and hook context, so a resumed session continues from the same context. A turn started by a background result now has its notification in the transcript.
 - `/clear` and approving a plan with a context clear are recorded; resume starts from the cleared conversation instead of reloading the earlier messages. Transcripts stay readable by earlier versions.

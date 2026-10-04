@@ -46,6 +46,9 @@ Options:
                               (system/init → assistant/user → result)
   --rpc                       RPC mode: serve the session SDK as JSON-RPC 2.0 over
                               stdin/stdout for editors and desktop apps (docs/rpc.md)
+  --acp                       Agent Client Protocol mode for editors such as Zed
+                              and JetBrains IDEs (docs/acp.md)
+  --login                     Save a model provider API key in ~/.easy-agent/settings.json
   --tool-search <mode>         ToolSearch mode: off | auto | on
   --max-turns <n>             Maximum tool turns per request (default: 200 in
                               the REPL, 50 with -p). Overrides the maxTurns setting.
@@ -138,6 +141,11 @@ Settings keys (in ~/.easy-agent/settings.json or <cwd>/.easy-agent/settings.json
     );
   }
 
+  if (process.argv.includes("--login")) {
+    const { runLogin } = await import("./login.js");
+    process.exit(await runLogin());
+  }
+
   const modelIndex = process.argv.indexOf("--model");
   const model = modelIndex !== -1 ? process.argv[modelIndex + 1] : undefined;
   const dumpSystemPrompt = process.argv.includes("--dump-system-prompt");
@@ -161,8 +169,15 @@ Settings keys (in ~/.easy-agent/settings.json or <cwd>/.easy-agent/settings.json
   const outputFormatIndex = process.argv.indexOf("--output-format");
   const outputFormat = outputFormatIndex !== -1 ? process.argv[outputFormatIndex + 1] : undefined;
   const isRpcMode = process.argv.includes("--rpc");
-  if (isRpcMode && (isPrintMode || dumpSystemPrompt)) {
-    console.error("[easy-agent] --rpc cannot be combined with --print or --dump-system-prompt.");
+  const isAcpMode = process.argv.includes("--acp");
+  const exclusiveModes = [
+    isPrintMode && "--print",
+    isRpcMode && "--rpc",
+    isAcpMode && "--acp",
+    dumpSystemPrompt && "--dump-system-prompt",
+  ].filter(Boolean);
+  if (exclusiveModes.length > 1) {
+    console.error(`[easy-agent] ${exclusiveModes.join(" and ")} cannot be combined.`);
     process.exit(1);
   }
   if (
@@ -232,7 +247,7 @@ Settings keys (in ~/.easy-agent/settings.json or <cwd>/.easy-agent/settings.json
     await trustProjectForSession(cwd);
   }
 
-  const isNonInteractiveMode = isPrintMode || isRpcMode || dumpSystemPrompt || !process.stdin.isTTY;
+  const isNonInteractiveMode = isPrintMode || isRpcMode || isAcpMode || dumpSystemPrompt || !process.stdin.isTTY;
   if (!trustProjectConfig && !isNonInteractiveMode) {
     const { ensureTrusted } = await import("../ui/trustGate.js");
     const trusted = await ensureTrusted(cwd);
@@ -263,6 +278,13 @@ Settings keys (in ~/.easy-agent/settings.json or <cwd>/.easy-agent/settings.json
   if (isRpcMode) {
     const { runRpcOverStdio } = await import("../rpc/stdio.js");
     await runRpcOverStdio({ cwd, pluginDirs, version: VERSION });
+    return;
+  }
+
+  // ACP mode creates the runtime for the directory of the editor's first session.
+  if (isAcpMode) {
+    const { runAcpOverStdio } = await import("../acp/stdio.js");
+    await runAcpOverStdio({ version: VERSION, pluginDirs, trustWorkspace: trustProjectConfig });
     return;
   }
 

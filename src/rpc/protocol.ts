@@ -172,6 +172,8 @@ export const MethodParams = {
     input: z.string(),
     /** Wait for a running turn to finish instead of failing with `busy`. */
     queue: z.boolean().optional(),
+    /** Base64 images the model sees with the input. */
+    images: z.array(z.object({ data: z.string(), mimeType: z.string() })).optional(),
   }),
   "session/command": z.object({ sessionId: SessionId, name: z.string().min(1), args: z.array(z.string()).optional() }),
   "session/respond": z.object({ sessionId: SessionId, requestId: z.string(), response: InteractionResponseSchema }),

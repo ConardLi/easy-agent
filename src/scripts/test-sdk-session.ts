@@ -235,6 +235,32 @@ try {
     await session.close();
   });
 
+  await check("interrupting while the model responds aborts the turn without an error", async () => {
+    const session = await runtime.createSession({ model: FIXTURE_MODEL });
+    const events = record(session);
+    fixture.script([{ kind: "text", text: "Too late.", delayMs: 3_000 }]);
+    const requests = fixture.requests.length;
+    const done = session.send("Take your time.");
+    await until("model request", () => fixture.requests.length > requests);
+    assert.equal(session.interrupt(), "turn_aborted");
+    assert.equal((await done).reason, "aborted");
+    assert.ok(!events.some((event) => event.type === "error"), "an interrupt is not reported as a model error");
+    await session.close();
+  });
+
+  await check("an interrupt right after send stops the turn before the model is called", async () => {
+    const session = await runtime.createSession({ model: FIXTURE_MODEL });
+    fixture.script([{ kind: "text", text: "Should not be requested." }]);
+    const requests = fixture.requests.length;
+    const done = session.send("Never mind.");
+    assert.equal(session.interrupt(), "turn_aborted");
+    assert.equal((await done).reason, "aborted");
+    assert.equal(fixture.requests.length, requests, "no model request");
+    fixture.script([{ kind: "text", text: "Next turn runs." }]);
+    assert.equal((await session.send("Go on.")).reason, "completed", "the interrupt does not leak into the next turn");
+    await session.close();
+  });
+
   await check("a second send while a turn runs is rejected as busy, waitForIdle queues it", async () => {
     const session = await runtime.createSession({ model: FIXTURE_MODEL });
     const events = record(session);

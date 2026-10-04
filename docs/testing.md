@@ -27,11 +27,23 @@ Lint and the format check are part of `verify:production`. Run `npm run format` 
 
 ## Frontend boundaries
 
-The terminal UI, the entry points, and the RPC server use the session SDK (`src/sdk/`) and never load the modules that hold conversation state or run turns: the QueryEngine and agentic loop, session storage and file history, the `state/` stores, plan files, thinking settings, the teammate mailbox, permission checks, and the Bash tool. `npm run check:frontend-boundaries` enforces this; type-only imports are allowed. The list and the reason for each entry live in `scripts/check-frontend-boundaries.ts`.
+The terminal UI, the entry points, the RPC server, and the ACP agent use the session SDK (`src/sdk/`) and never load the modules that hold conversation state or run turns: the QueryEngine and agentic loop, session storage and file history, the `state/` stores, plan files, thinking settings, the teammate mailbox, permission checks, and the Bash tool. `npm run check:frontend-boundaries` enforces this; type-only imports are allowed. The list and the reason for each entry live in `scripts/check-frontend-boundaries.ts`.
 
 ## RPC schema
 
 `docs/rpc-protocol.schema.json` is generated from `src/rpc/protocol.ts`. After changing the protocol, run `npm run rpc:schema`; `npm run test:rpc` fails while the checked-in file is stale.
+
+## ACP conformance
+
+`npm run test:acp` covers the ACP mapping offline. Before a release that changes `src/acp/`, also run the [ACP Test Compatibility Kit](https://github.com/agentclientprotocol/acp-tck) against the built agent with the fixture provider, for example:
+
+```bash
+uv run acp-tck --agent-cwd /tmp/acp-wd --agent-env HOME=/tmp/acp-home \
+  --agent-env ANTHROPIC_BASE_URL=<fixture url> --agent-env ANTHROPIC_AUTH_TOKEN=fixture \
+  -- node dist/eagent.js --acp
+```
+
+The verdict must be `CONFORMANT`.
 
 The formatter collapses repeated spaces in JSX text. Write text that needs them, such as indentation inside a `<Text>`, as a string expression: `<Text>{"  ↳ "}{label}</Text>`.
 
@@ -43,7 +55,7 @@ Each offline test process receives a temporary `HOME`, `USERPROFILE`, XDG direct
 
 | Area | Included checks | Execution |
 | --- | --- | --- |
-| Core flow | CLI and Headless protocols, the session SDK contract (events, interaction requests, plan follow-ups, deny rules and trust under the SDK, multi-session isolation, `/resume` handles, transcripts that restore the model's context), headless sessions (nothing written to disk, settings MCP servers connected), the RPC protocol (initialize and version negotiation, JSON-RPC errors, permission and question round trips, interrupt, busy and queued sends, saved-session management, resume, trust and deny rules under RPC, process exit, the example client, messages validated against the published schema), QueryEngine commands, provider stream adapters, tools, ToolSearch, MCP content and recovery, Skills, tasks, and agents | `core` |
+| Core flow | CLI and Headless protocols, the session SDK contract (events, interaction requests, plan follow-ups, deny rules and trust under the SDK, multi-session isolation, `/resume` handles, transcripts that restore the model's context), headless sessions (nothing written to disk, settings MCP servers connected), the RPC protocol (initialize and version negotiation, JSON-RPC errors, permission and question round trips, interrupt, busy and queued sends, saved-session management, resume, trust and deny rules under RPC, process exit, the example client, messages validated against the published schema), ACP (driven by the official ACP TypeScript client: initialization and terminal login, session new/load/resume/list/close/delete, streamed replies, tool calls with diffs, permission requests, cancellation, plan approval, form elicitation, modes, slash commands, images, editor MCP servers, deny rules and trust, the registry entry; every agent message validated against the ACP JSON Schema), QueryEngine commands, provider stream adapters, tools, ToolSearch, MCP content and recovery, Skills, tasks, and agents | `core` |
 | Permissions | Allow/deny behavior, structured Bash read-only analysis, realpath and symbolic-link boundaries, Auto Mode configuration, Plan Mode paths, and sandbox policy | `core` |
 | Storage and configuration | Configuration precedence and source shapes, workspace trust, credential inheritance, headless routing, session JSONL and restore shape, file history, and retention | `core`, `extensions` |
 | Extensions | Worktrees, agent teams, hooks, commands, web and multimodal tools, plugins, and resilience | `extensions` |

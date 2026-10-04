@@ -281,6 +281,22 @@ try {
     );
   });
 
+  await check("images sent with a turn reach the model; a bad image is invalid", async () => {
+    const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+    fixture.script([{ kind: "text", text: "A pixel." }]);
+    await rpc.call("session/send", {
+      sessionId,
+      input: "What is this?",
+      images: [{ data: png, mimeType: "image/png" }],
+    });
+    assert.match(JSON.stringify((fixture.requests.at(-1)!.messages as unknown[]).at(-1)), /"type":"image"/);
+    await rejects(
+      rpc.call("session/send", { sessionId, input: "And this?", images: [{ data: png, mimeType: "image/tiff" }] }),
+      protocol.RpcErrorCode.AgentError,
+      "invalid_argument",
+    );
+  });
+
   await check("a permission request round-trips and names its tool call", async () => {
     fixture.script([
       { kind: "tool", name: "Write", input: { file_path: "rpc-allowed.txt", content: "ok\n" } },

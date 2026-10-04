@@ -7,3 +7,4 @@ dist/
 .claude
 .easy-agent
 debug.err
+.acp-registry/

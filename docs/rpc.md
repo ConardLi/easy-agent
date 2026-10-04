@@ -55,7 +55,7 @@ Requests sent while `initialize` is running wait for it to finish, so a client m
 | `session/rename` | `sessionId`, `title` (empty clears it) | `session`: the updated summary |
 | `session/fork` | `sessionId`, `title?` | `session`: summary of the copy |
 | `session/delete` | `sessionId` | `{}`; the session must not be open |
-| `session/send` | `sessionId`, `input`, `queue?` | `TurnResult`, once the turn and its follow-up turns end |
+| `session/send` | `sessionId`, `input`, `queue?`, `images?` | `TurnResult`, once the turn and its follow-up turns end |
 | `session/command` | `sessionId`, `name`, `args?` | `TurnResult` of a local command such as `mode` or `compact` |
 | `session/respond` | `sessionId`, `requestId`, `response` | `outcome`: `resolved` or `stale` |
 | `session/interrupt` | `sessionId` | `outcome`: `permission_denied`, `question_cancelled`, `turn_aborted`, or `idle` |
@@ -71,7 +71,7 @@ Requests sent while `initialize` is running wait for it to finish, so a client m
 - `interactions`: the request kinds the client answers, from `permission`, `plan_approval`, `question`. Default: all three. Kinds left out get the safe default without being published: permission and plan approval are denied, questions are cancelled.
 - `services`: `"background"` (default) connects MCP servers and plugin services after answering, so a slow server does not delay startup; their tools appear once connected. `"wait"` connects them before answering.
 
-`session/send` with `queue: true` waits for a running turn to finish instead of failing with `busy`. Without it, a send while the session is busy fails with error data code `busy`.
+`session/send` accepts `images`, a list of `{ data, mimeType }` with base64 PNG, JPEG, GIF, or WebP data; the model sees them after the text. With `queue: true` it waits for a running turn to finish instead of failing with `busy`. Without it, a send while the session is busy fails with error data code `busy`.
 
 `/resume <id>` sent as input switches the session to another saved conversation: a `session_replaced` event carries the new id, which addresses the session from then on. The old id answers every call with data code `replaced` and `data.replacedBy`.
 

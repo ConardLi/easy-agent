@@ -10,9 +10,13 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 
-export type ScriptStep =
+export type ScriptStep = (
   | { kind: "text"; text: string }
-  | { kind: "tool"; name: string; input: Record<string, unknown> };
+  | { kind: "tool"; name: string; input: Record<string, unknown> }
+) & {
+  /** Hold the reply this long after the response starts, to leave room for a cancel. */
+  delayMs?: number;
+};
 
 export interface RecordedRequest {
   messages: unknown[];
@@ -100,7 +104,9 @@ export function createAnthropicFixture(): AnthropicFixture {
       requests.push({ messages: body.messages ?? [], system: body.system });
       const step = queue.shift() ?? { kind: "text", text: "(fixture script exhausted)" };
       response.writeHead(200, { "content-type": "text/event-stream" });
-      response.end(streamFor(step, requests.length));
+      const stream = streamFor(step, requests.length);
+      if (step.delayMs) setTimeout(() => response.end(stream), step.delayMs).unref();
+      else response.end(stream);
     });
   });
 

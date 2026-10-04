@@ -444,6 +444,24 @@
                 },
                 "queue": {
                   "type": "boolean"
+                },
+                "images": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "data": {
+                        "type": "string"
+                      },
+                      "mimeType": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "data",
+                      "mimeType"
+                    ]
+                  }
                 }
               },
               "required": [
