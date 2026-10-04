@@ -20,7 +20,8 @@ import { INTERACTIVE_MAX_TOOL_TURNS } from "../core/agenticLoop.js";
 import { loadPermissionSettings, type PermissionSettings } from "../permissions/permissions.js";
 import { refreshActivePlugins } from "../plugins/runtime.js";
 import { getDefaultModel } from "../services/api/client.js";
-import { bootstrapMcp } from "../services/mcp/bootstrap.js";
+import { resolveProfile } from "../services/api/providers/profile.js";
+import { bootstrapMcp, connectAdditionalMcpServers } from "../services/mcp/bootstrap.js";
 import { getAllUserInvocableSkills } from "../services/skills/registry.js";
 import {
   appendTranscriptEntry,
@@ -40,6 +41,7 @@ import { createSessionScope } from "../state/sessionScope.js";
 import { getActiveOutputStyleName } from "../styles/registry.js";
 import { logWarn } from "../utils/log.js";
 import { readMergedStringSetting } from "../utils/settings.js";
+import type { McpServerConfig } from "../types/mcp.js";
 import { activateWorkspace, consoleLogger, loadWorkspace, type WorkspaceReport } from "./bootstrap.js";
 import { AgentSdkError } from "./errors.js";
 import { AgentSession } from "./session.js";
@@ -244,6 +246,45 @@ export class AgentRuntime {
       throw new AgentSdkError("session_storage", (error as Error).message, { cause: error });
     }
     return (await this.readSession(forkId)).summary;
+  }
+
+  /**
+   * Connect MCP servers the caller supplies, in addition to the configured
+   * ones; their tools are available to every session of the runtime. A name
+   * that is already registered keeps its server and is reported as skipped.
+   * Call after `startServices()` has finished.
+   */
+  async connectMcpServers(servers: Record<string, McpServerConfig>): Promise<{ added: string[]; skipped: string[] }> {
+    this.#assertActive();
+    const scoped = Object.fromEntries(
+      Object.entries(servers).map(([name, config]) => [name, { ...config, scope: "flag" as const }]),
+    );
+    return connectAdditionalMcpServers(scoped);
+  }
+
+  /**
+   * Whether requests for the model have credentials: an API key or auth
+   * header from the model profile or the environment, or a custom endpoint
+   * (profile `baseURL` or `ANTHROPIC_BASE_URL`) that may accept none. False
+   * means the provider's default endpoint without a key.
+   */
+  async hasModelCredentials(model?: string): Promise<boolean> {
+    const profile = await resolveProfile(model ?? (await this.resolveModel()), this.cwd);
+    if (profile.apiKey || profile.baseURL) return true;
+    const authHeaders =
+      profile.protocol === "gemini" ? ["x-goog-api-key", "authorization"] : ["x-api-key", "authorization"];
+    if (
+      Object.entries(profile.headers ?? {}).some(
+        ([name, value]) => authHeaders.includes(name.toLowerCase()) && value.trim(),
+      )
+    ) {
+      return true;
+    }
+    const env = process.env;
+    return (
+      profile.protocol === "anthropic" &&
+      Boolean(env.ANTHROPIC_AUTH_TOKEN || env.ANTHROPIC_API_KEY || env.ANTHROPIC_BASE_URL)
+    );
   }
 
   getCapabilities(): RuntimeCapabilities {

@@ -18,6 +18,7 @@ import type {
 import type { TokenWarningResult } from "../context/autoCompact.js";
 import type { PermissionMode } from "../permissions/permissions.js";
 import type { AsyncAgentEntry } from "../state/asyncAgentStore.js";
+export type { McpServerConfig } from "../types/mcp.js";
 import type { BashProgress } from "../state/bashProgressStore.js";
 import type { McpProgress } from "../state/mcpProgressStore.js";
 import type { SubAgentProgress } from "../state/subAgentProgressStore.js";
@@ -296,6 +297,19 @@ export interface SessionState {
 }
 
 // ─── Turns ────────────────────────────────────────────────────────────────
+
+/** An image sent with a turn. */
+export interface ImageInput {
+  /** Base64-encoded bytes. */
+  data: string;
+  /** `image/png`, `image/jpeg`, `image/gif`, or `image/webp`. */
+  mimeType: string;
+}
+
+export interface SendOptions {
+  /** Images the model sees with the input, after the text. */
+  images?: readonly ImageInput[];
+}
 
 /**
  * What started a turn: user input, a background result that woke the idle

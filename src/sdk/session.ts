@@ -18,6 +18,7 @@ import type {
   InterruptOutcome,
   PermissionMode,
   RespondOutcome,
+  SendOptions,
   SessionEvent,
   SessionEventListener,
   SessionState,
@@ -72,8 +73,8 @@ export class AgentSession {
    * command, a skill, or a user command. Resolves when the turn and any
    * follow-up turns it triggered have finished.
    */
-  async send(input: string): Promise<TurnResult> {
-    return this.#active().send(input);
+  async send(input: string, options?: SendOptions): Promise<TurnResult> {
+    return this.#active().send(input, options);
   }
 
   /** Resolves once no turn is running; pair with `send()` to queue input. */
@@ -98,8 +99,9 @@ export class AgentSession {
     return this.send(["/" + name, ...args].join(" "));
   }
 
-  setPermissionMode(mode: PermissionMode): Promise<TurnResult> {
-    return this.runCommand("mode", [mode]);
+  /** Switch the permission mode now, also while a turn runs; the next tool call uses it. */
+  setPermissionMode(mode: PermissionMode): void {
+    this.#active().setPermissionMode(mode);
   }
 
   /** Switch the model for this session; `"default"` clears the override. */

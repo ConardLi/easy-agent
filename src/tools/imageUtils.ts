@@ -108,6 +108,21 @@ export function imageBufferAsBlock(absPath: string, data: Buffer): ReadImageResu
   };
 }
 
+/** An image that arrives already encoded, e.g. from an editor, as an `ImageBlock`. */
+export function base64ImageAsBlock(data: string, mediaType: string): ReadImageResult {
+  if (!Object.values(IMAGE_MEDIA_TYPES).includes(mediaType)) {
+    return { ok: false, error: `Unsupported image type: ${mediaType}` };
+  }
+  const bytes = Buffer.byteLength(data, "base64");
+  if (bytes > MAX_IMAGE_BYTES) return { ok: false, error: formatImageSizeError(bytes) };
+  return {
+    ok: true,
+    bytes,
+    mediaType,
+    block: { type: "image", source: { type: "base64", media_type: mediaType, data } },
+  };
+}
+
 /**
  * Read an image file into a base64 `ImageBlock`, enforcing the size guard.
  * The caller is expected to have already resolved/validated the path.

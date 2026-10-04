@@ -864,6 +864,17 @@ export async function* query(params: QueryParams): AsyncGenerator<AgenticLoopEve
     }
 
     // ─── Stream error handling (reactive compact) ────────────────────
+    // An interrupt aborts the request; the provider reports that as an error,
+    // but the turn ended because the user stopped it.
+    if (streamError && params.abortSignal?.aborted) {
+      yield { type: "turn_complete", reason: "aborted", turnCount: nextTurnCount };
+      return {
+        state: { ...state, turnCount: nextTurnCount, aborted: true },
+        usage: totalUsage,
+        lastCallUsage,
+        reason: "aborted",
+      };
+    }
     if (streamError) {
       // Prompt-too-long → summarize the history once and retry the turn.
       // Guarded by hasAttemptedReactiveCompact so we never loop on it.

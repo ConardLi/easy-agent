@@ -12,6 +12,7 @@
  */
 
 import type { z } from "zod";
+import { JsonRpcError as RpcError, JsonRpcPeer } from "../jsonrpc/peer.js";
 import {
   AgentSdkError,
   INTERACTIVE_DEFAULT_MAX_TURNS,
@@ -46,17 +47,8 @@ export interface RpcServerOptions {
   logError(message: string): void;
 }
 
-export class RpcError extends Error {
-  constructor(
-    readonly code: number,
-    message: string,
-    readonly data?: unknown,
-  ) {
-    super(message);
-  }
-}
+export { RpcError };
 
-type RequestId = string | number;
 type Handler = (params: never) => Promise<unknown>;
 
 export class RpcServer {
@@ -67,7 +59,7 @@ export class RpcServer {
   #interactions: InteractionKind[] | undefined;
   /** Sessions this connection opened, by id. A `/resume` switch adds the new id. */
   readonly #sessions = new Map<string, AgentSession>();
-  #shuttingDown = false;
+  readonly #peer: JsonRpcPeer;
 
   readonly #handlers: { [M in MethodName]: (params: ParamsOf<M>) => Promise<unknown> } = {
     initialize: (params) => this.#initialize(params),
@@ -93,13 +85,14 @@ export class RpcServer {
     "session/fork": async ({ sessionId, title }) => ({
       session: await this.#requireRuntime().forkSession(sessionId, title !== undefined ? { title } : {}),
     }),
-    "session/send": async ({ sessionId, input, queue }) => {
+    "session/send": async ({ sessionId, input, queue, images }) => {
       const session = this.#session(sessionId);
-      if (!queue) return session.send(input);
+      const options = images ? { images } : {};
+      if (!queue) return session.send(input, options);
       for (;;) {
         await session.waitForIdle();
         try {
-          return await session.send(input);
+          return await session.send(input, options);
         } catch (error) {
           // Lost a race with a turn the session started on its own; wait again.
           if (!(error instanceof AgentSdkError && error.code === "busy")) throw error;
@@ -119,54 +112,25 @@ export class RpcServer {
       return {};
     },
     shutdown: async () => {
-      this.#shuttingDown = true;
+      // Runs after the response below is written.
+      setImmediate(() => this.#options.onShutdown());
       return {};
     },
   };
 
   constructor(options: RpcServerOptions) {
     this.#options = options;
+    this.#peer = new JsonRpcPeer({
+      send: options.send,
+      handleRequest: (method, params) => this.#dispatch(method, params),
+      mapError: toRpcError,
+      logError: options.logError,
+    });
   }
 
   /** Handle one line from the client. Never throws; every failure becomes a response or a log line. */
-  async receive(line: string): Promise<void> {
-    if (!line.trim()) return;
-    let message: unknown;
-    try {
-      message = JSON.parse(line);
-    } catch {
-      this.#reply(null, { error: new RpcError(RpcErrorCode.ParseError, "Parse error: the line is not valid JSON.") });
-      return;
-    }
-    if (!isObject(message) || message.jsonrpc !== "2.0" || typeof message.method !== "string") {
-      const id = isObject(message) && isRequestId(message.id) ? message.id : null;
-      // A response from the client: the server sends no requests, so there is nothing to match.
-      if (isObject(message) && ("result" in message || "error" in message) && !("method" in message)) return;
-      this.#reply(id, {
-        error: new RpcError(RpcErrorCode.InvalidRequest, "Invalid request: expected a JSON-RPC 2.0 request."),
-      });
-      return;
-    }
-    const hasId = "id" in message;
-    if (hasId && !isRequestId(message.id)) {
-      this.#reply(null, {
-        error: new RpcError(RpcErrorCode.InvalidRequest, "Invalid request: id must be a string or number."),
-      });
-      return;
-    }
-    const id = hasId ? (message.id as RequestId) : undefined;
-    try {
-      const result = await this.#dispatch(message.method, message.params);
-      if (id !== undefined) this.#reply(id, { result });
-    } catch (error) {
-      const rpcError = toRpcError(error);
-      if (id !== undefined) this.#reply(id, { error: rpcError });
-      else this.#options.logError(`[easy-agent] rpc notification ${message.method} failed: ${rpcError.message}`);
-      if (rpcError.code === RpcErrorCode.InternalError) {
-        this.#options.logError(`[easy-agent] rpc ${message.method}: ${(error as Error)?.stack ?? String(error)}`);
-      }
-    }
-    if (this.#shuttingDown && message.method === "shutdown") this.#options.onShutdown();
+  receive(line: string): Promise<void> {
+    return this.#peer.receive(line);
   }
 
   /** Close every session and the runtime, after a running initialize settles. */
@@ -296,36 +260,13 @@ export class RpcServer {
   }
 
   #notify(method: string, params: unknown): void {
-    this.#options.send(JSON.stringify({ jsonrpc: "2.0", method, params }));
-  }
-
-  #reply(id: RequestId | null, outcome: { result: unknown } | { error: RpcError }): void {
-    const body =
-      "result" in outcome
-        ? { result: outcome.result ?? {} }
-        : {
-            error: {
-              code: outcome.error.code,
-              message: outcome.error.message,
-              ...(outcome.error.data !== undefined ? { data: outcome.error.data } : {}),
-            },
-          };
-    this.#options.send(JSON.stringify({ jsonrpc: "2.0", id, ...body }));
+    this.#peer.notify(method, params);
   }
 }
 
-function toRpcError(error: unknown): RpcError {
-  if (error instanceof RpcError) return error;
+function toRpcError(error: unknown): RpcError | undefined {
   if (error instanceof AgentSdkError) return new RpcError(RpcErrorCode.AgentError, error.message, { code: error.code });
   // The SDK throws TypeError for a response that does not answer the request's kind.
   if (error instanceof TypeError) return new RpcError(RpcErrorCode.InvalidParams, error.message);
-  return new RpcError(RpcErrorCode.InternalError, error instanceof Error ? error.message : String(error));
-}
-
-function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function isRequestId(value: unknown): value is RequestId {
-  return typeof value === "string" || (typeof value === "number" && Number.isFinite(value));
+  return undefined;
 }

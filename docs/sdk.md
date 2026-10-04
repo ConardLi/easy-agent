@@ -1,6 +1,6 @@
 # Session SDK
 
-`eagent/sdk` runs Easy Agent sessions inside another Node.js program. Programs in other languages, editors, and desktop apps can use the same sessions over JSON-RPC with [RPC mode](./rpc.md). The terminal UI and headless mode (`eagent -p`) are built on the same API, so an embedded session behaves like a terminal session: the same tools, permission rules, sandbox, hooks, skills, sub-agents, transcripts, and resume.
+`eagent/sdk` runs Easy Agent sessions inside another Node.js program. Programs in other languages and desktop apps can use the same sessions over JSON-RPC with [RPC mode](./rpc.md), and editors through the [Agent Client Protocol](./acp.md). The terminal UI and headless mode (`eagent -p`) are built on the same API, so an embedded session behaves like a terminal session: the same tools, permission rules, sandbox, hooks, skills, sub-agents, transcripts, and resume.
 
 The SDK is **experimental** in the 0.x releases. The event and request shapes carry a protocol version (`SESSION_PROTOCOL_VERSION`); additive changes keep it, removals and changed meanings bump it.
 
@@ -70,6 +70,8 @@ const runtime = await createAgentRuntime({
 | `getCapabilities()` | Built-in commands, invocable skills, user commands, sub-agent types, output style |
 | `resolveModel()` | The model a session uses when none is given |
 | `startServices(options?)` | Connect MCP servers and plugin services |
+| `connectMcpServers(servers)` | Connect more MCP servers, such as the ones an editor supplies; a name that is already configured keeps its server |
+| `hasModelCredentials(model?)` | Whether requests for the model have an API key, an auth header, or a custom endpoint |
 | `dispose()` | Close every session and free the process for another runtime |
 
 ## Sessions
@@ -87,11 +89,12 @@ const session = await runtime.createSession({
 
 | Method | Purpose |
 | --- | --- |
-| `send(input)` | Run a turn. Text goes to the model; `/command` runs a local command, a skill, or a user command. Rejects with `busy` while a turn runs |
+| `send(input, { images? })` | Run a turn. Text goes to the model; `/command` runs a local command, a skill, or a user command. `images` are base64 `{ data, mimeType }` (PNG, JPEG, GIF, WebP) the model sees after the text. Rejects with `busy` while a turn runs |
 | `waitForIdle()` | Resolves once no turn runs; use it to queue input |
 | `interrupt()` | Stop the running turn. A pending permission request is denied, or a pending question cancelled, so the tool call gets a result; the model is not called again. Returns what it did |
 | `respond(requestId, response)` | Answer a pending request; returns `stale` if it was already settled |
-| `runCommand(name, args)`, `setPermissionMode(mode)`, `setModel(model)` | Local commands without building strings |
+| `runCommand(name, args)`, `setModel(model)` | Local commands without building strings |
+| `setPermissionMode(mode)` | Switch the permission mode right away, also while a turn runs; the next tool call uses it |
 | `runShell(command)` | Run a shell command without the model, under the usual Bash permission and sandbox rules |
 | `stopBackgroundAgent(agentId)` | Stop a background agent this session started |
 | `getState()` | Snapshot: messages, usage and context size, model, modes, thinking, pending requests, todos, tasks, background agents |

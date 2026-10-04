@@ -652,6 +652,34 @@ try {
       `${rpcRun.stderr ?? ""}${rpcRun.stdout ?? ""}`.slice(-2_000),
     );
 
+    // ACP mode answers initialize from the installed package and exits 0 when stdin closes.
+    const acpRun = spawnSync(eagentBin, ["--acp"], {
+      cwd: cliProject,
+      env: cliEnv,
+      input: `${JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: 1 } })}\n`,
+      encoding: "utf-8",
+      timeout: 60_000,
+    });
+    const acpInit = (acpRun.stdout ?? "")
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => {
+        try {
+          return JSON.parse(line) as {
+            id?: number;
+            result?: { protocolVersion?: number; agentInfo?: { name?: string } };
+          };
+        } catch {
+          return {};
+        }
+      })
+      .find((message) => message.id === 1);
+    assert(
+      acpRun.status === 0 && acpInit?.result?.protocolVersion === 1 && acpInit.result.agentInfo?.name === "eagent",
+      "installed eagent --acp answers initialize",
+      `${acpRun.stderr ?? ""}${acpRun.stdout ?? ""}`.slice(-2_000),
+    );
+
     const provider = await startFixtureProvider();
     try {
       const providerEnv = isolatedCliEnv(cliHome, {

@@ -13,9 +13,11 @@ import { randomUUID } from "node:crypto";
 import type { MessageParam } from "@anthropic-ai/sdk/resources/messages.js";
 import { classifyUserInput } from "../../commands/inputClassification.js";
 import { getPlanFilePath, readPlan } from "../../context/plans.js";
+import { addPastedImage, imageRefToken } from "../../core/pastedImages.js";
 import { QueryEngine, type QueryEngineEvent } from "../../core/queryEngine.js";
 import type {
   PermissionDecision,
+  PermissionMode,
   PermissionRequest,
   PermissionRuleSet,
   PermissionSettings,
@@ -38,6 +40,7 @@ import { getActiveTeam, subscribeActiveTeam } from "../../state/teamContext.js";
 import { clearTodos, getTodos, subscribeTodos } from "../../state/todoStore.js";
 import { clearAllToolStatus, subscribeToolStatus } from "../../state/toolStatusStore.js";
 import { bashTool } from "../../tools/bashTool.js";
+import { base64ImageAsBlock } from "../../tools/imageUtils.js";
 import { getToolsApiParams } from "../../tools/index.js";
 import {
   toolResultText,
@@ -54,11 +57,13 @@ import { AgentSdkError } from "../errors.js";
 import type {
   AgentSessionOptions,
   BackgroundAgentInfo,
+  ImageInput,
   InteractionKind,
   InteractionRequest,
   InterruptOutcome,
   PermissionResponse,
   PlanApprovalResponse,
+  SendOptions,
   SessionEventBody,
   SessionState,
   SessionUsage,
@@ -222,9 +227,25 @@ export class SessionController {
 
   // ─── Turns ──────────────────────────────────────────────────────────────
 
-  async send(input: string): Promise<TurnResult> {
+  /** Switch the permission mode right away; a running turn sees it at its next tool call. */
+  setPermissionMode(mode: PermissionMode): void {
     this.#assertOpen();
-    const text = input.trim();
+    this.#engine.setPermissionMode(mode);
+  }
+
+  /** Stash each image and return the `[Image #N]` tokens the engine expands into image blocks. */
+  #attachImages(images: readonly ImageInput[]): string[] {
+    return images.map((image, index) => {
+      const converted = base64ImageAsBlock(image.data, image.mimeType);
+      if (!converted.ok) throw new AgentSdkError("invalid_argument", `Image ${index + 1}: ${converted.error}`);
+      const { block, bytes, mediaType } = converted;
+      return imageRefToken(addPastedImage({ block, bytes, mediaType, filename: `image-${index + 1}` }));
+    });
+  }
+
+  async send(input: string, options: SendOptions = {}): Promise<TurnResult> {
+    this.#assertOpen();
+    const text = [input.trim(), ...this.#attachImages(options.images ?? [])].filter(Boolean).join("\n");
     if (!text && !this.#inScope(() => this.#hasQueuedBackgroundInput())) {
       return { turnId: null, handled: false, followUps: [] };
     }
@@ -236,6 +257,7 @@ export class SessionController {
       return await this.#inScope(() => this.#runTurn(text, text ? "user" : "background"));
     } finally {
       this.#busy = false;
+      this.#engine.clearPendingInterrupt();
       for (const resolve of this.#idleWaiters.splice(0)) resolve();
       this.#wake?.poke();
     }
@@ -263,7 +285,8 @@ export class SessionController {
       this.#engine.interrupt();
       return permission ? "permission_denied" : "question_cancelled";
     }
-    return this.#engine.interrupt() ? "turn_aborted" : "idle";
+    // While busy, an interrupt that lands between two steps of the turn still stops it.
+    return this.#engine.interrupt({ pending: this.#busy }) ? "turn_aborted" : "idle";
   }
 
   respond(requestId: string, response: Parameters<InteractionBroker["respond"]>[1]) {
