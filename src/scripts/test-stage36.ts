@@ -284,8 +284,13 @@ async function runInteractiveStartup(
   };
 
   const trustPrompt = await waitFor("Do you trust the files in this folder?");
+  // The dialog paints before Ink attaches its input handler, so an Enter sent
+  // on the first frame can be dropped. Resend it until the REPL appears; an
+  // extra Enter on the empty prompt is a no-op.
+  const acceptKeys = trustPrompt ? setInterval(() => child.stdin.write("\r"), 500) : undefined;
   if (trustPrompt) child.stdin.write("\r");
   const banner = trustPrompt && (await waitFor("Type a message to start")) && (await waitFor("? for shortcuts"));
+  clearInterval(acceptKeys);
   // Ink attaches its input handler after the first frame; resend Ctrl+D until
   // the REPL exits so a slow first render does not swallow the keystroke.
   const exitKeys = banner ? setInterval(() => child.stdin.write("\u0004"), 500) : undefined;
