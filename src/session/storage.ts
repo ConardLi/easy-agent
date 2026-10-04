@@ -57,6 +57,8 @@ export interface SessionSummary {
   totalUsage: Usage;
   /** The first user prompt, used as a human-readable label (may be empty). */
   firstPrompt: string;
+  /** A title the user gave the session, if any. */
+  title?: string;
 }
 
 /**
@@ -269,24 +271,57 @@ function getLastUpdatedAt(entries: TranscriptEntry[], fallback: string): string 
  * `/resume` picker. XML command/skill
  * markers are stripped so a `/foo` invocation shows its text, not raw tags.
  */
+/**
+ * Context the engine adds to the conversation on its own. Transcripts keep
+ * these so a resumed session sees the same context, but they are never the
+ * prompt a person typed.
+ */
+const HIDDEN_PROMPT_PREFIXES = [
+  "[session-start]",
+  "[plan_mode_attachment]",
+  "[plan_mode_exit]",
+  "[ultrathink]",
+  "[context_update]",
+  "[task-notification]",
+  "[skill_invocation:",
+  "[command_invocation:",
+  "[CompactBoundary]",
+  "This session is being continued from a previous conversation",
+];
+
+function messageText(message: MessageParam): string {
+  const content = message.content;
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content
+    .filter((block) => (block as { type?: string }).type === "text")
+    .map((block) => (block as { text?: string }).text ?? "")
+    .join(" ");
+}
+
 function extractFirstPrompt(messages: MessageParam[]): string {
-  const firstUser = messages.find((m) => m.role === "user");
-  if (!firstUser) return "";
-  const content = firstUser.content;
-  let text = "";
-  if (typeof content === "string") {
-    text = content;
-  } else if (Array.isArray(content)) {
-    text = content
-      .filter((block) => (block as { type?: string }).type === "text")
-      .map((block) => (block as { text?: string }).text ?? "")
-      .join(" ");
+  for (const message of messages) {
+    if (message.role !== "user") continue;
+    const text = messageText(message).trimStart();
+    if (!text || HIDDEN_PROMPT_PREFIXES.some((prefix) => text.startsWith(prefix))) continue;
+    return text
+      .replace(/^\[user-context\]\s*/, "")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
   }
-  return text
-    .replace(/<[^>]+>/g, " ")
-    .replace(/^\[(?:skill|command)_invocation:[^\]]*\]\s*/i, "")
-    .replace(/\s+/g, " ")
-    .trim();
+  return "";
+}
+
+/** Session ids are generated UUIDs; anything else is rejected before it reaches a path. */
+const SESSION_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
+
+export function isValidSessionId(sessionId: string): boolean {
+  return SESSION_ID_PATTERN.test(sessionId);
+}
+
+function assertSessionId(sessionId: string): void {
+  if (!isValidSessionId(sessionId)) throw new Error(`Invalid session id: ${JSON.stringify(sessionId)}`);
 }
 
 export function createSessionId(): string {
@@ -448,6 +483,7 @@ export async function restoreSession(cwd: string, sessionId?: string): Promise<R
       messageCount: messages.length,
       totalUsage: latestUsage?.total ?? createEmptyUsage(),
       firstPrompt: extractFirstPrompt(messages),
+      ...(await readTitleAt(transcriptPath.replace(/\.jsonl$/, TITLE_SUFFIX))),
     },
     messages,
     fileHistorySnapshots: [...fhMap.values()],
@@ -525,18 +561,20 @@ export async function applySessionRetentionPolicy(cwd: string): Promise<{ period
     }
 
     const cutoffMs = Date.now() - periodDays * 24 * 60 * 60 * 1000;
+    const removeSession = async (filePath: string): Promise<void> => {
+      await fs.rm(filePath, { force: true }).catch(() => {});
+      await fs.rm(filePath.replace(/\.jsonl$/, TITLE_SUFFIX), { force: true }).catch(() => {});
+    };
     for (const entry of entries) {
       if (!entry.isFile() || !entry.name.endsWith(".jsonl")) continue;
       const filePath = path.join(projectDir, entry.name);
       if (periodDays === 0) {
-        await fs.rm(filePath, { force: true }).catch(() => {});
+        await removeSession(filePath);
         continue;
       }
       try {
         const stat = await fs.stat(filePath);
-        if (stat.mtimeMs < cutoffMs) {
-          await fs.rm(filePath, { force: true }).catch(() => {});
-        }
+        if (stat.mtimeMs < cutoffMs) await removeSession(filePath);
       } catch {
         // skip files we can't stat
       }
@@ -592,6 +630,7 @@ export async function listProjectSessions(cwd: string, limit = MAX_SESSIONS): Pr
         messageCount: messages.length,
         totalUsage: latestUsage?.total ?? createEmptyUsage(),
         firstPrompt: extractFirstPrompt(messages.map((m) => m.message)),
+        ...(await readTitleAt(path.join(projectDir, `${meta.sessionId}${TITLE_SUFFIX}`))),
       } satisfies SessionSummary;
     }),
   );
@@ -600,4 +639,64 @@ export async function listProjectSessions(cwd: string, limit = MAX_SESSIONS): Pr
     .filter((session): session is SessionSummary => session !== null)
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
     .slice(0, limit);
+}
+
+// ─── Titles and deletion ─────────────────────────────────────────────────
+//
+// A title lives next to the transcript in `<session-id>.title.json`, outside
+// the JSONL, so earlier versions that reject unknown transcript records still
+// read every session. They also ignore the extra file when listing.
+
+const TITLE_SUFFIX = ".title.json";
+const MAX_TITLE_LENGTH = 200;
+
+async function readTitleAt(titlePath: string): Promise<{ title?: string }> {
+  try {
+    const parsed = JSON.parse(await fs.readFile(titlePath, "utf-8")) as { title?: unknown };
+    return typeof parsed.title === "string" && parsed.title.trim() ? { title: parsed.title } : {};
+  } catch {
+    // Missing or unreadable: the session simply has no title.
+    return {};
+  }
+}
+
+async function getTitlePath(cwd: string, sessionId: string): Promise<string> {
+  assertSessionId(sessionId);
+  const { projectDir } = await getSessionPaths(cwd, sessionId);
+  return path.join(projectDir, `${sessionId}${TITLE_SUFFIX}`);
+}
+
+export async function readSessionTitle(cwd: string, sessionId: string): Promise<string | undefined> {
+  return (await readTitleAt(await getTitlePath(cwd, sessionId))).title;
+}
+
+/** Set or, with an empty title, clear the title of a saved session. */
+export async function writeSessionTitle(cwd: string, sessionId: string, title: string): Promise<void> {
+  const titlePath = await getTitlePath(cwd, sessionId);
+  const { transcriptPath, projectDir } = await getSessionPaths(cwd, sessionId);
+  await fs.access(transcriptPath);
+  const trimmed = title.trim().slice(0, MAX_TITLE_LENGTH);
+  if (!trimmed) {
+    await fs.rm(titlePath, { force: true });
+    return;
+  }
+  await ensurePrivateDirectory(projectDir);
+  await writePrivateFile(titlePath, `${JSON.stringify({ title: trimmed })}\n`);
+}
+
+/**
+ * Remove a saved session's transcript and title. When `latest` pointed at it,
+ * the pointer moves to the most recently updated remaining session, or is
+ * removed when none is left.
+ */
+export async function deleteSessionTranscript(cwd: string, sessionId: string): Promise<void> {
+  const titlePath = await getTitlePath(cwd, sessionId);
+  const { transcriptPath, latestPath } = await getSessionPaths(cwd, sessionId);
+  await fs.access(transcriptPath);
+  await withFileLock(transcriptPath, () => fs.rm(transcriptPath, { force: true }));
+  await fs.rm(titlePath, { force: true });
+  if ((await getLatestSessionId(cwd)) !== sessionId) return;
+  const [next] = await listProjectSessions(cwd, 1);
+  if (next) await writePrivateFile(latestPath, `${next.sessionId}\n`);
+  else await fs.rm(latestPath, { force: true });
 }

@@ -37,6 +37,8 @@ export interface ResumeSessionInfo {
   isCurrent: boolean;
   /** First user prompt — the human-readable label shown in the picker. */
   firstPrompt: string;
+  /** Title given to the session; shown instead of the first prompt. */
+  title?: string;
 }
 
 /** One editable memory target shown in the `/memory` picker. */

@@ -28,9 +28,9 @@ function shortId(id: string): string {
   return id.length > 8 ? id.slice(0, 8) : id;
 }
 
-/** A one-line label for a session: its first prompt, or a fallback. */
+/** A one-line label for a session: its title or first prompt, or a fallback. */
 function label(session: ResumeSessionInfo): string {
-  const prompt = session.firstPrompt.trim();
+  const prompt = (session.title ?? session.firstPrompt).trim();
   if (!prompt) return "(empty session)";
   return prompt.length > 56 ? `${prompt.slice(0, 55)}…` : prompt;
 }

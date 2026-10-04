@@ -620,6 +620,38 @@ try {
       );
     }
 
+    // RPC mode answers initialize and exits 0 on shutdown from the installed package.
+    const rpcInput = [
+      { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: 1 } },
+      { jsonrpc: "2.0", id: 2, method: "shutdown" },
+    ]
+      .map((message) => JSON.stringify(message))
+      .join("\n");
+    const rpcRun = spawnSync(eagentBin, ["--rpc"], {
+      cwd: cliProject,
+      env: cliEnv,
+      input: `${rpcInput}\n`,
+      encoding: "utf-8",
+      timeout: 60_000,
+    });
+    const rpcMessages = (rpcRun.stdout ?? "")
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => {
+        try {
+          return JSON.parse(line) as { id?: number; result?: { protocolVersion?: number } };
+        } catch {
+          return {};
+        }
+      });
+    assert(
+      rpcRun.status === 0 &&
+        rpcMessages.find((message) => message.id === 1)?.result?.protocolVersion === 1 &&
+        rpcMessages.some((message) => message.id === 2 && message.result),
+      "installed eagent --rpc answers initialize and shuts down",
+      `${rpcRun.stderr ?? ""}${rpcRun.stdout ?? ""}`.slice(-2_000),
+    );
+
     const provider = await startFixtureProvider();
     try {
       const providerEnv = isolatedCliEnv(cliHome, {

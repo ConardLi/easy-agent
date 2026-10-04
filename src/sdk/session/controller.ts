@@ -582,6 +582,7 @@ export class SessionController {
       const response: PermissionResponse = await this.#broker.request<"permission">({
         kind: "permission",
         turnId: this.#turnId,
+        toolUseId: request.toolUseId ?? null,
         toolName: request.toolName,
         input: request.input,
         summary: request.summary,
@@ -595,6 +596,7 @@ export class SessionController {
     const response: PlanApprovalResponse = await this.#broker.request<"plan_approval">({
       kind: "plan_approval",
       turnId: this.#turnId,
+      toolUseId: request.toolUseId ?? null,
       toolName: request.toolName,
       input: request.input,
       summary: request.summary,

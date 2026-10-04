@@ -44,6 +44,8 @@ Options:
   --output-format <fmt>       Headless output: text (default) | json | stream-json
                               json: one result object; stream-json: NDJSON stream
                               (system/init → assistant/user → result)
+  --rpc                       RPC mode: serve the session SDK as JSON-RPC 2.0 over
+                              stdin/stdout for editors and desktop apps (docs/rpc.md)
   --tool-search <mode>         ToolSearch mode: off | auto | on
   --max-turns <n>             Maximum tool turns per request (default: 200 in
                               the REPL, 50 with -p). Overrides the maxTurns setting.
@@ -158,6 +160,11 @@ Settings keys (in ~/.easy-agent/settings.json or <cwd>/.easy-agent/settings.json
   // answer; `json` emits a single machine-readable `result` object.
   const outputFormatIndex = process.argv.indexOf("--output-format");
   const outputFormat = outputFormatIndex !== -1 ? process.argv[outputFormatIndex + 1] : undefined;
+  const isRpcMode = process.argv.includes("--rpc");
+  if (isRpcMode && (isPrintMode || dumpSystemPrompt)) {
+    console.error("[easy-agent] --rpc cannot be combined with --print or --dump-system-prompt.");
+    process.exit(1);
+  }
   if (
     isPrintMode &&
     outputFormat !== undefined &&
@@ -225,7 +232,7 @@ Settings keys (in ~/.easy-agent/settings.json or <cwd>/.easy-agent/settings.json
     await trustProjectForSession(cwd);
   }
 
-  const isNonInteractiveMode = isPrintMode || dumpSystemPrompt || !process.stdin.isTTY;
+  const isNonInteractiveMode = isPrintMode || isRpcMode || dumpSystemPrompt || !process.stdin.isTTY;
   if (!trustProjectConfig && !isNonInteractiveMode) {
     const { ensureTrusted } = await import("../ui/trustGate.js");
     const trusted = await ensureTrusted(cwd);
@@ -250,6 +257,14 @@ Settings keys (in ~/.easy-agent/settings.json or <cwd>/.easy-agent/settings.json
   // Trust and the flag settings layer are already settled above, and local
   // data was hardened first thing, so the workspace bootstrap only loads.
   const workspaceOptions = { cwd, pluginDirs, hardenPrivateData: false, services: false } as const;
+
+  // RPC mode bootstraps the workspace itself when the client calls
+  // `initialize`, so the client can pick the trust mode first.
+  if (isRpcMode) {
+    const { runRpcOverStdio } = await import("../rpc/stdio.js");
+    await runRpcOverStdio({ cwd, pluginDirs, version: VERSION });
+    return;
+  }
 
   if (dumpSystemPrompt) {
     // Only the prompt-facing bootstrap: nothing configured by the workspace runs.

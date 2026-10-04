@@ -37,6 +37,8 @@ export interface PermissionRequest {
   summary: string;
   risk: string;
   ruleHint: string;
+  /** The tool call awaiting the decision, when the request comes from the agentic loop. */
+  toolUseId?: string;
 }
 
 export interface PermissionResponse {
