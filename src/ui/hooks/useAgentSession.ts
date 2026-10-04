@@ -615,16 +615,17 @@ export function useAgentSession({
   const interrupt = useCallback(() => {
     const outcome = sessionRef.current?.interrupt() ?? "idle";
     switch (outcome) {
+      // The pending tool call gets a denied / declined result and the turn
+      // ends, so these read the same as interrupting a running turn.
       case "permission_denied":
         permissionRequestRef.current = null;
         setPermissionPrompt(null);
-        setSystemNotice({ tone: "info", title: "Permission request cancelled", body: EXIT_HINT });
+        setSystemNotice(INTERRUPTED_NOTICE);
         break;
       case "question_cancelled":
-        // The tool receives a "declined to answer" result.
         questionRequestRef.current = null;
         setQuestionPrompt(null);
-        setSystemNotice({ tone: "info", title: "Question cancelled", body: EXIT_HINT });
+        setSystemNotice(INTERRUPTED_NOTICE);
         break;
       case "idle":
         setSystemNotice({ tone: "info", title: "Nothing to interrupt", body: EXIT_HINT });

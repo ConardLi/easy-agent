@@ -82,7 +82,7 @@
 >>> submit "Create interrupted.txt."
 >>> interrupt
   interrupt() -> true
-  notice after interrupt: Permission request cancelled
+  notice after interrupt: Interrupted
   request #1
     user: text(Create interrupted.txt.)
   state:
@@ -137,7 +137,7 @@
 >>> submit "Pick a size with me."
 >>> interrupt
   interrupt() -> true
-  notice after interrupt: Question cancelled
+  notice after interrupt: Interrupted
   request #1
     user: text(Pick a size with me.)
   state:

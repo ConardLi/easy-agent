@@ -32,7 +32,7 @@ All notable changes to Easy Agent are documented in this file.
 
 - Session transcripts record the conversation the model saw, including plan-mode reminders, background-agent notifications, context updates, and hook context, so a resumed session continues from the same context. A turn started by a background result now has its notification in the transcript.
 - `/clear` and approving a plan with a context clear are recorded; resume starts from the cleared conversation instead of reloading the earlier messages. Transcripts stay readable by earlier versions.
-- Interrupting while a permission prompt or a question is open now ends the turn. The tool call is still answered (denied or declined), so the conversation stays valid, but the model is not called again.
+- Interrupting while a permission prompt or a question is open now ends the turn. The tool call is still answered (denied or declined), so the conversation stays valid, but the model is not called again. The terminal shows the same "Interrupted" notice as for a running turn.
 - Headless runs (`-p`) connect the MCP servers configured in settings before the request, so their tools are available.
 - Headless runs no longer write a `default.jsonl` transcript of file-history checkpoints or point `latest` at it; `eagent --resume` after a headless run resumed a session without metadata and failed.
 - The interactive question prompt read the terminal width after its early return, so React could see a different hook count between renders.
