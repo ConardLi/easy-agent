@@ -6,27 +6,32 @@
  * restarting.
  *
  * `"task"` is the default (persistent task graph). `"todo"` falls back
- * to the V1 session-memory list. The selection is process-global: all
- * tool `isEnabled()` checks read from here.
+ * to the V1 session-memory list. The selection belongs to the active session
+ * scope (see sessionScope.ts): all tool `isEnabled()` checks read from here.
  */
+
+import { defineSessionState } from "./sessionScope.js";
 
 export type TaskMode = "task" | "todo";
 
 const DEFAULT_TASK_MODE: TaskMode = "task";
 
-let currentMode: TaskMode = DEFAULT_TASK_MODE;
-
 type Listener = (mode: TaskMode) => void;
-const listeners = new Set<Listener>();
+
+const taskModeState = defineSessionState("taskMode", () => ({
+  mode: DEFAULT_TASK_MODE as TaskMode,
+  listeners: new Set<Listener>(),
+}));
 
 export function getTaskMode(): TaskMode {
-  return currentMode;
+  return taskModeState().mode;
 }
 
 export function setTaskMode(mode: TaskMode): void {
-  if (mode === currentMode) return;
-  currentMode = mode;
-  for (const listener of listeners) {
+  const state = taskModeState();
+  if (mode === state.mode) return;
+  state.mode = mode;
+  for (const listener of state.listeners) {
     try {
       listener(mode);
     } catch {
@@ -36,6 +41,7 @@ export function setTaskMode(mode: TaskMode): void {
 }
 
 export function subscribeTaskMode(listener: Listener): () => void {
+  const { listeners } = taskModeState();
   listeners.add(listener);
   return () => {
     listeners.delete(listener);
@@ -43,9 +49,9 @@ export function subscribeTaskMode(listener: Listener): () => void {
 }
 
 export function isTaskModeEnabled(): boolean {
-  return currentMode === "task";
+  return taskModeState().mode === "task";
 }
 
 export function isTodoModeEnabled(): boolean {
-  return currentMode === "todo";
+  return taskModeState().mode === "todo";
 }

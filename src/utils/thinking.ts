@@ -11,11 +11,13 @@
  * so all functions here are synchronous and safe to call from the
  * streaming hot path.
  *
- * Session-level thinking state (the `/think` and `/effort` commands, plus
- * the `alwaysThinkingEnabled` boot preference) lives in a small in-memory
- * store here, which the REPL mutates live. The CLI seeds it once at startup from
- * settings.json (see configureThinkingDefaults).
+ * Session-level thinking state (the `/think` and `/effort` commands) lives in
+ * the active session scope; the `alwaysThinkingEnabled` / `effortLevel`
+ * workspace defaults are seeded once at startup from settings.json (see
+ * configureThinkingDefaults).
  */
+
+import { defineSessionState } from "../state/sessionScope.js";
 
 // ─── ThinkingConfig three-state union ─────────────────────────────
 
@@ -156,53 +158,64 @@ export function shouldEnableThinkingByDefault(): boolean {
   if (env !== undefined) {
     return parseInt(env, 10) > 0;
   }
-  if (sessionAlwaysThinkingEnabled === false) {
+  if (defaultAlwaysThinkingEnabled === false) {
     return false;
   }
   return true;
 }
 
-// ─── Session-level thinking + effort state ─────────────────────────
+// ─── Thinking + effort state ───────────────────────────────────────
 //
-// In-memory session state mutated by the `/think` and `/effort` commands
-// and seeded once at boot by configureThinkingDefaults().
+// Workspace defaults are seeded once at boot by configureThinkingDefaults()
+// from settings.json. The `/think` and `/effort` commands override them per
+// session scope (see state/sessionScope.ts), so one session's override never
+// leaks into another.
 
-let sessionAlwaysThinkingEnabled: boolean | undefined;
-let sessionThinkingConfig: ThinkingConfig | undefined;
-let sessionEffortLevel: EffortLevel | undefined;
+let defaultAlwaysThinkingEnabled: boolean | undefined;
+let defaultEffortLevel: EffortLevel | undefined;
+
+const thinkingOverrides = defineSessionState("thinkingOverrides", () => ({
+  thinking: undefined as ThinkingConfig | undefined,
+  /** Set once the session chose an effort level, including "model default". */
+  effortOverridden: false,
+  effort: undefined as EffortLevel | undefined,
+}));
 
 /**
- * Seed the session thinking + effort state from settings.json at CLI
+ * Seed the workspace thinking + effort defaults from settings.json at
  * startup. Env vars always take precedence over settings (handled inside
  * buildDefaultThinkingConfig).
  */
 export function configureThinkingDefaults(opts: { alwaysThinkingEnabled?: boolean; effortLevel?: EffortLevel }): void {
   if (opts.alwaysThinkingEnabled !== undefined) {
-    sessionAlwaysThinkingEnabled = opts.alwaysThinkingEnabled;
+    defaultAlwaysThinkingEnabled = opts.alwaysThinkingEnabled;
   }
   if (opts.effortLevel !== undefined) {
-    sessionEffortLevel = opts.effortLevel;
+    defaultEffortLevel = opts.effortLevel;
   }
 }
 
 /** The effort level to apply this session (undefined = model default). */
 export function getSessionEffortLevel(): EffortLevel | undefined {
-  return sessionEffortLevel;
+  const overrides = thinkingOverrides();
+  return overrides.effortOverridden ? overrides.effort : defaultEffortLevel;
 }
 
 /** Set the session effort level (from the `/effort` command). */
 export function setSessionEffortLevel(level: EffortLevel | undefined): void {
-  sessionEffortLevel = level;
+  const overrides = thinkingOverrides();
+  overrides.effortOverridden = true;
+  overrides.effort = level;
 }
 
 /** Set the session thinking config (from the `/think` command). */
 export function setSessionThinkingConfig(cfg: ThinkingConfig | undefined): void {
-  sessionThinkingConfig = cfg;
+  thinkingOverrides().thinking = cfg;
 }
 
 /** The active session thinking config, if the user overrode it. */
 export function getSessionThinkingConfig(): ThinkingConfig | undefined {
-  return sessionThinkingConfig;
+  return thinkingOverrides().thinking;
 }
 
 /**
@@ -221,10 +234,11 @@ export function buildDefaultThinkingConfig(): ThinkingConfig {
     if (n <= 0) return { type: "disabled" };
     return { type: "enabled", budgetTokens: n };
   }
-  if (sessionThinkingConfig) {
-    return sessionThinkingConfig;
+  const override = thinkingOverrides().thinking;
+  if (override) {
+    return override;
   }
-  if (sessionAlwaysThinkingEnabled === false) {
+  if (defaultAlwaysThinkingEnabled === false) {
     return { type: "disabled" };
   }
   return { type: "adaptive" };

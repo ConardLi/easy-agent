@@ -17,6 +17,7 @@
  */
 
 import { logWarn } from "../utils/log.js";
+import { defineSessionState } from "../state/sessionScope.js";
 
 export const DENIAL_LIMITS = {
   maxConsecutive: 3,
@@ -34,24 +35,27 @@ interface AutoModeState {
   circuitBreakNotified: boolean;
 }
 
-const state: AutoModeState = {
+/** Denial and failure counters; one set per session scope. */
+const autoModeState = defineSessionState<AutoModeState>("autoModeState", () => ({
   consecutiveDenials: 0,
   totalDenials: 0,
   consecutiveFailures: 0,
   circuitBroken: false,
   circuitBreakNotified: false,
-};
+}));
 
 // ── Denial tracking ────────────────────────────────────────────────
 
 /** Record a classifier block. */
 export function recordClassifierDenial(): void {
+  const state = autoModeState();
   state.consecutiveDenials += 1;
   state.totalDenials += 1;
 }
 
 /** Record a classifier allow — clears the consecutive-denial streak. */
 export function recordClassifierSuccess(): void {
+  const state = autoModeState();
   state.consecutiveDenials = 0;
   // A successful classification proves it's working again.
   state.consecutiveFailures = 0;
@@ -62,6 +66,7 @@ export function recordClassifierSuccess(): void {
  * auto-denying and ask the human instead.
  */
 export function shouldFallbackToPrompting(): boolean {
+  const state = autoModeState();
   return state.consecutiveDenials >= DENIAL_LIMITS.maxConsecutive || state.totalDenials >= DENIAL_LIMITS.maxTotal;
 }
 
@@ -73,6 +78,7 @@ export function shouldFallbackToPrompting(): boolean {
  * session (no mid-session flapping).
  */
 export function recordClassifierFailure(): void {
+  const state = autoModeState();
   state.consecutiveFailures += 1;
   if (!state.circuitBroken && state.consecutiveFailures >= CLASSIFIER_FAILURE_LIMIT) {
     state.circuitBroken = true;
@@ -80,6 +86,7 @@ export function recordClassifierFailure(): void {
 }
 
 export function isAutoModeCircuitBroken(): boolean {
+  const state = autoModeState();
   return state.circuitBroken;
 }
 
@@ -89,6 +96,7 @@ export function isAutoModeCircuitBroken(): boolean {
  * default handling.
  */
 export function notifyCircuitBreakOnce(): void {
+  const state = autoModeState();
   if (state.circuitBreakNotified) return;
   state.circuitBreakNotified = true;
   logWarn(
@@ -99,6 +107,7 @@ export function notifyCircuitBreakOnce(): void {
 // ── Testing / lifecycle ────────────────────────────────────────────
 
 export function resetAutoModeState(): void {
+  const state = autoModeState();
   state.consecutiveDenials = 0;
   state.totalDenials = 0;
   state.consecutiveFailures = 0;
@@ -107,5 +116,6 @@ export function resetAutoModeState(): void {
 }
 
 export function getAutoModeStateSnapshot(): Readonly<AutoModeState> {
+  const state = autoModeState();
   return { ...state };
 }

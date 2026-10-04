@@ -28,6 +28,7 @@
  */
 
 import type { AgentRunResult } from "../agents/types.js";
+import { currentSessionScope } from "./sessionScope.js";
 
 export type AsyncAgentStatus = "running" | "completed" | "failed" | "killed";
 
@@ -51,6 +52,9 @@ export interface AsyncAgentEntry {
 
   /** Independent abort handle — caller can kill the sub-agent. */
   abortController: AbortController;
+
+  /** Session scope that launched the agent (see sessionScope.ts). */
+  ownerScopeId: string;
 
   /** Path to the `.output` JSONL file. */
   outputFile: string;
@@ -121,6 +125,7 @@ export function registerAsyncAgent(init: RegisterAsyncAgentInit): AsyncAgentEntr
     startedAt: new Date().toISOString(),
     status: "running",
     abortController: new AbortController(),
+    ownerScopeId: currentSessionScope().id,
     outputFile: init.outputFile,
     isolated: init.isolated ?? false,
     ...(init.worktreePath ? { worktreePath: init.worktreePath } : {}),
@@ -219,6 +224,11 @@ export function requestShutdownAsyncAgent(agentId: string, requestId: string): b
 
 export function getAsyncAgent(agentId: string): AsyncAgentEntry | undefined {
   return entries.get(agentId);
+}
+
+/** Agents launched by one session scope, in registration order. */
+export function getAsyncAgentsForScope(scopeId: string): AsyncAgentEntry[] {
+  return [...entries.values()].filter((entry) => entry.ownerScopeId === scopeId);
 }
 
 export function getAllAsyncAgents(): AsyncAgentEntry[] {

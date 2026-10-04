@@ -19,11 +19,14 @@
  *   to drain in the order they were enqueued so the model sees them in
  *   completion order.
  *
- * Why no per-session segregation:
- *   Easy Agent currently runs one QueryEngine per process. If we ever
- *   support concurrent sessions in the same process this would need to
- *   be keyed by session id; until then a single global queue is fine.
+ * Per-session queues:
+ *   The queue and its listeners live in the active session scope (see
+ *   sessionScope.ts). A background agent keeps the scope of the turn that
+ *   spawned it, so its notification lands in the queue of the session that
+ *   launched it even when several sessions share the process.
  */
+
+import { defineSessionState } from "./sessionScope.js";
 
 export interface PendingNotification {
   /** Discriminator for future modes (compaction reminder, plan summary, ...). */
@@ -34,7 +37,12 @@ export interface PendingNotification {
   enqueuedAt: number;
 }
 
-const queue: PendingNotification[] = [];
+type Listener = () => void;
+
+const notificationState = defineSessionState("pendingNotifications", () => ({
+  queue: [] as PendingNotification[],
+  listeners: new Set<Listener>(),
+}));
 
 // ─── Signal subscription ─────────────────────────────────────────────
 //
@@ -45,15 +53,13 @@ const queue: PendingNotification[] = [];
 // Without this signal, notifications would only be drained on the
 // next user submission, leaving the user staring at a finished bar
 // pill with no chat reply.
-type Listener = () => void;
-const listeners = new Set<Listener>();
-
 function notifyListeners(): void {
-  for (const l of listeners) l();
+  for (const l of notificationState().listeners) l();
 }
 
 /** Subscribe to enqueue events. Returns an unsubscribe handle. */
 export function subscribePendingNotifications(listener: Listener): () => void {
+  const { listeners } = notificationState();
   listeners.add(listener);
   return () => {
     listeners.delete(listener);
@@ -62,7 +68,7 @@ export function subscribePendingNotifications(listener: Listener): () => void {
 
 /** Add one notification to the back of the queue. */
 export function enqueuePendingNotification(notification: Omit<PendingNotification, "enqueuedAt">): void {
-  queue.push({ ...notification, enqueuedAt: Date.now() });
+  notificationState().queue.push({ ...notification, enqueuedAt: Date.now() });
   notifyListeners();
 }
 
@@ -72,7 +78,7 @@ export function enqueuePendingNotification(notification: Omit<PendingNotificatio
  * surface a "you have N pending notifications" hint in the UI).
  */
 export function peekPendingNotifications(): readonly PendingNotification[] {
-  return queue;
+  return notificationState().queue;
 }
 
 /**
@@ -81,17 +87,18 @@ export function peekPendingNotifications(): readonly PendingNotification[] {
  * is no way to put them back.
  */
 export function drainPendingNotifications(): PendingNotification[] {
+  const { queue } = notificationState();
   const out = queue.splice(0, queue.length);
   return out;
 }
 
 export function pendingNotificationCount(): number {
-  return queue.length;
+  return notificationState().queue.length;
 }
 
 /** Drop everything — used by tests and `/clear`. */
 export function clearPendingNotifications(): void {
-  queue.length = 0;
+  notificationState().queue.length = 0;
 }
 
 // ─── XML builder for task notifications ─────────────────────────────

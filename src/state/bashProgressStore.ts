@@ -19,6 +19,8 @@
  * re-renders and its elapsed clock advances.
  */
 
+import { defineSessionState } from "./sessionScope.js";
+
 // Keep only a bounded tail for the live preview.
 const MAX_TAIL_LINES = 40;
 const MAX_TAIL_CHARS = 8_000;
@@ -42,57 +44,59 @@ export interface BashProgress {
 
 type Listener = (toolUseId: string, snapshot: BashProgress | null) => void;
 
-const store = new Map<string, BashProgress>();
-const listeners = new Set<Listener>();
-
-// Throttle bookkeeping, per tool id.
-const lastNotifyAt = new Map<string, number>();
-const trailingTimers = new Map<string, ReturnType<typeof setTimeout>>();
-// Per-command heartbeat interval (the "still running, clock ticking" pulse).
-const tickTimers = new Map<string, ReturnType<typeof setInterval>>();
+/** Live Bash output for this session scope's in-flight commands. */
+const bashProgressState = defineSessionState("bashProgress", () => ({
+  store: new Map<string, BashProgress>(),
+  listeners: new Set<Listener>(),
+  // Throttle bookkeeping, per tool id.
+  lastNotifyAt: new Map<string, number>(),
+  trailingTimers: new Map<string, ReturnType<typeof setTimeout>>(),
+  // Per-command heartbeat interval (the "still running, clock ticking" pulse).
+  tickTimers: new Map<string, ReturnType<typeof setInterval>>(),
+}));
 
 function emit(toolUseId: string, snapshot: BashProgress | null): void {
-  for (const l of listeners) l(toolUseId, snapshot);
+  for (const l of bashProgressState().listeners) l(toolUseId, snapshot);
 }
 
 function notifyThrottled(toolUseId: string): void {
   const now = Date.now();
-  const last = lastNotifyAt.get(toolUseId) ?? 0;
+  const last = bashProgressState().lastNotifyAt.get(toolUseId) ?? 0;
   const elapsed = now - last;
   if (elapsed >= NOTIFY_INTERVAL_MS) {
-    lastNotifyAt.set(toolUseId, now);
-    emit(toolUseId, store.get(toolUseId) ?? null);
+    bashProgressState().lastNotifyAt.set(toolUseId, now);
+    emit(toolUseId, bashProgressState().store.get(toolUseId) ?? null);
     return;
   }
   // Within the cooldown — schedule a single trailing notify so the final
   // burst isn't lost (clear any already-scheduled one first).
-  if (trailingTimers.has(toolUseId)) return;
+  if (bashProgressState().trailingTimers.has(toolUseId)) return;
   const timer = setTimeout(() => {
-    trailingTimers.delete(toolUseId);
-    lastNotifyAt.set(toolUseId, Date.now());
-    emit(toolUseId, store.get(toolUseId) ?? null);
+    bashProgressState().trailingTimers.delete(toolUseId);
+    bashProgressState().lastNotifyAt.set(toolUseId, Date.now());
+    emit(toolUseId, bashProgressState().store.get(toolUseId) ?? null);
   }, NOTIFY_INTERVAL_MS - elapsed);
-  trailingTimers.set(toolUseId, timer);
+  bashProgressState().trailingTimers.set(toolUseId, timer);
 }
 
 function clearTimers(toolUseId: string): void {
-  const timer = trailingTimers.get(toolUseId);
+  const timer = bashProgressState().trailingTimers.get(toolUseId);
   if (timer) clearTimeout(timer);
-  trailingTimers.delete(toolUseId);
-  lastNotifyAt.delete(toolUseId);
-  const tick = tickTimers.get(toolUseId);
+  bashProgressState().trailingTimers.delete(toolUseId);
+  bashProgressState().lastNotifyAt.delete(toolUseId);
+  const tick = bashProgressState().tickTimers.get(toolUseId);
   if (tick) clearInterval(tick);
-  tickTimers.delete(toolUseId);
+  bashProgressState().tickTimers.delete(toolUseId);
 }
 
 export function getBashProgress(toolUseId: string): BashProgress | undefined {
-  return store.get(toolUseId);
+  return bashProgressState().store.get(toolUseId);
 }
 
 export function startBashProgress(toolUseId: string, timeoutMs?: number): void {
   // A re-run with the same id shouldn't stack heartbeats.
   clearTimers(toolUseId);
-  store.set(toolUseId, {
+  bashProgressState().store.set(toolUseId, {
     output: "",
     totalLines: 0,
     totalBytes: 0,
@@ -100,22 +104,22 @@ export function startBashProgress(toolUseId: string, timeoutMs?: number): void {
     timeoutMs,
     done: false,
   });
-  emit(toolUseId, store.get(toolUseId) ?? null);
+  emit(toolUseId, bashProgressState().store.get(toolUseId) ?? null);
 
   // Heartbeat: re-emit the live snapshot every second so the card's elapsed
   // clock keeps moving even when the command produces no output. Cleared on
   // completion. unref() so a stray tick never keeps the process alive.
   const tick = setInterval(() => {
-    const cur = store.get(toolUseId);
+    const cur = bashProgressState().store.get(toolUseId);
     if (!cur || cur.done) return;
     emit(toolUseId, cur);
   }, TICK_INTERVAL_MS);
   tick.unref?.();
-  tickTimers.set(toolUseId, tick);
+  bashProgressState().tickTimers.set(toolUseId, tick);
 }
 
 export function appendBashProgress(toolUseId: string, chunk: string): void {
-  const cur = store.get(toolUseId);
+  const cur = bashProgressState().store.get(toolUseId);
   if (!cur) return;
   const combined = cur.output + chunk;
   const bounded = combined.length > MAX_TAIL_CHARS ? combined.slice(-MAX_TAIL_CHARS) : combined;
@@ -127,34 +131,35 @@ export function appendBashProgress(toolUseId: string, chunk: string): void {
     totalLines: cur.totalLines + (chunk.match(/\n/g)?.length ?? 0),
     totalBytes: cur.totalBytes + Buffer.byteLength(chunk),
   };
-  store.set(toolUseId, next);
+  bashProgressState().store.set(toolUseId, next);
   notifyThrottled(toolUseId);
 }
 
 export function completeBashProgress(toolUseId: string): void {
-  const cur = store.get(toolUseId);
+  const cur = bashProgressState().store.get(toolUseId);
   if (!cur) return;
   clearTimers(toolUseId);
   const next: BashProgress = { ...cur, done: true };
-  store.set(toolUseId, next);
+  bashProgressState().store.set(toolUseId, next);
   emit(toolUseId, next); // force a final flush
 }
 
 export function clearBashProgress(toolUseId: string): void {
-  if (!store.has(toolUseId)) return;
+  if (!bashProgressState().store.has(toolUseId)) return;
   clearTimers(toolUseId);
-  store.delete(toolUseId);
+  bashProgressState().store.delete(toolUseId);
   emit(toolUseId, null);
 }
 
 export function clearAllBashProgress(): void {
-  const ids = [...store.keys()];
+  const ids = [...bashProgressState().store.keys()];
   for (const id of ids) clearTimers(id);
-  store.clear();
+  bashProgressState().store.clear();
   for (const id of ids) emit(id, null);
 }
 
 export function subscribeBashProgress(listener: Listener): () => void {
+  const { listeners } = bashProgressState();
   listeners.add(listener);
   return () => {
     listeners.delete(listener);

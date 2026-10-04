@@ -10,6 +10,7 @@ import {
 } from "../utils/tokens.js";
 import { debugLog } from "../utils/log.js";
 import type { Usage } from "../types/message.js";
+import { defineSessionState } from "../state/sessionScope.js";
 
 export const MAX_CONSECUTIVE_AUTOCOMPACT_FAILURES = 3;
 
@@ -23,10 +24,11 @@ export interface TokenWarningResult {
   contextWindow: number;
 }
 
-let consecutiveAutoCompactFailures = 0;
+/** Circuit-breaker counter; one per session scope. */
+const autoCompactFailures = defineSessionState("autoCompactFailures", () => ({ consecutive: 0 }));
 
 export function resetAutoCompactFailures(): void {
-  consecutiveAutoCompactFailures = 0;
+  autoCompactFailures().consecutive = 0;
 }
 
 function scaleBuffer(buffer: number, effectiveWindow: number): number {
@@ -80,9 +82,9 @@ export function shouldAutoCompact(estimatedTokens: number, model: string, queryS
   if (querySource === "compact" || querySource === "session_memory") {
     return false;
   }
-  if (consecutiveAutoCompactFailures >= MAX_CONSECUTIVE_AUTOCOMPACT_FAILURES) {
+  if (autoCompactFailures().consecutive >= MAX_CONSECUTIVE_AUTOCOMPACT_FAILURES) {
     debugLog("autoCompact", "circuit_breaker", {
-      consecutiveFailures: consecutiveAutoCompactFailures,
+      consecutiveFailures: autoCompactFailures().consecutive,
     });
     return false;
   }
@@ -111,7 +113,7 @@ export async function autoCompactIfNeeded(
   debugLog("autoCompact", "triggering", {
     estimatedTokens,
     threshold: getAutoCompactThreshold(model),
-    consecutiveFailures: consecutiveAutoCompactFailures,
+    consecutiveFailures: autoCompactFailures().consecutive,
   });
 
   try {
@@ -122,13 +124,13 @@ export async function autoCompactIfNeeded(
       model,
       force: true,
     });
-    consecutiveAutoCompactFailures = 0;
+    autoCompactFailures().consecutive = 0;
     return { result, didAutoCompact: result.didCompact };
   } catch (error) {
-    consecutiveAutoCompactFailures++;
+    autoCompactFailures().consecutive++;
     debugLog("autoCompact", "failure", {
       error: error instanceof Error ? error.message : String(error),
-      consecutiveFailures: consecutiveAutoCompactFailures,
+      consecutiveFailures: autoCompactFailures().consecutive,
     });
     return {
       result: { messages, didCompact: false, didMicroCompact: false },

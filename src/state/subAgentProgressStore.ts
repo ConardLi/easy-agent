@@ -24,6 +24,7 @@
  */
 
 import type { LoopTerminationReason } from "../core/agenticLoop.js";
+import { defineSessionState } from "./sessionScope.js";
 
 export type SubAgentStatus = "running" | "completed" | "error" | "max_turns" | "aborted";
 
@@ -64,15 +65,18 @@ export interface SubAgentProgress {
 
 type Listener = (toolUseId: string, snapshot: SubAgentProgress | null) => void;
 
-const store = new Map<string, SubAgentProgress>();
-const listeners = new Set<Listener>();
+/** Live sub-agent snapshots for this session scope's Agent tool calls. */
+const subAgentProgressState = defineSessionState("subAgentProgress", () => ({
+  store: new Map<string, SubAgentProgress>(),
+  listeners: new Set<Listener>(),
+}));
 
 function notify(toolUseId: string, snapshot: SubAgentProgress | null): void {
-  for (const l of listeners) l(toolUseId, snapshot);
+  for (const l of subAgentProgressState().listeners) l(toolUseId, snapshot);
 }
 
 export function getSubAgentProgress(toolUseId: string): SubAgentProgress | undefined {
-  return store.get(toolUseId);
+  return subAgentProgressState().store.get(toolUseId);
 }
 
 /**
@@ -93,20 +97,20 @@ export function startSubAgentProgress(
     startTime: Date.now(),
     status: "running",
   };
-  store.set(toolUseId, snapshot);
+  subAgentProgressState().store.set(toolUseId, snapshot);
   notify(toolUseId, snapshot);
 }
 
 /**
  * Apply a partial update. Caller passes only the fields that changed —
- * the store does the merge. Returns silently if the entry was never
+ * the subAgentProgressState().store does the merge. Returns silently if the entry was never
  * started (defensive: shouldn't happen, but tests / hot reloads).
  */
 export function updateSubAgentProgress(toolUseId: string, patch: Partial<Omit<SubAgentProgress, "startTime">>): void {
-  const cur = store.get(toolUseId);
+  const cur = subAgentProgressState().store.get(toolUseId);
   if (!cur) return;
   const next: SubAgentProgress = { ...cur, ...patch };
-  store.set(toolUseId, next);
+  subAgentProgressState().store.set(toolUseId, next);
   notify(toolUseId, next);
 }
 
@@ -128,7 +132,7 @@ export function completeSubAgentProgress(
     isError?: boolean;
   },
 ): void {
-  const cur = store.get(toolUseId);
+  const cur = subAgentProgressState().store.get(toolUseId);
   if (!cur) return;
   const status: SubAgentStatus = result.isError
     ? "error"
@@ -151,25 +155,26 @@ export function completeSubAgentProgress(
     outputTokens: result.outputTokens,
     toolUseCount: result.toolUseCount,
   };
-  store.set(toolUseId, next);
+  subAgentProgressState().store.set(toolUseId, next);
   notify(toolUseId, next);
 }
 
 /** Drop one entry — UI calls this after the tool-call card archives. */
 export function clearSubAgentProgress(toolUseId: string): void {
-  if (!store.has(toolUseId)) return;
-  store.delete(toolUseId);
+  if (!subAgentProgressState().store.has(toolUseId)) return;
+  subAgentProgressState().store.delete(toolUseId);
   notify(toolUseId, null);
 }
 
 /** Drop everything — used by tests and `/clear`. */
 export function clearAllSubAgentProgress(): void {
-  const ids = [...store.keys()];
-  store.clear();
+  const ids = [...subAgentProgressState().store.keys()];
+  subAgentProgressState().store.clear();
   for (const id of ids) notify(id, null);
 }
 
 export function subscribeSubAgentProgress(listener: Listener): () => void {
+  const { listeners } = subAgentProgressState();
   listeners.add(listener);
   return () => {
     listeners.delete(listener);
@@ -178,5 +183,5 @@ export function subscribeSubAgentProgress(listener: Listener): () => void {
 
 /** Snapshot all entries — useful for tests + future debug commands. */
 export function getAllSubAgentProgress(): Array<[string, SubAgentProgress]> {
-  return [...store.entries()];
+  return [...subAgentProgressState().store.entries()];
 }

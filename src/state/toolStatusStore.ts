@@ -20,39 +20,45 @@
 
 export type ToolStatus = "queued" | "running" | "waiting-permission" | "classifier";
 
+import { defineSessionState } from "./sessionScope.js";
+
 type Listener = (toolUseId: string, status: ToolStatus | null) => void;
 
-const store = new Map<string, ToolStatus>();
-const listeners = new Set<Listener>();
+/** Live phases of this session scope's in-flight tool calls. */
+const toolStatusState = defineSessionState("toolStatus", () => ({
+  store: new Map<string, ToolStatus>(),
+  listeners: new Set<Listener>(),
+}));
 
 function emit(toolUseId: string, status: ToolStatus | null): void {
-  for (const l of listeners) l(toolUseId, status);
+  for (const l of toolStatusState().listeners) l(toolUseId, status);
 }
 
 export function getToolStatus(toolUseId: string): ToolStatus | undefined {
-  return store.get(toolUseId);
+  return toolStatusState().store.get(toolUseId);
 }
 
 /** Set the live execution phase for a tool call and notify subscribers. */
 export function setToolStatus(toolUseId: string, status: ToolStatus): void {
-  if (store.get(toolUseId) === status) return;
-  store.set(toolUseId, status);
+  if (toolStatusState().store.get(toolUseId) === status) return;
+  toolStatusState().store.set(toolUseId, status);
   emit(toolUseId, status);
 }
 
 export function clearToolStatus(toolUseId: string): void {
-  if (!store.has(toolUseId)) return;
-  store.delete(toolUseId);
+  if (!toolStatusState().store.has(toolUseId)) return;
+  toolStatusState().store.delete(toolUseId);
   emit(toolUseId, null);
 }
 
 export function clearAllToolStatus(): void {
-  const ids = [...store.keys()];
-  store.clear();
+  const ids = [...toolStatusState().store.keys()];
+  toolStatusState().store.clear();
   for (const id of ids) emit(id, null);
 }
 
 export function subscribeToolStatus(listener: Listener): () => void {
+  const { listeners } = toolStatusState();
   listeners.add(listener);
   return () => {
     listeners.delete(listener);
