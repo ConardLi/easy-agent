@@ -78,7 +78,7 @@ const session = await runtime.createSession({
   interactions: ["permission", "plan_approval", "question"], // what your UI answers
   handlers: {},                        // automatic answers, see below
   autoWake: true,                      // run a turn when a background result arrives
-  persist: true,                       // write the transcript and file checkpoints
+  persist: true,                       // write the transcript and file checkpoints; false keeps nothing on disk
 });
 ```
 
@@ -86,7 +86,7 @@ const session = await runtime.createSession({
 | --- | --- |
 | `send(input)` | Run a turn. Text goes to the model; `/command` runs a local command, a skill, or a user command. Rejects with `busy` while a turn runs |
 | `waitForIdle()` | Resolves once no turn runs; use it to queue input |
-| `interrupt()` | Deny the pending permission request, else cancel the pending question, else abort the turn. Returns what it did |
+| `interrupt()` | Stop the running turn. A pending permission request is denied, or a pending question cancelled, so the tool call gets a result; the model is not called again. Returns what it did |
 | `respond(requestId, response)` | Answer a pending request; returns `stale` if it was already settled |
 | `runCommand(name, args)`, `setPermissionMode(mode)`, `setModel(model)` | Local commands without building strings |
 | `runShell(command)` | Run a shell command without the model, under the usual Bash permission and sandbox rules |
@@ -124,10 +124,14 @@ All events, states, and requests are plain JSON, so they can be forwarded to ano
 A request is answered in one of three ways:
 
 1. A **handler** for its kind answers automatically.
-2. Otherwise, if the kind is listed in `interactions`, the request is published with `request_opened` and waits for `respond()`, `interrupt()`, the end of the turn, or `close()`.
+2. Otherwise, if the kind is listed in `interactions`, the request is published with `request_opened` and waits for `respond()`, `interrupt()` (which also ends the turn), the end of the turn, or `close()`.
 3. Otherwise the safe default applies at once: permission and plan approval are **denied**, questions are **cancelled**.
 
 Approving a plan with `clearContext` stops the planning turn and starts a fresh turn that implements the plan; it also allows Write, Edit, and npm/npx commands for the rest of the session unless `acceptEdits: false`. Rejecting with `feedback` starts a turn that asks the model to revise the plan.
+
+### Transcripts
+
+A persisted session's transcript holds the conversation exactly as the model sees it, including hidden context such as plan-mode reminders and background-agent notifications, so `resumeSession()` continues from the same context. `/clear`, compaction, and a plan implemented in a fresh context start a new segment; resume reads from the last one.
 
 ### `/resume`
 

@@ -39,7 +39,7 @@ Each offline test process receives a temporary `HOME`, `USERPROFILE`, XDG direct
 
 | Area | Included checks | Execution |
 | --- | --- | --- |
-| Core flow | CLI and Headless protocols, the session SDK contract (events, interaction requests, plan follow-ups, deny rules and trust under the SDK, multi-session isolation, `/resume` handles), QueryEngine commands, provider stream adapters, tools, ToolSearch, MCP content and recovery, Skills, tasks, and agents | `core` |
+| Core flow | CLI and Headless protocols, the session SDK contract (events, interaction requests, plan follow-ups, deny rules and trust under the SDK, multi-session isolation, `/resume` handles, transcripts that restore the model's context), headless sessions (nothing written to disk, settings MCP servers connected), QueryEngine commands, provider stream adapters, tools, ToolSearch, MCP content and recovery, Skills, tasks, and agents | `core` |
 | Permissions | Allow/deny behavior, structured Bash read-only analysis, realpath and symbolic-link boundaries, Auto Mode configuration, Plan Mode paths, and sandbox policy | `core` |
 | Storage and configuration | Configuration precedence and source shapes, workspace trust, credential inheritance, headless routing, session JSONL and restore shape, file history, and retention | `core`, `extensions` |
 | Extensions | Worktrees, agent teams, hooks, commands, web and multimodal tools, plugins, and resilience | `extensions` |

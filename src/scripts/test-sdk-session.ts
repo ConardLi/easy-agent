@@ -143,8 +143,8 @@ try {
     assert.ok(state.usage.context && state.usage.context.window > 0);
     assert.deepEqual(await transcriptTypes(session.id), [
       "session_meta",
-      "message:user",
       "file_history_snapshot",
+      "message:user",
       "message:assistant",
       "usage",
     ]);
@@ -198,28 +198,40 @@ try {
     await session.close();
   });
 
-  await check("interrupt denies an open permission request, then cancels a question", async () => {
+  await check("interrupting an open permission request denies it and ends the turn", async () => {
+    const session = await runtime.createSession({ model: FIXTURE_MODEL });
+    const events = record(session);
+    fixture.script([{ kind: "tool", name: "Write", input: { file_path: "sdk-interrupted.txt", content: "x" } }]);
+    const before = fixture.requests.length;
+    const done = session.send("Write a file.");
+    await until("permission request", () => opened(events).length === 1);
+    assert.equal(session.interrupt(), "permission_denied");
+    const result = await done;
+    assert.equal(result.reason, "aborted");
+    assert.equal(fixture.requests.length, before + 1, "the model is not called again");
+    const messages = session.getState().messages;
+    assert.match(JSON.stringify(messages.at(-1)), /Permission denied for Write/, "the tool call still gets a result");
+    assert.equal(fixture.remaining(), 0);
+    assert.equal(session.interrupt(), "idle");
+    await session.close();
+  });
+
+  await check("interrupting an open question cancels it and ends the turn", async () => {
     const session = await runtime.createSession({ model: FIXTURE_MODEL });
     const events = record(session);
     fixture.script([
-      { kind: "tool", name: "Write", input: { file_path: "sdk-interrupted.txt", content: "x" } },
       {
         kind: "tool",
         name: "AskUserQuestion",
         input: { questions: [{ question: "Size?", header: "Size", options: [{ label: "S" }, { label: "L" }] }] },
       },
-      { kind: "text", text: "Moving on." },
     ]);
-    const done = session.send("Do two things.");
-    await until("permission request", () => opened(events).length === 1);
-    assert.equal(session.interrupt(), "permission_denied");
-    await until("question", () => opened(events).length === 2);
-    assert.equal(opened(events)[1]?.kind, "question");
+    const done = session.send("Ask me.");
+    await until("question", () => opened(events).length === 1);
     assert.equal(session.interrupt(), "question_cancelled");
-    await done;
+    assert.equal((await done).reason, "aborted");
     const resolutions = events.flatMap((event) => (event.type === "request_resolved" ? [event.resolution] : []));
-    assert.deepEqual(resolutions, ["interrupt", "interrupt"]);
-    assert.equal(session.interrupt(), "idle");
+    assert.deepEqual(resolutions, ["interrupt"]);
     await session.close();
   });
 
@@ -417,7 +429,89 @@ try {
     await Promise.all([a.close(), b.close()]);
   });
 
-  console.log("\n[6] lifecycle");
+  console.log("\n[6] transcript and resume");
+
+  await check("resume restores the conversation the model saw, hidden messages included", async () => {
+    const session = await runtime.createSession({ model: FIXTURE_MODEL, permissionMode: "plan" });
+    fixture.script([{ kind: "text", text: "Here is a plan." }]);
+    await session.send("Plan something.");
+    const seen = session.getState().messages;
+    assert.match(JSON.stringify(seen[0]), /plan_mode_attachment/, "plan mode adds a hidden reminder");
+    const id = session.id;
+    await session.close();
+    const resumed = await runtime.resumeSession(id);
+    assert.deepEqual(resumed.getState().messages, seen);
+    await resumed.close();
+  });
+
+  await check("a background wake-up turn is restored with the notification that started it", async () => {
+    const session = await runtime.createSession({ model: FIXTURE_MODEL });
+    const events = record(session);
+    fixture.script([{ kind: "text", text: "Noted." }]);
+    runInScopeOf(session, () =>
+      enqueuePendingNotification({ mode: "task-notification", text: "<task-notification/>" }),
+    );
+    await until("wake-up turn", () => types(events, "turn_completed").length === 1);
+    const id = session.id;
+    await session.close();
+    const resumed = await runtime.resumeSession(id);
+    const messages = resumed.getState().messages;
+    assert.equal(messages.length, 2);
+    assert.match(JSON.stringify(messages[0]), /\[task-notification\]/);
+    await resumed.close();
+  });
+
+  await check("/clear is recorded, so resume starts after it", async () => {
+    const session = await runtime.createSession({ model: FIXTURE_MODEL });
+    fixture.script([
+      { kind: "text", text: "Before." },
+      { kind: "text", text: "After." },
+    ]);
+    await session.send("First topic.");
+    await session.runCommand("clear");
+    await session.send("Second topic.");
+    const id = session.id;
+    await session.close();
+    const resumed = await runtime.resumeSession(id);
+    const messages = resumed.getState().messages;
+    assert.equal(messages.length, 2);
+    assert.match(JSON.stringify(messages[0]), /Second topic\./);
+    await resumed.close();
+  });
+
+  await check("a plan implemented in a fresh context resumes from the implementation turn", async () => {
+    const session = await runtime.createSession({ model: FIXTURE_MODEL, permissionMode: "plan" });
+    const events = record(session);
+    await runInScopeOf(session, () => writePlan("1. Ship it.\n"));
+    fixture.script([
+      { kind: "tool", name: "ExitPlanMode", input: { summary: "Ship it" } },
+      { kind: "text", text: "Implementing." },
+    ]);
+    const done = session.send("Plan it.");
+    await until("plan approval", () => opened(events).length === 1);
+    session.respond(opened(events)[0]!.id, { decision: "approve", clearContext: true });
+    await done;
+    const id = session.id;
+    await session.close();
+    const resumed = await runtime.resumeSession(id);
+    const messages = resumed.getState().messages;
+    assert.equal(messages.length, 2);
+    assert.match(JSON.stringify(messages[0]), /Implement the following plan/);
+    await resumed.close();
+  });
+
+  await check("a session that does not persist leaves no transcript", async () => {
+    const session = await runtime.createSession({ model: FIXTURE_MODEL, persist: false });
+    fixture.script([{ kind: "text", text: "Ephemeral." }]);
+    await session.send("Hello.");
+    const { transcriptPath, latestPath } = await getSessionPaths(cwd, session.id);
+    await assert.rejects(readFile(transcriptPath));
+    assert.notEqual((await readFile(latestPath, "utf8").catch(() => "")).trim(), session.id);
+    assert.notEqual((await readFile(latestPath, "utf8").catch(() => "")).trim(), "default");
+    await session.close();
+  });
+
+  console.log("\n[7] lifecycle");
 
   await check("/resume hands out a new session handle", async () => {
     const saved = await runtime.createSession({ model: FIXTURE_MODEL });

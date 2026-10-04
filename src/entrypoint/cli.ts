@@ -277,10 +277,10 @@ Settings keys (in ~/.easy-agent/settings.json or <cwd>/.easy-agent/settings.json
   }
 
   // Headless / print mode runs one turn and exits, so it never reaches the
-  // interactive REPL below. It has no later UI phase: plugin services are
-  // reconciled before the request so plugin MCP/LSP tools are usable.
+  // interactive REPL below. It has no later UI phase: MCP servers and plugin
+  // services connect before the request so their tools are usable.
   if (isPrintMode) {
-    await runtime.startServices({ mcpServers: false, wait: true });
+    await runtime.startServices({ mcpServers: true, wait: true });
     const { runHeadless } = await import("./headless.js");
     await runHeadless({
       runtime,
