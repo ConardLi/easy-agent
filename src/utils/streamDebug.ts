@@ -19,7 +19,6 @@ import { redactSettingValue } from "../config/redaction.js";
 import { appendPrivateFileSync, ensurePrivateDirectorySync, PRIVATE_FILE_MODE } from "./privateData.js";
 import { getEasyAgentHome, getStreamDebugLogPath } from "./paths.js";
 
-const DEBUG_STREAM = process.env.EASY_AGENT_DEBUG_STREAM === "1";
 const MAX_LOG_BYTES = 10 * 1024 * 1024;
 const RETAINED_LOGS = 3;
 
@@ -72,7 +71,7 @@ export function rotateStreamDebugLog(
  * debug mode is off — it becomes a no-op.
  */
 export function writeStreamDebug(kind: string, payload: unknown): void {
-  if (!DEBUG_STREAM) return;
+  if (!isStreamDebugEnabled()) return;
   try {
     const safePayload = redactSettingValue("", payload);
     const line = JSON.stringify({ ts: new Date().toISOString(), kind, payload: safePayload }) + "\n";
@@ -85,5 +84,5 @@ export function writeStreamDebug(kind: string, payload: unknown): void {
 }
 
 export function isStreamDebugEnabled(): boolean {
-  return DEBUG_STREAM;
+  return process.env.EASY_AGENT_DEBUG_STREAM === "1";
 }

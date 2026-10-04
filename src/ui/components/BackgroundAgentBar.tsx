@@ -24,10 +24,10 @@
 
 import type React from "react";
 import { Box, Text } from "ink";
-import type { AsyncAgentEntry } from "../../state/asyncAgentStore.js";
+import type { BackgroundAgentInfo } from "../../sdk/index.js";
 
 interface BackgroundAgentBarProps {
-  agents: AsyncAgentEntry[];
+  agents: BackgroundAgentInfo[];
 }
 
 function formatDuration(ms: number): string {
@@ -59,7 +59,7 @@ function formatNumber(n: number): string {
  * teammates would otherwise render as three identical entries and
  * the user couldn't tell which is which.
  */
-function summariseAgent(agent: AsyncAgentEntry, now: number): string {
+function summariseAgent(agent: BackgroundAgentInfo, now: number): string {
   const parts: string[] = [];
   if (agent.toolUseCount > 0) {
     parts.push(`${agent.toolUseCount} tool${agent.toolUseCount === 1 ? "" : "s"}`);

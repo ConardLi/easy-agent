@@ -284,8 +284,13 @@ async function runInteractiveStartup(
   };
 
   const trustPrompt = await waitFor("Do you trust the files in this folder?");
+  // The dialog paints before Ink attaches its input handler, so an Enter sent
+  // on the first frame can be dropped. Resend it until the REPL appears; an
+  // extra Enter on the empty prompt is a no-op.
+  const acceptKeys = trustPrompt ? setInterval(() => child.stdin.write("\r"), 500) : undefined;
   if (trustPrompt) child.stdin.write("\r");
   const banner = trustPrompt && (await waitFor("Type a message to start")) && (await waitFor("? for shortcuts"));
+  clearInterval(acceptKeys);
   // Ink attaches its input handler after the first frame; resend Ctrl+D until
   // the REPL exits so a slow first render does not swallow the keystroke.
   const exitKeys = banner ? setInterval(() => child.stdin.write("\u0004"), 500) : undefined;
@@ -391,17 +396,26 @@ assert(
   "test and smoke scripts are not bundled",
 );
 
-const bundleHygiene = run(process.execPath, [
-  "--import",
-  "tsx",
-  "scripts/check-source-hygiene.ts",
-  "--bundle",
-  "dist/eagent.js",
-]);
+for (const bundleFile of ["dist/eagent.js", "dist/sdk.js"]) {
+  const bundleHygiene = run(process.execPath, [
+    "--import",
+    "tsx",
+    "scripts/check-source-hygiene.ts",
+    "--bundle",
+    bundleFile,
+  ]);
+  assert(
+    bundleHygiene.status === 0,
+    `${bundleFile} carries no roadmap, reference, or tutorial markers`,
+    (bundleHygiene.stdout + bundleHygiene.stderr).trim().split("\n").slice(-12).join("\n    "),
+  );
+}
+const sdkMap = JSON.parse(await fs.readFile(path.join(PROJECT_ROOT, "dist", "sdk.js.map"), "utf-8")) as {
+  sources: string[];
+};
 assert(
-  bundleHygiene.status === 0,
-  "bundled application code carries no roadmap, reference, or tutorial markers",
-  (bundleHygiene.stdout + bundleHygiene.stderr).trim().split("\n").slice(-12).join("\n    "),
+  !sdkMap.sources.some((source) => /\/ui\/|node_modules\/(?:ink|react)\//.test(source)),
+  "the SDK bundle leaves out the terminal UI",
 );
 const buildPaths = [PROJECT_ROOT, os.homedir()].filter((value) => value.length > 1);
 for (const [label, text] of [
@@ -475,6 +489,9 @@ try {
     `dist/${THIRD_PARTY_NOTICES_FILE}`,
     "dist/eagent.js",
     "dist/eagent.js.map",
+    "dist/sdk.d.ts",
+    "dist/sdk.js",
+    "dist/sdk.js.map",
     "package.json",
   ];
   const packedFiles = dryRun?.[0]?.files.map((file) => file.path).sort() ?? [];
@@ -562,6 +579,26 @@ try {
       () => false,
     );
     assert(sandboxRuntimeInstalled, "installed package includes the sandbox runtime dependency");
+
+    // `eagent/sdk` resolves through the package exports map to a loadable module.
+    const sdkProject = path.join(tempRoot, "sdk-consumer");
+    await fs.mkdir(path.join(sdkProject, "node_modules"), { recursive: true });
+    await fs.writeFile(path.join(sdkProject, "package.json"), JSON.stringify({ type: "module" }));
+    await fs.symlink(installedPackage, path.join(sdkProject, "node_modules", "eagent"), "junction");
+    const sdkImport = run(
+      process.execPath,
+      [
+        "--input-type=module",
+        "-e",
+        "const sdk = await import('eagent/sdk'); console.log(typeof sdk.createAgentRuntime, sdk.SESSION_PROTOCOL_VERSION);",
+      ],
+      { cwd: sdkProject },
+    );
+    assert(
+      sdkImport.status === 0 && sdkImport.stdout.trim() === "function 1",
+      "installed package exposes the session SDK as eagent/sdk",
+      sdkImport.stderr || sdkImport.stdout,
+    );
 
     section("[6] installed CLI");
     const cliEnv = isolatedCliEnv(cliHome);

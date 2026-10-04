@@ -32,8 +32,7 @@
 
 import { useCallback } from "react";
 import { useInput } from "ink";
-import type { AsyncAgentEntry } from "../../state/asyncAgentStore.js";
-import { killAsyncAgent } from "../../state/asyncAgentStore.js";
+import type { BackgroundAgentInfo } from "../../sdk/index.js";
 import {
   closeTeammateView,
   commitTeammateView,
@@ -44,13 +43,15 @@ import {
 
 interface UseTeammateNavigationParams {
   /** Live snapshot of all async agents (the subscriber in useAgentSession). */
-  agents: AsyncAgentEntry[];
+  agents: BackgroundAgentInfo[];
   /**
    * When true, we don't intercept any keys. Caller sets this if a
    * higher-priority input handler is active (permission prompt,
    * /command picker, plan-exit dialog).
    */
   disabled: boolean;
+  /** Stop a background agent of the current session ('k' in the picker). */
+  onStopAgent: (agentId: string) => void;
 }
 
 /**
@@ -59,7 +60,7 @@ interface UseTeammateNavigationParams {
  * `direction` is +1 (down) or -1 (up). Returns the next agentId, or
  * null when the running set is empty.
  */
-function nextRunningAgentId(agents: AsyncAgentEntry[], currentId: string | null, direction: 1 | -1): string | null {
+function nextRunningAgentId(agents: BackgroundAgentInfo[], currentId: string | null, direction: 1 | -1): string | null {
   const running = agents.filter((a) => a.status === "running");
   if (running.length === 0) return null;
   if (!currentId) return running[0].agentId;
@@ -71,7 +72,7 @@ function nextRunningAgentId(agents: AsyncAgentEntry[], currentId: string | null,
   return running[nextIdx].agentId;
 }
 
-export function useTeammateNavigation({ agents, disabled }: UseTeammateNavigationParams): void {
+export function useTeammateNavigation({ agents, disabled, onStopAgent }: UseTeammateNavigationParams): void {
   // Stable handler — we read fresh state inside via getTeammateViewState()
   // rather than capturing it, so re-renders don't churn this callback
   // (and Ink's useInput doesn't either).
@@ -138,10 +139,10 @@ export function useTeammateNavigation({ agents, disabled }: UseTeammateNavigatio
       // entry to "killed" and useTeammateViewAutoExit will pop us out
       // of viewing mode if the same agent was on screen.
       if (input === "k" && view.mode === "selecting" && view.selectedAgentId) {
-        killAsyncAgent(view.selectedAgentId);
+        onStopAgent(view.selectedAgentId);
       }
     },
-    [agents, disabled],
+    [agents, disabled, onStopAgent],
   );
 
   useInput(handleInput, { isActive: !disabled });

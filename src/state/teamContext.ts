@@ -15,9 +15,16 @@
  *   would force every tool to thread state through ToolContext, which is
  *   deliberately kept small. A module-level Map matches the shape we use
  *   for asyncAgentStore / todoStore / etc.
+ *
+ * Ownership:
+ *   The team belongs to the session scope that created it (see
+ *   sessionScope.ts). Other sessions in the same process see no active team
+ *   and cannot create one until the owner disbands it, so mailbox draining
+ *   and team tools never act on another session's team.
  */
 
 import { touchTeamHeartbeat } from "../utils/teamHelpers.js";
+import { currentSessionScope } from "./sessionScope.js";
 
 export interface TeamContext {
   /** Same as TeamFile.name — the canonical team name. */
@@ -31,6 +38,7 @@ export interface TeamContext {
 }
 
 let current: TeamContext | null = null;
+let ownerScopeId: string | null = null;
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 
 type Listener = (ctx: TeamContext | null) => void;
@@ -54,11 +62,16 @@ function notify(): void {
  * is the defense-in-depth backup.
  */
 export function setActiveTeam(ctx: TeamContext): void {
+  const scopeId = currentSessionScope().id;
+  if (current !== null && ownerScopeId !== scopeId) {
+    throw new Error(`Another session in this process is leading team "${current.teamName}".`);
+  }
   if (current !== null && current.teamName !== ctx.teamName) {
     throw new Error(`Already in team "${current.teamName}". Run TeamDelete before creating a new team.`);
   }
   if (heartbeatTimer) clearInterval(heartbeatTimer);
   current = ctx;
+  ownerScopeId = scopeId;
   heartbeatTimer = setInterval(() => {
     if (current?.teamName === ctx.teamName) void touchTeamHeartbeat(ctx.teamName).catch(() => {});
   }, 30_000);
@@ -66,30 +79,25 @@ export function setActiveTeam(ctx: TeamContext): void {
   notify();
 }
 
-/** Clear the active team. Called by TeamDelete and by /clear. */
+/** Disband the active team. A no-op for sessions that do not own it. */
 export function clearActiveTeam(): void {
-  if (current === null) return;
+  if (current === null || ownerScopeId !== currentSessionScope().id) return;
   if (heartbeatTimer) clearInterval(heartbeatTimer);
   heartbeatTimer = null;
   current = null;
+  ownerScopeId = null;
   notify();
 }
 
-/** Current team context, or null when no team is active. */
+/** The team led by the current session scope, if any. */
 export function getActiveTeam(): TeamContext | null {
-  return current;
+  return current !== null && ownerScopeId === currentSessionScope().id ? current : null;
 }
 
-/**
- * Cheap "are we in a team right now?" check that doesn't expose the
- * underlying mutable reference. Used by promptInjection.ts to decide
- * whether to add the team-coordination guidance block.
- */
 export function isInActiveTeam(): boolean {
-  return current !== null;
+  return getActiveTeam() !== null;
 }
 
-/** Subscribe to team-context changes. Returns an unsubscribe handle. */
 export function subscribeActiveTeam(listener: Listener): () => void {
   listeners.add(listener);
   return () => {

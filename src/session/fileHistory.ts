@@ -16,8 +16,8 @@
  *
  * Backups are full file copies stored under
  *   ~/.easy-agent/file-history/{sessionId}/{pathHash}@v{N}
- * Snapshot metadata is held in-process (a module singleton, since the CLI runs
- * one session per process) and also persisted to the transcript for resume.
+ * Snapshot metadata is held in-process per session scope (see
+ * state/sessionScope.ts) and also persisted to the transcript for resume.
  *
  * All IO is best-effort: a backup/restore failure is swallowed so file history
  * can never break the agent loop.
@@ -41,6 +41,7 @@ import {
   writeWorkspaceFileFromHandle,
 } from "../tools/pathUtils.js";
 import { DEFAULT_CLEANUP_PERIOD_DAYS, recordFileHistorySnapshot, type FileHistorySnapshotRecord } from "./storage.js";
+import { defineSessionState } from "../state/sessionScope.js";
 
 /** null backupFileName means "the file did not exist in this version". */
 export type BackupFileName = string | null;
@@ -74,12 +75,23 @@ export interface DiffStats {
 
 const MAX_SNAPSHOTS = 100;
 
-// ─── module singleton state ──────────────────────────────────────────────
+// ─── session-scoped state ────────────────────────────────────────────────
 
-let enabled = true;
-let sessionId = "default";
-let cwd = process.cwd();
-let state: FileHistoryState = emptyState();
+interface FileHistoryBinding {
+  enabled: boolean;
+  /** Session whose backup directory and transcript receive the snapshots. */
+  sessionId: string;
+  /** Workspace root used for path validation and path shortening. */
+  cwd: string;
+  state: FileHistoryState;
+}
+
+const binding = defineSessionState<FileHistoryBinding>("fileHistory", () => ({
+  enabled: true,
+  sessionId: "default",
+  cwd: process.cwd(),
+  state: emptyState(),
+}));
 
 function emptyState(): FileHistoryState {
   return { snapshots: [], trackedFiles: new Set(), snapshotSequence: 0 };
@@ -99,20 +111,21 @@ function isEnvTruthy(value: string | undefined): boolean {
  * env var disables the whole feature.
  */
 export async function configureFileHistory(projectCwd: string, currentSessionId: string): Promise<void> {
-  cwd = projectCwd;
-  sessionId = currentSessionId;
-  state = emptyState();
+  const current = binding();
+  current.cwd = projectCwd;
+  current.sessionId = currentSessionId;
+  current.state = emptyState();
   let setting: boolean | undefined;
   try {
     setting = await readMergedBooleanSetting(projectCwd, "checkpointingEnabled");
   } catch {
     setting = undefined;
   }
-  enabled = setting !== false && !isEnvTruthy(process.env.EASY_AGENT_DISABLE_CHECKPOINTING);
+  current.enabled = setting !== false && !isEnvTruthy(process.env.EASY_AGENT_DISABLE_CHECKPOINTING);
 }
 
 export function fileHistoryEnabled(): boolean {
-  return enabled;
+  return binding().enabled;
 }
 
 /**
@@ -162,12 +175,12 @@ export async function cleanupOldFileHistoryBackups(cwd: string): Promise<void> {
 }
 
 export function getFileHistoryState(): FileHistoryState {
-  return state;
+  return binding().state;
 }
 
 /** Test/init hook: replace the in-memory state wholesale (e.g. on resume). */
 export function setFileHistoryState(next: FileHistoryState): void {
-  state = next;
+  binding().state = next;
 }
 
 /**
@@ -178,7 +191,8 @@ export function setFileHistoryState(next: FileHistoryState): void {
  * live under the right directory — no migration needed.
  */
 export function restoreFileHistorySnapshots(records: FileHistorySnapshotRecord[]): void {
-  if (!enabled || records.length === 0) return;
+  const current = binding();
+  if (!current.enabled || records.length === 0) return;
   const trackedFiles = new Set<string>();
   const snapshots: FileHistorySnapshot[] = records.map((rec) => {
     for (const key of Object.keys(rec.trackedFileBackups)) {
@@ -190,7 +204,7 @@ export function restoreFileHistorySnapshots(records: FileHistorySnapshotRecord[]
       timestamp: rec.timestamp,
     };
   });
-  state = { snapshots, trackedFiles, snapshotSequence: snapshots.length };
+  current.state = { snapshots, trackedFiles, snapshotSequence: snapshots.length };
 }
 
 // ─── Track an edit (backup pre-edit content) ──────────────────────────────
@@ -201,11 +215,11 @@ export function restoreFileHistorySnapshots(records: FileHistorySnapshotRecord[]
  * in that snapshot (so repeat edits in the same turn never clobber v1).
  */
 export async function fileHistoryTrackEdit(filePath: string, messageId: string): Promise<void> {
-  if (!enabled) return;
+  if (!binding().enabled) return;
 
   let checkedPath: string;
   try {
-    checkedPath = (await resolveWorkspacePathForWrite(filePath, cwd)).requestedPath;
+    checkedPath = (await resolveWorkspacePathForWrite(filePath, binding().cwd)).requestedPath;
   } catch {
     return;
   }
@@ -214,16 +228,16 @@ export async function fileHistoryTrackEdit(filePath: string, messageId: string):
   // Ensure there's a snapshot to attach to. In normal operation makeSnapshot
   // fires at turn start, but track-before-snapshot must not silently drop the
   // backup, so open an empty snapshot for this turn if none exists.
-  if (state.snapshots.length === 0) {
-    state.snapshots.push({
+  if (binding().state.snapshots.length === 0) {
+    binding().state.snapshots.push({
       messageId,
       trackedFileBackups: {},
       timestamp: new Date().toISOString(),
     });
-    state.snapshotSequence += 1;
+    binding().state.snapshotSequence += 1;
   }
 
-  const mostRecent = state.snapshots[state.snapshots.length - 1]!;
+  const mostRecent = binding().state.snapshots[binding().state.snapshots.length - 1]!;
   if (mostRecent.trackedFileBackups[trackingPath]) {
     // Already tracked this turn; the next makeSnapshot re-checks for changes.
     return;
@@ -236,11 +250,11 @@ export async function fileHistoryTrackEdit(filePath: string, messageId: string):
     return;
   }
 
-  state.trackedFiles.add(trackingPath);
+  binding().state.trackedFiles.add(trackingPath);
   mostRecent.trackedFileBackups[trackingPath] = backup;
 
   // Persist the updated snapshot so /rewind survives --resume.
-  await recordFileHistorySnapshot(cwd, sessionId, mostRecent).catch(() => {});
+  await recordFileHistorySnapshot(binding().cwd, binding().sessionId, mostRecent).catch(() => {});
 }
 
 // ─── Make a turn snapshot ─────────────────────────────────────────────────
@@ -251,13 +265,13 @@ export async function fileHistoryTrackEdit(filePath: string, messageId: string):
  * and evicts the oldest once past MAX_SNAPSHOTS.
  */
 export async function fileHistoryMakeSnapshot(messageId: string): Promise<void> {
-  if (!enabled) return;
+  if (!binding().enabled) return;
 
   const trackedFileBackups: Record<string, FileHistoryBackup> = {};
-  const mostRecentSnapshot = state.snapshots[state.snapshots.length - 1];
+  const mostRecentSnapshot = binding().state.snapshots[binding().state.snapshots.length - 1];
 
   await Promise.all(
-    Array.from(state.trackedFiles, async (trackingPath) => {
+    Array.from(binding().state.trackedFiles, async (trackingPath) => {
       try {
         const filePath = maybeExpandFilePath(trackingPath);
         const latestBackup = mostRecentSnapshot?.trackedFileBackups[trackingPath];
@@ -265,9 +279,13 @@ export async function fileHistoryMakeSnapshot(messageId: string): Promise<void> 
 
         let fileStats: Stats | undefined;
         try {
-          const resolution = await resolveWorkspacePathForWrite(filePath, cwd);
+          const resolution = await resolveWorkspacePathForWrite(filePath, binding().cwd);
           if (resolution.exists) {
-            fileStats = await withValidatedWorkspacePath(filePath, cwd, async (_resolvedPath, stats) => stats);
+            fileStats = await withValidatedWorkspacePath(
+              filePath,
+              binding().cwd,
+              async (_resolvedPath, stats) => stats,
+            );
           }
         } catch (e) {
           if (!isENOENT(e)) throw e;
@@ -303,14 +321,14 @@ export async function fileHistoryMakeSnapshot(messageId: string): Promise<void> 
     trackedFileBackups,
     timestamp: new Date().toISOString(),
   };
-  state.snapshots.push(newSnapshot);
-  if (state.snapshots.length > MAX_SNAPSHOTS) {
-    state.snapshots = state.snapshots.slice(-MAX_SNAPSHOTS);
+  binding().state.snapshots.push(newSnapshot);
+  if (binding().state.snapshots.length > MAX_SNAPSHOTS) {
+    binding().state.snapshots = binding().state.snapshots.slice(-MAX_SNAPSHOTS);
   }
-  state.snapshotSequence += 1;
+  binding().state.snapshotSequence += 1;
 
   // Persist the new snapshot so /rewind survives --resume.
-  await recordFileHistorySnapshot(cwd, sessionId, newSnapshot).catch(() => {});
+  await recordFileHistorySnapshot(binding().cwd, binding().sessionId, newSnapshot).catch(() => {});
 }
 
 // ─── Rewind / diff ────────────────────────────────────────────────────────
@@ -321,15 +339,15 @@ export async function fileHistoryMakeSnapshot(messageId: string): Promise<void> 
  */
 export function getSnapshotByOffset(offset: number): FileHistorySnapshot | undefined {
   if (offset < 1) return undefined;
-  return state.snapshots[state.snapshots.length - offset];
+  return binding().state.snapshots[binding().state.snapshots.length - offset];
 }
 
 export function getSnapshotById(messageId: string): FileHistorySnapshot | undefined {
-  return [...state.snapshots].reverse().find((s) => s.messageId === messageId);
+  return [...binding().state.snapshots].reverse().find((s) => s.messageId === messageId);
 }
 
 export function snapshotCount(): number {
-  return state.snapshots.length;
+  return binding().state.snapshots.length;
 }
 
 /**
@@ -337,7 +355,7 @@ export function snapshotCount(): number {
  * were actually changed on disk (expanded absolute paths).
  */
 export async function fileHistoryRewind(messageId: string): Promise<string[]> {
-  if (!enabled) return [];
+  if (!binding().enabled) return [];
   const target = getSnapshotById(messageId);
   if (!target) {
     throw new Error("The selected snapshot was not found");
@@ -351,12 +369,12 @@ export async function fileHistoryRewind(messageId: string): Promise<string[]> {
  */
 export async function fileHistoryGetDiffStats(messageId: string): Promise<DiffStats> {
   const empty: DiffStats = { filesChanged: [], insertions: 0, deletions: 0 };
-  if (!enabled) return empty;
+  if (!binding().enabled) return empty;
   const target = getSnapshotById(messageId);
   if (!target) return empty;
 
   const results = await Promise.all(
-    Array.from(state.trackedFiles, async (trackingPath) => {
+    Array.from(binding().state.trackedFiles, async (trackingPath) => {
       try {
         const filePath = maybeExpandFilePath(trackingPath);
         const targetBackup = target.trackedFileBackups[trackingPath];
@@ -388,7 +406,7 @@ export async function fileHistoryGetDiffStats(messageId: string): Promise<DiffSt
 
 async function applySnapshot(target: FileHistorySnapshot): Promise<string[]> {
   const filesChanged: string[] = [];
-  for (const trackingPath of state.trackedFiles) {
+  for (const trackingPath of binding().state.trackedFiles) {
     try {
       const filePath = maybeExpandFilePath(trackingPath);
       const targetBackup = target.trackedFileBackups[trackingPath];
@@ -400,7 +418,7 @@ async function applySnapshot(target: FileHistorySnapshot): Promise<string[]> {
 
       if (backupFileName === null) {
         try {
-          if (await removeWorkspaceFile(filePath, cwd)) {
+          if (await removeWorkspaceFile(filePath, binding().cwd)) {
             filesChanged.push(filePath);
           }
         } catch (e) {
@@ -428,7 +446,7 @@ function getBackupFileName(filePath: string, version: number): string {
 }
 
 function resolveBackupPath(backupFileName: string): string {
-  return join(getEasyAgentHome(), "file-history", sessionId, backupFileName);
+  return join(getEasyAgentHome(), "file-history", binding().sessionId, backupFileName);
 }
 
 async function createBackup(filePath: string | null, version: number): Promise<FileHistoryBackup> {
@@ -441,7 +459,7 @@ async function createBackup(filePath: string | null, version: number): Promise<F
   const backupPath = resolveBackupPath(backupFileName);
 
   try {
-    await withValidatedWorkspaceFile(filePath, cwd, async (sourceHandle, _resolution, sourceStats) => {
+    await withValidatedWorkspaceFile(filePath, binding().cwd, async (sourceHandle, _resolution, sourceStats) => {
       await writeBackupFile(backupPath, sourceHandle, sourceStats.mode);
     });
   } catch (e) {
@@ -456,7 +474,7 @@ async function restoreBackup(filePath: string, backupFileName: string): Promise<
   const backupPath = resolveBackupPath(backupFileName);
   try {
     await withBackupFile(backupPath, async (backupHandle, backupStats) => {
-      await writeWorkspaceFileFromHandle(filePath, cwd, backupHandle, {
+      await writeWorkspaceFileFromHandle(filePath, binding().cwd, backupHandle, {
         mode: backupStats.mode,
       });
     });
@@ -491,7 +509,7 @@ async function withBackupFile<T>(
  * in v1, or undefined when no v1 can be found at all.
  */
 function getBackupFileNameFirstVersion(trackingPath: string): BackupFileName | undefined {
-  for (const snapshot of state.snapshots) {
+  for (const snapshot of binding().state.snapshots) {
     const backup = snapshot.trackedFileBackups[trackingPath];
     if (backup !== undefined && backup.version === 1) {
       return backup.backupFileName;
@@ -512,7 +530,11 @@ export async function checkOriginFileChanged(
   let originalStats: Stats | null = originalStatsHint ?? null;
   if (!originalStats) {
     try {
-      originalStats = await withValidatedWorkspacePath(originalFile, cwd, async (_resolvedPath, stats) => stats);
+      originalStats = await withValidatedWorkspacePath(
+        originalFile,
+        binding().cwd,
+        async (_resolvedPath, stats) => stats,
+      );
     } catch (e) {
       if (!isENOENT(e)) return true;
     }
@@ -535,7 +557,7 @@ export async function checkOriginFileChanged(
   try {
     return await withValidatedWorkspaceFile(
       originalFile,
-      cwd,
+      binding().cwd,
       async (originalHandle, _resolution, currentOriginalStats) =>
         withBackupFile(backupPath, async (backupHandle, currentBackupStats) => {
           if (
@@ -581,7 +603,7 @@ async function computeDiffStatsForFile(
   try {
     const backupPath = backupFileName ? resolveBackupPath(backupFileName) : undefined;
     const [originalContent, backupContent] = await Promise.all([
-      readWorkspaceFile(originalFile, cwd).then(
+      readWorkspaceFile(originalFile, binding().cwd).then(
         (file) => file.data.toString("utf8"),
         () => null,
       ),
@@ -614,7 +636,7 @@ async function readFileOrNull(path: string): Promise<string | null> {
 /** Store tracked files relative to cwd when possible (smaller transcript). */
 function maybeShortenFilePath(filePath: string): string {
   if (!isAbsolute(filePath)) return filePath;
-  const relativePath = relative(cwd, filePath);
+  const relativePath = relative(binding().cwd, filePath);
   if (relativePath === "" || (!relativePath.startsWith("..") && !isAbsolute(relativePath))) {
     return relativePath;
   }
@@ -623,7 +645,7 @@ function maybeShortenFilePath(filePath: string): string {
 
 function maybeExpandFilePath(filePath: string): string {
   if (isAbsolute(filePath)) return filePath;
-  return join(cwd, filePath);
+  return join(binding().cwd, filePath);
 }
 
 function isENOENT(error: unknown): boolean {

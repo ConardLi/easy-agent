@@ -7,6 +7,13 @@
     "eagent": "dist/eagent.js",
     "easy-agent": "dist/eagent.js"
   },
+  "exports": {
+    "./sdk": {
+      "types": "./dist/sdk.d.ts",
+      "import": "./dist/sdk.js"
+    },
+    "./package.json": "./package.json"
+  },
   "files": [
     "dist",
     "README.md",
@@ -32,11 +39,14 @@
     "format": "biome format --write .",
     "format:check": "biome format .",
     "check:source-hygiene": "node --import tsx scripts/check-source-hygiene.ts",
+    "check:frontend-boundaries": "node --import tsx scripts/check-frontend-boundaries.ts",
     "build": "tsup",
     "start": "node dist/eagent.js",
     "prepack": "npm run typecheck && npm run build",
     "prepublishOnly": "npm run verify:release",
     "test:queryengine": "tsx src/scripts/test-queryengine-characterization.ts",
+    "test:interactive-session": "node --import tsx src/scripts/test-interactive-session-characterization.tsx",
+    "test:sdk": "node --import tsx src/scripts/test-sdk-session.ts",
     "test:cli-headless": "node --import tsx src/scripts/test-cli-headless-characterization.ts",
     "test:user-output": "node --import tsx src/scripts/test-user-output-contract.ts",
     "test:config-session": "node --import tsx src/scripts/test-config-session-characterization.ts",
@@ -106,7 +116,7 @@
     "verify:production:ui": "node --import tsx scripts/verify-production.ts --group ui",
     "verify:production:platform": "node --import tsx scripts/verify-production.ts --group platform",
     "verify:production:live": "node --import tsx scripts/verify-production.ts --group live",
-    "verify:production": "npm run typecheck && npm run lint && npm run format:check && npm run check:source-hygiene && npm run build && npm run verify:production:tests",
+    "verify:production": "npm run typecheck && npm run lint && npm run format:check && npm run check:source-hygiene && npm run check:frontend-boundaries && npm run build && npm run verify:production:tests",
     "verify:release": "npm run verify:production && npm run verify:production:platform && node --import tsx src/scripts/test-stage36.ts",
     "verify:plugin": "tsx src/scripts/verify-plugin-compat.ts",
     "test:filehistory": "tsx src/scripts/smoke-filehistory.ts",

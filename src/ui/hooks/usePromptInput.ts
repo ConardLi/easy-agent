@@ -11,7 +11,7 @@ import { readClipboardImage } from "../utils/screenshotClipboard.js";
 import { parsePastedImagePath, readImageAsBlock } from "../../tools/imageUtils.js";
 import { addPastedImage, imageRefToken } from "../../core/pastedImages.js";
 import type { ImageBlock } from "../../types/message.js";
-import { buildDefaultThinkingConfig, getSessionEffortLevel } from "../../utils/thinking.js";
+import type { EffortLevel } from "../../sdk/index.js";
 import { getNestedCommandSuggestions } from "../commandPalette.js";
 
 export interface ModeSuggestion {
@@ -72,7 +72,14 @@ interface UsePromptInputOptions {
   onToggleTranscript: () => void;
   /** Surface a transient notice (e.g. clipboard-image paste result). */
   onNotice?: (notice: { tone: "info" | "error"; title: string; body: string }) => void;
+  /** Thinking and effort the next request will use, for the /think and /effort selectors. */
+  getThinkingSettings?: () => { enabled: boolean; effort: EffortLevel | undefined };
 }
+
+const DEFAULT_THINKING_SETTINGS = (): { enabled: boolean; effort: EffortLevel | undefined } => ({
+  enabled: true,
+  effort: undefined,
+});
 
 const BUILTIN_COMMANDS: CommandSuggestion[] = [
   { name: "/help", description: "Show available commands" },
@@ -223,6 +230,7 @@ export function usePromptInput({
   onPermissionDecision,
   onToggleTranscript,
   onNotice,
+  getThinkingSettings = DEFAULT_THINKING_SETTINGS,
 }: UsePromptInputOptions) {
   const [selectedCommandIndex, setSelectedCommandIndex] = useState(-1);
   const [selectedModeIndex, setSelectedModeIndex] = useState(-1);
@@ -970,7 +978,7 @@ export function usePromptInput({
 
   const thinkSuggestions = useMemo(() => {
     if (!showThinkSelector) return [];
-    const currentOn = buildDefaultThinkingConfig().type !== "disabled";
+    const currentOn = getThinkingSettings().enabled;
     return THINK_OPTIONS.map((opt, i) => ({
       key: String(i + 1),
       mode: opt.value,
@@ -978,11 +986,11 @@ export function usePromptInput({
       isCurrent: (opt.value === "on") === currentOn,
       isSelected: i === selectedThinkIndex,
     }));
-  }, [showThinkSelector, selectedThinkIndex]);
+  }, [showThinkSelector, selectedThinkIndex, getThinkingSettings]);
 
   const effortSuggestions = useMemo(() => {
     if (!showEffortSelector) return [];
-    const current = getSessionEffortLevel();
+    const current = getThinkingSettings().effort;
     return EFFORT_OPTIONS.map((opt, i) => ({
       key: String(i + 1),
       mode: opt.value,
@@ -990,7 +998,7 @@ export function usePromptInput({
       isCurrent: opt.value === "auto" ? current === undefined : opt.value === current,
       isSelected: i === selectedEffortIndex,
     }));
-  }, [showEffortSelector, selectedEffortIndex]);
+  }, [showEffortSelector, selectedEffortIndex, getThinkingSettings]);
 
   const fileSuggestions: FileSuggestion[] = useMemo(() => {
     if (!showFileSuggestions) {

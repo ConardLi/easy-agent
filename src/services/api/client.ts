@@ -14,7 +14,16 @@ import { USER_AGENT } from "../../version.js";
 
 // ─── Default Configuration ─────────────────────────────────────────
 
-export const DEFAULT_MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514";
+const FALLBACK_MODEL = "claude-sonnet-4-20250514";
+
+/**
+ * The model used when nothing selects one. Read at call time so an
+ * `ANTHROPIC_MODEL` loaded from the workspace `.env` at startup applies even
+ * when this module was imported earlier.
+ */
+export function getDefaultModel(): string {
+  return process.env.ANTHROPIC_MODEL || FALLBACK_MODEL;
+}
 export const CAPPED_DEFAULT_MAX_TOKENS = 8_000;
 export const ESCALATED_MAX_TOKENS = 64_000;
 export const COMPACT_MAX_OUTPUT_TOKENS = 20_000;
@@ -139,7 +148,7 @@ export async function verifyApiKey(apiKey?: string): Promise<boolean> {
   try {
     const client = getAnthropicClient(apiKey ? { apiKey } : undefined);
     await client.messages.create({
-      model: DEFAULT_MODEL,
+      model: getDefaultModel(),
       max_tokens: 1,
       messages: [{ role: "user", content: "hi" }],
     });

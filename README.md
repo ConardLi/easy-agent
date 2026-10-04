@@ -60,7 +60,7 @@ On first use in a folder, Easy Agent asks whether you trust it. Then type a requ
 - Long-running work: TodoWrite, persistent task graphs, sub-agents, background runs, Git worktree isolation, and [Agent Teams](./docs/agent-teams.md)
 - Context and continuity: [durable persistence](./docs/persistence.md), resume, compaction, token budgets, project memory (`AGENTS.md` / `AGENT.md`), file checkpoints, and rewind
 - Extensibility: skills, custom agents, slash commands, output styles, hooks, MCP servers, plugins, and static marketplaces
-- Interfaces: interactive terminal UI, [headless text/JSON/NDJSON output](./docs/headless-output.md), images and screenshots, and multiple model protocols
+- Interfaces: interactive terminal UI, [headless text/JSON/NDJSON output](./docs/headless-output.md), an embeddable [session SDK](./docs/sdk.md) (`eagent/sdk`), images and screenshots, and multiple model protocols
 
 ## Supported platforms
 

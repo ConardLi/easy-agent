@@ -29,7 +29,9 @@ const projectRoot = fileURLToPath(new URL(".", import.meta.url));
  *     package.json at runtime.
  */
 export default defineConfig({
-  entry: { eagent: "src/entrypoint/cli.ts" },
+  // The CLI and the session SDK ship as two self-contained bundles: the SDK
+  // bundle leaves out the terminal UI, and `eagent/sdk` resolves to it.
+  entry: { eagent: "src/entrypoint/cli.ts", sdk: "src/sdk/index.ts" },
   outDir: "dist",
   format: ["esm"],
   platform: "node",
@@ -47,7 +49,13 @@ export default defineConfig({
   // Wipes any stale `tsc` output so the published dist/ only ever contains the
   // bundle. `prepack` runs this before every pack/publish.
   clean: true,
-  dts: false,
+  // Declarations for the SDK entry. Message types refer to `@anthropic-ai/sdk`,
+  // which TypeScript consumers install themselves (see docs/sdk.md).
+  dts: {
+    entry: { sdk: "src/sdk/index.ts" },
+    // tsup sets the deprecated `baseUrl` for the declaration build.
+    compilerOptions: { ignoreDeprecations: "6.0" },
+  },
   esbuildOptions(options) {
     // Keep the mappings, drop the embedded copies of all 1100+ original
     // sources: 14.1 MB → 3.6 MB. Stack traces still resolve to real

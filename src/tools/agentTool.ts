@@ -30,7 +30,7 @@ import { findAgent, getAllAgents } from "../agents/registry.js";
 import { randomUUID } from "node:crypto";
 import type { AgentIsolation, AgentRunResult } from "../agents/types.js";
 import type { Tool, ToolContext, ToolResult } from "./Tool.js";
-import { DEFAULT_MODEL } from "../services/api/client.js";
+import { getDefaultModel } from "../services/api/client.js";
 import type {
   PermissionDecision,
   PermissionMode,
@@ -331,9 +331,9 @@ export const agentTool: Tool = {
     //   1. Per-call override (input.model)
     //   2. Agent definition's `model` field
     //   3. Parent's active model (set by QueryEngine on the context)
-    //   4. DEFAULT_MODEL (env or hard-coded fallback)
+    //   4. the default model (ANTHROPIC_MODEL or the built-in fallback)
     const { resolveRoleModel } = await import("../config/features.js");
-    const fallbackModel = context.defaultModel || DEFAULT_MODEL;
+    const fallbackModel = context.defaultModel || getDefaultModel();
     const resolvedModel =
       model ||
       def.model ||
@@ -465,8 +465,8 @@ export const agentTool: Tool = {
       // any "ask" decision into an auto-deny with a workaround message.
       // Without this gating, a backgrounded sub-agent would:
       //
-      //   1. clobber the single-slot permissionResolverRef in
-      //      useAgentSession, deadlocking any foreground prompt;
+      //   1. compete with the foreground turn for the user's attention,
+      //      stalling any foreground prompt behind it;
       //   2. surface a prompt with no agentId, so the user has no way
       //      to know whose tool call they're approving;
       //   3. freeze InputPrompt (`Boolean(state.permissionPrompt)` is

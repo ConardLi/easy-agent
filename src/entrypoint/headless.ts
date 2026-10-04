@@ -2,29 +2,25 @@
  * Headless (print / pipe) mode.
  *
  * The non-interactive entry point: read a prompt from argv and/or stdin, run a
- * single QueryEngine turn to completion, render the outcome to stdout in the
+ * single session turn to completion, render the outcome to stdout in the
  * requested format, and exit with a status code derived from how the loop
  * terminated.
  *
- * This is the SDK-style entry: the whole Agentic Loop wrapped as a
- * stdin→stdout function for CI/CD, git hooks, and other-program integration.
- * It is a *second consumer* of the same QueryEngine event stream the REPL
- * (useAgentSession) consumes — no core-layer changes required.
+ * It is a thin frontend over the session SDK, like the interactive UI: the
+ * session is opened without a transcript, without background wake-ups, and
+ * without an interactive frontend, so every confirmation gets the safe
+ * default unless `--dangerously-skip-permissions` supplies an answer.
  */
 
 import type { MessageParam } from "@anthropic-ai/sdk/resources/messages.js";
-import { QueryEngine } from "../core/queryEngine.js";
-import type { LoopTerminationReason } from "../core/agenticLoop.js";
-import { loadPermissionSettings, type PermissionDecision, type PermissionMode } from "../permissions/permissions.js";
-import type { ToolContext } from "../tools/Tool.js";
-import type { Usage } from "../types/message.js";
-import { createSessionId } from "../session/storage.js";
-import { DEFAULT_MODEL } from "../services/api/client.js";
-import { readMergedStringSetting } from "../utils/settings.js";
-import { getToolsApiParams } from "../tools/index.js";
-import { BUILTIN_COMMAND_NAMES } from "../commands/builtinCommandNames.js";
-import { getAllAgents } from "../agents/registry.js";
-import { getActiveOutputStyleName } from "../styles/registry.js";
+import type {
+  AgentRuntime,
+  InteractionHandlers,
+  LoopTerminationReason,
+  PermissionMode,
+  SessionEvent,
+  Usage,
+} from "../sdk/index.js";
 import { installStreamJsonStdoutGuard } from "../utils/streamJsonStdoutGuard.js";
 
 /** Version of the public JSON / NDJSON envelope. Additive fields keep this stable. */
@@ -34,6 +30,8 @@ export const HEADLESS_SCHEMA_VERSION = 1;
 export type OutputFormat = "text" | "json" | "stream-json";
 
 export interface RunHeadlessOptions {
+  /** Bootstrapped workspace runtime. */
+  runtime: AgentRuntime;
   /** The prompt given as a positional/`-p` argument (may be empty). */
   promptArg?: string;
   /** Permission mode parsed from argv (`--auto` / `--plan` / `--permission-mode`). */
@@ -83,7 +81,10 @@ function buildInitMessage(params: {
   sessionId: string;
   model: string;
   permissionMode: PermissionMode;
+  tools: string[];
+  runtime: AgentRuntime;
 }): Record<string, unknown> {
+  const capabilities = params.runtime.getCapabilities();
   return {
     type: "system",
     subtype: "init",
@@ -91,10 +92,10 @@ function buildInitMessage(params: {
     session_id: params.sessionId,
     model: params.model,
     permissionMode: params.permissionMode,
-    tools: getToolsApiParams(params.permissionMode).map((t) => t.name),
-    slash_commands: [...BUILTIN_COMMAND_NAMES].sort(),
-    agents: getAllAgents().map((a) => a.agentType),
-    output_style: getActiveOutputStyleName(),
+    tools: params.tools,
+    slash_commands: capabilities.builtinCommands,
+    agents: capabilities.agents,
+    output_style: capabilities.outputStyle,
   };
 }
 
@@ -165,49 +166,31 @@ export async function runHeadless(options: RunHeadlessOptions): Promise<void> {
     process.exit(1);
   }
 
-  const cwd = process.cwd();
-  const sessionId = createSessionId();
+  const { runtime } = options;
+  const cwd = runtime.cwd;
 
-  const permissionSettings = await loadPermissionSettings(cwd);
-  const resolvedModel =
-    (await readMergedStringSetting(cwd, "model").catch(() => undefined)) ??
-    (await readMergedStringSetting(cwd, "defaultModel").catch(() => undefined)) ??
-    DEFAULT_MODEL;
-  const effectiveMode = options.permissionMode ?? permissionSettings.mode;
+  // The loop only asks for the `ask` outcome: settings allow/deny rules, the
+  // sandbox auto-allow gate, and the Auto Mode classifier have already
+  // decided by then, so those boundaries hold whatever the answer. Without a
+  // frontend every ask is denied (a residual ask in auto mode comes from a
+  // degrade path and must not be auto-approved either); only the explicit
+  // bypass flag approves it, once.
+  const handlers: InteractionHandlers | undefined = options.bypassPermissions
+    ? {
+        permission: () => ({ decision: "allow_once" }),
+        plan_approval: () => ({ decision: "approve" }),
+      }
+    : undefined;
 
-  const toolContext: ToolContext = {
-    cwd,
-    sessionId,
-    // No interactive frontend in headless mode: AskUserQuestion resolves null
-    // so the awaiting tool call unblocks instead of hanging.
-    requestUserQuestion: async () => null,
-  };
-
-  // Mode-aware non-interactive permission policy. The loop only invokes this
-  // callback for the `ask` outcome — settings `allow`/`deny` rules, the sandbox
-  // auto-allow gate, AND the auto-mode AI classifier are resolved earlier by
-  // `checkPermission`, so those security boundaries always hold regardless of
-  // what we return here.
-  //
-  //   - default / plan                   → `deny` (never block waiting for a TTY)
-  //   - auto                             → `deny` (in auto
-  //       mode the classifier already returns allow/deny directly; a residual
-  //       `ask` only comes from a degrade path — classifier blocked-too-often /
-  //       unavailable / EnterPlanMode — which must NOT be auto-approved here)
-  //   - --dangerously-skip-permissions   → `allow_once` (explicit bypass only)
-  //
-  // i.e. only the explicit bypass flag auto-approves; `--auto` no longer means
-  // "allow everything" (it means "let the classifier decide").
-  const autoApprove = options.bypassPermissions === true;
-  const onPermissionRequest = async (): Promise<PermissionDecision> => (autoApprove ? "allow_once" : "deny");
-
-  const engine = new QueryEngine({
-    model: resolvedModel,
-    toolContext,
-    permissionMode: effectiveMode,
-    permissionSettings,
-    onPermissionRequest,
+  const session = await runtime.createSession({
+    ...(options.permissionMode ? { permissionMode: options.permissionMode } : {}),
+    interactions: [],
+    ...(handlers ? { handlers } : {}),
+    autoWake: false,
+    persist: false,
   });
+  const initial = session.getState();
+  const sessionId = session.id;
 
   const format = options.outputFormat ?? "text";
   const startedAt = Date.now();
@@ -218,7 +201,16 @@ export async function runHeadless(options: RunHeadlessOptions): Promise<void> {
   // the init line as message #1.
   if (streaming) {
     installStreamJsonStdoutGuard();
-    writeJsonLine(buildInitMessage({ cwd, sessionId, model: resolvedModel, permissionMode: effectiveMode }));
+    writeJsonLine(
+      buildInitMessage({
+        cwd,
+        sessionId,
+        model: initial.model,
+        permissionMode: initial.permissionMode,
+        tools: session.getToolNames(),
+        runtime,
+      }),
+    );
   }
 
   let finalText = "";
@@ -227,39 +219,37 @@ export async function runHeadless(options: RunHeadlessOptions): Promise<void> {
   let numTurns = 0;
   let totalUsage: Usage = { ...EMPTY_USAGE };
 
-  try {
-    const run = engine.submitMessage(input);
-    while (true) {
-      const { value, done } = await run.next();
-      if (done) {
-        reason = value.reason;
+  const onEvent = (event: SessionEvent): void => {
+    switch (event.type) {
+      case "assistant_message": {
+        const text = extractAssistantText(event.message);
+        if (text.trim()) finalText = text;
+        if (streaming) writeJsonLine({ type: "assistant", session_id: sessionId, message: event.message });
         break;
       }
-      switch (value.type) {
-        case "assistant_message": {
-          const text = extractAssistantText(value.message);
-          if (text.trim()) finalText = text;
-          if (streaming) writeJsonLine({ type: "assistant", session_id: sessionId, message: value.message });
-          break;
-        }
-        case "tool_result_message":
-          if (streaming) writeJsonLine({ type: "user", session_id: sessionId, message: value.message });
-          break;
-        case "turn_complete":
-          numTurns = value.turnCount;
-          break;
-        case "usage_updated":
-          totalUsage = value.totalUsage;
-          break;
-        case "error":
-          executionError = value.error.message;
-          // Always to stderr so it never corrupts the stdout result payload.
-          process.stderr.write(`Error: ${executionError}\n`);
-          break;
-        default:
-          break;
-      }
+      case "tool_results":
+        if (streaming) writeJsonLine({ type: "user", session_id: sessionId, message: event.message });
+        break;
+      case "turn_completed":
+        if (event.toolTurns !== undefined) numTurns = event.toolTurns;
+        break;
+      case "usage_changed":
+        totalUsage = event.usage.total;
+        break;
+      case "error":
+        executionError = event.message;
+        // Always to stderr so it never corrupts the stdout result payload.
+        process.stderr.write(`Error: ${executionError}\n`);
+        break;
+      default:
+        break;
     }
+  };
+
+  try {
+    session.subscribe(onEvent);
+    const result = await session.send(input);
+    reason = result.reason;
   } catch (error) {
     // A thrown error never produced a clean result. The structured formats
     // (json / stream-json) still emit a valid `result` line so programmatic

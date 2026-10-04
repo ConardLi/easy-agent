@@ -1,0 +1,294 @@
+### text turn
+>>> submit "Say hello."
+  request #1
+    user: text(Say hello.)
+  state:
+    isLoading=false permissionMode=default model=fixture-model
+    notice=none
+    usage total=10/5
+    messages (2):
+      user: text(Say hello.)
+      assistant: text(Hello there.)
+  transcript:
+    session_meta model=fixture-model
+    message user [turn]: text(Say hello.)
+    file_history_snapshot files=[]
+    message assistant [turn]: text(Hello there.)
+    usage turn=10/5 total=10/5
+
+### tool call allowed once
+>>> submit "Create notes.txt."
+  permission_prompt tool=Write isPlanExit=false risk=Medium risk: writes files in the workspace rule=Write
+    summary: file_path=notes.txt, content=one
+>>> resolvePermission allow_once
+  notes.txt: one\n
+  request #1
+    user: text(Create notes.txt.)
+  request #2
+    user: text(Create notes.txt.)
+    assistant: tool_use(Write {"file_path":"notes.txt","content":"one\n"})
+    user: tool_result(Created file: <CWD>/notes.txt (4 chars))
+  state:
+    isLoading=false permissionMode=default model=fixture-model
+    notice=none
+    usage total=20/10
+    messages (4):
+      user: text(Create notes.txt.)
+      assistant: tool_use(Write {"file_path":"notes.txt","content":"one\n"})
+      user: tool_result(Created file: <CWD>/notes.txt (4 chars))
+      assistant: text(Wrote notes.txt.)
+  transcript:
+    session_meta model=fixture-model
+    message user [turn]: text(Create notes.txt.)
+    file_history_snapshot files=[]
+    tool_event start Write
+    message assistant [turn]: tool_use(Write {"file_path":"notes.txt","content":"one\n"})
+    file_history_snapshot files=[notes.txt]
+    tool_event done Write isError=false length=result
+    message user [turn]: tool_result(Created file: <CWD>/notes.txt (4 chars))
+    message assistant [turn]: text(Wrote notes.txt.)
+    usage turn=20/10 total=20/10
+
+### tool call denied
+>>> submit "Create denied.txt."
+>>> resolvePermission deny
+  request #1
+    user: text(Create denied.txt.)
+  request #2
+    user: text(Create denied.txt.)
+    assistant: tool_use(Write {"file_path":"denied.txt","content":"no\n"})
+    user: tool_result(error Permission denied for Write.)
+  state:
+    isLoading=false permissionMode=default model=fixture-model
+    notice=[error] Permission denied: Permission denied.
+    usage total=20/10
+    messages (4):
+      user: text(Create denied.txt.)
+      assistant: tool_use(Write {"file_path":"denied.txt","content":"no\n"})
+      user: tool_result(error Permission denied for Write.)
+      assistant: text(Understood, not writing it.)
+  transcript:
+    session_meta model=fixture-model
+    message user [turn]: text(Create denied.txt.)
+    file_history_snapshot files=[]
+    tool_event start Write
+    message assistant [turn]: tool_use(Write {"file_path":"denied.txt","content":"no\n"})
+    tool_event done Write isError=true length=result
+    message user [turn]: tool_result(error Permission denied for Write.)
+    message assistant [turn]: text(Understood, not writing it.)
+    usage turn=20/10 total=20/10
+
+### interrupt while a permission prompt is open
+>>> submit "Create interrupted.txt."
+>>> interrupt
+  interrupt() -> true
+  notice after interrupt: Permission request cancelled
+  request #1
+    user: text(Create interrupted.txt.)
+  request #2
+    user: text(Create interrupted.txt.)
+    assistant: tool_use(Write {"file_path":"interrupted.txt","content":"x\n"})
+    user: tool_result(error Permission denied for Write.)
+  state:
+    isLoading=false permissionMode=default model=fixture-model
+    notice=[info] Permission request cancelled: Use /exit, /quit, /bye, or Ctrl+D to exit.
+    usage total=20/10
+    messages (4):
+      user: text(Create interrupted.txt.)
+      assistant: tool_use(Write {"file_path":"interrupted.txt","content":"x\n"})
+      user: tool_result(error Permission denied for Write.)
+      assistant: text(Stopped as asked.)
+  transcript:
+    session_meta model=fixture-model
+    message user [turn]: text(Create interrupted.txt.)
+    file_history_snapshot files=[]
+    tool_event start Write
+    message assistant [turn]: tool_use(Write {"file_path":"interrupted.txt","content":"x\n"})
+    tool_event done Write isError=true length=result
+    message user [turn]: tool_result(error Permission denied for Write.)
+    message assistant [turn]: text(Stopped as asked.)
+    usage turn=20/10 total=20/10
+
+### AskUserQuestion answered
+>>> submit "Pick a color with me."
+  question_prompt Color: Which color? [Red|Blue]
+>>> resolveQuestion Which color?=Blue
+  request #1
+    user: text(Pick a color with me.)
+  request #2
+    user: text(Pick a color with me.)
+    assistant: tool_use(AskUserQuestion {"questions":[{"question":"Which color?","header":"Color","o…(105))
+    user: tool_result(User has answered your questions: "Which color?" = "Blue". Continue wi…(100))
+  state:
+    isLoading=false permissionMode=default model=fixture-model
+    notice=none
+    usage total=20/10
+    messages (4):
+      user: text(Pick a color with me.)
+      assistant: tool_use(AskUserQuestion {"questions":[{"question":"Which color?","header":"Color","o…(105))
+      user: tool_result(User has answered your questions: "Which color?" = "Blue". Continue wi…(100))
+      assistant: text(Blue it is.)
+  transcript:
+    session_meta model=fixture-model
+    message user [turn]: text(Pick a color with me.)
+    file_history_snapshot files=[]
+    tool_event start AskUserQuestion
+    message assistant [turn]: tool_use(AskUserQuestion {"questions":[{"question":"Which color?","header":"Color","o…(105))
+    tool_event done AskUserQuestion isError=false length=result
+    message user [turn]: tool_result(User has answered your questions: "Which color?" = "Blue". Continue wi…(100))
+    message assistant [turn]: text(Blue it is.)
+    usage turn=20/10 total=20/10
+
+### AskUserQuestion cancelled by interrupt
+>>> submit "Pick a size with me."
+>>> interrupt
+  interrupt() -> true
+  notice after interrupt: Question cancelled
+  request #1
+    user: text(Pick a size with me.)
+  request #2
+    user: text(Pick a size with me.)
+    assistant: tool_use(AskUserQuestion {"questions":[{"question":"Which size?","header":"Size","opt…(98))
+    user: tool_result(The user declined to answer the question(s).)
+  state:
+    isLoading=false permissionMode=default model=fixture-model
+    notice=[info] Question cancelled: Use /exit, /quit, /bye, or Ctrl+D to exit.
+    usage total=20/10
+    messages (4):
+      user: text(Pick a size with me.)
+      assistant: tool_use(AskUserQuestion {"questions":[{"question":"Which size?","header":"Size","opt…(98))
+      user: tool_result(The user declined to answer the question(s).)
+      assistant: text(No answer, moving on.)
+  transcript:
+    session_meta model=fixture-model
+    message user [turn]: text(Pick a size with me.)
+    file_history_snapshot files=[]
+    tool_event start AskUserQuestion
+    message assistant [turn]: tool_use(AskUserQuestion {"questions":[{"question":"Which size?","header":"Size","opt…(98))
+    tool_event done AskUserQuestion isError=false length=result
+    message user [turn]: tool_result(The user declined to answer the question(s).)
+    message assistant [turn]: text(No answer, moving on.)
+    usage turn=20/10 total=20/10
+
+(plan written to <HOME>/.easy-agent/plans/<SLUG>.md)
+
+### plan approved with context clear
+>>> submit "Plan the feature."
+  permission_prompt tool=ExitPlanMode isPlanExit=true risk=Medium risk: operation may change local state rule=ExitPlanMode
+    summary: summary=Add the feature
+    plan: 1. Add the feature.\n2. Add tests.\n @ <HOME>/.easy-agent/plans/<SLUG>.md
+>>> resolvePermission allow_clear_context
+  request #1
+    user: text([plan_mode_attachment]\n\nPLAN MODE ACTIVE — You are currently in plan mode.\n\nWorkflow:\…(1311))
+    user: text(Plan the feature.)
+  request #2
+    user: text(Implement the following plan:\n\n1. Add the feature.\n2. Add tests.)
+  state:
+    isLoading=false permissionMode=default model=fixture-model
+    notice=none
+    usage total=20/10
+    messages (2):
+      user: text(Implement the following plan:\n\n1. Add the feature.\n2. Add tests.)
+      assistant: text(Implementing the plan.)
+  transcript:
+    session_meta model=fixture-model
+    message user [turn]: text(Plan the feature.)
+    file_history_snapshot files=[]
+    tool_event start ExitPlanMode
+    message assistant [turn]: tool_use(ExitPlanMode {"summary":"Add the feature"})
+    tool_event done ExitPlanMode isError=false length=result
+    message user [turn]: tool_result(Plan approved by user. Full tool access restored.\n\nIMPORTANT: Immedi…(296))
+    usage turn=10/5 total=10/5
+    message user [turn]: text(Implement the following plan:\n\n1. Add the feature.\n2. Add tests.)
+    file_history_snapshot files=[]
+    message assistant [turn]: text(Implementing the plan.)
+    usage turn=10/5 total=20/10
+
+### plan rejected with feedback
+>>> submit "Plan the feature."
+>>> resolvePermission deny feedback=Write the tests first.
+  request #1
+    user: text([plan_mode_attachment]\n\nPLAN MODE ACTIVE — You are currently in plan mode.\n\nWorkflow:\…(1311))
+    user: text(Plan the feature.)
+  request #2
+    user: text([plan_mode_attachment]\n\nPLAN MODE ACTIVE — You are currently in plan mode.\n\nWorkflow:\…(1311))
+    user: text(Plan the feature.)
+    assistant: tool_use(ExitPlanMode {"summary":"Add the feature"})
+    user: tool_result(error Permission denied for ExitPlanMode.)
+  request #3
+    user: text([plan_mode_attachment]\n\nPLAN MODE ACTIVE — You are currently in plan mode.\n\nWorkflow:\…(1311))
+    user: text(Plan the feature.)
+    assistant: tool_use(ExitPlanMode {"summary":"Add the feature"})
+    user: tool_result(error Permission denied for ExitPlanMode.)
+    assistant: text(Noted, revising.)
+    user: text(User rejected the plan. Feedback: Write the tests first.\n\nPlease revise your plan based …(107))
+  state:
+    isLoading=false permissionMode=plan model=fixture-model
+    notice=none
+    usage total=30/15
+    messages (7):
+      user: text([plan_mode_attachment]\n\nPLAN MODE ACTIVE — You are currently in plan mode.\n\nWorkflow:\…(1311))
+      user: text(Plan the feature.)
+      assistant: tool_use(ExitPlanMode {"summary":"Add the feature"})
+      user: tool_result(error Permission denied for ExitPlanMode.)
+      assistant: text(Noted, revising.)
+      user: text(User rejected the plan. Feedback: Write the tests first.\n\nPlease revise your plan based …(107))
+      assistant: text(Revised plan with tests first.)
+  transcript:
+    session_meta model=fixture-model
+    message user [turn]: text(Plan the feature.)
+    file_history_snapshot files=[]
+    tool_event start ExitPlanMode
+    message assistant [turn]: tool_use(ExitPlanMode {"summary":"Add the feature"})
+    tool_event done ExitPlanMode isError=true length=result
+    message user [turn]: tool_result(error Permission denied for ExitPlanMode.)
+    message assistant [turn]: text(Noted, revising.)
+    usage turn=20/10 total=20/10
+    message user [turn]: text(User rejected the plan. Feedback: Write the tests first.\n\nPlease revise your plan based …(107))
+    file_history_snapshot files=[]
+    message assistant [turn]: text(Revised plan with tests first.)
+    usage turn=10/5 total=30/15
+
+### background notification wakes an idle session
+>>> enqueuePendingNotification
+  request #1
+    user: text([task-notification]\n<task-notification><status>completed</status><summary>Reviewer finish…(122))
+  state:
+    isLoading=false permissionMode=default model=fixture-model
+    notice=none
+    usage total=10/5
+    messages (2):
+      user: text([task-notification]\n<task-notification><status>completed</status><summary>Reviewer finish…(122))
+      assistant: text(The background reviewer found nothing.)
+  transcript:
+    session_meta model=fixture-model
+    file_history_snapshot files=[]
+    message assistant [turn]: text(The background reviewer found nothing.)
+    usage turn=10/5 total=10/5
+
+### resume
+  restored notice: Session restored: Resumed session <UUID> with 2 messages.
+>>> submit "Are you still there?"
+  request #1
+    user: text(Say hello.)
+    assistant: text(Hello there.)
+    user: text(Are you still there?)
+  state:
+    isLoading=false permissionMode=default model=fixture-model
+    notice=none
+    usage total=20/10
+    messages (4):
+      user: text(Say hello.)
+      assistant: text(Hello there.)
+      user: text(Are you still there?)
+      assistant: text(Still here.)
+  transcript:
+    session_meta model=fixture-model
+    message user [turn]: text(Say hello.)
+    file_history_snapshot files=[]
+    message assistant [turn]: text(Hello there.)
+    usage turn=10/5 total=10/5
+    message user [turn]: text(Are you still there?)
+    file_history_snapshot files=[]
+    message assistant [turn]: text(Still here.)
+    usage turn=10/5 total=20/10

@@ -32,11 +32,11 @@
 import type React from "react";
 import { useEffect, useState } from "react";
 import { Box, Text } from "ink";
-import type { AsyncAgentEntry } from "../../state/asyncAgentStore.js";
+import type { BackgroundAgentInfo } from "../../sdk/index.js";
 import { formatRecordLine, readTaskOutputEvents, type TaskOutputRecord } from "../../utils/taskOutputReader.js";
 
 interface TeammateViewerProps {
-  agent: AsyncAgentEntry;
+  agent: BackgroundAgentInfo;
 }
 
 const POLL_INTERVAL_MS = 1000;

@@ -21,7 +21,7 @@
  */
 
 import { useEffect, useState } from "react";
-import type { AsyncAgentEntry } from "../../state/asyncAgentStore.js";
+import type { BackgroundAgentInfo } from "../../sdk/index.js";
 import {
   closeTeammateView,
   getTeammateViewState,
@@ -30,7 +30,7 @@ import {
   type TeammateViewState,
 } from "../../state/teammateViewStore.js";
 
-export function useTeammateView(agents: AsyncAgentEntry[]): TeammateViewState {
+export function useTeammateView(agents: BackgroundAgentInfo[]): TeammateViewState {
   const [view, setView] = useState<TeammateViewState>(() => getTeammateViewState());
 
   useEffect(() => {

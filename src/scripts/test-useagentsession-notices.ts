@@ -18,7 +18,7 @@ import {
   apiRetryNotice,
   modeChangeNotice,
 } from "../ui/hooks/useAgentSession/notices.js";
-import { classifyUserInput } from "../ui/hooks/useAgentSession/inputClassification.js";
+import { classifyUserInput } from "../commands/inputClassification.js";
 import type { TokenWarningResult } from "../context/autoCompact.js";
 import type { ToolCallInfo } from "../ui/types.js";
 

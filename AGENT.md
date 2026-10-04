@@ -14,7 +14,7 @@ Easy Agent is a **terminal-native agentic coding CLI** published as the `eagent`
 The code is organized into five broad layers:
 
 1. **Interaction** — Ink/React terminal UI (`src/ui/`)
-2. **Orchestration** — multi-turn session flow, slash commands, usage/state (`src/commands/`, `src/session/`, parts of `src/core/`)
+2. **Orchestration** — the session SDK (`src/sdk/`: `AgentRuntime` bootstraps a workspace, `AgentSession` runs turns, records the transcript, and brokers permission/plan/question requests), multi-turn engine and slash commands (`src/core/queryEngine.ts`, `src/commands/`), persistence (`src/session/`). Conversation state lives in session scopes (`src/state/sessionScope.ts`); frontends (`src/ui/`, `src/entrypoint/`) reach it only through `src/sdk/`
 3. **Agentic loop** — reason → tool call → observe (`src/core/`, `src/agents/`)
 4. **Tooling** — file/shell/search/web/MCP/local tools with permissions and sandboxing (`src/tools/`, `src/permissions/`, `src/sandbox/`, `src/services/mcp/`)
 5. **Model communication** — provider profiles and streaming LLM I/O over `llm-bridge` (`src/services/api/`)
@@ -28,6 +28,8 @@ Tests are smoke/characterization scripts listed in `scripts/verify-production.ts
 - **Offline tests:** `npm test` runs the `core`, `extensions`, and `ui` groups (the same set as `verify:production`, without typecheck/lint/build). `npm test -- --list` prints them.
 - **Lint / format:** Biome, configured in `biome.jsonc`. `npm run lint` (errors and warnings fail) and `npm run format:check` are both part of `verify:production`; run `npm run format` before committing. Rules switched off in `biome.jsonc` carry a reason; keep it that way. The formatter collapses repeated spaces in JSX text, so write aligned text as a string expression: `<Text>{"  ↳ "}{label}</Text>`.
 - **Typecheck:** `npm run typecheck` → `tsc --noEmit`
+- **Frontend boundaries:** `npm run check:frontend-boundaries` (part of `verify:production`) rejects runtime imports of session internals (QueryEngine, agentic loop, session storage, `state/` stores, plan files, thinking, mailbox, permissions, Bash tool) from `src/ui/` and `src/entrypoint/`; use the SDK instead.
+- **Session SDK tests:** `npm run test:sdk` (contract) and `npm run test:interactive-session` (golden for the terminal session flow). Session-scoped state touched from a test outside a session must run in that session's scope (`runInScopeOf` in `src/sdk/session.ts`).
 - **Source hygiene:** `npm run check:source-hygiene` (part of `verify:production`) rejects roadmap stage numbers, development-plan references, reference-implementation pointers, and tutorial wording in `src/` (excluding `src/scripts/`). Legitimate matches go into `ALLOWED_MATCHES` in `scripts/check-source-hygiene.ts` with a reason.
 - **Build:** `npm run build` → `tsup` (outputs the bundled `dist/eagent.js` + sourcemap)
 - **Dev (no rebuild needed):** `npm run dev` → `tsx src/entrypoint/cli.ts`

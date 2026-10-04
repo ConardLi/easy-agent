@@ -21,10 +21,10 @@
 
 import type React from "react";
 import { Box, Text } from "ink";
-import type { AsyncAgentEntry } from "../../state/asyncAgentStore.js";
+import type { BackgroundAgentInfo } from "../../sdk/index.js";
 
 interface TeammatePickerProps {
-  agents: AsyncAgentEntry[];
+  agents: BackgroundAgentInfo[];
   selectedAgentId: string | null;
 }
 
@@ -43,7 +43,7 @@ function formatNumber(n: number): string {
   return `${(n / 1_000_000).toFixed(2)}m`;
 }
 
-function summarise(agent: AsyncAgentEntry, now: number): string {
+function summarise(agent: BackgroundAgentInfo, now: number): string {
   const parts: string[] = [];
   if (agent.toolUseCount > 0) {
     parts.push(`${agent.toolUseCount} tool${agent.toolUseCount === 1 ? "" : "s"}`);

@@ -1,7 +1,7 @@
 /**
  * Plan file management — create, read, and locate plan files on disk.
  *
- * Plans live in ~/.easy-agent/plans/ and use a random slug per session.
+ * Plans live in ~/.easy-agent/plans/ and use a random slug per session scope.
  * The model writes its plan to this file during plan mode; the user
  * can edit the file before approving exit.
  */
@@ -11,22 +11,25 @@ import * as path from "node:path";
 import * as crypto from "node:crypto";
 import { getPlansRoot } from "../utils/paths.js";
 import { ensurePrivateDirectory, writePrivateFile } from "../utils/privateData.js";
+import { defineSessionState } from "../state/sessionScope.js";
 
-let cachedSlug: string | null = null;
+/** Each session scope gets its own plan file, named on first use. */
+const planSlug = defineSessionState<{ value: string | null }>("planSlug", () => ({ value: null }));
 
 function generateSlug(): string {
   return crypto.randomBytes(4).toString("hex");
 }
 
 export function getPlanSlug(): string {
-  if (!cachedSlug) {
-    cachedSlug = generateSlug();
+  const slug = planSlug();
+  if (!slug.value) {
+    slug.value = generateSlug();
   }
-  return cachedSlug;
+  return slug.value;
 }
 
 export function resetPlanSlug(): void {
-  cachedSlug = null;
+  planSlug().value = null;
 }
 
 export function getPlansDirectory(): string {

@@ -60,7 +60,7 @@ eagent
 - 长任务：TodoWrite、持久化任务图、Sub-Agent、后台运行、Git Worktree 隔离、[Agent Teams](./docs/agent-teams.md)
 - 上下文与连续性：[可靠持久化](./docs/persistence.md)、Resume、上下文压缩、Token 预算、项目记忆（`AGENTS.md` / `AGENT.md`）、文件检查点和 Rewind
 - 扩展能力：Skills、自定义 Agent、Slash Commands、Output Styles、Hooks、MCP Server、插件和静态 Marketplace
-- 使用方式：交互式终端界面、[Headless text/JSON/NDJSON 输出](./docs/headless-output.md)、图片与截图、多种模型协议
+- 使用方式：交互式终端界面、[Headless text/JSON/NDJSON 输出](./docs/headless-output.md)、可嵌入其他程序的[会话 SDK](./docs/sdk.md)（`eagent/sdk`）、图片与截图、多种模型协议
 
 ## 支持的平台
 
