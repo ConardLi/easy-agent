@@ -9,7 +9,7 @@
 
 import type Anthropic from "@anthropic-ai/sdk";
 import type { MessageParam } from "@anthropic-ai/sdk/resources/messages.js";
-import { getAnthropicClientForProfile, DEFAULT_MODEL, DEFAULT_MAX_TOKENS } from "./client.js";
+import { getAnthropicClientForProfile, getDefaultModel, DEFAULT_MAX_TOKENS } from "./client.js";
 import { resolveProfile } from "./providers/profile.js";
 import { streamViaProvider, collectViaProvider } from "./providers/providerStream.js";
 import type {
@@ -121,7 +121,7 @@ async function* streamOnce(params: StreamRequestParams): AsyncGenerator<StreamEv
   // (OpenAI Chat/Responses, Gemini) are translated at the edge via llm-bridge;
   // the Anthropic path below is unchanged except it sources its client/model
   // from the (possibly synthetic) profile.
-  const profile = await resolveProfile(params.model ?? DEFAULT_MODEL);
+  const profile = await resolveProfile(params.model ?? getDefaultModel());
   if (profile.protocol !== "anthropic") {
     return yield* streamViaProvider(profile, params);
   }
@@ -462,7 +462,7 @@ async function* streamOnce(params: StreamRequestParams): AsyncGenerator<StreamEv
  */
 export async function* streamMessage(params: StreamRequestParams): AsyncGenerator<StreamEvent, StreamResult> {
   const maxRetries = getMaxRetries();
-  const model = params.model ?? DEFAULT_MODEL;
+  const model = params.model ?? getDefaultModel();
   let attempt = 0;
   let consecutive529 = 0;
 
@@ -552,7 +552,7 @@ function errorStreamResult(): StreamResult {
 export async function createMessage(
   params: Omit<StreamRequestParams, "signal">,
 ): Promise<{ content: ContentBlock[]; usage: Usage; stopReason: string }> {
-  const profile = await resolveProfile(params.model ?? DEFAULT_MODEL);
+  const profile = await resolveProfile(params.model ?? getDefaultModel());
 
   // Non-Anthropic profiles have no native non-streaming primitive here; drain
   // the translated provider stream into a single result, with the same

@@ -1,7 +1,7 @@
 import React from "react";
 import { spawnSync } from "node:child_process";
 import { Box, Static, Text, useApp, useStdin, useStdout } from "ink";
-import type { PermissionMode } from "../permissions/permissions.js";
+import type { AgentRuntime, PermissionMode } from "../sdk/index.js";
 import { BackgroundAgentBar } from "./components/BackgroundAgentBar.js";
 import { CommandSuggestions } from "./components/CommandSuggestions.js";
 import { FileSuggestions } from "./components/FileSuggestions.js";
@@ -37,19 +37,18 @@ import { useResumePicker } from "./hooks/useResumePicker.js";
 import { useMemoryPicker } from "./hooks/useMemoryPicker.js";
 import { useTeammateNavigation } from "./hooks/useTeammateNavigation.js";
 import { useTeammateView } from "./hooks/useTeammateViewState.js";
-import { getAllUserInvocableSkills } from "../services/skills/registry.js";
-import { getAllUserCommands } from "../commands/userCommands/registry.js";
 import type { CommandSuggestion } from "./types.js";
 import { VERSION } from "../version.js";
 
 interface AppProps {
+  runtime: AgentRuntime;
   model: string;
   permissionMode?: PermissionMode;
   shouldResume?: boolean;
   resumeSessionId?: string | null;
 }
 
-export function App({ model, permissionMode, shouldResume, resumeSessionId }: AppProps): React.ReactNode {
+export function App({ runtime, model, permissionMode, shouldResume, resumeSessionId }: AppProps): React.ReactNode {
   const { exit } = useApp();
   const { setRawMode, isRawModeSupported } = useStdin();
   const { write: writeStdout } = useStdout();
@@ -87,6 +86,7 @@ export function App({ model, permissionMode, shouldResume, resumeSessionId }: Ap
   );
 
   const { state, actions } = useAgentSession({
+    runtime,
     model,
     onExit: exit,
     permissionMode,
@@ -118,7 +118,7 @@ export function App({ model, permissionMode, shouldResume, resumeSessionId }: Ap
   // is an in-memory Map and we only render on existing state changes.
   const skillCommands: CommandSuggestion[] = React.useMemo(
     () =>
-      getAllUserInvocableSkills().map((skill) => ({
+      runtime.getCapabilities().skills.map((skill) => ({
         name: `/${skill.name}`,
         tag: "skill",
         description: skill.description.length > 80 ? `${skill.description.slice(0, 77)}…` : skill.description,
@@ -126,19 +126,19 @@ export function App({ model, permissionMode, shouldResume, resumeSessionId }: Ap
     // Re-derive whenever the message log grows — that's our cheap proxy
     // for "something happened that may have activated a skill". The list
     // is tiny so the cost is negligible.
-    [state.messages.length, state.toolCalls.length],
+    [runtime, state.messages.length, state.toolCalls.length],
   );
 
   // User-defined `/<name>` commands. Loaded once at startup so
   // a stable dependency array is fine here.
   const userCommands: CommandSuggestion[] = React.useMemo(
     () =>
-      getAllUserCommands().map((cmd) => ({
+      runtime.getCapabilities().userCommands.map((cmd) => ({
         name: `/${cmd.name}`,
         tag: "local",
         description: cmd.description.length > 80 ? `${cmd.description.slice(0, 77)}…` : cmd.description,
       })),
-    [],
+    [runtime],
   );
 
   const extraCommands = React.useMemo(() => [...skillCommands, ...userCommands], [skillCommands, userCommands]);
@@ -184,6 +184,7 @@ export function App({ model, permissionMode, shouldResume, resumeSessionId }: Ap
     onPermissionDecision: actions.resolvePermission,
     onToggleTranscript: actions.toggleTranscript,
     onNotice: actions.showNotice,
+    getThinkingSettings: actions.getThinkingSettings,
   });
 
   // Status line: context fed to an optional user-configured
@@ -237,6 +238,7 @@ export function App({ model, permissionMode, shouldResume, resumeSessionId }: Ap
   useTeammateNavigation({
     agents: state.asyncAgents,
     disabled: Boolean(state.permissionPrompt) || overlayActive,
+    onStopAgent: actions.stopBackgroundAgent,
   });
 
   // `/resume` session picker keyboard handler. Owns ↑↓/Enter/Esc

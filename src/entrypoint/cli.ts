@@ -235,117 +235,26 @@ Settings keys (in ~/.easy-agent/settings.json or <cwd>/.easy-agent/settings.json
     }
   }
 
-  const { isProjectTrusted } = await import("../config/globalState.js");
-  const projectTrusted = await isProjectTrusted(cwd);
-  const { loadEnv } = await import("../utils/loadEnv.js");
-  const environmentReport = await loadEnv(cwd);
-
-  if (!projectTrusted) {
-    const { detectRisks } = await import("../ui/trustGate.js");
-    const risks = await detectRisks(cwd);
-    if (risks.length > 0) {
-      console.warn(
-        `[easy-agent] Project configuration ignored in this untrusted workspace: ${risks.join(", ")}. ` +
-          "Use --trust-project-config to allow it for this invocation.",
-      );
-    }
-  }
-
-  const protectedOverrides = Object.values(environmentReport.protectedCredentialOverrides).reduce(
-    (total, count) => total + (count ?? 0),
-    0,
-  );
-  if (protectedOverrides > 0) {
-    console.warn(
-      `[easy-agent] Ignored ${protectedOverrides} project credential environment override(s); ` +
-        "credentials inherited from the parent process take precedence.",
-    );
-  }
-
   const resumeIndex = process.argv.indexOf("--resume");
   const resumeValue = resumeIndex !== -1 ? process.argv[resumeIndex + 1] : undefined;
   const resumeSessionId = resumeIndex !== -1 && resumeValue && !resumeValue.startsWith("--") ? resumeValue : null;
   const shouldResume = resumeIndex !== -1;
 
-  // Skills must load BEFORE we render anything (live REPL or
-  // --dump-system-prompt), because `buildSystemPrompt` reads the
-  // skill registry to inject the <system-reminder> discovery block.
-  // If we bootstrap after the dump branch, the dump shows an empty
-  // skills section and users assume the feature is broken.
-  const { bootstrapSkills } = await import("../services/skills/bootstrap.js");
-  await bootstrapSkills(process.cwd()).catch((error) => {
-    console.error(`[easy-agent] skills bootstrap failed: ${(error as Error).message}`);
-  });
-
-  // Agents — same reason as skills: the system prompt's
-  // <system-reminder> for available sub-agent types is built from the
-  // registry, so the registry has to be populated before any prompt
-  // rendering. Built-ins are synchronous; user/project agents come from
-  // disk so we await before continuing.
-  const { bootstrapAgents } = await import("../agents/bootstrap.js");
-  await bootstrapAgents(process.cwd()).catch((error) => {
-    console.error(`[easy-agent] agents bootstrap failed: ${(error as Error).message}`);
-  });
-
-  // Output styles — must load before any system-prompt render
-  // (live REPL or --dump-system-prompt) so the persisted `outputStyle`
-  // preference and any custom styles are reflected in the prompt.
-  const { bootstrapOutputStyles } = await import("../styles/bootstrap.js");
-  await bootstrapOutputStyles(process.cwd()).catch((error) => {
-    console.error(`[easy-agent] output-styles bootstrap failed: ${(error as Error).message}`);
-  });
-
-  // User-defined slash commands — loaded before the UI so the
-  // suggestion list + dispatch see them on frame 1.
-  const { bootstrapUserCommands } = await import("../commands/userCommands/bootstrap.js");
-  await bootstrapUserCommands(process.cwd()).catch((error) => {
-    console.error(`[easy-agent] commands bootstrap failed: ${(error as Error).message}`);
-  });
-
-  // Plugins — layer enabled plugins' skills/agents/commands/styles/
-  // hooks on top of the base registries. This runs AFTER the four bootstraps
-  // above so it is the final authority on registry contents. The prompt-facing
-  // components are awaited (needed frame 1); MCP servers are started later,
-  // fire-and-forget alongside bootstrapMcp, so a slow `npx` server never blocks
-  // the UI. `--plugin-dir <dir>` (repeatable) loads dev plugins from disk.
+  // Plugins: `--plugin-dir <dir>` (repeatable) loads dev plugins from disk.
   const pluginDirs: string[] = [];
   for (let i = 0; i < process.argv.length; i++) {
     if (process.argv[i] === "--plugin-dir" && process.argv[i + 1] && !process.argv[i + 1].startsWith("--")) {
       pluginDirs.push(process.argv[i + 1]);
     }
   }
-  const { refreshActivePlugins } = await import("../plugins/runtime.js");
-  await refreshActivePlugins(process.cwd(), { pluginDirs, applyMcp: false }).catch((error) => {
-    console.error(`[easy-agent] plugins bootstrap failed: ${(error as Error).message}`);
-  });
-
-  // Resolve the effective sandbox capability before the first Bash command so
-  // an unavailable security boundary is visible at startup.
-  try {
-    const { loadSandboxSettings, getSandboxCapability, getSandboxUnavailableReason } = await import(
-      "../sandbox/index.js"
-    );
-    const sandboxSettings = await loadSandboxSettings(process.cwd());
-    const capability = getSandboxCapability();
-    const reason = getSandboxUnavailableReason(sandboxSettings.enabled);
-    if (reason) {
-      console.warn(
-        `[easy-agent] ⚠ Sandbox unavailable: ${reason}. ` +
-          (sandboxSettings.failClosed
-            ? "Shell commands that require the sandbox will be blocked."
-            : "Shell commands will require normal permission checks and may run unsandboxed."),
-      );
-    } else if (sandboxSettings.enabled && capability.warnings.length > 0) {
-      console.warn(`[easy-agent] ⚠ Sandbox warnings: ${capability.warnings.join("; ")}`);
-    }
-  } catch (error) {
-    console.warn(
-      `[easy-agent] ⚠ ${error instanceof Error ? error.message : String(error)} ` +
-        "Shell commands will be blocked until the sandbox configuration is valid.",
-    );
-  }
+  // Trust and the flag settings layer are already settled above, and local
+  // data was hardened first thing, so the workspace bootstrap only loads.
+  const workspaceOptions = { cwd, pluginDirs, hardenPrivateData: false, services: false } as const;
 
   if (dumpSystemPrompt) {
+    // Only the prompt-facing bootstrap: nothing configured by the workspace runs.
+    const { loadWorkspace } = await import("../sdk/bootstrap.js");
+    await loadWorkspace(workspaceOptions);
     const { buildSystemPrompt, renderSystemPrompt } = await import("../context/systemPrompt.js");
     const systemParts = await buildSystemPrompt({ cwd });
     const system = renderSystemPrompt(systemParts);
@@ -353,92 +262,28 @@ Settings keys (in ~/.easy-agent/settings.json or <cwd>/.easy-agent/settings.json
     process.exit(0);
   }
 
-  // Tier 1 config — resolve trust-sensitive, execution-affecting
-  // settings now that the trust decision is settled:
-  //   - apiKeyHelper:         mint an auth token via a script (only if the env
-  //                           doesn't already provide one).
-  //   - additionalDirectories: widen the file-tool access boundary.
-  //   - cleanupPeriodDays:     prune old transcripts / disable persistence.
-  if (!process.env.ANTHROPIC_AUTH_TOKEN) {
-    const { resolveApiKeyFromHelper } = await import("../services/api/apiKeyHelper.js");
-    const token = await resolveApiKeyFromHelper(process.cwd());
-    if (token) process.env.ANTHROPIC_AUTH_TOKEN = token;
-  }
+  const { createAgentRuntime } = await import("../sdk/index.js");
+  const runtime = await createAgentRuntime(workspaceOptions);
 
+  // Terminal render preferences, read once like the other startup settings.
   {
-    const nodePath = await import("node:path");
-    const nodeOs = await import("node:os");
-    const { readTrustedStringArraySetting } = await import("../utils/settings.js");
-    const { setAdditionalAllowedRoots } = await import("../tools/pathUtils.js");
-    const raw = await readTrustedStringArraySetting(process.cwd(), "additionalDirectories").catch(() => []);
-    const resolved = raw.map((dir) => {
-      const expanded = dir.startsWith("~") ? dir.replace("~", nodeOs.homedir()) : dir;
-      return nodePath.resolve(process.cwd(), expanded);
-    });
-    setAdditionalAllowedRoots(resolved);
-  }
-
-  {
-    const { applySessionRetentionPolicy } = await import("../session/storage.js");
-    await applySessionRetentionPolicy(process.cwd()).catch(() => {});
-
-    // Prune stale file-history backups under the same retention
-    // policy (cleanupPeriodDays). Best-effort; never blocks startup.
-    const { cleanupOldFileHistoryBackups } = await import("../session/fileHistory.js");
-    await cleanupOldFileHistoryBackups(process.cwd()).catch(() => {});
-  }
-
-  // Tier 2 config — snapshot the toggles that sync hot paths consult:
-  //   - disableAllHooks:          master kill switch for hooks + statusLine.
-  //   - syntaxHighlightingDisabled / prefersReducedMotion: UI render prefs.
-  {
-    const { refreshHookDisableFromSettings } = await import("../hooks/settings.js");
-    await refreshHookDisableFromSettings(process.cwd()).catch(() => {});
-
     const { readMergedBooleanSetting } = await import("../utils/settings.js");
     const { setSyntaxHighlightingDisabled } = await import("../ui/markdown/highlight.js");
     const { setReducedMotion } = await import("../ui/motionPrefs.js");
     setSyntaxHighlightingDisabled(
-      (await readMergedBooleanSetting(process.cwd(), "syntaxHighlightingDisabled").catch(() => undefined)) === true,
+      (await readMergedBooleanSetting(cwd, "syntaxHighlightingDisabled").catch(() => undefined)) === true,
     );
-    setReducedMotion(
-      (await readMergedBooleanSetting(process.cwd(), "prefersReducedMotion").catch(() => undefined)) === true,
-    );
-
-    // Seed extended-thinking defaults from settings.json.
-    //   - alwaysThinkingEnabled: false → thinking off by default this session
-    //   - effortLevel: default output_config.effort for Anthropic models
-    const { loadTrustedSettingSources, getScalarSetting } = await import("../config/sources.js");
-    const { configureThinkingDefaults } = await import("../utils/thinking.js");
-    try {
-      const sources = await loadTrustedSettingSources(process.cwd());
-      const alwaysThinkingEnabled = getScalarSetting<boolean>(sources, "alwaysThinkingEnabled", {
-        predicate: (v) => typeof v === "boolean",
-      });
-      const effortLevel = getScalarSetting<string>(sources, "effortLevel", {
-        predicate: (v) => v === "low" || v === "medium" || v === "high" || v === "max",
-      });
-      configureThinkingDefaults({
-        ...(alwaysThinkingEnabled !== undefined ? { alwaysThinkingEnabled } : {}),
-        ...(effortLevel !== undefined ? { effortLevel: effortLevel as "low" | "medium" | "high" | "max" } : {}),
-      });
-    } catch {
-      // Non-fatal — thinking falls back to its adaptive default.
-    }
+    setReducedMotion((await readMergedBooleanSetting(cwd, "prefersReducedMotion").catch(() => undefined)) === true);
   }
 
-  // Headless / print mode forks here — AFTER the shared setup
-  // pipeline (bootstrap, apiKeyHelper, additionalDirectories, retention, hook
-  // toggles) but BEFORE any Ink rendering. It runs one turn and exits, so we
-  // never reach the interactive REPL below.
+  // Headless / print mode runs one turn and exits, so it never reaches the
+  // interactive REPL below. It has no later UI phase: plugin services are
+  // reconciled before the request so plugin MCP/LSP tools are usable.
   if (isPrintMode) {
-    // Headless has no later UI bootstrap phase; executable plugin services must
-    // be reconciled before the one request so plugin MCP/LSP tools are usable.
-    await refreshActivePlugins(process.cwd(), { pluginDirs }).catch((error) => {
-      console.error(`[easy-agent] plugin services bootstrap failed: ${(error as Error).message}`);
-    });
+    await runtime.startServices({ mcpServers: false, wait: true });
     const { runHeadless } = await import("./headless.js");
     await runHeadless({
+      runtime,
       promptArg: printPrompt,
       permissionMode,
       bypassPermissions,
@@ -450,8 +295,7 @@ Settings keys (in ~/.easy-agent/settings.json or <cwd>/.easy-agent/settings.json
   const React = await import("react");
   const { render } = await import("ink");
   const { App } = await import("../ui/App.js");
-  const { DEFAULT_MODEL } = await import("../services/api/client.js");
-  const { bootstrapMcp } = await import("../services/mcp/bootstrap.js");
+  const { getDefaultModel } = await import("../services/api/client.js");
   const { readMergedStringSetting } = await import("../utils/settings.js");
 
   // Resolve the model through the unified settings chain: flag (--model) →
@@ -462,31 +306,14 @@ Settings keys (in ~/.easy-agent/settings.json or <cwd>/.easy-agent/settings.json
   // `models` profile id or a raw model name. When no explicit `model` is set,
   // fall back to `defaultModel` (the multi-profile default) before the built-in.
   const resolvedModel =
-    (await readMergedStringSetting(process.cwd(), "model")) ??
-    (await readMergedStringSetting(process.cwd(), "defaultModel")) ??
-    DEFAULT_MODEL;
+    (await readMergedStringSetting(cwd, "model")) ??
+    (await readMergedStringSetting(cwd, "defaultModel")) ??
+    getDefaultModel();
 
-  // Kick off MCP server connections IN THE BACKGROUND. The bootstrap
-  // function seeds `pending` registry entries synchronously, then connects
-  // each server in parallel — a slow `npx -y @mcp/server-foo` cold-start
-  // (which can take 10–30s on first run while npm downloads the package)
-  // would otherwise leave the terminal black, because we wouldn't render
-  // the UI until it returned.
-  //
-  // Trade-off: if the user submits a query before MCP tools land, the
-  // model just doesn't see them yet. They'll appear on the next turn. In
-  // exchange the REPL is interactive from frame 1.
-  const { logWarn } = await import("../utils/log.js");
-  void bootstrapMcp(process.cwd()).catch((error) => {
-    logWarn(`MCP bootstrap failed: ${(error as Error).message}`);
-  });
-
-  // Bring up plugin-contributed MCP servers the same way — a second,
-  // non-blocking reconcile that starts their subprocesses without stalling the
-  // first frame. Prompt-facing plugin components were already applied above.
-  void refreshActivePlugins(process.cwd(), { pluginDirs }).catch((error) => {
-    logWarn(`plugin MCP bootstrap failed: ${(error as Error).message}`);
-  });
+  // MCP servers and plugin services connect in the background: a slow `npx`
+  // cold start would otherwise leave the terminal black. If the user submits
+  // before MCP tools land, the model sees them on the next turn.
+  await runtime.startServices({ mcpServers: true, wait: false });
 
   // Mark the UI as live BEFORE render() so any background warning that
   // resolves during/after the first frame (e.g. a slow MCP connect failing)
@@ -496,7 +323,7 @@ Settings keys (in ~/.easy-agent/settings.json or <cwd>/.easy-agent/settings.json
   setUiActive(true);
 
   const { waitUntilExit } = render(
-    React.createElement(App, { model: resolvedModel, permissionMode, resumeSessionId, shouldResume }),
+    React.createElement(App, { runtime, model: resolvedModel, permissionMode, resumeSessionId, shouldResume }),
     { exitOnCtrlC: false },
   );
   await waitUntilExit();

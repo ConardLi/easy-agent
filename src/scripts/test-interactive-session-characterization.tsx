@@ -124,6 +124,10 @@ process.env.ANTHROPIC_BASE_URL = `http://127.0.0.1:${(server.address() as Addres
 process.env.ANTHROPIC_AUTH_TOKEN = "fixture-token";
 
 const { render, Text } = await import("ink");
+const { createAgentRuntime } = await import("../sdk/index.js");
+const { runInScopeOf } = await import("../sdk/session.js");
+type AgentSession = import("../sdk/index.js").AgentSession;
+const runtime = await createAgentRuntime({ cwd, services: false });
 const { useAgentSession } = await import("../ui/hooks/useAgentSession.js");
 const { getLatestSessionId, getSessionPaths } = await import("../session/storage.js");
 const { writePlan, getPlanFilePath } = await import("../context/plans.js");
@@ -282,7 +286,7 @@ async function mount(props: Partial<SessionProps> = {}): Promise<{ unmount: () =
   stdout.columns = 100;
   stdout.rows = 40;
   stdout.on("data", () => {});
-  const instance = render(<Harness model={MODEL} onExit={() => {}} {...props} />, {
+  const instance = render(<Harness runtime={runtime} model={MODEL} onExit={() => {}} {...props} />, {
     stdout,
     patchConsole: false,
     exitOnCtrlC: false,
@@ -320,11 +324,13 @@ async function scenario(
   steps: ScriptStep[],
   run: () => Promise<void>,
   props: Partial<SessionProps> = {},
+  setup?: (session: AgentSession) => Promise<void>,
 ): Promise<string> {
+  const { unmount } = await mount(props);
+  if (setup) await setup(runtime.listOpenSessions()[0]!);
   out(`### ${name}`);
   script = [...steps];
   const firstRequest = requests.length;
-  const { unmount } = await mount(props);
   try {
     await run();
     const session = await settle();
@@ -460,10 +466,6 @@ async function buildRecording(): Promise<void> {
     },
   );
 
-  await writePlan("1. Add the feature.\n2. Add tests.\n");
-  out(`(plan written to ${normalize(getPlanFilePath())})`);
-  out();
-
   await scenario(
     "plan approved with context clear",
     [
@@ -479,6 +481,15 @@ async function buildRecording(): Promise<void> {
       await done;
     },
     { permissionMode: "plan" },
+    // The plan file belongs to the session, as when the model writes it in plan mode.
+    async (session) => {
+      const planPath = await runInScopeOf(session, async () => {
+        await writePlan("1. Add the feature.\n2. Add tests.\n");
+        return getPlanFilePath();
+      });
+      out(`(plan written to ${normalize(planPath)})`);
+      out();
+    },
   );
 
   await scenario(
@@ -505,10 +516,13 @@ async function buildRecording(): Promise<void> {
     async () => {
       const before = requests.length;
       out(">>> enqueuePendingNotification");
-      enqueuePendingNotification({
-        mode: "task-notification",
-        text: "<task-notification><status>completed</status><summary>Reviewer finished</summary></task-notification>",
-      });
+      // Background agents enqueue from the scope of the session that launched them.
+      runInScopeOf(runtime.listOpenSessions()[0]!, () =>
+        enqueuePendingNotification({
+          mode: "task-notification",
+          text: "<task-notification><status>completed</status><summary>Reviewer finished</summary></task-notification>",
+        }),
+      );
       await waitFor("auto-submitted turn", (s) => requests.length === before + 1 && !s.state.isLoading);
       await waitFor("assistant reply", (s) => s.state.messages.length >= 2);
     },
@@ -544,6 +558,7 @@ async function main(): Promise<void> {
     process.stderr.write(`Recording so far:\n${lines.join("\n")}\n\n`);
     throw error;
   } finally {
+    await runtime.dispose();
     server.close();
     process.chdir(os.tmpdir());
     await rm(root, { recursive: true, force: true });

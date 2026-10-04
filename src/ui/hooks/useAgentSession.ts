@@ -1,79 +1,65 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+/**
+ * useAgentSession — binds the terminal UI to one SDK session.
+ *
+ * The session (src/sdk) owns the conversation: turns, transcript, permission
+ * and question requests, plan follow-ups, and background wake-ups. This hook
+ * opens it, translates its events into React state, and turns key presses
+ * into session calls. What stays here is terminal presentation: streaming
+ * text throttling, tool cards, notices, overlays, screen clearing, and the
+ * `$EDITOR` hand-off.
+ */
+
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useStdout } from "ink";
 import type { MessageParam } from "@anthropic-ai/sdk/resources/messages.js";
-import { QueryEngine } from "../../core/queryEngine.js";
-import { INTERACTIVE_MAX_TOOL_TURNS } from "../../core/agenticLoop.js";
 import type {
-  ResumeSessionInfo,
   DiffViewData,
   MemoryPickerItem,
   PermissionsViewData,
-  PluginMutation,
   PluginViewData,
-} from "../../core/queryEngine.js";
+  ResumeSessionInfo,
+} from "../../core/queryEngine/types.js";
+import type { PluginMutation } from "../../core/queryEngine/commands/plugin.js";
 import type { SettingSource } from "../../config/sources.js";
+import type { PermissionDecision, PermissionMode } from "../../permissions/permissions.js";
 import type { PluginInstallPreview } from "../../plugins/install.js";
-import { buildTokenBudgetSnapshot } from "../../utils/tokens.js";
 import {
-  appendCompactionSnapshot,
-  appendTranscriptEntry,
-  createSessionId,
-  initSessionStorage,
-  restoreSession,
-  type FileHistorySnapshotRecord,
-} from "../../session/storage.js";
-import { configureFileHistory, restoreFileHistorySnapshots } from "../../session/fileHistory.js";
-import {
-  loadPermissionSettings,
-  type PermissionDecision,
-  type PermissionMode,
-  type PermissionRequest,
-  type PermissionRuleSet,
-  type PermissionSettings,
-} from "../../permissions/permissions.js";
-import {
-  toolResultText,
-  type ToolContext,
-  type UserQuestionRequest,
-  type UserQuestionResponse,
-} from "../../tools/Tool.js";
-import { readPlan, getPlanFilePath, getPlansDirectory } from "../../context/plans.js";
-import type { PermissionPromptState, SystemNotice, ToolCallInfo, UsageSummary } from "../types.js";
-import {
-  markToolCallComplete,
-  buildCommandNotice,
-  CLEAR_TERMINAL,
-  tokenWarningNotice,
-  turnCompleteNotice,
-  compactionNotice,
-  apiRetryNotice,
-  modeChangeNotice,
-} from "./useAgentSession/notices.js";
-import { classifyUserInput } from "./useAgentSession/inputClassification.js";
-import { formatToolInputPreview, extractBashOutput } from "../utils/toolCardFormat.js";
-import { bashTool } from "../../tools/bashTool.js";
-import { clearTodos, getTodos, subscribeTodos } from "../../state/todoStore.js";
-import type { TodoItem } from "../../types/todo.js";
-import { getTaskListId, getTeamTaskListId, listTasks, subscribeTasks } from "../../state/taskStore.js";
-import { getActiveTeam, subscribeActiveTeam } from "../../state/teamContext.js";
-import { hasPendingLeadMailboxSignal, subscribeMailboxWrites } from "../../utils/teammateMailbox.js";
-import {
-  clearAllSubAgentProgress,
-  getSubAgentProgress,
-  subscribeSubAgentProgress,
-} from "../../state/subAgentProgressStore.js";
-import { clearAllBashProgress, subscribeBashProgress } from "../../state/bashProgressStore.js";
-import { clearAllToolStatus, subscribeToolStatus } from "../../state/toolStatusStore.js";
+  type AgentRuntime,
+  type AgentSession,
+  type BackgroundAgentInfo,
+  INTERACTIVE_DEFAULT_MAX_TURNS,
+  type InteractionRequest,
+  isAgentSdkError,
+  type PlanApprovalResponse,
+  type PermissionResponse,
+  type SessionEvent,
+  type Task,
+  type TaskMode,
+  type TodoItem,
+  type ToolProgress,
+  type Usage,
+  type UserQuestion,
+} from "../../sdk/index.js";
 import { clearUiNotices } from "../../state/uiNoticeStore.js";
-import { clearAllMcpProgress, subscribeMcpProgress } from "../../state/mcpProgressStore.js";
-import { getAllAsyncAgents, subscribeAsyncAgents, type AsyncAgentEntry } from "../../state/asyncAgentStore.js";
-import { pendingNotificationCount, subscribePendingNotifications } from "../../state/notificationStore.js";
+import { toolResultText, type UserQuestionResponse } from "../../tools/Tool.js";
 import { loadSettingsDiagnostics } from "../../utils/settings.js";
 import { removeSandboxViolationTags } from "../../sandbox/index.js";
-import { getTaskMode, subscribeTaskMode, type TaskMode } from "../../state/taskModeStore.js";
-import type { Task } from "../../types/task.js";
+import { getPlansRoot } from "../../utils/paths.js";
+import type { PermissionPromptState, SystemNotice, ToolCallInfo, UsageSummary } from "../types.js";
+import {
+  apiRetryNotice,
+  buildCommandNotice,
+  CLEAR_TERMINAL,
+  compactionNotice,
+  markToolCallComplete,
+  modeChangeNotice,
+  tokenWarningNotice,
+  turnCompleteNotice,
+} from "./useAgentSession/notices.js";
+import { extractBashOutput, formatToolInputPreview } from "../utils/toolCardFormat.js";
 
 interface UseAgentSessionOptions {
+  runtime: AgentRuntime;
   model: string;
   onExit: () => void;
   permissionMode?: PermissionMode;
@@ -81,8 +67,8 @@ interface UseAgentSessionOptions {
   resumeSessionId?: string | null;
   /**
    * Launch `$EDITOR` on a memory file (`/memory edit <n>`). The UI
-   * owns the TTY, so the App provides this; the engine only emits the
-   * `open_editor` event with the resolved path. Returns whether the editor ran.
+   * owns the TTY, so the App provides this; the session only emits the
+   * `editor_requested` event with the resolved path. Returns whether the editor ran.
    */
   openEditor?: (filePath: string) => Promise<{ ok: boolean; error?: string }>;
 }
@@ -91,7 +77,55 @@ interface SubmitResult {
   handled: boolean;
 }
 
+const EXIT_HINT = "Use /exit, /quit, /bye, or Ctrl+D to exit.";
+const INTERRUPTED_NOTICE: SystemNotice = { tone: "info", title: "Interrupted", body: EXIT_HINT };
+/** Live output shown for a `!command`, in lines. */
+const SHELL_OUTPUT_LINES = 40;
+
+/** Card field each live progress kind is mirrored into. */
+const PROGRESS_FIELD = {
+  status: "status",
+  bash: "bashProgress",
+  mcp: "mcpProgress",
+  subagent: "subAgentProgress",
+} as const satisfies Record<ToolProgress["kind"], keyof ToolCallInfo>;
+
+function applyToolProgress(card: ToolCallInfo, progress: ToolProgress): ToolCallInfo {
+  const field = PROGRESS_FIELD[progress.kind];
+  const value = progress.kind === "status" ? progress.status : progress.progress;
+  if (value === null) {
+    const { [field]: _dropped, ...rest } = card;
+    return rest;
+  }
+  return { ...card, [field]: value };
+}
+
+/** Input tokens include cache writes and reads, so the footer shows what the request consumed. */
+function toUsageSummary(usage: Usage): { input: number; output: number } {
+  return {
+    input: usage.input_tokens + (usage.cache_creation_input_tokens ?? 0) + (usage.cache_read_input_tokens ?? 0),
+    output: usage.output_tokens,
+  };
+}
+
+/** Map a dialog decision onto the answer the pending request expects. */
+function toResponse(
+  request: InteractionRequest,
+  decision: PermissionDecision,
+  feedback?: string,
+): PermissionResponse | PlanApprovalResponse {
+  if (request.kind === "plan_approval") {
+    if (decision === "deny") return { decision: "reject", ...(feedback ? { feedback } : {}) };
+    if (decision === "allow_clear_context") return { decision: "approve", clearContext: true, acceptEdits: true };
+    if (decision === "allow_accept_edits") return { decision: "approve", acceptEdits: true };
+    return { decision: "approve" };
+  }
+  if (decision === "allow_always" || decision === "deny") return { decision };
+  return { decision: "allow_once" };
+}
+
 export function useAgentSession({
+  runtime,
   model,
   onExit,
   permissionMode,
@@ -108,13 +142,12 @@ export function useAgentSession({
   const [totalUsage, setTotalUsage] = useState<UsageSummary | null>(null);
   const [systemNotice, setSystemNotice] = useState<SystemNotice | null>(null);
   const [permissionPrompt, setPermissionPrompt] = useState<PermissionPromptState | null>(null);
-  const [questionPrompt, setQuestionPrompt] = useState<UserQuestionRequest | null>(null);
-  const [permissionSettings, setPermissionSettings] = useState<PermissionSettings | null>(null);
+  const [questionPrompt, setQuestionPrompt] = useState<{ questions: UserQuestion[] } | null>(null);
   const [currentModel, setCurrentModel] = useState(model);
   const [activePermissionMode, setActivePermissionMode] = useState<string>(permissionMode ?? "default");
   const [todos, setTodosState] = useState<TodoItem[]>([]);
   const [tasks, setTasksState] = useState<Task[]>([]);
-  const [taskMode, setTaskModeState] = useState<TaskMode>(getTaskMode());
+  const [taskMode, setTaskModeState] = useState<TaskMode>("task");
   // Ctrl+O transcript overlay: the inline conversation stays condensed (one-line
   // `⎿` summaries), and Ctrl+O opens a full-screen, scrollable, verbose
   // transcript rebuilt from the message log — so any past tool call can be
@@ -132,43 +165,24 @@ export function useAgentSession({
   const [permissionView, setPermissionView] = useState<PermissionsViewData | null>(null);
   // `/plugin` interactive manager overlay.
   const [pluginView, setPluginView] = useState<PluginViewData | null>(null);
-  // Live snapshot of the asyncAgentStore. The footer
-  // BackgroundAgentBar component reads this to show running background
-  // sub-agents (count + per-agent token / tool stats). We take a fresh
-  // snapshot via getAllAsyncAgents() on every store notification rather
-  // than mutating in place — gives us straightforward referential
-  // semantics for React to diff against.
-  const [asyncAgents, setAsyncAgents] = useState<AsyncAgentEntry[]>(() => getAllAsyncAgents());
+  // Background sub-agents of this session, for the footer BackgroundAgentBar.
+  const [asyncAgents, setAsyncAgents] = useState<BackgroundAgentInfo[]>([]);
 
-  const permissionResolverRef = useRef<((decision: PermissionDecision) => void) | null>(null);
-  // Resolver for the in-flight AskUserQuestion call (mirrors the permission
-  // resolver). `null` answers means the user cancelled / declined.
-  const questionResolverRef = useRef<((response: UserQuestionResponse | null) => void) | null>(null);
-  const pendingClearContextRef = useRef(false);
-  const pendingFeedbackRef = useRef<string | null>(null);
-  // Refs that the notification auto-trigger subscriber reads
-  // synchronously. State variables would be stale inside the subscriber
-  // closure (it's set up once on mount), so we mirror them into refs
-  // and update on every render via the useEffect below.
-  const isLoadingRef = useRef(false);
-  const autoWakeInFlightRef = useRef(false);
-  const wakeAutoRef = useRef<(() => void) | null>(null);
-  const permissionPromptRef = useRef<PermissionPromptState | null>(null);
-  const submitRef = useRef<((text: string) => Promise<SubmitResult>) | null>(null);
-  const sessionRulesRef = useRef<PermissionRuleSet>({ allow: [], deny: [] });
-  const engineRef = useRef<QueryEngine | null>(null);
-  const sessionIdRef = useRef<string>(createSessionId());
+  const sessionRef = useRef<AgentSession | null>(null);
+  // The request behind the open permission dialog / question dialog.
+  const permissionRequestRef = useRef<InteractionRequest | null>(null);
+  const questionRequestRef = useRef<InteractionRequest | null>(null);
+  // Submissions run one at a time; a busy session finishes its turn first.
+  const submitChainRef = useRef<Promise<unknown>>(Promise.resolve());
 
   // Ink's safe stdout writer (clears the live frame, writes, restores it).
-  // Mirrored into a ref because the engine-event consumer loop closes over an
-  // earlier render scope; the ref always points at the current writer.
+  // Mirrored into a ref because the session listener is created once.
   const { write: writeStdout } = useStdout();
   const writeStdoutRef = useRef(writeStdout);
   writeStdoutRef.current = writeStdout;
 
-  // Editor launcher (provided by App, which owns the TTY). Mirrored into a ref
-  // for the same reason as writeStdout — the event loop closes over an older
-  // render scope.
+  // Editor launcher (provided by App, which owns the TTY), mirrored for the
+  // same reason as writeStdout.
   const openEditorRef = useRef(openEditor);
   openEditorRef.current = openEditor;
 
@@ -198,284 +212,340 @@ export function useAgentSession({
 
   // Always release the timer on unmount so we don't leak across hot reloads.
   useEffect(() => () => cancelPendingText(), [cancelPendingText]);
-  // `sessionId` is exposed as a live getter so tools always see the
-  // current sessionIdRef value. This matters during /resume — the ref is
-  // mutated *after* this hook has memoized the toolContext, and a baked-in
-  // value would silently route TodoWrite writes to the old (orphan) key
-  // while the UI subscriber filters on the new sessionId, leaving the
-  // todo panel permanently empty.
-  const toolContext = useMemo<ToolContext>(
-    () => ({
-      cwd: process.cwd(),
-      get sessionId() {
-        return sessionIdRef.current;
-      },
-      // AskUserQuestion bridge: surface the questions to the UI and return a
-      // promise resolved by `resolveQuestion` once the user picks (or null on
-      // cancel). Same shape as the permission-prompt bridge above. setState
-      // and the resolver ref are stable, so an empty dep array is safe.
-      requestUserQuestion: (request: UserQuestionRequest) => {
-        setSpinnerLabel("Waiting for your answer");
-        setQuestionPrompt(request);
-        return new Promise<UserQuestionResponse | null>((resolve) => {
-          questionResolverRef.current = resolve;
-        });
-      },
-    }),
-    [],
-  );
 
-  // Subscribe to TodoWrite updates. The store is global, so we filter by
-  // our own sessionId. When the
-  // session is restored or cleared we also re-pull the snapshot.
-  useEffect(() => {
-    setTodosState(getTodos(sessionIdRef.current));
-    const unsubscribe = subscribeTodos((sid, next) => {
-      if (sid === sessionIdRef.current) {
-        setTodosState(next);
-      }
-    });
-    return unsubscribe;
+  const closeInteractionDialogs = useCallback(() => {
+    permissionRequestRef.current = null;
+    questionRequestRef.current = null;
+    setPermissionPrompt(null);
+    setQuestionPrompt(null);
   }, []);
 
-  // Subscribe to Task V2 updates. Tasks live on disk, so on mount we do
-  // one full listTasks to populate the initial view, then refresh every
-  // time the store fires a change event for our task list id. Each
-  // mutation already runs through the lock budget on the writer side,
-  // so the reader doesn't need its own synchronization.
-  useEffect(() => {
-    let cancelled = false;
-    const currentListId = () => {
-      const active = getActiveTeam();
-      return active ? getTeamTaskListId(active.teamName) : getTaskListId(sessionIdRef.current);
-    };
-    const refresh = async () => {
-      const taskListId = currentListId();
-      try {
-        const list = await listTasks(taskListId);
-        if (!cancelled && taskListId === currentListId()) setTasksState(list);
-      } catch {
-        // Ignore transient read errors — a future mutation will trigger
-        // another refresh that can succeed.
-      }
-    };
-    void refresh();
-    const unsubscribe = subscribeTasks((taskListId) => {
-      if (taskListId === currentListId()) {
-        void refresh();
-      }
-    });
-    const unsubscribeTeam = subscribeActiveTeam(() => {
-      void refresh();
-    });
-    return () => {
-      cancelled = true;
-      unsubscribe();
-      unsubscribeTeam();
-    };
-  }, []);
-
-  // Mirror the global task-mode store into local state so React re-renders
-  // when the user flips `/tasks task|todo`. The global store is still the
-  // source of truth — tools and permissions.ts read from it directly.
-  useEffect(() => {
-    setTaskModeState(getTaskMode());
-    return subscribeTaskMode((mode) => setTaskModeState(mode));
-  }, []);
-
-  // Mirror sub-agent progress (published by AgentTool while a sub-agent
-  // runs) into the matching ToolCallInfo card. Match is by tool_use id —
-  // see subAgentProgressStore.ts for the rationale. Without this bridge
-  // the parent's "Using tool: Agent" card would just sit there until the
-  // sub-agent finished, with no visibility into what it was doing.
-  useEffect(() => {
-    const unsubscribe = subscribeSubAgentProgress((toolUseId, snapshot) => {
-      setToolCalls((prev) =>
-        prev.map((tc) => {
-          if (tc.id !== toolUseId) return tc;
-          if (snapshot === null) {
-            // Entry was cleared — drop the per-card snapshot too so the
-            // (rare) re-render after archive doesn't keep stale data.
-            const { subAgentProgress: _drop, ...rest } = tc;
-            return rest;
+  // ─── Session events → UI state ──────────────────────────────────────────
+  const handleEvent = useCallback(
+    (event: SessionEvent): void => {
+      switch (event.type) {
+        case "state_snapshot":
+          setMessages(event.state.messages);
+          setTodosState(event.state.todos);
+          setTasksState(event.state.tasks);
+          setTaskModeState(event.state.taskMode);
+          setAsyncAgents(event.state.backgroundAgents);
+          setActivePermissionMode(event.state.permissionMode);
+          return;
+        case "turn_started": {
+          const isCompact = event.input.startsWith("/compact");
+          cancelPendingText();
+          setStreamingText("");
+          setToolCalls([]);
+          setSystemNotice(null);
+          // A new turn (or command) dismisses any open overlay.
+          setResumePicker(null);
+          setDiffView(null);
+          setMemoryPicker(null);
+          setPermissionView(null);
+          if (event.runsModel) setLastUsage(null);
+          setPermissionPrompt(null);
+          setIsLoading(event.runsModel || isCompact);
+          setSpinnerLabel(
+            isCompact
+              ? "Compacting"
+              : event.input.length === 0
+                ? "Background sub-agent finished — replying"
+                : "Thinking",
+          );
+          return;
+        }
+        case "turn_completed": {
+          if (event.reason !== undefined && event.toolTurns !== undefined) {
+            const notice = turnCompleteNotice(event.reason, event.toolTurns);
+            if (notice) setSystemNotice(notice);
           }
-          return { ...tc, subAgentProgress: snapshot };
-        }),
-      );
-    });
-    return unsubscribe;
-  }, []);
-
-  // Mirror live Bash output (published by BashTool while a command runs)
-  // into the matching ToolCallInfo card — same id-keyed bridge as the
-  // sub-agent progress above. Lets long-running commands show their tail.
-  useEffect(() => {
-    const unsubscribe = subscribeBashProgress((toolUseId, snapshot) => {
-      setToolCalls((prev) =>
-        prev.map((tc) => {
-          if (tc.id !== toolUseId) return tc;
-          if (snapshot === null) {
-            const { bashProgress: _drop, ...rest } = tc;
-            return rest;
+          // Approving a plan with a context clear interrupts the planning
+          // turn on purpose; the implementation turn follows.
+          if (event.reason === "aborted" && event.continuation !== "plan_followup") {
+            setSystemNotice(INTERRUPTED_NOTICE);
           }
-          return { ...tc, bashProgress: snapshot };
-        }),
-      );
-    });
-    return unsubscribe;
-  }, []);
-
-  useEffect(
-    () =>
-      subscribeMcpProgress((toolUseId, progress) => {
-        setToolCalls((previous) =>
-          previous.map((call) => {
-            if (call.id !== toolUseId) return call;
-            if (!progress) {
-              const { mcpProgress: _discard, ...rest } = call;
-              return rest;
-            }
-            return { ...call, mcpProgress: progress };
-          }),
-        );
-      }),
-    [],
-  );
-
-  // Mirror the live execution phase (queued → classifier → waiting-permission
-  // → running), published by the agentic loop's runOneToolBlock, into the
-  // matching card so the dot + sub-line reflect "what is this tool doing right
-  // now". Same id-keyed bridge as bash/sub-agent progress above.
-  useEffect(() => {
-    const unsubscribe = subscribeToolStatus((toolUseId, status) => {
-      setToolCalls((prev) =>
-        prev.map((tc) => {
-          if (tc.id !== toolUseId) return tc;
-          if (status === null) {
-            const { status: _drop, ...rest } = tc;
-            return rest;
+          setIsLoading(false);
+          closeInteractionDialogs();
+          return;
+        }
+        case "turn_failed":
+          setSystemNotice(
+            event.error.name === "AbortError"
+              ? INTERRUPTED_NOTICE
+              : { tone: "error", title: "Unhandled error", body: event.error.message },
+          );
+          setIsLoading(false);
+          closeInteractionDialogs();
+          return;
+        case "text_delta":
+          // Coalesce rapid SSE chunks into a 30ms window.
+          pendingTextRef.current += event.text;
+          if (!flushTimerRef.current) {
+            flushTimerRef.current = setTimeout(flushPendingText, 30);
           }
-          return { ...tc, status };
-        }),
-      );
-    });
-    return unsubscribe;
-  }, []);
-
-  // Subscribe to the async-agent store. Every register /
-  // progress / complete / fail / kill event fires the listener, and we
-  // re-snapshot the full registry to drive the BackgroundAgentBar.
-  // Re-snapshotting on every event is cheap — the registry holds at
-  // most a handful of agents per session.
-  useEffect(() => {
-    const unsubscribe = subscribeAsyncAgents(() => {
-      setAsyncAgents(getAllAsyncAgents());
-    });
-    // Pull the current snapshot once on mount so a session resume sees
-    // any agents that were already in flight.
-    setAsyncAgents(getAllAsyncAgents());
-    return unsubscribe;
-  }, []);
-
-  // Keep the auto-trigger refs in sync with current state.
-  // The subscribePendingNotifications listener (set up once on mount)
-  // reads these synchronously to decide whether the engine is idle.
-  useEffect(() => {
-    isLoadingRef.current = isLoading;
-  }, [isLoading]);
-  useEffect(() => {
-    permissionPromptRef.current = permissionPrompt;
-  }, [permissionPrompt]);
-
-  // Idle auto-resume after a background sub-agent finishes.
-  //
-  // When the parent loop is idle and the notification queue is
-  // non-empty, synthesise a submit so the model can react to the
-  // finished sub-agent without the user having to type. Without this
-  // hook, notifications would only be drained the next time the user
-  // typed something: a backgrounded reviewer finishes, the pill
-  // disappears, but the conversation stays silent.
-  //
-  // A subtle detail: when a notification arrives WHILE a turn is
-  // active, the listener's `isLoadingRef` check skips. The retry
-  // happens via the second useEffect below (depends on isLoading) —
-  // when the turn ends, isLoading flips false; if the queue still
-  // has entries (drained by the in-flight turn would have been a no-op
-  // because submitInternal drains at the *start* of the turn, before
-  // the notification arrived), we kick off another auto-trigger.
-  useEffect(() => {
-    let disposed = false;
-    let retryTimer: ReturnType<typeof setTimeout> | null = null;
-    const hasQueuedInput = () => {
-      const active = getActiveTeam();
-      return pendingNotificationCount() > 0 || (active !== null && hasPendingLeadMailboxSignal(active.teamName));
-    };
-    const wake = () => {
-      // Defer to a microtask so multiple back-to-back enqueues
-      // (e.g. two background agents finishing in the same tick) only
-      // trigger one auto-resume — the deferred handler sees the full
-      // queue and submitInternal drains it all at once.
-      queueMicrotask(() => {
-        if (disposed || autoWakeInFlightRef.current) return;
-        if (isLoadingRef.current) return;
-        if (permissionPromptRef.current) return;
-        if (!hasQueuedInput()) return;
-        const fn = submitRef.current;
-        if (!fn) return;
-        autoWakeInFlightRef.current = true;
-        void fn("")
-          .catch(() => {})
-          .finally(() => {
-            autoWakeInFlightRef.current = false;
-            if (!disposed && hasQueuedInput() && !retryTimer) {
-              retryTimer = setTimeout(() => {
-                retryTimer = null;
-                wake();
-              }, 1000);
-            }
+          return;
+        case "thinking_started":
+          // During the thinking stream we only surface a spinner; the finished
+          // thinking block renders (folded) from the committed message.
+          setSpinnerLabel("Thinking");
+          return;
+        case "thinking_delta":
+        case "thinking_completed":
+        case "redacted_thinking":
+          return;
+        case "tool_started":
+          setToolCalls((prev) => [
+            ...prev,
+            {
+              id: event.toolUseId,
+              name: event.name,
+              ...(event.subAgentProgress ? { subAgentProgress: event.subAgentProgress } : {}),
+            },
+          ]);
+          return;
+        case "tool_progress":
+          setToolCalls((prev) =>
+            prev.map((card) => (card.id === event.toolUseId ? applyToolProgress(card, event.progress) : card)),
+          );
+          return;
+        case "tool_completed": {
+          const resultText = toolResultText(event.result.content);
+          const isPlanFileWrite =
+            (event.name === "Write" || event.name === "Edit") && resultText.includes(getPlansRoot());
+          // The model-only <sandbox_violations> tag stays in the tool result
+          // the model sees; humans get clean stderr.
+          const errorMessage = event.result.isError && resultText ? removeSandboxViolationTags(resultText) : undefined;
+          setToolCalls((prev) =>
+            markToolCallComplete(prev, event.toolUseId, {
+              resultLength: resultText.length,
+              isError: event.result.isError,
+              displayName: isPlanFileWrite ? "Updated plan" : undefined,
+              displayHint: isPlanFileWrite ? "/plan to preview" : undefined,
+              inputPreview: formatToolInputPreview(event.input),
+              input: event.input,
+              errorMessage,
+            }),
+          );
+          return;
+        }
+        case "assistant_message":
+          // The full text is committed to `messages`; drop any unflushed chunk
+          // so it can't overwrite the cleared streaming line.
+          cancelPendingText();
+          setStreamingText("");
+          return;
+        case "tool_results":
+          setSpinnerLabel("Thinking");
+          setPermissionPrompt(null);
+          // Committed results render inline in the conversation from here on;
+          // dropping the live cards keeps the final text below its tool calls.
+          setToolCalls([]);
+          return;
+        case "messages_changed":
+          setMessages(event.messages);
+          return;
+        case "usage_changed": {
+          const { usage } = event;
+          const context = usage.context;
+          const contextFields = context ? { contextTokens: context.tokens, contextPercent: context.percent } : {};
+          if (usage.turn) setLastUsage({ ...toUsageSummary(usage.turn), ...contextFields });
+          setTotalUsage({ ...toUsageSummary(usage.total), ...contextFields });
+          return;
+        }
+        case "command_progress":
+          // Long-running local commands (plugin operations) report progress
+          // before their first await; a busy state gives Ink an animation
+          // source and guarantees the final result repaints.
+          setIsLoading(true);
+          setSpinnerLabel(event.spinnerLabel);
+          setSystemNotice({ tone: "info", title: event.title, body: event.message });
+          return;
+        case "command_output":
+          // Slash-command output is a blocking panel: it pins above the input,
+          // suppresses typing, and waits for Esc.
+          setIsLoading(false);
+          setSystemNotice({ ...buildCommandNotice(event.message, event.kind), dismissable: true });
+          return;
+        case "notice":
+          // Transient feedback that never hides the input.
+          setSystemNotice({ tone: event.tone, title: event.title, body: event.body });
+          return;
+        case "command_view":
+          switch (event.view.type) {
+            case "resume_picker":
+              setResumePicker(event.view.sessions);
+              setResumePickerIndex(0);
+              return;
+            case "diff":
+              setDiffView(event.view.data);
+              return;
+            case "memory_picker":
+              setMemoryPicker(event.view.items);
+              setMemoryPickerIndex(0);
+              return;
+            case "permissions":
+              setPermissionView(event.view.data);
+              return;
+            case "plugins":
+              setIsLoading(false);
+              setSystemNotice(null);
+              setPluginView(event.view.data);
+              return;
+          }
+          return;
+        case "editor_requested": {
+          const launcher = openEditorRef.current;
+          if (!launcher) {
+            setSystemNotice({
+              tone: "error",
+              title: "Cannot open editor",
+              body: "No editor handler is available in this session.",
+            });
+            return;
+          }
+          void launcher(event.filePath).then((result) => {
+            setSystemNotice(
+              result.ok
+                ? { tone: "info", title: "Memory file saved", body: `Edited ${event.label}\n${event.filePath}` }
+                : {
+                    tone: "error",
+                    title: "Editor did not complete",
+                    body: result.error ?? "Unknown error opening the editor.",
+                  },
+            );
           });
-      });
-    };
-    wakeAutoRef.current = wake;
-    const unsubscribe = subscribePendingNotifications(wake);
-    const unsubscribeMailbox = subscribeMailboxWrites((recipient, teamName) => {
-      if (recipient === "team-lead" && getActiveTeam()?.teamName === teamName) wake();
-    });
-    return () => {
-      disposed = true;
-      if (retryTimer) clearTimeout(retryTimer);
-      wakeAutoRef.current = null;
-      unsubscribe();
-      unsubscribeMailbox();
-    };
-  }, []);
+          return;
+        }
+        case "compacted":
+          setSystemNotice(compactionNotice(event.trigger));
+          return;
+        case "model_changed":
+          setCurrentModel(event.model);
+          return;
+        case "mode_changed":
+          setActivePermissionMode(event.mode);
+          setSystemNotice(modeChangeNotice(event.mode));
+          return;
+        case "task_mode_changed":
+          setTaskModeState(event.mode);
+          return;
+        case "todos_changed":
+          setTodosState(event.todos);
+          return;
+        case "tasks_changed":
+          setTasksState(event.tasks);
+          return;
+        case "background_agents_changed":
+          setAsyncAgents(event.agents);
+          return;
+        case "session_cleared":
+          cancelPendingText();
+          setMessages([]);
+          setStreamingText("");
+          setToolCalls([]);
+          setLastUsage(null);
+          clearUiNotices();
+          // Wipe the terminal so the previous conversation is gone from the
+          // screen and scrollback; the live frame Ink restores afterwards is
+          // the empty post-clear UI.
+          writeStdoutRef.current?.(CLEAR_TERMINAL);
+          return;
+        case "session_replaced": {
+          // `/resume <id>` moved the conversation to another session: use the
+          // new handle from now on (this listener keeps receiving events).
+          sessionRef.current = runtime.getSession(event.sessionId) ?? sessionRef.current;
+          cancelPendingText();
+          setStreamingText("");
+          setToolCalls([]);
+          clearUiNotices();
+          setResumePicker(null);
+          setDiffView(null);
+          setMemoryPicker(null);
+          setPermissionView(null);
+          // Repaint the restored conversation cleanly. Ink's <Static> only
+          // resets its print cursor when the item count DROPS, so we blank the
+          // list first (commit 1 → Static resets), wipe the terminal, then
+          // restore the messages on a later tick (commit 2 → Static reprints
+          // from a clean slate).
+          setMessages([]);
+          setTotalUsage({ input: event.totalUsage.input_tokens, output: event.totalUsage.output_tokens });
+          setLastUsage(null);
+          writeStdoutRef.current?.(CLEAR_TERMINAL);
+          const restoredMessages = event.messages;
+          setTimeout(() => setMessages(restoredMessages), 0);
+          return;
+        }
+        case "request_opened": {
+          const { request } = event;
+          if (request.kind === "question") {
+            questionRequestRef.current = request;
+            setSpinnerLabel("Waiting for your answer");
+            setQuestionPrompt({ questions: request.questions });
+            return;
+          }
+          permissionRequestRef.current = request;
+          const isPlanExit = request.kind === "plan_approval";
+          setSpinnerLabel(isPlanExit ? "Waiting for plan approval" : "Waiting for permission");
+          setPermissionPrompt({
+            toolName: request.toolName,
+            summary: request.summary,
+            risk: request.risk,
+            ruleHint: request.ruleHint,
+            input: request.input,
+            isPlanExit,
+            planContent: isPlanExit ? (request.planContent ?? undefined) : undefined,
+            planFilePath: isPlanExit ? request.planFilePath : undefined,
+          });
+          return;
+        }
+        case "request_resolved":
+          if (permissionRequestRef.current?.id === event.requestId) {
+            permissionRequestRef.current = null;
+            setPermissionPrompt(null);
+          }
+          if (questionRequestRef.current?.id === event.requestId) {
+            questionRequestRef.current = null;
+            setQuestionPrompt(null);
+          }
+          return;
+        case "token_warning": {
+          const notice = tokenWarningNotice(event.warning);
+          if (notice) setSystemNotice(notice);
+          return;
+        }
+        case "api_retry":
+          // Backing off before a retry: show the countdown so the user knows
+          // we're retrying, not hung.
+          setSpinnerLabel("Retrying");
+          setSystemNotice(apiRetryNotice(event));
+          return;
+        case "stream_restart":
+          // The turn re-runs (max_tokens escalation or reactive compact); drop
+          // partially streamed text so the re-run renders cleanly.
+          cancelPendingText();
+          setStreamingText("");
+          if (event.reason === "reactive_compact") {
+            setSystemNotice({
+              tone: "info",
+              title: "Context compacted",
+              body: "The prompt exceeded the context window — history was summarized and the request retried.",
+            });
+          }
+          return;
+        case "error":
+          setSystemNotice({ tone: "error", title: "Agent error", body: event.message });
+          return;
+      }
+    },
+    [runtime, cancelPendingText, flushPendingText, closeInteractionDialogs],
+  );
 
-  // Retry-on-idle: if a notification was enqueued while we were busy,
-  // the listener above bailed out. As soon as we transition back to
-  // idle, sweep the queue. (No-op when queue is empty.)
+  // A malformed settings.json degrades to "ignored" rather than crashing the
+  // CLI — surface a single non-fatal notice so the user knows their config
+  // isn't being applied and where to fix it.
   useEffect(() => {
-    if (isLoading) return;
-    if (permissionPrompt) return;
-    const active = getActiveTeam();
-    if (pendingNotificationCount() === 0 && !(active && hasPendingLeadMailboxSignal(active.teamName))) return;
-    wakeAutoRef.current?.();
-  }, [isLoading, permissionPrompt]);
-
-  useEffect(() => {
-    const cwd = process.cwd();
-    void loadPermissionSettings(cwd)
-      .then(setPermissionSettings)
-      .catch((error: unknown) => {
-        setSystemNotice({
-          tone: "error",
-          title: "Permission settings error",
-          body: error instanceof Error ? error.message : String(error),
-        });
-      });
-    // A malformed settings.json degrades to "ignored" rather than crashing the
-    // CLI — surface a single non-fatal notice so the user knows their config
-    // isn't being applied and where to fix it.
-    void loadSettingsDiagnostics(cwd)
+    void loadSettingsDiagnostics(runtime.cwd)
       .then((errors) => {
         if (errors.length === 0) return;
         setSystemNotice({
@@ -485,183 +555,97 @@ export function useAgentSession({
         });
       })
       .catch(() => {});
-  }, []);
+  }, [runtime]);
 
+  // ─── Open (or resume) the session ───────────────────────────────────────
   useEffect(() => {
-    if (!permissionSettings) return;
-
     let cancelled = false;
+    let unsubscribe: (() => void) | null = null;
+    let opened: AgentSession | null = null;
+    const options = {
+      model,
+      defaultMaxTurns: INTERACTIVE_DEFAULT_MAX_TURNS,
+      ...(permissionMode ? { permissionMode } : {}),
+    };
 
-    const initialize = async () => {
+    void (async () => {
       try {
-        let initialMessages: MessageParam[] = [];
-        let initialUsage = { input_tokens: 0, output_tokens: 0 };
-        let restoredFileHistory: FileHistorySnapshotRecord[] = [];
-
+        const session = shouldResume
+          ? await runtime.resumeSession(resumeSessionId ?? undefined, options)
+          : await runtime.createSession(options);
+        if (cancelled) {
+          void session.close();
+          return;
+        }
+        opened = session;
+        sessionRef.current = session;
+        unsubscribe = session.subscribe(handleEvent);
         if (shouldResume) {
-          const restored = await restoreSession(toolContext.cwd, resumeSessionId ?? undefined);
-          if (cancelled) return;
-          sessionIdRef.current = restored.summary.sessionId;
-          initialMessages = restored.messages;
-          initialUsage = restored.summary.totalUsage;
-          restoredFileHistory = restored.fileHistorySnapshots;
-          setMessages(restored.messages);
-          setTotalUsage({
-            input: restored.summary.totalUsage.input_tokens,
-            output: restored.summary.totalUsage.output_tokens,
-          });
+          const state = session.getState();
+          setTotalUsage({ input: state.usage.total.input_tokens, output: state.usage.total.output_tokens });
           setSystemNotice({
             tone: "info",
             title: "Session restored",
-            body: `Resumed session ${restored.summary.sessionId} with ${restored.summary.messageCount} messages.`,
-          });
-        } else {
-          const startedAt = new Date().toISOString();
-          await initSessionStorage({
-            sessionId: sessionIdRef.current,
-            cwd: toolContext.cwd,
-            startedAt,
-            updatedAt: startedAt,
-            model,
+            body: `Resumed session ${session.id} with ${state.messages.length} messages.`,
           });
         }
-
-        // Bind file-history to this session (reads the
-        // checkpointingEnabled setting + sets the backup dir / cwd), then
-        // fold any persisted snapshots back in so /rewind survives --resume.
-        await configureFileHistory(toolContext.cwd, sessionIdRef.current);
-        if (restoredFileHistory.length > 0) {
-          restoreFileHistorySnapshots(restoredFileHistory);
-        }
-
-        const engine = new QueryEngine({
-          model,
-          toolContext,
-          initialMessages,
-          initialUsage,
-          permissionMode: permissionMode ?? permissionSettings.mode,
-          permissionSettings,
-          sessionPermissionRules: sessionRulesRef.current,
-          defaultMaxTurns: INTERACTIVE_MAX_TOOL_TURNS,
-          onPermissionRequest: async (request: PermissionRequest) => {
-            const isPlanExit = request.toolName === "ExitPlanMode";
-            setSpinnerLabel(isPlanExit ? "Waiting for plan approval" : "Waiting for permission");
-
-            let planContent: string | undefined;
-            let planFilePath: string | undefined;
-            if (isPlanExit) {
-              planContent = (await readPlan()) ?? undefined;
-              planFilePath = getPlanFilePath();
-            }
-
-            setPermissionPrompt({
-              toolName: request.toolName,
-              summary: request.summary,
-              risk: request.risk,
-              ruleHint: request.ruleHint,
-              input: request.input,
-              isPlanExit,
-              planContent,
-              planFilePath,
-            });
-            return new Promise<PermissionDecision>((resolve) => {
-              permissionResolverRef.current = resolve;
-            });
-          },
-        });
-        engine.onModeChange((newMode, previousMode) => {
-          setActivePermissionMode(newMode);
-          setSystemNotice(modeChangeNotice(newMode));
-        });
-        engineRef.current = engine;
         setCurrentModel(model);
       } catch (error: unknown) {
         if (cancelled) return;
         setSystemNotice({
           tone: "error",
-          title: "Session restore error",
+          title: isAgentSdkError(error, "permission_settings") ? "Permission settings error" : "Session restore error",
           body: error instanceof Error ? error.message : String(error),
         });
       }
-    };
-
-    void initialize();
+    })();
 
     return () => {
       cancelled = true;
+      unsubscribe?.();
+      // `/resume` may have replaced the handle; close whichever is current.
+      const current = sessionRef.current;
+      if (current && opened) void current.close();
+      sessionRef.current = null;
     };
-  }, [model, permissionMode, permissionSettings, resumeSessionId, shouldResume, toolContext]);
+  }, [runtime, model, permissionMode, resumeSessionId, shouldResume, handleEvent]);
+
+  // ─── Actions ────────────────────────────────────────────────────────────
 
   const interrupt = useCallback(() => {
-    if (permissionResolverRef.current) {
-      permissionResolverRef.current("deny");
-      permissionResolverRef.current = null;
-      setPermissionPrompt(null);
-      setSystemNotice({
-        tone: "info",
-        title: "Permission request cancelled",
-        body: "Use /exit, /quit, /bye, or Ctrl+D to exit.",
-      });
-      return true;
+    const outcome = sessionRef.current?.interrupt() ?? "idle";
+    switch (outcome) {
+      case "permission_denied":
+        permissionRequestRef.current = null;
+        setPermissionPrompt(null);
+        setSystemNotice({ tone: "info", title: "Permission request cancelled", body: EXIT_HINT });
+        break;
+      case "question_cancelled":
+        // The tool receives a "declined to answer" result.
+        questionRequestRef.current = null;
+        setQuestionPrompt(null);
+        setSystemNotice({ tone: "info", title: "Question cancelled", body: EXIT_HINT });
+        break;
+      case "idle":
+        setSystemNotice({ tone: "info", title: "Nothing to interrupt", body: EXIT_HINT });
+        break;
+      case "turn_aborted":
+        setIsLoading(false);
+        cancelPendingText();
+        setStreamingText("");
+        setSystemNotice(INTERRUPTED_NOTICE);
+        break;
     }
-
-    // An in-flight AskUserQuestion → cancel it (the tool gets a null answer).
-    if (questionResolverRef.current) {
-      questionResolverRef.current(null);
-      questionResolverRef.current = null;
-      setQuestionPrompt(null);
-      setSystemNotice({
-        tone: "info",
-        title: "Question cancelled",
-        body: "Use /exit, /quit, /bye, or Ctrl+D to exit.",
-      });
-      return true;
-    }
-
-    if (!engineRef.current?.interrupt()) {
-      setSystemNotice({
-        tone: "info",
-        title: "Nothing to interrupt",
-        body: "Use /exit, /quit, /bye, or Ctrl+D to exit.",
-      });
-      return true;
-    }
-
-    setIsLoading(false);
-    cancelPendingText();
-    setStreamingText("");
-    setSystemNotice({
-      tone: "info",
-      title: "Interrupted",
-      body: "Use /exit, /quit, /bye, or Ctrl+D to exit.",
-    });
     return true;
   }, [cancelPendingText]);
 
   const resolvePermission = useCallback((decision: PermissionDecision, feedback?: string) => {
-    if (!permissionResolverRef.current) return false;
+    const request = permissionRequestRef.current;
+    const session = sessionRef.current;
+    if (!request || !session) return false;
+    if (session.respond(request.id, toResponse(request, decision, feedback)) === "stale") return false;
 
-    const autoAcceptRules = ["Write", "Edit", "Bash(npm *)", "Bash(npx *)"];
-
-    if (decision === "allow_clear_context") {
-      pendingClearContextRef.current = true;
-      sessionRulesRef.current.allow.push(...autoAcceptRules);
-      permissionResolverRef.current("allow_once");
-      // Abort the loop immediately after ExitPlanMode runs,
-      // so the model doesn't start implementing in the same loop.
-      // The clear-context flow will submit a fresh "Implement" message.
-      engineRef.current?.interrupt();
-    } else if (decision === "allow_accept_edits") {
-      sessionRulesRef.current.allow.push(...autoAcceptRules);
-      permissionResolverRef.current("allow_once");
-    } else if (decision === "deny" && feedback) {
-      pendingFeedbackRef.current = feedback;
-      permissionResolverRef.current("deny");
-    } else {
-      permissionResolverRef.current(decision);
-    }
-
-    permissionResolverRef.current = null;
+    permissionRequestRef.current = null;
     setPermissionPrompt(null);
 
     if (decision === "deny" && feedback) {
@@ -684,13 +668,15 @@ export function useAgentSession({
     return true;
   }, []);
 
-  // Resolve the in-flight AskUserQuestion with the user's selections (or null
-  // to cancel). Mirrors resolvePermission — clears the dialog and hands the
-  // answers back to the awaiting tool call.
+  // Resolve the open AskUserQuestion with the user's selections (or null to cancel).
   const resolveQuestion = useCallback((response: UserQuestionResponse | null): boolean => {
-    if (!questionResolverRef.current) return false;
-    questionResolverRef.current(response);
-    questionResolverRef.current = null;
+    const request = questionRequestRef.current;
+    const session = sessionRef.current;
+    if (!request || !session) return false;
+    if (session.respond(request.id, response ? { answers: response.answers } : { cancelled: true }) === "stale") {
+      return false;
+    }
+    questionRequestRef.current = null;
     setQuestionPrompt(null);
     if (response === null) {
       setSpinnerLabel("Thinking");
@@ -706,22 +692,35 @@ export function useAgentSession({
     setTranscriptOpen(false);
   }, []);
 
+  /** Run a shell command typed as `!cmd`; output lands in a notice. */
+  const runShell = useCallback(async (session: AgentSession, command: string) => {
+    setSystemNotice({ tone: "info", title: `! ${command}`, body: "running…" });
+    try {
+      const result = await session.runShell(command);
+      const raw = extractBashOutput(result.output) || "(no output)";
+      const lines = raw.split("\n");
+      const body =
+        lines.length > SHELL_OUTPUT_LINES
+          ? [...lines.slice(0, SHELL_OUTPUT_LINES), `… +${lines.length - SHELL_OUTPUT_LINES} more lines`].join("\n")
+          : raw;
+      setSystemNotice({ tone: result.isError ? "error" : "info", title: `! ${command}`, body });
+    } catch (error) {
+      setSystemNotice({
+        tone: "error",
+        title: `! ${command}`,
+        body: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }, []);
+
   const submit = useCallback(
     async (text: string): Promise<SubmitResult> => {
       const trimmed = text.trim();
-      // Empty text is valid when the auto-trigger
-      // (subscribePendingNotifications below) wakes us up to drain the
-      // notification queue. submitMessage("") routes to submitInternal
-      // which prepends the queued <task-notification> blocks as the
-      // turn's user content. Reject empty input only when there's also
-      // nothing in the queue.
-      const activeTeam = getActiveTeam();
-      if (
-        !trimmed &&
-        pendingNotificationCount() === 0 &&
-        !(activeTeam && hasPendingLeadMailboxSignal(activeTeam.teamName))
-      ) {
-        return { handled: false };
+      if (!trimmed) {
+        const session = sessionRef.current;
+        if (!session || session.getState().busy) return { handled: false };
+        const result = await session.send("").catch(() => ({ handled: true }));
+        return { handled: result.handled };
       }
 
       if (trimmed === "/exit" || trimmed === "/quit" || trimmed === "/bye") {
@@ -729,36 +728,8 @@ export function useAgentSession({
         return { handled: true };
       }
 
-      // Bash mode (`!cmd`): run a shell command directly, bypassing the LLM —
-      // a quick local escape hatch. Output surfaces in a system notice (capped),
-      // and the command still honors the project's sandbox settings via BashTool.
-      if (trimmed.startsWith("!")) {
-        const command = trimmed.slice(1).trim();
-        if (!command) return { handled: true };
-        setSystemNotice({ tone: "info", title: `! ${command}`, body: "running…" });
-        try {
-          const result = await bashTool.call({ command }, { ...toolContext });
-          const raw = extractBashOutput(toolResultText(result.content)) || "(no output)";
-          const lines = raw.split("\n");
-          const MAX = 40;
-          const body =
-            lines.length > MAX ? [...lines.slice(0, MAX), `… +${lines.length - MAX} more lines`].join("\n") : raw;
-          setSystemNotice({
-            tone: result.isError ? "error" : "info",
-            title: `! ${command}`,
-            body,
-          });
-        } catch (error) {
-          setSystemNotice({
-            tone: "error",
-            title: `! ${command}`,
-            body: error instanceof Error ? error.message : String(error),
-          });
-        }
-        return { handled: true };
-      }
-
-      if (!engineRef.current) {
+      const session = sessionRef.current;
+      if (!session) {
         setSystemNotice({
           tone: "error",
           title: "QueryEngine is not ready",
@@ -767,554 +738,37 @@ export function useAgentSession({
         return { handled: true };
       }
 
-      // Classify the input: system command (synchronous notice) vs. LLM-
-      // triggering (skill / user-defined / built-in prompt command, or plain
-      // chat) — the latter engages the full agentic loop. See classifyUserInput.
-      const { isLlmTriggering } = classifyUserInput(trimmed);
-
-      cancelPendingText();
-      setStreamingText("");
-      setToolCalls([]);
-      setSystemNotice(null);
-      // A new turn (or command) dismisses any open stage-33 overlay.
-      setResumePicker(null);
-      setDiffView(null);
-      setMemoryPicker(null);
-      setPermissionView(null);
-      if (isLlmTriggering) {
-        setLastUsage(null);
-        // Persist what the user actually typed (`/hello-world Easy Agent`)
-        // rather than the expanded SKILL.md body. The expanded prompt is
-        // an internal/wire-only artifact — keeping the transcript clean
-        // means /resume replays the same UX the user originally saw.
-        //
-        // Skip this when `trimmed` is empty — that means we're
-        // here via the auto-trigger from subscribePendingNotifications,
-        // and the queued <task-notification> is itself the user-side
-        // transcript entry (added inside submitInternal). Persisting an
-        // empty user message would pollute the transcript and confuse
-        // /resume.
-        if (trimmed.length > 0) {
-          // Open the file-history turn before persisting, so the
-          // user-message entry and any snapshot taken this turn share an id.
-          const messageId = engineRef.current.beginUserTurn();
-          await appendTranscriptEntry(toolContext.cwd, sessionIdRef.current, {
-            type: "message",
-            timestamp: new Date().toISOString(),
-            role: "user",
-            message: { role: "user", content: trimmed },
-            messageId,
-          });
-        }
+      // Bash mode (`!cmd`): run a shell command directly, bypassing the LLM —
+      // a quick local escape hatch that still honors the sandbox settings.
+      if (trimmed.startsWith("!")) {
+        const command = trimmed.slice(1).trim();
+        if (command) await runShell(session, command);
+        return { handled: true };
       }
-      setPermissionPrompt(null);
-      const needsLoading = isLlmTriggering || trimmed.startsWith("/compact");
-      setIsLoading(needsLoading);
-      setSpinnerLabel(
-        trimmed.startsWith("/compact")
-          ? "Compacting"
-          : trimmed.length === 0
-            ? "Background sub-agent finished — replying"
-            : "Thinking",
-      );
 
-      try {
-        const run = engineRef.current.submitMessage(trimmed);
-
-        while (true) {
-          const { value, done } = await run.next();
-          if (done) {
-            if (value.reason === "aborted" && !pendingClearContextRef.current) {
-              setSystemNotice({
-                tone: "info",
-                title: "Interrupted",
-                body: "Use /exit, /quit, /bye, or Ctrl+D to exit.",
-              });
-            }
-            break;
-          }
-
-          switch (value.type) {
-            case "text":
-              // Coalesce rapid SSE chunks into a 30ms window. Without this
-              // every chunk forces a full Ink frame repaint, and combined
-              // with the TodoList / ToolCallList above it the terminal
-              // flickers and refuses to scroll.
-              pendingTextRef.current += value.text;
-              if (!flushTimerRef.current) {
-                flushTimerRef.current = setTimeout(flushPendingText, 30);
-              }
-              break;
-            case "thinking_start":
-              // During the thinking stream we only
-              // surface a spinner ("✻ Thinking…"), not the reasoning text.
-              // The finished thinking block lands in the committed assistant
-              // message and renders (folded) via ConversationView.
-              setSpinnerLabel("Thinking");
-              break;
-            case "thinking_delta":
-            case "thinking_done":
-            case "redacted_thinking":
-              // No live-text rendering (source shows thinking only once the
-              // block completes and is committed to the transcript).
-              break;
-            case "tool_use_start": {
-              // For the Agent tool: by the time tool_use_start fires the
-              // agentTool body has either not started yet OR has already
-              // pushed the initial snapshot to the store (depends on the
-              // event-loop interleave). Pull the current store value so
-              // the very first render of the card is rich, not "Using
-              // tool: Agent". Subsequent updates flow through the store
-              // subscription set up above.
-              const seeded = value.name === "Agent" ? getSubAgentProgress(value.id) : undefined;
-              setToolCalls((prev) => [
-                ...prev,
-                {
-                  id: value.id,
-                  name: value.name,
-                  ...(seeded ? { subAgentProgress: seeded } : {}),
-                },
-              ]);
-              await appendTranscriptEntry(toolContext.cwd, sessionIdRef.current, {
-                type: "tool_event",
-                timestamp: new Date().toISOString(),
-                name: value.name,
-                phase: "start",
-              });
-              break;
-            }
-            case "permission_request":
-              setSpinnerLabel("Waiting for permission");
-              setPermissionPrompt({
-                toolName: value.request.toolName,
-                summary: value.request.summary,
-                risk: value.request.risk,
-                ruleHint: value.request.ruleHint,
-                input: value.request.input,
-              });
-              break;
-            case "tool_use_done": {
-              const resultText = toolResultText(value.result.content);
-              const isPlanFileWrite =
-                (value.name === "Write" || value.name === "Edit") && resultText.includes(getPlansDirectory());
-              const inputPreview = formatToolInputPreview(value.input);
-              // Strip the model-only <sandbox_violations> tag from the
-              // user-visible error message. The tag stays in the tool
-              // result that goes back to the model (so it can interpret
-              // sandbox denials), but humans see clean stderr only.
-              const rawErrorMessage = value.result.isError ? resultText : undefined;
-              const errorMessage = rawErrorMessage ? removeSandboxViolationTags(rawErrorMessage) : undefined;
-              setToolCalls((prev) =>
-                markToolCallComplete(prev, value.id, {
-                  resultLength: resultText.length,
-                  isError: value.result.isError,
-                  displayName: isPlanFileWrite ? "Updated plan" : undefined,
-                  displayHint: isPlanFileWrite ? "/plan to preview" : undefined,
-                  inputPreview,
-                  input: value.input,
-                  errorMessage,
-                }),
-              );
-              await appendTranscriptEntry(toolContext.cwd, sessionIdRef.current, {
-                type: "tool_event",
-                timestamp: new Date().toISOString(),
-                name: value.name,
-                phase: "done",
-                resultLength: resultText.length,
-                isError: value.result.isError,
-              });
-              break;
-            }
-            case "assistant_message":
-              // The full assistant text is committed to `messages` and will
-              // render via ConversationView. Drop any unflushed pending
-              // chunk so it can't overwrite the cleared streaming line.
-              cancelPendingText();
-              setStreamingText("");
-              await appendTranscriptEntry(toolContext.cwd, sessionIdRef.current, {
-                type: "message",
-                timestamp: new Date().toISOString(),
-                role: "assistant",
-                message: value.message,
-                ...(engineRef.current.getCurrentMessageId()
-                  ? { messageId: engineRef.current.getCurrentMessageId()! }
-                  : {}),
-              });
-              break;
-            case "tool_result_message":
-              setSpinnerLabel("Thinking");
-              setPermissionPrompt(null);
-              // Tool results are now committed to `messages` — the cards
-              // will render inline in ConversationView from here on, so we
-              // drop the live in-flight cards to avoid duplication and, more
-              // importantly, to keep the final assistant text rendered
-              // BELOW its tool calls (not above them).
-              setToolCalls([]);
-              // Sub-agent progress entries lived alongside in-flight cards;
-              // since we just dropped those cards, drop the matching store
-              // entries too. ConversationView renders the historical Agent
-              // card from the formatted tool_result text, not the store.
-              clearAllSubAgentProgress();
-              clearAllBashProgress();
-              clearAllMcpProgress();
-              clearAllToolStatus();
-              await appendTranscriptEntry(toolContext.cwd, sessionIdRef.current, {
-                type: "message",
-                timestamp: new Date().toISOString(),
-                role: "user",
-                message: value.message,
-                ...(engineRef.current.getCurrentMessageId()
-                  ? { messageId: engineRef.current.getCurrentMessageId()! }
-                  : {}),
-              });
-              break;
-            case "messages_updated":
-              setMessages(value.messages);
-              break;
-            case "usage_updated":
-              {
-                const engineMessages = engineRef.current?.getState().messages ?? [];
-                const usageAnchorIndex = engineMessages.length > 0 ? engineMessages.length - 1 : -1;
-                const snapshot = buildTokenBudgetSnapshot(engineMessages, {
-                  usage: value.lastCallUsage,
-                  usageAnchorIndex,
-                });
-                const contextPercent = Math.round(
-                  (snapshot.estimatedConversationTokens / snapshot.contextWindow) * 100,
-                );
-                const turnInput =
-                  value.turnUsage.input_tokens +
-                  (value.turnUsage.cache_creation_input_tokens ?? 0) +
-                  (value.turnUsage.cache_read_input_tokens ?? 0);
-                const totalInput =
-                  value.totalUsage.input_tokens +
-                  (value.totalUsage.cache_creation_input_tokens ?? 0) +
-                  (value.totalUsage.cache_read_input_tokens ?? 0);
-                setLastUsage({
-                  input: turnInput,
-                  output: value.turnUsage.output_tokens,
-                  contextTokens: snapshot.estimatedConversationTokens,
-                  contextPercent,
-                });
-                setTotalUsage({
-                  input: totalInput,
-                  output: value.totalUsage.output_tokens,
-                  contextTokens: snapshot.estimatedConversationTokens,
-                  contextPercent,
-                });
-              }
-              await appendTranscriptEntry(toolContext.cwd, sessionIdRef.current, {
-                type: "usage",
-                timestamp: new Date().toISOString(),
-                turn: value.turnUsage,
-                total: value.totalUsage,
-              });
-              break;
-            case "command_progress":
-              // Long-running local commands (plugin install/update/marketplace
-              // operations) yield before their first await. Enter a real busy
-              // state so Ink has both an immediate frame and an active animation
-              // source; this also guarantees the final command result repaints
-              // when busy flips back to false.
-              setIsLoading(true);
-              setSpinnerLabel(value.spinnerLabel);
-              setSystemNotice({
-                tone: "info",
-                title: value.title,
-                body: value.message,
-              });
-              break;
-            case "command":
-              // Slash-command output is a blocking panel: it pins above the
-              // input, suppresses typing, and waits for Esc — matching Claude's
-              // local-jsx commands. (Skill / user prompt commands never reach
-              // here; they expand into a model turn, so they stay non-blocking.)
-              setIsLoading(false);
-              setSystemNotice({ ...buildCommandNotice(value.message, value.kind), dismissable: true });
-              await appendTranscriptEntry(toolContext.cwd, sessionIdRef.current, {
-                type: "system",
-                timestamp: new Date().toISOString(),
-                level: value.kind,
-                message: value.message,
-              });
-              break;
-            case "notice":
-              // Transient, non-blocking feedback (e.g. image attached). Unlike a
-              // `command` panel it has no `dismissable` flag, so it never hides
-              // the input — it just shows above it and is replaced by the next.
-              setSystemNotice({ tone: value.tone, title: value.title, body: value.body });
-              break;
-            case "resume_picker":
-              // `/resume` (no arg) → open the interactive session picker.
-              // useResumePicker owns the keyboard from here; Enter re-invokes
-              // `/resume <id>` to perform the actual in-process switch.
-              setResumePicker(value.sessions);
-              setResumePickerIndex(0);
-              break;
-            case "diff_view":
-              // `/diff` → colorized panel (dismissed with Esc, like a command).
-              setDiffView(value.data);
-              break;
-            case "memory_picker":
-              // `/memory` (no args) → interactive file picker; Enter re-invokes
-              // `/memory edit <n>` to launch $EDITOR.
-              setMemoryPicker(value.items);
-              setMemoryPickerIndex(0);
-              break;
-            case "permissions_view":
-              // `/permissions` (no args) → interactive allow/deny manager. The
-              // overlay mutates rules directly via engine.mutatePermissionRule().
-              setPermissionView(value.data);
-              break;
-            case "plugin_view":
-              // `/plugin` (no args) → interactive plugin/marketplace manager. The
-              // overlay applies changes via engine.mutatePlugin().
-              setIsLoading(false);
-              setSystemNotice(null);
-              setPluginView(value.data);
-              break;
-            case "open_editor": {
-              // `/memory edit <n>` → hand the TTY to $EDITOR. The launcher
-              // (App, via useStdin) suspends Ink's raw mode, runs the editor with
-              // inherited stdio, then restores + repaints. We await it inline so
-              // the result notice fires only after the editor exits.
-              const launcher = openEditorRef.current;
-              if (!launcher) {
-                setSystemNotice({
-                  tone: "error",
-                  title: "Cannot open editor",
-                  body: "No editor handler is available in this session.",
-                });
-                break;
-              }
-              const result = await launcher(value.filePath);
-              if (result.ok) {
-                setSystemNotice({
-                  tone: "info",
-                  title: "Memory file saved",
-                  body: `Edited ${value.label}\n${value.filePath}`,
-                });
-              } else {
-                setSystemNotice({
-                  tone: "error",
-                  title: "Editor did not complete",
-                  body: result.error ?? "Unknown error opening the editor.",
-                });
-              }
-              break;
-            }
-            case "compacted": {
-              setSystemNotice(compactionNotice(value.trigger));
-              if (value.trigger !== "micro") {
-                const compactedMessages = engineRef.current?.getState().messages ?? [];
-                await appendCompactionSnapshot(
-                  toolContext.cwd,
-                  sessionIdRef.current,
-                  value.trigger as "auto" | "manual",
-                  compactedMessages,
-                );
-              } else {
-                await appendTranscriptEntry(toolContext.cwd, sessionIdRef.current, {
-                  type: "system",
-                  timestamp: new Date().toISOString(),
-                  level: "info",
-                  message: `compaction:${value.trigger}`,
-                });
-              }
-              break;
-            }
-            case "model_changed":
-              setCurrentModel(value.model);
-              break;
-            case "mode_changed":
-              setActivePermissionMode(value.mode);
-              break;
-            case "task_mode_changed":
-              setTaskModeState(value.mode);
-              break;
-            case "session_switched": {
-              // `/resume <n|id>` swapped the engine's conversation in
-              // place. Rebind the UI to the resumed session: new id (so tools
-              // and transcript appends target it), restored messages + usage,
-              // and the file-history snapshots so /rewind keeps working.
-              cancelPendingText();
-              setStreamingText("");
-              setToolCalls([]);
-              clearAllSubAgentProgress();
-              clearAllBashProgress();
-              clearAllMcpProgress();
-              clearAllToolStatus();
-              clearUiNotices();
-              setResumePicker(null);
-              setDiffView(null);
-              setMemoryPicker(null);
-              setPermissionView(null);
-              clearTodos(sessionIdRef.current);
-              sessionIdRef.current = value.sessionId;
-              // Repaint the restored conversation cleanly. Ink's <Static> only
-              // resets its print cursor when the item count DROPS, so we blank the
-              // list first (commit 1 → Static resets), wipe the terminal, then
-              // restore the messages on a later tick (commit 2 → Static reprints
-              // from a clean slate). A single setMessages(restored) would leave the
-              // cursor past the end and the screen would look empty after the clear
-              // — which reads as "/resume didn't switch".
-              setMessages([]);
-              setTotalUsage({
-                input: value.totalUsage.input_tokens,
-                output: value.totalUsage.output_tokens,
-              });
-              setLastUsage(null);
-              setTodosState(getTodos(value.sessionId));
-              try {
-                await configureFileHistory(toolContext.cwd, value.sessionId);
-                if (value.fileHistorySnapshots.length > 0) {
-                  restoreFileHistorySnapshots(value.fileHistorySnapshots);
-                }
-              } catch {
-                // file-history rebind is best-effort
-              }
-              writeStdoutRef.current?.(CLEAR_TERMINAL);
-              {
-                const restoredMessages = value.messages;
-                setTimeout(() => setMessages(restoredMessages), 0);
-              }
-              break;
-            }
-            case "session_cleared":
-              cancelPendingText();
-              setMessages([]);
-              setStreamingText("");
-              setToolCalls([]);
-              setLastUsage(null);
-              clearTodos(sessionIdRef.current);
-              clearAllSubAgentProgress();
-              clearAllBashProgress();
-              clearAllMcpProgress();
-              clearAllToolStatus();
-              clearUiNotices();
-              // Wipe the terminal so the previous conversation is gone from the
-              // screen and scrollback, matching the user's expectation that
-              // /clear starts from a blank slate. React state was just reset
-              // above, so the live frame Ink restores after the escape is the
-              // empty post-clear UI.
-              writeStdoutRef.current?.(CLEAR_TERMINAL);
-              break;
-            case "token_warning": {
-              const notice = tokenWarningNotice(value.warning);
-              if (notice) setSystemNotice(notice);
-              break;
-            }
-            case "api_retry": {
-              // The API layer is backing off before re-issuing a
-              // request after a transient failure. Show a transient notice with
-              // the countdown so the user knows we're retrying, not hung.
-              setSpinnerLabel("Retrying");
-              setSystemNotice(apiRetryNotice(value));
-              break;
-            }
-            case "stream_restart":
-              // About to re-run the turn (max_tokens escalation or
-              // reactive compact). Drop any partially-streamed text so the
-              // re-run renders cleanly instead of concatenating.
-              cancelPendingText();
-              setStreamingText("");
-              if (value.reason === "reactive_compact") {
-                setSystemNotice({
-                  tone: "info",
-                  title: "Context compacted",
-                  body: "The prompt exceeded the context window — history was summarized and the request retried.",
-                });
-              }
-              break;
-            case "turn_complete": {
-              const notice = turnCompleteNotice(value.reason, value.turnCount);
-              if (notice) setSystemNotice(notice);
-              break;
-            }
-            case "error":
-              setSystemNotice({
-                tone: "error",
-                title: "Agent error",
-                body: value.error.message,
-              });
-              await appendTranscriptEntry(toolContext.cwd, sessionIdRef.current, {
-                type: "system",
-                timestamp: new Date().toISOString(),
-                level: "error",
-                message: value.error.message,
-              });
-              break;
+      // One submission at a time. A turn the session started on its own (a
+      // background wake-up) finishes before this input runs.
+      const run = submitChainRef.current.then(async () => {
+        for (;;) {
+          const current = sessionRef.current;
+          if (!current) return;
+          await current.waitForIdle();
+          try {
+            await current.send(trimmed);
+            return;
+          } catch (error) {
+            // Lost a race with a wake-up turn: wait for it and retry. Turn
+            // failures are already reported through `turn_failed`.
+            if (!isAgentSdkError(error, "busy")) return;
           }
         }
-      } catch (error: unknown) {
-        if (error instanceof Error && error.name === "AbortError") {
-          setSystemNotice({
-            tone: "info",
-            title: "Interrupted",
-            body: "Use /exit, /quit, /bye, or Ctrl+D to exit.",
-          });
-        } else {
-          setSystemNotice({
-            tone: "error",
-            title: "Unhandled error",
-            body: error instanceof Error ? error.message : String(error),
-          });
-        }
-      } finally {
-        setIsLoading(false);
-        permissionResolverRef.current = null;
-        setPermissionPrompt(null);
-        // A question left hanging (loop aborted mid-ask) → resolve null so the
-        // awaiting tool call unblocks instead of leaking a promise.
-        if (questionResolverRef.current) {
-          questionResolverRef.current(null);
-          questionResolverRef.current = null;
-        }
-        setQuestionPrompt(null);
-      }
-
-      // After the loop completes, check if we need to clear context and re-submit
-      if (pendingClearContextRef.current && engineRef.current) {
-        pendingClearContextRef.current = false;
-        const planContent = await readPlan();
-        if (planContent) {
-          const implementMsg = engineRef.current.clearContextAndImplement(planContent);
-          cancelPendingText();
-          setMessages([]);
-          setStreamingText("");
-          setToolCalls([]);
-          setLastUsage(null);
-          clearTodos(sessionIdRef.current);
-          setSystemNotice({
-            tone: "info",
-            title: "Context cleared",
-            body: "Starting fresh with the approved plan. Implementing...",
-          });
-          return submit(implementMsg);
-        }
-      }
-
-      // After plan rejection with feedback, re-submit the feedback so the model continues planning
-      if (pendingFeedbackRef.current && engineRef.current) {
-        const feedback = pendingFeedbackRef.current;
-        pendingFeedbackRef.current = null;
-        return submit(
-          `User rejected the plan. Feedback: ${feedback}\n\nPlease revise your plan based on this feedback.`,
-        );
-      }
-
+      });
+      submitChainRef.current = run.catch(() => {});
+      await run;
       return { handled: true };
     },
-    [onExit, toolContext.cwd, cancelPendingText, flushPendingText],
+    [onExit, runShell],
   );
-
-  // Expose `submit` to the notification subscriber via a ref.
-  // The subscriber is set up once on mount and would otherwise close
-  // over a stale `submit` reference. The ref is updated on every render
-  // so the subscriber always gets the freshest `submit`.
-  useEffect(() => {
-    submitRef.current = submit;
-  }, [submit]);
 
   return {
     state: {
@@ -1356,11 +810,16 @@ export function useAgentSession({
         setDiffView(null);
       },
       showNotice: (notice: SystemNotice) => setSystemNotice(notice),
+      // Thinking and effort as the next request will use them, for the selectors.
+      getThinkingSettings: () => {
+        const state = sessionRef.current?.getState();
+        return { enabled: state ? state.thinking.type !== "disabled" : true, effort: state?.effort ?? undefined };
+      },
+      stopBackgroundAgent: (agentId: string) => sessionRef.current?.stopBackgroundAgent(agentId) ?? false,
       // Resume-picker controls, driven by useResumePicker.
       moveResumePicker: (nextIndex: number) => setResumePickerIndex(nextIndex),
       closeResumePicker: () => setResumePicker(null),
-      // Selecting a session closes the picker and re-invokes `/resume <id>`,
-      // reusing the engine's in-process switch (session_switched).
+      // Selecting a session closes the picker and re-invokes `/resume <id>`.
       confirmResume: (sessionId: string) => {
         setResumePicker(null);
         void submit(`/resume ${sessionId}`);
@@ -1368,34 +827,30 @@ export function useAgentSession({
       // Memory-picker controls, driven by useMemoryPicker.
       moveMemoryPicker: (nextIndex: number) => setMemoryPickerIndex(nextIndex),
       closeMemoryPicker: () => setMemoryPicker(null),
-      // Selecting a file closes the picker and re-invokes `/memory edit <n>`,
-      // reusing the engine's $EDITOR launch (open_editor).
+      // Selecting a file closes the picker and re-invokes `/memory edit <n>`.
       confirmMemoryEdit: (pickIndex: number) => {
         setMemoryPicker(null);
         void submit(`/memory edit ${pickIndex + 1}`);
       },
-      // Permission-manager controls. Mutations call the engine directly (write +
-      // reload) and feed back the fresh view so the overlay stays open.
+      // Permission-manager controls. Mutations write + reload through the
+      // session and feed back the fresh view so the overlay stays open.
       closePermissions: () => setPermissionView(null),
       closePlugins: () => setPluginView(null),
-      // Plugin-manager actions. The engine performs the write, reconciles the
-      // live registries, and returns a fresh snapshot so the overlay stays open
-      // and in sync. Rejections propagate so the overlay can show the reason.
+      // Plugin-manager actions; rejections propagate so the overlay can show the reason.
       pluginMutate: async (action: PluginMutation): Promise<void> => {
-        const engine = engineRef.current;
-        if (!engine) return;
-        const next = await engine.mutatePlugin(action);
-        setPluginView(next);
+        const session = sessionRef.current;
+        if (!session) return;
+        setPluginView(await session.mutatePlugin(action));
       },
       pluginPreview: async (pluginId: string): Promise<PluginInstallPreview> => {
-        const engine = engineRef.current;
-        if (!engine) throw new Error("Plugin manager is not ready.");
-        return engine.previewPlugin(pluginId);
+        const session = sessionRef.current;
+        if (!session) throw new Error("Plugin manager is not ready.");
+        return session.previewPlugin(pluginId);
       },
       permissionMutate: (op: "allow" | "deny" | "remove", rule: string, scope: SettingSource) => {
-        const engine = engineRef.current;
-        if (!engine) return;
-        void engine
+        const session = sessionRef.current;
+        if (!session) return;
+        void session
           .mutatePermissionRule(op, rule, scope)
           .then((next) => setPermissionView(next))
           .catch((error: unknown) => {

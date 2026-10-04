@@ -30,7 +30,7 @@ import { findAgent, getAllAgents } from "../agents/registry.js";
 import { randomUUID } from "node:crypto";
 import type { AgentIsolation, AgentRunResult } from "../agents/types.js";
 import type { Tool, ToolContext, ToolResult } from "./Tool.js";
-import { DEFAULT_MODEL } from "../services/api/client.js";
+import { getDefaultModel } from "../services/api/client.js";
 import type {
   PermissionDecision,
   PermissionMode,
@@ -331,9 +331,9 @@ export const agentTool: Tool = {
     //   1. Per-call override (input.model)
     //   2. Agent definition's `model` field
     //   3. Parent's active model (set by QueryEngine on the context)
-    //   4. DEFAULT_MODEL (env or hard-coded fallback)
+    //   4. the default model (ANTHROPIC_MODEL or the built-in fallback)
     const { resolveRoleModel } = await import("../config/features.js");
-    const fallbackModel = context.defaultModel || DEFAULT_MODEL;
+    const fallbackModel = context.defaultModel || getDefaultModel();
     const resolvedModel =
       model ||
       def.model ||

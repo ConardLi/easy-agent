@@ -1,8 +1,7 @@
 /**
- * Slash-command vs. chat-input classification, extracted from useAgentSession's
- * `submit`. Pure: given the trimmed input (and the live registries it
- * consults), it decides whether the input should engage the full agentic loop
- * or be handled as a synchronous system command. Behavior is unchanged.
+ * Slash-command vs. chat-input classification. Pure: given the trimmed input
+ * (and the live registries it consults), it decides whether the input should
+ * engage the full agentic loop or be handled as a synchronous system command.
  *
  * Slash commands fall into two UX categories:
  *   1. System commands (/help, /cost, /model, /skills, /mcp, …) — synchronous,
@@ -12,9 +11,9 @@
  *      expand into a real prompt and run a normal model turn.
  */
 
-import { findSkill } from "../../../services/skills/registry.js";
-import { findUserCommand } from "../../../commands/userCommands/registry.js";
-import { isBuiltinCommandName, isBuiltinPromptCommand } from "../../../commands/builtinCommandNames.js";
+import { findSkill } from "../services/skills/registry.js";
+import { findUserCommand } from "./userCommands/registry.js";
+import { isBuiltinCommandName, isBuiltinPromptCommand } from "./builtinCommandNames.js";
 
 export interface InputClassification {
   isSlashCommand: boolean;

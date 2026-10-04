@@ -14,7 +14,7 @@ await loadEnv(process.cwd(), { allowProject: true });
  */
 
 import { streamMessage } from "../services/api/streaming.js";
-import { DEFAULT_MODEL } from "../services/api/client.js";
+import { getDefaultModel } from "../services/api/client.js";
 import type { StreamEvent } from "../types/message.js";
 
 async function main(): Promise<void> {
@@ -30,7 +30,7 @@ async function main(): Promise<void> {
 
   const userMessage = "用一句话介绍你自己，然后用三句话解释什么是 Agentic Loop。";
 
-  console.log(`\x1b[90m── Model: ${DEFAULT_MODEL}\x1b[0m`);
+  console.log(`\x1b[90m── Model: ${getDefaultModel()}\x1b[0m`);
   console.log(`\x1b[90m── User:  ${userMessage}\x1b[0m\n`);
   console.log("\x1b[36m▎ Assistant:\x1b[0m");
 
