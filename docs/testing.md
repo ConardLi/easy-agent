@@ -9,7 +9,7 @@ npm ci
 npm run verify:production
 ```
 
-The command runs TypeScript validation, lint, the format check, the source hygiene check, builds the distributable CLI, and executes the `core`, `extensions`, and `ui` test groups. Any failed test or timeout returns a non-zero exit code. `npm run verify:release` runs this gate, then the `platform` group, then the package and installation checks; see [Releasing](./releasing.md).
+The command runs TypeScript validation, lint, the format check, the source hygiene check, the frontend boundary check, builds the distributable CLI, and executes the `core`, `extensions`, and `ui` test groups. Any failed test or timeout returns a non-zero exit code. `npm run verify:release` runs this gate, then the `platform` group, then the package and installation checks; see [Releasing](./releasing.md).
 
 `npm test` runs only the three test groups, without typecheck, lint, or build. It selects the same tests as the gate; `npm test -- --list` prints them.
 
@@ -25,6 +25,10 @@ npm run format:check   # report files that differ from the formatter output
 
 Lint and the format check are part of `verify:production`. Run `npm run format` before committing.
 
+## Frontend boundaries
+
+The terminal UI and the entry points use the session SDK (`src/sdk/`) and never load the modules that hold conversation state or run turns: the QueryEngine and agentic loop, session storage and file history, the `state/` stores, plan files, thinking settings, the teammate mailbox, permission checks, and the Bash tool. `npm run check:frontend-boundaries` enforces this; type-only imports are allowed. The list and the reason for each entry live in `scripts/check-frontend-boundaries.ts`.
+
 The formatter collapses repeated spaces in JSX text. Write text that needs them, such as indentation inside a `<Text>`, as a string expression: `<Text>{"  ↳ "}{label}</Text>`.
 
 `.git-blame-ignore-revs` lists the bulk formatting commit. GitHub skips it in blame views; run `git config blame.ignoreRevsFile .git-blame-ignore-revs` once to do the same locally.
@@ -35,7 +39,7 @@ Each offline test process receives a temporary `HOME`, `USERPROFILE`, XDG direct
 
 | Area | Included checks | Execution |
 | --- | --- | --- |
-| Core flow | CLI and Headless protocols, QueryEngine commands, provider stream adapters, tools, ToolSearch, MCP content and recovery, Skills, tasks, and agents | `core` |
+| Core flow | CLI and Headless protocols, the session SDK contract (events, interaction requests, plan follow-ups, deny rules and trust under the SDK, multi-session isolation, `/resume` handles), QueryEngine commands, provider stream adapters, tools, ToolSearch, MCP content and recovery, Skills, tasks, and agents | `core` |
 | Permissions | Allow/deny behavior, structured Bash read-only analysis, realpath and symbolic-link boundaries, Auto Mode configuration, Plan Mode paths, and sandbox policy | `core` |
 | Storage and configuration | Configuration precedence and source shapes, workspace trust, credential inheritance, headless routing, session JSONL and restore shape, file history, and retention | `core`, `extensions` |
 | Extensions | Worktrees, agent teams, hooks, commands, web and multimodal tools, plugins, and resilience | `extensions` |

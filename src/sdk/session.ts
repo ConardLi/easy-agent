@@ -72,7 +72,7 @@ export class AgentSession {
    * command, a skill, or a user command. Resolves when the turn and any
    * follow-up turns it triggered have finished.
    */
-  send(input: string): Promise<TurnResult> {
+  async send(input: string): Promise<TurnResult> {
     return this.#active().send(input);
   }
 
@@ -108,7 +108,7 @@ export class AgentSession {
   }
 
   /** Run a shell command without the model. Bash permission and sandbox rules still apply. */
-  runShell(command: string): Promise<ShellResult> {
+  async runShell(command: string): Promise<ShellResult> {
     return this.#active().runShell(command);
   }
 
@@ -122,11 +122,11 @@ export class AgentSession {
     return this.#active().getToolNames();
   }
 
-  getPermissionsView(): Promise<PermissionsViewData> {
+  async getPermissionsView(): Promise<PermissionsViewData> {
     return this.#active().engineCall((engine) => engine.getPermissionsView());
   }
 
-  mutatePermissionRule(
+  async mutatePermissionRule(
     op: "allow" | "deny" | "remove",
     rule: string,
     scope: SettingSource,
@@ -134,15 +134,15 @@ export class AgentSession {
     return this.#active().engineCall((engine) => engine.mutatePermissionRule(op, rule, scope));
   }
 
-  mutatePlugin(action: PluginMutation): Promise<PluginViewData> {
+  async mutatePlugin(action: PluginMutation): Promise<PluginViewData> {
     return this.#active().engineCall((engine) => engine.mutatePlugin(action));
   }
 
-  previewPlugin(pluginId: string): Promise<PluginInstallPreview> {
+  async previewPlugin(pluginId: string): Promise<PluginInstallPreview> {
     return this.#active().engineCall((engine) => engine.previewPlugin(pluginId));
   }
 
-  refreshPluginView(): Promise<PluginViewData> {
+  async refreshPluginView(): Promise<PluginViewData> {
     return this.#active().engineCall((engine) => engine.refreshPluginView());
   }
 

@@ -46,8 +46,8 @@ const notificationState = defineSessionState("pendingNotifications", () => ({
 
 // ─── Signal subscription ─────────────────────────────────────────────
 //
-// Enqueue is a pure push + signal pattern, no polling. `useAgentSession`
-// subscribes to this signal so the moment a
+// Enqueue is a pure push + signal pattern, no polling. The session's
+// background wake-up subscribes to this signal so the moment a
 // background sub-agent finishes, the listener fires and — if the main
 // loop is idle — triggers a fresh turn that consumes the notification.
 // Without this signal, notifications would only be drained on the

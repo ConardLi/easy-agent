@@ -221,7 +221,10 @@ export type PlanApprovalResponse =
       decision: "approve";
       /** Drop the planning conversation and start a fresh turn that implements the plan. */
       clearContext?: boolean;
-      /** Allow Write, Edit, and npm/npx commands for the rest of the session. */
+      /**
+       * Allow Write, Edit, and npm/npx commands for the rest of the session.
+       * Defaults to true when `clearContext` is set, false otherwise.
+       */
       acceptEdits?: boolean;
     }
   | {

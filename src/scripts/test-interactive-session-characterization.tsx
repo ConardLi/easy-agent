@@ -17,8 +17,6 @@
  */
 
 import assert from "node:assert/strict";
-import { createServer } from "node:http";
-import type { AddressInfo } from "node:net";
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { PassThrough } from "node:stream";
 import * as os from "node:os";
@@ -41,87 +39,14 @@ process.env.EASY_AGENT_ENABLE_TOOL_SEARCH = "false";
 process.chdir(cwd);
 
 const GOLDEN_PATH = path.join(import.meta.dirname, "__golden__", "interactive-session-characterization.golden.txt");
-const MODEL = "fixture-model";
 
 // ─── Fixture provider ─────────────────────────────────────────────────────
 
-type ScriptStep = { kind: "text"; text: string } | { kind: "tool"; name: string; input: Record<string, unknown> };
-
-let script: ScriptStep[] = [];
-let toolSeq = 0;
-const requests: Array<{ messages: unknown[] }> = [];
-
-function sse(name: string, data: unknown): string {
-  return `event: ${name}\ndata: ${JSON.stringify(data)}\n\n`;
-}
-
-function streamFor(step: ScriptStep, seq: number): string {
-  const start = sse("message_start", {
-    type: "message_start",
-    message: {
-      id: `msg_${seq}`,
-      type: "message",
-      role: "assistant",
-      model: MODEL,
-      content: [],
-      stop_reason: null,
-      stop_sequence: null,
-      usage: { input_tokens: 10, output_tokens: 0 },
-    },
-  });
-  const body =
-    step.kind === "text"
-      ? [
-          sse("content_block_start", {
-            type: "content_block_start",
-            index: 0,
-            content_block: { type: "text", text: "" },
-          }),
-          sse("content_block_delta", {
-            type: "content_block_delta",
-            index: 0,
-            delta: { type: "text_delta", text: step.text },
-          }),
-        ]
-      : [
-          sse("content_block_start", {
-            type: "content_block_start",
-            index: 0,
-            content_block: { type: "tool_use", id: `toolu_${++toolSeq}`, name: step.name, input: {} },
-          }),
-          sse("content_block_delta", {
-            type: "content_block_delta",
-            index: 0,
-            delta: { type: "input_json_delta", partial_json: JSON.stringify(step.input) },
-          }),
-        ];
-  return [
-    start,
-    ...body,
-    sse("content_block_stop", { type: "content_block_stop", index: 0 }),
-    sse("message_delta", {
-      type: "message_delta",
-      delta: { stop_reason: step.kind === "text" ? "end_turn" : "tool_use", stop_sequence: null },
-      usage: { output_tokens: 5 },
-    }),
-    sse("message_stop", { type: "message_stop" }),
-  ].join("");
-}
-
-const server = createServer((request, response) => {
-  const chunks: Buffer[] = [];
-  request.on("data", (chunk: Buffer) => chunks.push(chunk));
-  request.on("end", () => {
-    const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as { messages?: unknown[] };
-    requests.push({ messages: body.messages ?? [] });
-    const step = script.shift() ?? { kind: "text", text: "(fixture script exhausted)" };
-    response.writeHead(200, { "content-type": "text/event-stream" });
-    response.end(streamFor(step, requests.length));
-  });
-});
-await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-process.env.ANTHROPIC_BASE_URL = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-process.env.ANTHROPIC_AUTH_TOKEN = "fixture-token";
+const { createAnthropicFixture, FIXTURE_MODEL: MODEL } = await import("./fixtures/anthropicFixture.js");
+type ScriptStep = import("./fixtures/anthropicFixture.js").ScriptStep;
+const fixture = createAnthropicFixture();
+const requests = fixture.requests;
+await fixture.start();
 
 const { render, Text } = await import("ink");
 const { createAgentRuntime } = await import("../sdk/index.js");
@@ -329,7 +254,7 @@ async function scenario(
   const { unmount } = await mount(props);
   if (setup) await setup(runtime.listOpenSessions()[0]!);
   out(`### ${name}`);
-  script = [...steps];
+  fixture.script(steps);
   const firstRequest = requests.length;
   try {
     await run();
@@ -338,7 +263,7 @@ async function scenario(
     recordState(session);
     const sessionId = await latestSessionId();
     await recordTranscript(sessionId);
-    assert.equal(script.length, 0, `${name}: every scripted response was consumed`);
+    assert.equal(fixture.remaining(), 0, `${name}: every scripted response was consumed`);
     out();
     return sessionId;
   } finally {
@@ -529,7 +454,7 @@ async function buildRecording(): Promise<void> {
   );
 
   out("### resume");
-  script = [{ kind: "text", text: "Still here." }];
+  fixture.script([{ kind: "text", text: "Still here." }]);
   const firstRequest = requests.length;
   const { unmount } = await mount({ shouldResume: true, resumeSessionId: textSession });
   try {
@@ -559,7 +484,7 @@ async function main(): Promise<void> {
     throw error;
   } finally {
     await runtime.dispose();
-    server.close();
+    await fixture.close();
     process.chdir(os.tmpdir());
     await rm(root, { recursive: true, force: true });
   }

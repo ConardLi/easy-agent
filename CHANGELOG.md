@@ -13,6 +13,7 @@ All notable changes to Easy Agent are documented in this file.
 - OpenAI `cached_tokens` and Gemini `cachedContentTokenCount` are reported as cache reads in `/cost`, `/status`, and Headless `usage`. Requests to `api.openai.com` send the session id as `prompt_cache_key`; the `promptCacheKey` profile field turns it on or off for other endpoints.
 - The Auto Mode classifier caches its fixed prompt and tool on Anthropic.
 - Project memory also loads `AGENTS.md`. In a directory that has both files, `AGENTS.md` loads before `AGENT.md`; projects with only `AGENT.md` get the same system prompt as before. `/memory` lists existing `AGENTS.md` files, `/init` improves an existing `AGENTS.md` instead of adding `AGENT.md` next to it, and the sandbox denies writes to the project `AGENTS.md` as it does for `AGENT.md`.
+- Session SDK at `eagent/sdk`: `createAgentRuntime()` bootstraps a workspace and opens sessions; `AgentSession` runs turns and publishes JSON events, permission, plan-approval, and question requests answered with `respond()` or handlers, state snapshots, and `/resume` handles. Several sessions can run in one process with separate conversation state. The terminal UI and Headless mode run on it. See `docs/sdk.md`.
 
 ### Changed
 
@@ -23,6 +24,9 @@ All notable changes to Easy Agent are documented in this file.
 - `eagent --help` and `/help` render the same command list. `--help` gains the 17 commands it was missing, `/help` gains `/think`, `/effort`, `/plugin`, `/reload-plugins`, `/hooks`, and `/rewind`, and both name the command aliases. `/compact` and `/exit` no longer appear after the settings keys in `--help`.
 - `npm test` runs the offline test groups. Biome lints and formats the code; `verify:production` runs `npm run lint` and `npm run format:check`, and `npm run format` rewrites files.
 - `verify:release` also runs the host sandbox tests. The release workflow runs the gate on macOS and Ubuntu and the core tests on Windows before publishing, and publishes the verified artifact without rebuilding it.
+- Conversation state that was process-wide (file checkpoints, the plan file, background notifications, `/think` and `/effort`, task mode, compaction and Auto Mode counters, live tool progress) now belongs to each session. Background agents and an Agent Team belong to the session that started them.
+- `verify:production` checks that the terminal UI and the entry points reach session internals only through the SDK (`npm run check:frontend-boundaries`).
+- The interactive footer shows the permission mode from settings at startup; it showed `default` until the first mode change.
 
 ### Fixed
 

@@ -163,8 +163,8 @@ export class QueryEngine {
   /**
    * The id of the current user turn. File-history snapshots bind to
    * this id, and
-   * `/rewind` resolves a target snapshot by walking these per-turn ids. The UI
-   * layer calls `beginUserTurn()` right before persisting the user prompt so
+   * `/rewind` resolves a target snapshot by walking these per-turn ids. The
+   * session calls `beginUserTurn()` right before persisting the user prompt so
    * the transcript entry and the snapshot share the same id; the auto-trigger
    * (background-agent) path lazily generates one inside `submitMessage`.
    */
@@ -291,8 +291,8 @@ export class QueryEngine {
   ): AsyncGenerator<QueryEngineEvent, { handled: boolean; reason?: LoopTerminationReason }> {
     const trimmed = input.trim();
     // Empty input is a valid call when there are background-
-    // agent notifications waiting — the auto-trigger path in
-    // useAgentSession passes "" to mean "drain whatever's in the queue
+    // agent notifications waiting — the session's background wake-up
+    // passes "" to mean "drain whatever's in the queue
     // and run a turn". `submitInternal` is already empty-text safe (it
     // skips the user-message append).
     if (!trimmed && pendingNotificationCount() === 0) {

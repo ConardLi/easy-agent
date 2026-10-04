@@ -465,8 +465,8 @@ export const agentTool: Tool = {
       // any "ask" decision into an auto-deny with a workaround message.
       // Without this gating, a backgrounded sub-agent would:
       //
-      //   1. clobber the single-slot permissionResolverRef in
-      //      useAgentSession, deadlocking any foreground prompt;
+      //   1. compete with the foreground turn for the user's attention,
+      //      stalling any foreground prompt behind it;
       //   2. surface a prompt with no agentId, so the user has no way
       //      to know whose tool call they're approving;
       //   3. freeze InputPrompt (`Boolean(state.permissionPrompt)` is
