@@ -1,6 +1,6 @@
 # Session SDK
 
-`eagent/sdk` runs Easy Agent sessions inside another Node.js program. The terminal UI and headless mode (`eagent -p`) are built on the same API, so an embedded session behaves like a terminal session: the same tools, permission rules, sandbox, hooks, skills, sub-agents, transcripts, and resume.
+`eagent/sdk` runs Easy Agent sessions inside another Node.js program. Programs in other languages, editors, and desktop apps can use the same sessions over JSON-RPC with [RPC mode](./rpc.md). The terminal UI and headless mode (`eagent -p`) are built on the same API, so an embedded session behaves like a terminal session: the same tools, permission rules, sandbox, hooks, skills, sub-agents, transcripts, and resume.
 
 The SDK is **experimental** in the 0.x releases. The event and request shapes carry a protocol version (`SESSION_PROTOCOL_VERSION`); additive changes keep it, removals and changed meanings bump it.
 
@@ -62,7 +62,10 @@ const runtime = await createAgentRuntime({
 | --- | --- |
 | `createSession(options?)` | Start a new conversation |
 | `resumeSession(sessionId?, options?)` | Reopen a saved conversation; without an id, the most recent one |
-| `listSessions(limit?)` / `readSession(id)` | Saved conversations of the workspace, without opening them |
+| `listSessions(limit?)` / `readSession(id)` | Saved conversations of the workspace, without opening them. Summaries carry the first prompt the user typed and the title, if set |
+| `renameSession(id, title)` | Set a saved session's title; an empty title clears it |
+| `forkSession(id, { title? })` | Copy a saved conversation into a new session. The copy has no file checkpoints, so `/rewind` cannot go back past the fork |
+| `deleteSession(id)` | Delete a saved session's transcript, title, file checkpoints, and task list; close it first |
 | `getSession(id)` / `listOpenSessions()` | Sessions currently open |
 | `getCapabilities()` | Built-in commands, invocable skills, user commands, sub-agent types, output style |
 | `resolveModel()` | The model a session uses when none is given |
@@ -121,6 +124,8 @@ All events, states, and requests are plain JSON, so they can be forwarded to ano
 | `plan_approval` | The model asks to leave plan mode (includes the plan text) | `{ decision: "approve", clearContext?, acceptEdits? }` or `{ decision: "reject", feedback? }` |
 | `question` | The model asks multiple-choice questions | `{ answers: { [question]: label } }` or `{ cancelled: true }` |
 
+Permission and plan-approval requests carry `toolUseId`, the id of the tool call they guard; it matches the `toolUseId` of that call's `tool_started` event.
+
 A request is answered in one of three ways:
 
 1. A **handler** for its kind answers automatically.
@@ -149,4 +154,4 @@ The SDK uses the same checks as the terminal:
 
 ## Errors
 
-Errors raised by the SDK are `AgentSdkError` with a stable `code`: `busy`, `closed`, `replaced`, `permission_settings`, `session_restore`, `session_storage`, `already_open`, `runtime_active`. Use `isAgentSdkError(error, code)` to check. A turn that fails for any other reason rejects `send()` with the original error and emits `turn_failed`.
+Errors raised by the SDK are `AgentSdkError` with a stable `code`: `busy`, `closed`, `replaced`, `permission_settings`, `session_restore`, `session_storage`, `already_open`, `runtime_active`, `not_found` (no saved session with that id), `invalid_argument` (for example a session id that is not one). Use `isAgentSdkError(error, code)` to check. A turn that fails for any other reason rejects `send()` with the original error and emits `turn_failed`.

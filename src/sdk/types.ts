@@ -111,7 +111,10 @@ export interface StoredSessionSummary {
   model: string;
   messageCount: number;
   totalUsage: Usage;
+  /** First prompt the user typed; context the engine adds is skipped. */
   firstPrompt: string;
+  /** Title set with `renameSession()`. */
+  title?: string;
 }
 
 /** A saved session read without opening it. */
@@ -183,8 +186,13 @@ interface InteractionBase {
   turnId: string | null;
 }
 
+interface ToolInteraction extends InteractionBase {
+  /** The tool call awaiting the decision; matches `tool_started.toolUseId`. */
+  toolUseId: string | null;
+}
+
 /** A tool call that needs the user's confirmation. */
-export interface PermissionInteraction extends InteractionBase {
+export interface PermissionInteraction extends ToolInteraction {
   kind: "permission";
   toolName: string;
   input: Record<string, unknown>;
@@ -195,7 +203,7 @@ export interface PermissionInteraction extends InteractionBase {
 }
 
 /** The model asks to leave plan mode with the plan below. */
-export interface PlanApprovalInteraction extends InteractionBase {
+export interface PlanApprovalInteraction extends ToolInteraction {
   kind: "plan_approval";
   toolName: string;
   input: Record<string, unknown>;
@@ -380,6 +388,51 @@ export type SessionEventBody =
   | { type: "command_output"; kind: "info" | "error"; message: string }
   | { type: "command_view"; view: CommandView }
   | { type: "editor_requested"; filePath: string; label: string };
+
+/** Every event type, for consumers that validate or route events by type. */
+export const SESSION_EVENT_TYPES = [
+  "state_snapshot",
+  "messages_changed",
+  "usage_changed",
+  "mode_changed",
+  "model_changed",
+  "task_mode_changed",
+  "todos_changed",
+  "tasks_changed",
+  "background_agents_changed",
+  "session_cleared",
+  "session_replaced",
+  "notice",
+  "turn_started",
+  "turn_completed",
+  "turn_failed",
+  "text_delta",
+  "thinking_started",
+  "thinking_delta",
+  "thinking_completed",
+  "redacted_thinking",
+  "assistant_message",
+  "tool_started",
+  "tool_progress",
+  "tool_completed",
+  "tool_results",
+  "request_opened",
+  "request_resolved",
+  "api_retry",
+  "stream_restart",
+  "token_warning",
+  "compacted",
+  "error",
+  "command_progress",
+  "command_output",
+  "command_view",
+  "editor_requested",
+] as const satisfies readonly SessionEventBody["type"][];
+
+// Fails to compile when an event type is missing from the list above.
+type MissingEventTypes = Exclude<SessionEventBody["type"], (typeof SESSION_EVENT_TYPES)[number]>;
+const _everyEventTypeListed: [MissingEventTypes] extends [never] ? true : MissingEventTypes = true;
+void _everyEventTypeListed;
 
 /** Every event carries the session id and a per-session sequence number. */
 export type SessionEvent = SessionEventBody & {

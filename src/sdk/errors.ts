@@ -16,7 +16,11 @@ export type AgentSdkErrorCode =
   /** Another runtime is already active in this process. */
   | "runtime_active"
   /** The session is already open in this runtime. */
-  | "already_open";
+  | "already_open"
+  /** No saved session has this id. */
+  | "not_found"
+  /** An argument is malformed, such as a session id that is not one. */
+  | "invalid_argument";
 
 export class AgentSdkError extends Error {
   readonly code: AgentSdkErrorCode;

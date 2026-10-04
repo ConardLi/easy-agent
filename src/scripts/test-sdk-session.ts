@@ -511,6 +511,81 @@ try {
     await session.close();
   });
 
+  await check("a permission request names the tool call it guards", async () => {
+    const session = await runtime.createSession({ model: FIXTURE_MODEL });
+    const events = record(session);
+    fixture.script([
+      // The trusted project allows Write, so use a tool it still asks about.
+      { kind: "tool", name: "Edit", input: { file_path: "sdk-allowed.txt", old_string: "ok", new_string: "x" } },
+      { kind: "text", text: "Denied." },
+    ]);
+    const done = session.send("Write it.");
+    await until("permission request", () => opened(events).length === 1);
+    const request = opened(events)[0]!;
+    const started = events.find((event) => event.type === "tool_started");
+    assert.ok(request.kind === "permission" && started?.type === "tool_started");
+    assert.equal(request.toolUseId, started.toolUseId);
+    session.respond(request.id, { decision: "deny" });
+    await done;
+    await session.close();
+  });
+
+  await check("saved sessions can be renamed, forked, and deleted", async () => {
+    const session = await runtime.createSession({ model: FIXTURE_MODEL, permissionMode: "plan" });
+    fixture.script([{ kind: "text", text: "Planned." }]);
+    await session.send("Plan the work.");
+    const id = session.id;
+    await assert.rejects(runtime.deleteSession(id), (error: unknown) => sdk.isAgentSdkError(error, "already_open"));
+    await session.close();
+
+    const summary = (await runtime.listSessions()).find((entry) => entry.sessionId === id)!;
+    assert.equal(summary.firstPrompt, "Plan the work.", "hidden plan-mode context is not the label");
+    assert.equal((await runtime.renameSession(id, "  Work plan  ")).title, "Work plan");
+    assert.equal((await runtime.listSessions()).find((entry) => entry.sessionId === id)?.title, "Work plan");
+    assert.equal((await runtime.renameSession(id, "")).title, undefined);
+
+    const fork = await runtime.forkSession(id, { title: "Alternative" });
+    assert.notEqual(fork.sessionId, id);
+    assert.equal(fork.title, "Alternative");
+    assert.deepEqual((await runtime.readSession(fork.sessionId)).messages, (await runtime.readSession(id)).messages);
+    const forked = await runtime.resumeSession(fork.sessionId, { model: FIXTURE_MODEL });
+    fixture.script([{ kind: "text", text: "Diverged." }]);
+    await forked.send("Go another way.");
+    await forked.close();
+    assert.equal((await runtime.readSession(id)).messages.length, 3, "the original is unchanged");
+
+    const { latestPath } = await getSessionPaths(cwd, fork.sessionId);
+    assert.equal((await readFile(latestPath, "utf8")).trim(), fork.sessionId);
+    await mkdir(path.join(home, ".easy-agent", "file-history", fork.sessionId), { recursive: true });
+    await runtime.deleteSession(fork.sessionId);
+    await assert.rejects(runtime.readSession(fork.sessionId), (error: unknown) =>
+      sdk.isAgentSdkError(error, "not_found"),
+    );
+    await assert.rejects(readFile(path.join(home, ".easy-agent", "file-history", fork.sessionId)));
+    assert.notEqual(
+      (await readFile(latestPath, "utf8")).trim(),
+      fork.sessionId,
+      "latest moves off the deleted session",
+    );
+    await assert.rejects(runtime.deleteSession(fork.sessionId), (error: unknown) =>
+      sdk.isAgentSdkError(error, "not_found"),
+    );
+  });
+
+  await check("session ids from callers never reach a path unchecked", async () => {
+    for (const bad of ["../escape", "a/b", "", ".hidden"]) {
+      await assert.rejects(runtime.readSession(bad), (error: unknown) =>
+        sdk.isAgentSdkError(error, "invalid_argument"),
+      );
+      await assert.rejects(runtime.deleteSession(bad), (error: unknown) =>
+        sdk.isAgentSdkError(error, "invalid_argument"),
+      );
+      await assert.rejects(runtime.renameSession(bad, "x"), (error: unknown) =>
+        sdk.isAgentSdkError(error, "invalid_argument"),
+      );
+    }
+  });
+
   console.log("\n[7] lifecycle");
 
   await check("/resume hands out a new session handle", async () => {

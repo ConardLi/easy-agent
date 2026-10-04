@@ -223,6 +223,7 @@ export async function* handleResumeCommand(
         totalTokens: s.totalUsage.input_tokens + s.totalUsage.output_tokens,
         isCurrent: s.sessionId === ctx.sessionId,
         firstPrompt: s.firstPrompt,
+        ...(s.title ? { title: s.title } : {}),
       })),
     };
     return { handled: true };

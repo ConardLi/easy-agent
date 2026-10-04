@@ -1,9 +1,9 @@
 /**
  * Frontends talk to the session SDK, not to the session internals.
  *
- * The terminal UI (`src/ui/`) and the entry points (`src/entrypoint/`) must
- * not load the modules that hold conversation state or run turns; those are
- * reached through `src/sdk/`. Type-only imports are allowed: they carry no
+ * The terminal UI (`src/ui/`), the entry points (`src/entrypoint/`), and the
+ * RPC server (`src/rpc/`) must not load the modules that hold conversation
+ * state or run turns; those are reached through `src/sdk/`. Type-only imports are allowed: they carry no
  * runtime coupling.
  *
  * Run: node --import tsx scripts/check-frontend-boundaries.ts
@@ -21,7 +21,7 @@ interface Boundary {
 
 const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SRC = path.join(PROJECT_ROOT, "src");
-const FRONTEND_DIRS = ["ui", "entrypoint"];
+const FRONTEND_DIRS = ["ui", "entrypoint", "rpc"];
 
 const FORBIDDEN: Boundary[] = [
   { module: "core/queryEngine", reason: "turns run through AgentSession" },

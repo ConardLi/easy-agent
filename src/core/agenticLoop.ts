@@ -447,7 +447,9 @@ async function runOneToolBlock(
         // Mark this specific card as blocked on the user's approval so the
         // UI can show "Waiting for permission…" on it (not just the prompt).
         setToolStatus(block.id, "waiting-permission");
-        decision = options.onPermissionRequest ? await options.onPermissionRequest(permission.request) : "deny";
+        decision = options.onPermissionRequest
+          ? await options.onPermissionRequest({ ...permission.request, toolUseId: block.id })
+          : "deny";
       }
 
       if (decision === "deny") {

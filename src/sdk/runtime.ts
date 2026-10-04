@@ -11,6 +11,7 @@
  * workspaces run one process per workspace.
  */
 
+import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { getAllAgents } from "../agents/registry.js";
 import { BUILTIN_COMMAND_NAMES } from "../commands/builtinCommandNames.js";
@@ -22,12 +23,19 @@ import { getDefaultModel } from "../services/api/client.js";
 import { bootstrapMcp } from "../services/mcp/bootstrap.js";
 import { getAllUserInvocableSkills } from "../services/skills/registry.js";
 import {
+  appendTranscriptEntry,
   createSessionId,
+  deleteSessionTranscript,
   initSessionStorage,
+  isSessionPersistenceEnabled,
+  isValidSessionId,
   listProjectSessions,
   restoreSession,
   type RestoredSession,
+  writeSessionTitle,
 } from "../session/storage.js";
+import { getTaskListId, getTasksDir } from "../state/taskStore.js";
+import { getEasyAgentHome } from "../utils/paths.js";
 import { createSessionScope } from "../state/sessionScope.js";
 import { getActiveOutputStyleName } from "../styles/registry.js";
 import { logWarn } from "../utils/log.js";
@@ -135,12 +143,7 @@ export class AgentRuntime {
   async resumeSession(sessionId?: string, options: AgentSessionOptions = {}): Promise<AgentSession> {
     this.#assertActive();
     const permissionSettings = await this.#loadPermissionSettings();
-    let restored: RestoredSession;
-    try {
-      restored = await restoreSession(this.cwd, sessionId);
-    } catch (error) {
-      throw new AgentSdkError("session_restore", (error as Error).message, { cause: error });
-    }
+    const restored = await this.#restore(sessionId);
     if (this.#sessions.has(restored.summary.sessionId)) {
       throw new AgentSdkError("already_open", `Session ${restored.summary.sessionId} is already open.`);
     }
@@ -170,8 +173,77 @@ export class AgentRuntime {
 
   /** Read a saved session without opening it. */
   async readSession(sessionId: string): Promise<StoredSession> {
-    const restored = await restoreSession(this.cwd, sessionId);
+    const restored = await this.#restore(sessionId);
     return { summary: restored.summary, messages: restored.messages };
+  }
+
+  /** Give a saved session a title; an empty title clears it. */
+  async renameSession(sessionId: string, title: string): Promise<StoredSessionSummary> {
+    this.#assertActive();
+    this.#assertSessionId(sessionId);
+    try {
+      await writeSessionTitle(this.cwd, sessionId, title);
+    } catch (error) {
+      throw toStorageError(error, sessionId);
+    }
+    return (await this.readSession(sessionId)).summary;
+  }
+
+  /**
+   * Delete a saved session: its transcript, title, file checkpoints, and task
+   * list. An open session must be closed first.
+   */
+  async deleteSession(sessionId: string): Promise<void> {
+    this.#assertActive();
+    this.#assertSessionId(sessionId);
+    if (this.#sessions.has(sessionId)) {
+      throw new AgentSdkError("already_open", `Close session ${sessionId} before deleting it.`);
+    }
+    try {
+      await deleteSessionTranscript(this.cwd, sessionId);
+    } catch (error) {
+      throw toStorageError(error, sessionId);
+    }
+    await Promise.all([
+      fs.rm(path.join(getEasyAgentHome(), "file-history", sessionId), { recursive: true, force: true }),
+      fs.rm(getTasksDir(getTaskListId(sessionId)), { recursive: true, force: true }),
+    ]);
+  }
+
+  /**
+   * Copy a saved session's conversation into a new session and return the
+   * copy. The copy starts without file checkpoints, so `/rewind` cannot go
+   * back past the fork.
+   */
+  async forkSession(sessionId: string, options: { title?: string } = {}): Promise<StoredSessionSummary> {
+    this.#assertActive();
+    const source = await this.#restore(sessionId);
+    if (!isSessionPersistenceEnabled()) {
+      throw new AgentSdkError("session_storage", "Session persistence is disabled (cleanupPeriodDays is 0).");
+    }
+    const forkId = createSessionId();
+    const startedAt = new Date().toISOString();
+    try {
+      await initSessionStorage({
+        sessionId: forkId,
+        cwd: this.cwd,
+        startedAt,
+        updatedAt: startedAt,
+        model: source.summary.model,
+      });
+      for (const message of source.messages) {
+        await appendTranscriptEntry(this.cwd, forkId, {
+          type: "message",
+          timestamp: new Date().toISOString(),
+          role: message.role === "assistant" ? "assistant" : "user",
+          message,
+        });
+      }
+      if (options.title?.trim()) await writeSessionTitle(this.cwd, forkId, options.title);
+    } catch (error) {
+      throw new AgentSdkError("session_storage", (error as Error).message, { cause: error });
+    }
+    return (await this.readSession(forkId)).summary;
   }
 
   getCapabilities(): RuntimeCapabilities {
@@ -190,6 +262,21 @@ export class AgentRuntime {
     await Promise.all([...this.#sessions.values()].map((session) => session.close()));
     this.#disposed = true;
     if (activeRuntime === this) activeRuntime = null;
+  }
+
+  async #restore(sessionId?: string): Promise<RestoredSession> {
+    if (sessionId !== undefined) this.#assertSessionId(sessionId);
+    try {
+      return await restoreSession(this.cwd, sessionId);
+    } catch (error) {
+      throw toStorageError(error, sessionId, "session_restore");
+    }
+  }
+
+  #assertSessionId(sessionId: string): void {
+    if (!isValidSessionId(sessionId)) {
+      throw new AgentSdkError("invalid_argument", `Not a session id: ${JSON.stringify(sessionId)}`);
+    }
   }
 
   async #loadPermissionSettings(): Promise<PermissionSettings> {
@@ -257,4 +344,16 @@ export async function createAgentRuntime(options: AgentRuntimeOptions): Promise<
   }
   if (options.services !== false) await runtime.startServices(options.services ?? {});
   return runtime;
+}
+
+/** A missing transcript is `not_found`; anything else keeps the caller's code. */
+function toStorageError(
+  error: unknown,
+  sessionId: string | undefined,
+  fallback: "session_restore" | "session_storage" = "session_storage",
+): AgentSdkError {
+  if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
+    return new AgentSdkError("not_found", `No saved session ${sessionId ?? ""}`.trim() + ".", { cause: error });
+  }
+  return new AgentSdkError(fallback, (error as Error).message, { cause: error });
 }

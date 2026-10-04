@@ -14,6 +14,9 @@ All notable changes to Easy Agent are documented in this file.
 - The Auto Mode classifier caches its fixed prompt and tool on Anthropic.
 - Project memory also loads `AGENTS.md`. In a directory that has both files, `AGENTS.md` loads before `AGENT.md`; projects with only `AGENT.md` get the same system prompt as before. `/memory` lists existing `AGENTS.md` files, `/init` improves an existing `AGENTS.md` instead of adding `AGENT.md` next to it, and the sandbox denies writes to the project `AGENTS.md` as it does for `AGENT.md`.
 - Session SDK at `eagent/sdk`: `createAgentRuntime()` bootstraps a workspace and opens sessions; `AgentSession` runs turns and publishes JSON events, permission, plan-approval, and question requests answered with `respond()` or handlers, state snapshots, and `/resume` handles. Several sessions can run in one process with separate conversation state. The terminal UI and Headless mode run on it. See `docs/sdk.md`.
+- RPC mode: `eagent --rpc` serves the session SDK as JSON-RPC 2.0 over stdio for editors, desktop apps, and other languages. Version negotiation on `initialize`, the workspace trust mode chosen by the client, session events as notifications, permission, plan-approval, and question requests answered with `session/respond`, concurrent requests, and saved-session management. The protocol is documented in `docs/rpc.md` with a generated JSON Schema (`docs/rpc-protocol.schema.json`) and a minimal client in `examples/rpc-client.mjs`.
+- Saved sessions can be renamed, forked, and deleted through the SDK (`renameSession`, `forkSession`, `deleteSession`) and RPC. A title is stored next to the transcript, so earlier versions still read the session, and the `/resume` picker shows it in place of the first prompt.
+- Permission and plan-approval requests carry `toolUseId`, the tool call they guard.
 
 ### Changed
 
@@ -30,6 +33,7 @@ All notable changes to Easy Agent are documented in this file.
 
 ### Fixed
 
+- A session's label in `/resume` and `listSessions()` is the first prompt the user typed again. Since transcripts record hidden context, the label could show a plan-mode reminder or a background notification instead.
 - Session transcripts record the conversation the model saw, including plan-mode reminders, background-agent notifications, context updates, and hook context, so a resumed session continues from the same context. A turn started by a background result now has its notification in the transcript.
 - `/clear` and approving a plan with a context clear are recorded; resume starts from the cleared conversation instead of reloading the earlier messages. Transcripts stay readable by earlier versions.
 - Interrupting while a permission prompt or a question is open now ends the turn. The tool call is still answered (denied or declined), so the conversation stays valid, but the model is not called again. The terminal shows the same "Interrupted" notice as for a running turn.
