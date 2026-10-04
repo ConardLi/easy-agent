@@ -48,6 +48,7 @@ The checked-in characterization fixtures are:
 
 - `cli-headless-characterization.golden.txt` for CLI flags, stdin merging, and text, JSON, and stream JSON output.
 - `queryengine-characterization.golden.txt` for local commands and orchestration events.
+- `interactive-session-characterization.golden.txt` for interactive turns: provider requests, permission and question prompts, interrupt, plan approval, background wake-ups, the session transcript, and resume.
 - `providerstream-characterization.golden.txt` for provider request translation and stream events.
 - `config-session-characterization.golden.txt` for configuration precedence, session JSONL, and restored session data.
 
