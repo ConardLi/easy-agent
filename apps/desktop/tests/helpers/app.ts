@@ -33,12 +33,22 @@ export async function fitWindow(app: ElectronApplication, page: Page): Promise<v
 }
 
 /** Start the built app (`npm run build`) with its own data directory and the given preferences. */
-export async function launchApp(options: { prefs?: Partial<Prefs>; userData?: string } = {}): Promise<LaunchedApp> {
+export async function launchApp(options: { prefs?: Partial<Prefs>; userData?: string; env?: Record<string, string> } = {}): Promise<LaunchedApp> {
   const userData = options.userData ?? mkdtempSync(join(tmpdir(), "easy-agent-desktop-"));
   if (options.prefs) writeFileSync(join(userData, "preferences.json"), JSON.stringify(options.prefs));
-  const app = await electron.launch({ args: [...ELECTRON_FLAGS, APP_DIR], env: electronEnv({ EASY_AGENT_DESKTOP_USER_DATA: userData }) });
+  const app = await electron.launch({
+    args: [...ELECTRON_FLAGS, APP_DIR],
+    env: electronEnv({ EASY_AGENT_DESKTOP_USER_DATA: userData, ...options.env }),
+  });
   const page = await app.firstWindow();
   await page.locator("aside, main").first().waitFor();
   await fitWindow(app, page);
   return { app, page, userData };
+}
+
+/** Make the system folder dialog return `path` instead of opening. */
+export async function answerFolderDialog(app: ElectronApplication, path: string): Promise<void> {
+  await app.evaluate(({ dialog }, folder) => {
+    dialog.showOpenDialog = (async () => ({ canceled: false, filePaths: [folder] })) as typeof dialog.showOpenDialog;
+  }, path);
 }

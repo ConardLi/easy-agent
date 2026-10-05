@@ -1,0 +1,115 @@
+/**
+ * The part of the Easy Agent RPC protocol (`docs/rpc.md`) the desktop client
+ * uses. Shapes come from `eagent/sdk` as type-only imports, so nothing from
+ * the Agent is bundled into the client.
+ */
+
+import type {
+  ImageInput,
+  InteractionResponse,
+  InterruptOutcome,
+  PermissionMode,
+  RespondOutcome,
+  RuntimeCapabilities,
+  SessionEvent,
+  SessionState,
+  StoredSession,
+  StoredSessionSummary,
+  TurnResult,
+  WorkspaceReport,
+} from "eagent/sdk";
+
+export type {
+  EffortLevel,
+  InteractionRequest,
+  MessageParam,
+  PermissionMode,
+  SessionEvent,
+  SessionState,
+  SessionUsage,
+  StoredSessionSummary,
+  ThinkingConfig,
+  ToolProgress,
+  TurnResult,
+} from "eagent/sdk";
+
+export const RPC_PROTOCOL_VERSION = 1;
+
+export interface InitializeResult {
+  protocolVersion: number;
+  sessionProtocolVersion: number;
+  serverInfo: { name: "eagent"; version: string };
+  workspace: WorkspaceReport & { cwd: string };
+  capabilities: RuntimeCapabilities;
+}
+
+interface OpenSession {
+  model?: string;
+  permissionMode?: PermissionMode;
+}
+
+/** Methods the renderer may call; `initialize` and `shutdown` belong to the host. */
+export interface AgentMethods {
+  "runtime/capabilities": { params: Record<string, never>; result: RuntimeCapabilities };
+  "session/create": { params: OpenSession & { persist?: boolean }; result: { sessionId: string; state: SessionState } };
+  "session/resume": { params: OpenSession & { sessionId?: string }; result: { sessionId: string; state: SessionState } };
+  "session/list": { params: { limit?: number }; result: { sessions: StoredSessionSummary[] } };
+  "session/read": { params: { sessionId: string }; result: StoredSession };
+  "session/rename": { params: { sessionId: string; title: string }; result: { session: StoredSessionSummary } };
+  "session/fork": { params: { sessionId: string; title?: string }; result: { session: StoredSessionSummary } };
+  "session/delete": { params: { sessionId: string }; result: Record<string, never> };
+  "session/send": { params: { sessionId: string; input: string; queue?: boolean; images?: ImageInput[] }; result: TurnResult };
+  "session/command": { params: { sessionId: string; name: string; args?: string[] }; result: TurnResult };
+  "session/respond": { params: { sessionId: string; requestId: string; response: InteractionResponse }; result: { outcome: RespondOutcome } };
+  "session/interrupt": { params: { sessionId: string }; result: { outcome: InterruptOutcome } };
+  "session/state": { params: { sessionId: string }; result: SessionState };
+  "session/close": { params: { sessionId: string }; result: Record<string, never> };
+}
+
+export type AgentMethod = keyof AgentMethods;
+export type ParamsOf<M extends AgentMethod> = AgentMethods[M]["params"];
+export type ResultOf<M extends AgentMethod> = AgentMethods[M]["result"];
+
+export const AGENT_METHODS = [
+  "runtime/capabilities",
+  "session/create",
+  "session/resume",
+  "session/list",
+  "session/read",
+  "session/rename",
+  "session/fork",
+  "session/delete",
+  "session/send",
+  "session/command",
+  "session/respond",
+  "session/interrupt",
+  "session/state",
+  "session/close",
+] as const satisfies readonly AgentMethod[];
+
+/** A JSON-RPC error, or a failure of the process behind it (`code` 0). */
+export interface RpcErrorInfo {
+  code: number;
+  message: string;
+  data?: unknown;
+}
+
+export type CallOutcome<T> = { ok: true; result: T } | { ok: false; error: RpcErrorInfo };
+
+/** The Agent process of one workspace, as the renderer sees it. */
+export type HostStatus =
+  | { state: "starting" }
+  | { state: "ready"; init: InitializeResult; trust: "persisted" | "session" }
+  | { state: "crashed"; message: string; restarting: boolean }
+  | { state: "stopped" };
+
+export interface AgentEventMessage {
+  workspaceId: string;
+  event: SessionEvent;
+}
+
+export interface AgentLogMessage {
+  workspaceId: string;
+  level: "warn" | "error";
+  message: string;
+}

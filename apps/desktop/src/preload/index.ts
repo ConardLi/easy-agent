@@ -1,8 +1,9 @@
 import { contextBridge, type IpcRendererEvent, ipcRenderer } from "electron";
-import { type DesktopApi, IPC, type MenuCommand, type Prefs } from "../shared/contract";
+import type { AgentEventMessage, AgentLogMessage, HostStatus } from "../shared/agent";
+import { type DesktopApi, IPC, type MenuCommand, type Prefs, type WorkspacesState } from "../shared/contract";
 
-function subscribe<T>(channel: string, listener: (value: T) => void): () => void {
-  const handler = (_event: IpcRendererEvent, value: T) => listener(value);
+function subscribe<A extends unknown[]>(channel: string, listener: (...args: A) => void): () => void {
+  const handler = (_event: IpcRendererEvent, ...args: unknown[]) => listener(...(args as A));
   ipcRenderer.on(channel, handler);
   return () => ipcRenderer.off(channel, handler);
 }
@@ -13,9 +14,28 @@ const api: DesktopApi = {
   prefs: {
     get: () => ipcRenderer.invoke(IPC.prefsGet),
     update: (patch) => ipcRenderer.invoke(IPC.prefsUpdate, patch),
-    onChange: (listener) => subscribe<Prefs>(IPC.prefsChanged, listener),
+    onChange: (listener) => subscribe<[Prefs]>(IPC.prefsChanged, listener),
   },
-  menu: { onCommand: (listener) => subscribe<MenuCommand>(IPC.menuCommand, listener) },
+  menu: { onCommand: (listener) => subscribe<[MenuCommand]>(IPC.menuCommand, listener) },
+  workspaces: {
+    get: () => ipcRenderer.invoke(IPC.workspacesGet),
+    openFolder: () => ipcRenderer.invoke(IPC.workspacesOpenFolder),
+    activate: (id) => ipcRenderer.invoke(IPC.workspacesActivate, id),
+    remove: (id) => ipcRenderer.invoke(IPC.workspacesRemove, id),
+    update: (id, patch) => ipcRenderer.invoke(IPC.workspacesUpdate, id, patch),
+    branch: (id) => ipcRenderer.invoke(IPC.workspacesBranch, id),
+    onChange: (listener) => subscribe<[WorkspacesState]>(IPC.workspacesChanged, listener),
+  },
+  agent: {
+    start: (workspaceId) => ipcRenderer.invoke(IPC.agentStart, workspaceId),
+    restart: (workspaceId, trust) => ipcRenderer.invoke(IPC.agentRestart, workspaceId, trust),
+    call: (workspaceId, method, params) => ipcRenderer.invoke(IPC.agentCall, workspaceId, method, params),
+    snapshot: (workspaceId, sessionId) => ipcRenderer.invoke(IPC.agentSnapshot, workspaceId, sessionId),
+    openSessions: (workspaceId) => ipcRenderer.invoke(IPC.agentOpenSessions, workspaceId),
+    onStatus: (listener) => subscribe<[string, HostStatus]>(IPC.agentStatus, listener),
+    onEvent: (listener) => subscribe<[AgentEventMessage]>(IPC.agentEvent, listener),
+    onLog: (listener) => subscribe<[AgentLogMessage]>(IPC.agentLog, listener),
+  },
 };
 
 contextBridge.exposeInMainWorld("easyAgent", api);

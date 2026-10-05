@@ -2,12 +2,13 @@ import { FolderGit2, FolderOpen, ShieldCheck } from "lucide-react";
 import { motion } from "motion/react";
 import { AppMark } from "../../design/AppMark";
 import { MOD, Shortcut } from "../../design/primitives";
+import { openFolder } from "../../state/actions";
 import { notYet } from "../../state/ui";
 
 /** First launch: no workspace is open, so there is no Agent process yet. */
 export function FirstRun() {
   const actions = [
-    { icon: FolderOpen, title: "打开文件夹", hint: "选择本地的项目目录", keys: [MOD, "O"], onClick: () => notYet("打开文件夹") },
+    { icon: FolderOpen, title: "打开文件夹", hint: "选择本地的项目目录", keys: [MOD, "O"], onClick: () => void openFolder() },
     { icon: FolderGit2, title: "克隆仓库", hint: "从 Git 地址克隆到本地", onClick: () => notYet("克隆仓库") },
   ];
 
