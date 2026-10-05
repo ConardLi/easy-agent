@@ -4,6 +4,7 @@ import { Fragment, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { blocksOf, type SessionView } from "../../agent/projector/session";
 import type { Block, ToolCall } from "../../agent/viewModel";
 import { cn, Spinner } from "../../design/primitives";
+import { usePrefs } from "../../state/prefs";
 import { AssistantMessage, NoticeBlock, ThinkingBlock, UserMessage } from "./Messages";
 import { RequestBlock } from "./RequestCards";
 import { ExploreGroup, isExploreTool, ToolBlock } from "./ToolCards";
@@ -81,6 +82,7 @@ export function Conversation({ view, workspaceName, startedAt }: { view: Session
   const stick = useRef(true);
   const [away, setAway] = useState(false);
   const blocks = useMemo(() => blocksOf(view), [view]);
+  const showThinking = usePrefs((s) => s.showThinking);
   const items = useMemo(() => toItems(blocks), [blocks]);
 
   // Only the newest open request takes keyboard shortcuts.
@@ -151,7 +153,7 @@ export function Conversation({ view, workspaceName, startedAt }: { view: Session
                 ) : item.block.kind === "assistant" ? (
                   <AssistantMessage block={item.block} last={item.block.id === lastAssistant} />
                 ) : item.block.kind === "thinking" ? (
-                  <ThinkingBlock block={item.block} />
+                  <ThinkingBlock block={item.block} showThinking={showThinking} />
                 ) : item.block.kind === "tool" ? (
                   <ToolBlock tool={item.block.tool} />
                 ) : item.block.kind === "request" ? (

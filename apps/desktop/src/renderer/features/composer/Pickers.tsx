@@ -1,7 +1,10 @@
 import { Check, ChevronDown, ClipboardList, Cpu, Lightbulb, Search, Settings2, ShieldCheck, Zap } from "lucide-react";
 import { Popover } from "radix-ui";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { Effort, PermissionMode } from "../../agent/viewModel";
+import { BrandIcon } from "../../design/BrandIcon";
+import { listModels } from "../../lib/modelIndex";
+import { useSettings } from "../../state/settings";
 import { cn, Kbd, Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger, Tooltip } from "../../design/primitives";
 
 const pill =
@@ -70,8 +73,8 @@ export function ModePicker({ mode, onChange }: { mode: PermissionMode; onChange:
 }
 
 /**
- * Model picker. TODO(G6): the configured model list comes with `config/read`;
- * until then it shows the current model and takes a model name or profile id.
+ * Model picker: the profiles in settings.json, grouped by provider, and any
+ * model name or profile id typed in.
  */
 export function ModelPicker({
   model,
@@ -85,6 +88,8 @@ export function ModelPicker({
   onOpenChange?: (open: boolean) => void;
 }) {
   const [openState, setOpenState] = useState(false);
+  const providers = useSettings((s) => s.providers);
+  const models = useMemo(() => listModels(providers), [providers]);
   const open = openProp ?? openState;
   const setOpen = (v: boolean) => {
     setOpenState(v);
@@ -138,8 +143,26 @@ export function ModelPicker({
               className="h-full flex-1 bg-transparent text-[13px] text-fg outline-none placeholder:text-fg-3"
             />
           </form>
-          <div className="p-1">
-            {model && (
+          <div className="scroll-thin max-h-[320px] overflow-y-auto p-1">
+            {models
+              .filter((m) => !typed || `${m.label} ${m.id} ${m.provider}`.toLowerCase().includes(typed.toLowerCase()))
+              .map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => choose(m.id)}
+                  className={cn(
+                    "flex h-9 w-full items-center gap-2.5 rounded-lg px-2 text-left text-[13px] text-fg hover:bg-surface-2",
+                    m.id === model && "bg-surface-2",
+                  )}
+                >
+                  <BrandIcon id={m.icon} size={16} />
+                  <span className="min-w-0 flex-1 truncate">{m.label}</span>
+                  <span className="truncate text-[11.5px] text-fg-3">{m.provider}</span>
+                  {m.id === model && <Check className="size-3.5 text-accent" />}
+                </button>
+              ))}
+            {model && !models.some((m) => m.id === model) && (
               <button
                 type="button"
                 onClick={() => setOpen(false)}
@@ -150,7 +173,7 @@ export function ModelPicker({
                 <Check className="size-3.5 text-accent" />
               </button>
             )}
-            {typed && typed !== model && (
+            {typed && typed !== model && !models.some((m) => m.id === typed) && (
               <button
                 type="button"
                 onClick={() => choose(typed)}
@@ -162,14 +185,14 @@ export function ModelPicker({
                 </span>
               </button>
             )}
-            <div className="px-2.5 py-2 text-[11.5px] leading-[1.6] text-fg-3">
-              TODO：读取 settings.json 里配置的模型列表需要 Agent 提供 config/read（G6）。
-            </div>
           </div>
           <button
             type="button"
-            disabled
-            className="flex h-9 w-full items-center gap-2 border-t border-line px-3 text-left text-[12px] text-fg-2 opacity-45 transition-colors"
+            onClick={() => {
+              setOpen(false);
+              useSettings.getState().openSettings("models");
+            }}
+            className="flex h-9 w-full items-center gap-2 border-t border-line px-3 text-left text-[12px] text-fg-2 transition-colors hover:bg-surface-2 hover:text-fg"
           >
             <Settings2 className="size-3.5" />
             管理服务商和模型

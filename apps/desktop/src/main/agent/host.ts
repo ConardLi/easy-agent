@@ -3,12 +3,18 @@ import type { AgentMethod, HostStatus, InitializeResult, ParamsOf, ResultOf, Ses
 import { RPC_PROTOCOL_VERSION } from "../../shared/agent";
 import { RpcClient, RpcError } from "./rpc";
 
+/** How to start the Agent process; read again for every launch, so preference changes apply on restart. */
+export interface LaunchCommand {
+  command: string;
+  args: string[];
+  env: Record<string, string>;
+}
+
 export interface HostOptions {
   cwd: string;
-  /** The `eagent` entry script, run with Electron's bundled Node. */
-  script: string;
+  launch(): LaunchCommand;
   clientVersion: string;
-  autoRestart: boolean;
+  autoRestart(): boolean;
   onStatus(status: HostStatus): void;
   onEvent(event: SessionEvent): void;
   onLog(level: "warn" | "error", message: string): void;
@@ -116,8 +122,15 @@ export class AgentHost {
     this.#lastSeq.clear();
     this.#setStatus({ state: "starting" });
 
-    const { cwd, script } = this.#options;
-    const child = spawn(process.execPath, [script, "--rpc"], { cwd, env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" }, stdio: "pipe" });
+    let launch: LaunchCommand;
+    try {
+      launch = this.#options.launch();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.#setStatus({ state: "crashed", message, restarting: false });
+      return Promise.reject(error);
+    }
+    const child = spawn(launch.command, launch.args, { cwd: this.#options.cwd, env: launch.env, stdio: "pipe" });
     const rpc = new RpcClient(child.stdout, child.stdin, (method, params) => this.#notify(method, params));
     this.#child = child;
     this.#rpc = rpc;
@@ -189,7 +202,7 @@ export class AgentHost {
     this.#crashes = [...this.#crashes.filter((at) => now - at < CRASH_WINDOW_MS), now];
     const lastLine = stderr.trim().split("\n").filter(Boolean).pop();
     const message = lastLine ? `${lastLine}（${detail}）` : `Agent 进程意外退出（${detail}）`;
-    const restarting = this.#options.autoRestart && this.#crashes.length < CRASH_LIMIT;
+    const restarting = this.#options.autoRestart() && this.#crashes.length < CRASH_LIMIT;
     this.#setStatus({ state: "crashed", message, restarting });
     if (restarting) setTimeout(() => void this.#launch(reopen).catch(() => {}), RESTART_DELAY_MS);
   }

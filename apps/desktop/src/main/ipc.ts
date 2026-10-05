@@ -1,5 +1,7 @@
 import { userInfo } from "node:os";
-import { app, BrowserWindow, dialog, ipcMain } from "electron";
+import { homedir } from "node:os";
+import { join } from "node:path";
+import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import type { AgentMethod } from "../shared/agent";
 import { type AppInfo, IPC, type Prefs, type WorkspacePatch } from "../shared/contract";
 import type { HostManager } from "./agent/hosts";
@@ -8,6 +10,7 @@ import { captureScreenRegion } from "./services/capture";
 import { searchFiles } from "./services/files";
 import { currentBranch } from "./services/git";
 import type { PrefsStore } from "./services/prefs";
+import type { SecretStore } from "./services/secrets";
 import type { WorkspaceStore } from "./services/workspaces";
 
 function appInfo(): AppInfo {
@@ -26,7 +29,17 @@ function appInfo(): AppInfo {
 
 const asString = (value: unknown) => (typeof value === "string" ? value : "");
 
-export function registerIpc({ prefs, workspaces, hosts }: { prefs: PrefsStore; workspaces: WorkspaceStore; hosts: HostManager }): void {
+export function registerIpc({
+  prefs,
+  workspaces,
+  hosts,
+  secrets,
+}: {
+  prefs: PrefsStore;
+  workspaces: WorkspaceStore;
+  hosts: HostManager;
+  secrets: SecretStore;
+}): void {
   ipcMain.handle(IPC.appInfo, () => appInfo());
   ipcMain.handle(IPC.appCaptureScreen, () => captureScreenRegion());
   ipcMain.handle(IPC.appSaveText, async (event, defaultName: unknown, text: unknown) => {
@@ -36,6 +49,20 @@ export function registerIpc({ prefs, workspaces, hosts }: { prefs: PrefsStore; w
     if (picked.canceled || !picked.filePath) return null;
     await writeFile(picked.filePath, asString(text), "utf8");
     return picked.filePath;
+  });
+  ipcMain.handle(IPC.appOpenPath, async (_event, path: unknown) => {
+    const target = asString(path).replace(/^~(?=$|\/)/, homedir());
+    if (target) await shell.openPath(target.startsWith("/") ? target : join(homedir(), target));
+  });
+  ipcMain.handle(IPC.appOpenExternal, async (_event, url: unknown) => {
+    const link = asString(url);
+    if (/^https:\/\/[^\s]+$/.test(link)) await shell.openExternal(link);
+  });
+  ipcMain.handle(IPC.secretsList, () => secrets.list());
+  ipcMain.handle(IPC.secretsSet, (_event, name: unknown, value: unknown) => {
+    const key = asString(name);
+    if (!/^[a-z0-9_-]{1,64}$/i.test(key)) throw new Error("Invalid secret name");
+    return secrets.set(key, typeof value === "string" && value ? value : null);
   });
   ipcMain.handle(IPC.prefsGet, () => prefs.get());
   // Everything below comes from the renderer, so values are checked before use.

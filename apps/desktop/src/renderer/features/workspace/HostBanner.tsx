@@ -2,6 +2,7 @@ import { CircleAlert, ShieldAlert } from "lucide-react";
 import type { WorkspaceInfo } from "../../../shared/contract";
 import { Button, cn, Spinner } from "../../design/primitives";
 import { restartAgent, trustWorkspace } from "../../state/actions";
+import { setWorkspaceTrust } from "../../state/settings";
 import { useRuntime } from "../../state/workspaces";
 
 /** The workspace's Agent process when it needs attention: untrusted, or stopped. */
@@ -39,9 +40,11 @@ export function HostBanner({ workspace, className }: { workspace: WorkspaceInfo;
           <span className="font-medium text-fg">这个工作区还没有被信任。</span>
           项目里的设置、hooks、MCP 服务器和 .env 凭据都不会生效。
         </div>
-        {/* TODO(G10): "always trust" needs the Agent to save the decision; until then trust lasts until the app quits. */}
-        <Button size="sm" variant="outline" onClick={() => void trustWorkspace(workspace.id)}>
-          信任
+        <Button size="sm" variant="ghost" onClick={() => void trustWorkspace(workspace.id)}>
+          仅本次
+        </Button>
+        <Button size="sm" variant="outline" onClick={() => void setWorkspaceTrust(workspace.id, true)}>
+          始终信任
         </Button>
       </div>
     );

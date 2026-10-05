@@ -3,10 +3,11 @@ import { AnimatePresence, motion } from "motion/react";
 import { type ClipboardEvent, type DragEvent, type KeyboardEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ImageInput } from "../../../shared/agent";
 import type { Attachment } from "../../agent/viewModel";
-import { cn, Kbd, Menu, MenuContent, MenuItem, MenuTrigger, Tooltip } from "../../design/primitives";
+import { cn, Kbd, Menu, MenuContent, MenuItem, MenuTrigger, MOD, Tooltip } from "../../design/primitives";
 import { desktop } from "../../lib/desktop";
 import { basename, dirname, uid } from "../../lib/format";
 import { aliasFor, GROUP_LABEL, listSlash, matchSlash, type SlashEntry, type SlashGroup } from "../../lib/slash";
+import { usePrefs } from "../../state/prefs";
 import { interrupt, runUiAction, sendMessage, setEffort, setMode, setModel } from "../../state/actions";
 import { useActiveView, useSessions } from "../../state/sessions";
 import { notYet, useUi } from "../../state/ui";
@@ -48,6 +49,7 @@ export function Composer({ variant = "dock" }: { variant?: "dock" | "hero" }) {
   const toast = useUi((s) => s.toast);
   const picker = useUi((s) => s.picker);
   const setPicker = useUi((s) => s.setPicker);
+  const sendWith = usePrefs((s) => s.sendWith);
 
   const [text, setText] = useState("");
   const [attachments, setAttachments] = useState<Pending[]>([]);
@@ -196,9 +198,12 @@ export function Composer({ variant = "dock" }: { variant?: "dock" | "hero" }) {
       void interrupt();
       return;
     }
-    if (e.key === "Enter" && !e.shiftKey && !e.metaKey && !e.ctrlKey) {
-      e.preventDefault();
-      void submit();
+    if (e.key === "Enter" && !e.shiftKey) {
+      const mod = e.metaKey || e.ctrlKey;
+      if (sendWith === "enter" ? !mod : mod) {
+        e.preventDefault();
+        void submit();
+      }
     }
   };
 
@@ -535,7 +540,7 @@ export function Composer({ variant = "dock" }: { variant?: "dock" | "hero" }) {
               </button>
             </Tooltip>
           ) : (
-            <Tooltip content="发送" keys={["↵"]} side="top">
+            <Tooltip content="发送" keys={sendWith === "enter" ? ["↵"] : [MOD, "↵"]} side="top">
               <button
                 type="button"
                 onClick={() => void submit()}
