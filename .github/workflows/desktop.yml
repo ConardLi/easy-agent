@@ -54,8 +54,12 @@ jobs:
           node-version: "22"
           package-manager-cache: false
       - run: npm ci
+      # Electron fetches its binary on first use; do it here, not inside the first test.
+      - run: node node_modules/electron/install.js
       - run: npm run build
       - run: npx playwright test --project=e2e --project=visual
+        env:
+          DEBUG: pw:browser
       - if: failure()
         uses: actions/upload-artifact@v4
         with:
