@@ -11,7 +11,7 @@ The baseline only ever comes from the reference (`updateSnapshots` is `none`), s
 1. Start the reference: `npm run dev` in `web-ui/` (port 5180).
 2. In `apps/desktop/`: `WEB_UI_URL=http://localhost:5180 npm run visual:baseline`.
 
-The reference is rendered in the same Electron build as the client, at a 1280×800 window and a device scale factor of 1, so fonts and compositing match. Baselines are captured on macOS, and the visual tests run on macOS only.
+The reference is rendered in the same Electron build as the client, at a 1280×800 viewport and a device scale factor of 1, so fonts and compositing match. Chinese text falls back to the system's CJK font, whose glyphs change between macOS versions, so a baseline only holds on the machine (or macOS version) that captured it. CI runs the e2e tests only; run `npm run test:visual` locally before a pull request that touches the interface, and capture the baseline again after a macOS upgrade.
 
 ## When the design changes
 
