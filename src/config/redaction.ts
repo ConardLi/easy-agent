@@ -1,6 +1,8 @@
-const REDACTED = "[redacted]";
+/** What a credential is replaced with in anything shown to the user. */
+export const REDACTED = "[redacted]";
 
-function isSensitiveKey(key: string): boolean {
+/** Whether a settings key holds credential material (`apiKey`, `token`, `password`, …). */
+export function isSensitiveSettingKey(key: string): boolean {
   const normalized = key.replace(/[^a-z0-9]/gi, "").toLowerCase();
   return [
     "apikey",
@@ -40,7 +42,7 @@ export function redactUrlForDisplay(value: string): string {
 
 function redactNested(value: unknown, key: string): unknown {
   const normalized = key.toLowerCase();
-  if (isSensitiveKey(key)) return REDACTED;
+  if (isSensitiveSettingKey(key)) return REDACTED;
   if (normalized === "apikeyhelper") return "[configured]";
   if (normalized === "hooks" || normalized === "statusline") return "[configured]";
   if (normalized === "mcpservers") {

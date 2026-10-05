@@ -15,6 +15,7 @@ import type {
   PluginViewData,
   ResumeSessionInfo,
 } from "../core/queryEngine/types.js";
+import type { SettingSource } from "../config/sources.js";
 import type { TokenWarningResult } from "../context/autoCompact.js";
 import type { PermissionMode } from "../permissions/permissions.js";
 import type { AsyncAgentEntry } from "../state/asyncAgentStore.js";
@@ -25,6 +26,7 @@ import type { SubAgentProgress } from "../state/subAgentProgressStore.js";
 import type { TaskMode } from "../state/taskModeStore.js";
 import type { ToolStatus } from "../state/toolStatusStore.js";
 import type { ToolResult, UserQuestion } from "../tools/Tool.js";
+import type { ModelProtocol } from "../services/api/providers/profile.js";
 import type { Usage } from "../types/message.js";
 import type { Task } from "../types/task.js";
 import type { TodoItem } from "../types/todo.js";
@@ -104,6 +106,70 @@ export interface AgentRuntimeOptions {
 }
 
 /** One saved session of the workspace. */
+// ─── Settings ─────────────────────────────────────────────────────────────
+
+/** A settings file a frontend may write. */
+export type ConfigScope = "user" | "project" | "local";
+
+export interface ConfigSourceInfo {
+  source: SettingSource;
+  /** Absolute file path; null for command-line flags. */
+  path: string | null;
+  exists: boolean;
+  /** False for project and local files while the workspace is not trusted. */
+  applied: boolean;
+  /** Display-safe contents: inline secrets are `[redacted]`, `${VAR}` references stay. */
+  values: Record<string, unknown>;
+  parseError?: string;
+  validationErrors?: string[];
+}
+
+export interface EffectiveSetting {
+  /** Display-safe value. Lists merge across sources; `env`, `enabledPlugins`, `mcpServers`, `modelRoles` merge by key. */
+  value: unknown;
+  /** The settings layer that set the value last, or "default". */
+  source: SettingSource | "default";
+  /** Every source that contributed. */
+  sources: SettingSource[];
+  /** When a change takes effect: "next turn", "next request", "restart", … */
+  reload: string;
+}
+
+export interface ModelProfileInfo {
+  protocol: ModelProtocol;
+  model: string;
+  /** The base URL requests go to. */
+  baseURL: string;
+  /** The `apiKey` entry as shown: a `${VAR}` reference, `[redacted]`, or null when unset. */
+  apiKey: string | null;
+  /** Whether a key resolved, after `${VAR}` interpolation. */
+  hasApiKey: boolean;
+  /** Header names; values are not returned. */
+  headers: string[];
+  maxTokens?: number;
+  /** The settings layer that declared the profile. */
+  source: SettingSource;
+}
+
+export interface ConfigSnapshot {
+  workspaceTrusted: boolean;
+  /** Every source in priority order, low to high. */
+  sources: ConfigSourceInfo[];
+  effective: Record<string, EffectiveSetting>;
+  models: { profiles: Record<string, ModelProfileInfo>; defaultModel: string | null; warnings: string[] };
+  /** Keys a project or local file cannot set. */
+  userOnlyKeys: string[];
+}
+
+export interface ModelCheckResult {
+  ok: boolean;
+  protocol: ModelProtocol;
+  model: string;
+  latencyMs: number;
+  /** Why the request failed, with credentials taken out. */
+  error?: string;
+}
+
 export interface StoredSessionSummary {
   sessionId: string;
   cwd: string;

@@ -135,6 +135,203 @@
             },
             "method": {
               "type": "string",
+              "const": "config/read"
+            },
+            "params": {
+              "type": "object",
+              "properties": {}
+            }
+          },
+          "required": [
+            "jsonrpc",
+            "method"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "jsonrpc": {
+              "type": "string",
+              "const": "2.0"
+            },
+            "id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "method": {
+              "type": "string",
+              "const": "config/write"
+            },
+            "params": {
+              "type": "object",
+              "properties": {
+                "scope": {
+                  "type": "string",
+                  "enum": [
+                    "user",
+                    "project",
+                    "local"
+                  ]
+                },
+                "key": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "value": {}
+              },
+              "required": [
+                "scope",
+                "key",
+                "value"
+              ]
+            }
+          },
+          "required": [
+            "jsonrpc",
+            "method"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "jsonrpc": {
+              "type": "string",
+              "const": "2.0"
+            },
+            "id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "method": {
+              "type": "string",
+              "const": "workspace/trust"
+            },
+            "params": {
+              "type": "object",
+              "properties": {
+                "trusted": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "trusted"
+              ]
+            }
+          },
+          "required": [
+            "jsonrpc",
+            "method"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "jsonrpc": {
+              "type": "string",
+              "const": "2.0"
+            },
+            "id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "method": {
+              "type": "string",
+              "const": "models/check"
+            },
+            "params": {
+              "type": "object",
+              "properties": {
+                "model": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "model"
+              ]
+            }
+          },
+          "required": [
+            "jsonrpc",
+            "method"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "jsonrpc": {
+              "type": "string",
+              "const": "2.0"
+            },
+            "id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "method": {
+              "type": "string",
+              "const": "models/list"
+            },
+            "params": {
+              "type": "object",
+              "properties": {
+                "model": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "model"
+              ]
+            }
+          },
+          "required": [
+            "jsonrpc",
+            "method"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "jsonrpc": {
+              "type": "string",
+              "const": "2.0"
+            },
+            "id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "method": {
+              "type": "string",
               "const": "session/create"
             },
             "params": {
@@ -1665,6 +1862,190 @@
           ],
           "additionalProperties": {}
         },
+        "config/read": {
+          "type": "object",
+          "properties": {
+            "workspaceTrusted": {
+              "type": "boolean"
+            },
+            "sources": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "source": {
+                    "type": "string"
+                  },
+                  "path": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "exists": {
+                    "type": "boolean"
+                  },
+                  "applied": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "source",
+                  "path",
+                  "exists",
+                  "applied"
+                ],
+                "additionalProperties": {}
+              }
+            },
+            "effective": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {
+                "type": "object",
+                "properties": {
+                  "source": {
+                    "type": "string"
+                  },
+                  "sources": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "reload": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "source",
+                  "sources",
+                  "reload"
+                ],
+                "additionalProperties": {}
+              }
+            },
+            "models": {
+              "type": "object",
+              "properties": {
+                "profiles": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {
+                    "type": "object",
+                    "properties": {},
+                    "additionalProperties": {}
+                  }
+                },
+                "defaultModel": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "warnings": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "profiles",
+                "defaultModel",
+                "warnings"
+              ]
+            },
+            "userOnlyKeys": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "workspaceTrusted",
+            "sources",
+            "effective",
+            "models",
+            "userOnlyKeys"
+          ],
+          "additionalProperties": {}
+        },
+        "config/write": {
+          "type": "object",
+          "properties": {
+            "reload": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "reload"
+          ]
+        },
+        "workspace/trust": {
+          "type": "object",
+          "properties": {
+            "trusted": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "trusted"
+          ]
+        },
+        "models/check": {
+          "type": "object",
+          "properties": {
+            "ok": {
+              "type": "boolean"
+            },
+            "protocol": {
+              "type": "string"
+            },
+            "model": {
+              "type": "string"
+            },
+            "latencyMs": {
+              "type": "number"
+            },
+            "error": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "ok",
+            "protocol",
+            "model",
+            "latencyMs"
+          ]
+        },
+        "models/list": {
+          "type": "object",
+          "properties": {
+            "models": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "models"
+          ]
+        },
         "session/create": {
           "type": "object",
           "properties": {
@@ -2888,6 +3269,11 @@
       "required": [
         "initialize",
         "runtime/capabilities",
+        "config/read",
+        "config/write",
+        "workspace/trust",
+        "models/check",
+        "models/list",
         "session/create",
         "session/resume",
         "session/list",

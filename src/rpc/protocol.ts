@@ -160,6 +160,13 @@ export const MethodParams = {
     services: z.enum(["background", "wait"]).optional(),
   }),
   "runtime/capabilities": z.object({}),
+  "config/read": z.object({}),
+  /** `value: null` deletes the key. `[redacted]` inside the value keeps what the file already holds there. */
+  "config/write": z.object({ scope: z.enum(["user", "project", "local"]), key: z.string().min(1), value: z.unknown() }),
+  /** Saved trust applies when the process starts; restart the server to use it. */
+  "workspace/trust": z.object({ trusted: z.boolean() }),
+  "models/check": z.object({ model: z.string().min(1) }),
+  "models/list": z.object({ model: z.string().min(1) }),
   "session/create": z.object({ ...OpenSessionOptions, persist: z.boolean().optional() }),
   "session/resume": z.object({ sessionId: SessionId.optional(), ...OpenSessionOptions }),
   "session/list": z.object({ limit: z.number().int().positive().optional() }),
@@ -222,6 +229,36 @@ export const MethodResults = {
       .loose(),
   }),
   "runtime/capabilities": z.object({ builtinCommands: z.array(z.string()) }).loose(),
+  "config/read": z
+    .object({
+      workspaceTrusted: z.boolean(),
+      sources: z.array(
+        z
+          .object({ source: z.string(), path: z.string().nullable(), exists: z.boolean(), applied: z.boolean() })
+          .loose(),
+      ),
+      effective: z.record(
+        z.string(),
+        z.object({ source: z.string(), sources: z.array(z.string()), reload: z.string() }).loose(),
+      ),
+      models: z.object({
+        profiles: z.record(z.string(), z.object({}).loose()),
+        defaultModel: z.string().nullable(),
+        warnings: z.array(z.string()),
+      }),
+      userOnlyKeys: z.array(z.string()),
+    })
+    .loose(),
+  "config/write": z.object({ reload: z.string() }),
+  "workspace/trust": z.object({ trusted: z.boolean() }),
+  "models/check": z.object({
+    ok: z.boolean(),
+    protocol: z.string(),
+    model: z.string(),
+    latencyMs: z.number(),
+    error: z.string().optional(),
+  }),
+  "models/list": z.object({ models: z.array(z.string()) }),
   "session/create": z.object({ sessionId: z.string(), state: SessionStateSchema }),
   "session/resume": z.object({ sessionId: z.string(), state: SessionStateSchema }),
   "session/list": z.object({ sessions: z.array(StoredSessionSummarySchema) }),

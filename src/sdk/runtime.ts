@@ -43,12 +43,16 @@ import { logWarn } from "../utils/log.js";
 import { readMergedStringSetting } from "../utils/settings.js";
 import type { McpServerConfig } from "../types/mcp.js";
 import { activateWorkspace, consoleLogger, loadWorkspace, type WorkspaceReport } from "./bootstrap.js";
+import { checkModel, listModels, readConfig, setWorkspaceTrust, writeConfig } from "./config.js";
 import { AgentSdkError } from "./errors.js";
-import { AgentSession } from "./session.js";
+import { AgentSession, reloadSettingsOf } from "./session.js";
 import { SessionController } from "./session/controller.js";
 import type {
   AgentRuntimeOptions,
   AgentSessionOptions,
+  ConfigScope,
+  ConfigSnapshot,
+  ModelCheckResult,
   RuntimeCapabilities,
   RuntimeLogger,
   StartServicesOptions,
@@ -285,6 +289,44 @@ export class AgentRuntime {
       profile.protocol === "anthropic" &&
       Boolean(env.ANTHROPIC_AUTH_TOKEN || env.ANTHROPIC_API_KEY || env.ANTHROPIC_BASE_URL)
     );
+  }
+
+  // ─── Settings ───────────────────────────────────────────────────────────
+
+  /** Every settings source, the effective value of each key and where it came from, and the model profiles. */
+  readConfig(): Promise<ConfigSnapshot> {
+    this.#assertActive();
+    return readConfig(this.cwd);
+  }
+
+  /**
+   * Set one top-level setting in a user, project, or local file, or delete it
+   * with `null`. Validated before writing; open sessions pick up permission
+   * rules and mode right away, other keys per the returned `reload`.
+   */
+  async writeConfig(scope: ConfigScope, key: string, value: unknown): Promise<{ reload: string }> {
+    this.#assertActive();
+    const result = await writeConfig(this.cwd, scope, key, value);
+    await Promise.all(this.listOpenSessions().map((session) => reloadSettingsOf(session)));
+    return result;
+  }
+
+  /** Save or revoke workspace trust. Trust is applied when a runtime starts, so restart to use it. */
+  setWorkspaceTrust(trusted: boolean): Promise<{ trusted: boolean }> {
+    this.#assertActive();
+    return setWorkspaceTrust(this.cwd, trusted);
+  }
+
+  /** Send the smallest possible request with a model handle and report whether it went through. */
+  checkModel(model: string): Promise<ModelCheckResult> {
+    this.#assertActive();
+    return checkModel(this.cwd, model);
+  }
+
+  /** Model ids offered by the provider behind a model handle. */
+  listModels(model: string): Promise<{ models: string[] }> {
+    this.#assertActive();
+    return listModels(this.cwd, model);
   }
 
   getCapabilities(): RuntimeCapabilities {

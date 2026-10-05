@@ -41,6 +41,12 @@ export function runInScopeOf<T>(session: AgentSession, fn: () => T): T {
   return runInSessionScope(controller.scope, fn);
 }
 
+/** @internal Re-read permission settings in an open session after a settings write. */
+export function reloadSettingsOf(session: AgentSession): Promise<void> {
+  const controller = controllers.get(session);
+  return controller && !controller.closed ? controller.reloadSettings() : Promise.resolve();
+}
+
 export class AgentSession {
   readonly id: string;
   readonly #controller: SessionController;

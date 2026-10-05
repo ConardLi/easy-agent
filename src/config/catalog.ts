@@ -28,7 +28,8 @@ export const SETTING_RELOAD: Record<string, string> = {
   mcpServers: "MCP reconnect",
   sandbox: "next shell execution",
 };
-const defaults: Record<string, unknown> = {
+/** Built-in values for settings no source sets. */
+export const SETTING_DEFAULTS: Record<string, unknown> = {
   toolSearch: "on",
   toolSearchAutoThreshold: 10,
   modelRoles: {},
@@ -59,7 +60,7 @@ export async function describeConfiguration(cwd: string): Promise<string[]> {
         source.raw?.[key] !== undefined &&
         (isTrustedScopeForSensitiveKeys(source.source) || (trusted && !["mode", "autoMode"].includes(key))),
     );
-    let value: unknown = defaults[key];
+    let value: unknown = SETTING_DEFAULTS[key];
     let from = "default";
     for (const source of eligible) {
       value = source.raw![key];
