@@ -1,7 +1,11 @@
 import { userInfo } from "node:os";
-import { app, ipcMain } from "electron";
-import { type AppInfo, IPC, type Prefs } from "../shared/contract";
+import { app, BrowserWindow, dialog, ipcMain } from "electron";
+import type { AgentMethod } from "../shared/agent";
+import { type AppInfo, IPC, type Prefs, type WorkspacePatch } from "../shared/contract";
+import type { HostManager } from "./agent/hosts";
+import { currentBranch } from "./services/git";
 import type { PrefsStore } from "./services/prefs";
+import type { WorkspaceStore } from "./services/workspaces";
 
 function appInfo(): AppInfo {
   let userName = "";
@@ -17,9 +21,40 @@ function appInfo(): AppInfo {
   };
 }
 
-export function registerIpc(prefs: PrefsStore): void {
+const asString = (value: unknown) => (typeof value === "string" ? value : "");
+
+export function registerIpc({ prefs, workspaces, hosts }: { prefs: PrefsStore; workspaces: WorkspaceStore; hosts: HostManager }): void {
   ipcMain.handle(IPC.appInfo, () => appInfo());
   ipcMain.handle(IPC.prefsGet, () => prefs.get());
-  // The patch comes from the renderer, so the store validates every value.
+  // Everything below comes from the renderer, so values are checked before use.
   ipcMain.handle(IPC.prefsUpdate, (_event, patch: Partial<Prefs>) => prefs.update(patch && typeof patch === "object" ? patch : {}));
+
+  ipcMain.handle(IPC.workspacesGet, () => workspaces.get());
+  ipcMain.handle(IPC.workspacesOpenFolder, async (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    const options = { title: "打开文件夹", properties: ["openDirectory", "createDirectory"] as ("openDirectory" | "createDirectory")[] };
+    const picked = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options);
+    const path = picked.filePaths[0];
+    return picked.canceled || !path ? null : workspaces.add(path);
+  });
+  ipcMain.handle(IPC.workspacesActivate, (_event, id: unknown) => workspaces.activate(asString(id)));
+  ipcMain.handle(IPC.workspacesRemove, async (_event, id: unknown) => {
+    await hosts.stop(asString(id));
+    await workspaces.remove(asString(id));
+  });
+  ipcMain.handle(IPC.workspacesUpdate, (_event, id: unknown, patch: WorkspacePatch) =>
+    workspaces.update(asString(id), patch && typeof patch === "object" ? patch : {}),
+  );
+  ipcMain.handle(IPC.workspacesBranch, (_event, id: unknown) => {
+    const workspace = workspaces.find(asString(id));
+    return workspace ? currentBranch(workspace.path) : null;
+  });
+
+  ipcMain.handle(IPC.agentStart, (_event, id: unknown) => hosts.start(asString(id)));
+  ipcMain.handle(IPC.agentRestart, (_event, id: unknown, trust: unknown) => hosts.restart(asString(id), trust === "session" ? "session" : "persisted"));
+  ipcMain.handle(IPC.agentCall, (_event, id: unknown, method: unknown, params: unknown) =>
+    hosts.call(asString(id), asString(method) as AgentMethod, (params && typeof params === "object" ? params : {}) as never),
+  );
+  ipcMain.handle(IPC.agentSnapshot, (_event, id: unknown, sessionId: unknown) => hosts.snapshot(asString(id), asString(sessionId)));
+  ipcMain.handle(IPC.agentOpenSessions, (_event, id: unknown) => hosts.openSessions(asString(id)));
 }

@@ -3,6 +3,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App, applyTheme } from "./App";
 import { desktop } from "./lib/desktop";
+import { bootstrap } from "./state/actions";
 import { loadPrefs, usePrefs } from "./state/prefs";
 import { useUi } from "./state/ui";
 
@@ -19,3 +20,4 @@ createRoot(root).render(
     <App />
   </StrictMode>,
 );
+void bootstrap();

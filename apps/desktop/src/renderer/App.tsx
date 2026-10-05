@@ -3,13 +3,21 @@ import { Tooltip } from "radix-ui";
 import { useEffect, useLayoutEffect } from "react";
 import { useShallow } from "zustand/react/shallow";
 import type { MenuCommand, Theme } from "../shared/contract";
+import { Composer } from "./features/composer/Composer";
+import { Conversation } from "./features/session/Conversation";
 import { Toasts } from "./features/shell/Toasts";
 import { TopBar } from "./features/shell/TopBar";
 import { FirstRun } from "./features/workspace/FirstRun";
+import { HostBanner } from "./features/workspace/HostBanner";
 import { Sidebar } from "./features/workspace/Sidebar";
+import { useSessionList } from "./features/workspace/sessionList";
+import { Welcome } from "./features/workspace/Welcome";
 import { desktop } from "./lib/desktop";
+import { newSession, openFolder } from "./state/actions";
 import { usePrefs } from "./state/prefs";
+import { useActiveView } from "./state/sessions";
 import { notYet } from "./state/ui";
+import { useActiveWorkspace } from "./state/workspaces";
 
 /** Put the theme on the document root; "system" follows the OS color scheme. */
 export function applyTheme(theme: Theme, animate = false): void {
@@ -39,10 +47,27 @@ function useAppearance() {
 
 const MENU_ACTIONS: Record<MenuCommand, () => void> = {
   "toggle-sidebar": () => usePrefs.getState().toggleSidebar(),
-  "new-session": () => notYet("新建会话"),
-  "open-folder": () => notYet("打开文件夹"),
+  "new-session": () => newSession(),
+  "open-folder": () => void openFolder(),
   "open-settings": () => notYet("设置"),
 };
+
+function Main() {
+  const workspace = useActiveWorkspace();
+  const view = useActiveView();
+  const items = useSessionList(workspace?.id);
+  if (!workspace) return <FirstRun />;
+  if (!view) return <Welcome workspace={workspace} />;
+  return (
+    <>
+      <Conversation view={view} workspaceName={workspace.name} startedAt={items.find((i) => i.id === view.id)?.startedAt} />
+      <div className="mx-auto w-full max-w-[796px] px-8 empty:hidden">
+        <HostBanner workspace={workspace} className="mb-3" />
+      </div>
+      <Composer />
+    </>
+  );
+}
 
 export function App() {
   useAppearance();
@@ -71,7 +96,7 @@ export function App() {
           <div className="flex h-full overflow-hidden rounded-[14px] bg-canvas shadow-canvas">
             <section className="flex min-w-0 flex-1 flex-col">
               <TopBar />
-              <FirstRun />
+              <Main />
             </section>
           </div>
         </main>

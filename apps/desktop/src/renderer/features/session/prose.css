@@ -1,0 +1,170 @@
+/* Conversation text: Markdown prose, the streaming caret, and Shiki code colors. Migrated from the style reference. */
+
+.stream-caret > :is(p, h1, h2, h3, h4):last-child::after,
+.stream-caret > :is(ul, ol):last-child > li:last-child::after,
+.stream-caret:empty::after {
+  content: "";
+  display: inline-block;
+  width: 0.5em;
+  height: 1.05em;
+  margin-left: 2px;
+  vertical-align: -0.17em;
+  border-radius: 2px;
+  background: var(--accent);
+  animation: caret 1s steps(1) infinite;
+}
+
+/* ------------------------------------------------------------------ */
+/* Conversation prose                                                  */
+/* ------------------------------------------------------------------ */
+
+.prose-agent {
+  font-size: var(--chat-size);
+  line-height: var(--chat-leading);
+  color: var(--fg);
+  letter-spacing: -0.003em;
+}
+.prose-agent > * + * {
+  margin-top: 0.85em;
+}
+.prose-agent p {
+  text-wrap: pretty;
+}
+.prose-agent h1,
+.prose-agent h2,
+.prose-agent h3,
+.prose-agent h4 {
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  line-height: 1.35;
+  color: var(--fg);
+}
+.prose-agent h1 {
+  font-size: 1.32em;
+  margin-top: 1.5em;
+}
+.prose-agent h2 {
+  font-size: 1.16em;
+  margin-top: 1.45em;
+}
+.prose-agent h3 {
+  font-size: 1.04em;
+  margin-top: 1.3em;
+}
+.prose-agent h4 {
+  font-size: 1em;
+  margin-top: 1.2em;
+  color: var(--fg-2);
+}
+.prose-agent > :first-child {
+  margin-top: 0;
+}
+.prose-agent strong {
+  font-weight: 600;
+  color: var(--fg);
+}
+.prose-agent a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-decoration-color: var(--accent-line);
+  text-underline-offset: 3px;
+}
+.prose-agent ul,
+.prose-agent ol {
+  padding-left: 1.35em;
+}
+.prose-agent ul {
+  list-style: none;
+}
+.prose-agent ul > li {
+  position: relative;
+}
+.prose-agent ul > li::before {
+  content: "";
+  position: absolute;
+  left: -0.95em;
+  top: calc(var(--chat-leading) * 0.5em - 2.5px);
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--fg-4);
+}
+.prose-agent ol {
+  list-style: decimal;
+}
+.prose-agent ol > li::marker {
+  color: var(--fg-3);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.92em;
+}
+.prose-agent li + li {
+  margin-top: 0.3em;
+}
+.prose-agent li > ul,
+.prose-agent li > ol {
+  margin-top: 0.3em;
+}
+.prose-agent :not(pre) > code {
+  font-size: 0.86em;
+  padding: 0.12em 0.4em;
+  border-radius: 6px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  color: var(--fg);
+  white-space: break-spaces;
+}
+.prose-agent blockquote {
+  border-left: 2px solid var(--line-strong);
+  padding-left: 1em;
+  color: var(--fg-2);
+}
+.prose-agent hr {
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: 1.6em 0;
+}
+.prose-agent table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.9em;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.prose-agent th {
+  text-align: left;
+  font-weight: 550;
+  color: var(--fg-2);
+  background: var(--surface);
+  font-size: 0.92em;
+}
+.prose-agent th,
+.prose-agent td {
+  padding: 0.55em 0.9em;
+  border-bottom: 1px solid var(--line);
+}
+.prose-agent tr:last-child td {
+  border-bottom: 0;
+}
+.prose-agent td {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Shiki dual themes: tokens carry both colors as variables. */
+.shiki,
+.shiki span {
+  color: var(--shiki-light);
+  background-color: transparent !important;
+}
+.dark .shiki,
+.dark .shiki span {
+  color: var(--shiki-dark);
+}
+.shiki {
+  font-size: 12.75px;
+  line-height: 1.65;
+}
+.shiki code {
+  counter-reset: line;
+}
