@@ -334,6 +334,9 @@ export interface TurnResult {
 
 export type InterruptOutcome = "permission_denied" | "question_cancelled" | "turn_aborted" | "idle";
 
+/** Extended thinking for the session: adaptive or budgeted (`"on"`), off, or a token budget. */
+export type ThinkingSetting = "on" | "off" | number;
+
 export interface ShellResult {
   output: string;
   isError: boolean;
@@ -362,6 +365,8 @@ export type SessionEventBody =
   | { type: "usage_changed"; usage: SessionUsage }
   | { type: "mode_changed"; mode: PermissionMode; previousMode: PermissionMode }
   | { type: "model_changed"; model: string; source: "default" | "session" }
+  /** Extended thinking or reasoning effort changed, from `setThinking()`, `setEffort()`, `/think`, or `/effort`. */
+  | { type: "thinking_changed"; thinking: ThinkingConfig; effort: EffortLevel | null }
   | { type: "task_mode_changed"; mode: TaskMode }
   | { type: "todos_changed"; todos: TodoItem[] }
   | { type: "tasks_changed"; tasks: Task[] }
@@ -410,6 +415,7 @@ export const SESSION_EVENT_TYPES = [
   "usage_changed",
   "mode_changed",
   "model_changed",
+  "thinking_changed",
   "task_mode_changed",
   "todos_changed",
   "tasks_changed",

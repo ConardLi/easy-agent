@@ -181,6 +181,17 @@ export const MethodParams = {
   "session/state": z.object({ sessionId: SessionId }),
   "session/shell": z.object({ sessionId: SessionId, command: z.string().min(1) }),
   "session/close": z.object({ sessionId: SessionId }),
+  /** Takes effect right away, also while a turn runs. */
+  "session/setPermissionMode": z.object({ sessionId: SessionId, mode: PermissionMode }),
+  /** Model name or profile id; `"default"` clears the session override. */
+  "session/setModel": z.object({ sessionId: SessionId, model: z.string().min(1) }),
+  "session/setThinking": z.object({
+    sessionId: SessionId,
+    thinking: z.union([z.enum(["on", "off"]), z.number().int().positive()]),
+  }),
+  /** `null` leaves the effort to the model. */
+  "session/setEffort": z.object({ sessionId: SessionId, effort: z.enum(["low", "medium", "high", "max"]).nullable() }),
+  "session/stopBackgroundAgent": z.object({ sessionId: SessionId, agentId: z.string().min(1) }),
   shutdown: z.object({}),
 } as const;
 
@@ -227,6 +238,11 @@ export const MethodResults = {
   "session/state": SessionStateSchema,
   "session/shell": z.object({ output: z.string(), isError: z.boolean() }),
   "session/close": z.object({}),
+  "session/setPermissionMode": z.object({}),
+  "session/setModel": z.object({}),
+  "session/setThinking": z.object({}),
+  "session/setEffort": z.object({}),
+  "session/stopBackgroundAgent": z.object({ stopped: z.boolean() }),
   shutdown: z.object({}),
 } as const satisfies Record<MethodName, z.ZodType>;
 

@@ -14,6 +14,7 @@ import { runInSessionScope } from "../state/sessionScope.js";
 import { AgentSdkError } from "./errors.js";
 import type { SessionController } from "./session/controller.js";
 import type {
+  EffortLevel,
   InteractionResponse,
   InterruptOutcome,
   PermissionMode,
@@ -23,6 +24,7 @@ import type {
   SessionEventListener,
   SessionState,
   ShellResult,
+  ThinkingSetting,
   TurnResult,
 } from "./types.js";
 
@@ -104,9 +106,19 @@ export class AgentSession {
     this.#active().setPermissionMode(mode);
   }
 
-  /** Switch the model for this session; `"default"` clears the override. */
-  setModel(model: string): Promise<TurnResult> {
-    return this.runCommand("model", [model]);
+  /** Switch the model for this session now, also while a turn runs; `"default"` clears the override. */
+  setModel(model: string): void {
+    this.#active().setModel(model);
+  }
+
+  /** Turn extended thinking on (adaptive where the model supports it), off, or to a token budget. */
+  setThinking(setting: ThinkingSetting): void {
+    this.#active().setThinking(setting);
+  }
+
+  /** Set the reasoning effort for this session; null leaves it to the model. */
+  setEffort(effort: EffortLevel | null): void {
+    this.#active().setEffort(effort);
   }
 
   /** Run a shell command without the model. Bash permission and sandbox rules still apply. */

@@ -839,6 +839,254 @@
             },
             "method": {
               "type": "string",
+              "const": "session/setPermissionMode"
+            },
+            "params": {
+              "type": "object",
+              "properties": {
+                "sessionId": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "mode": {
+                  "type": "string",
+                  "enum": [
+                    "default",
+                    "plan",
+                    "auto"
+                  ]
+                }
+              },
+              "required": [
+                "sessionId",
+                "mode"
+              ]
+            }
+          },
+          "required": [
+            "jsonrpc",
+            "method"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "jsonrpc": {
+              "type": "string",
+              "const": "2.0"
+            },
+            "id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "method": {
+              "type": "string",
+              "const": "session/setModel"
+            },
+            "params": {
+              "type": "object",
+              "properties": {
+                "sessionId": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "model": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "sessionId",
+                "model"
+              ]
+            }
+          },
+          "required": [
+            "jsonrpc",
+            "method"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "jsonrpc": {
+              "type": "string",
+              "const": "2.0"
+            },
+            "id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "method": {
+              "type": "string",
+              "const": "session/setThinking"
+            },
+            "params": {
+              "type": "object",
+              "properties": {
+                "sessionId": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "thinking": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "enum": [
+                        "on",
+                        "off"
+                      ]
+                    },
+                    {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "sessionId",
+                "thinking"
+              ]
+            }
+          },
+          "required": [
+            "jsonrpc",
+            "method"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "jsonrpc": {
+              "type": "string",
+              "const": "2.0"
+            },
+            "id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "method": {
+              "type": "string",
+              "const": "session/setEffort"
+            },
+            "params": {
+              "type": "object",
+              "properties": {
+                "sessionId": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "effort": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "enum": [
+                        "low",
+                        "medium",
+                        "high",
+                        "max"
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "sessionId",
+                "effort"
+              ]
+            }
+          },
+          "required": [
+            "jsonrpc",
+            "method"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "jsonrpc": {
+              "type": "string",
+              "const": "2.0"
+            },
+            "id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "method": {
+              "type": "string",
+              "const": "session/stopBackgroundAgent"
+            },
+            "params": {
+              "type": "object",
+              "properties": {
+                "sessionId": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "agentId": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "sessionId",
+                "agentId"
+              ]
+            }
+          },
+          "required": [
+            "jsonrpc",
+            "method"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "jsonrpc": {
+              "type": "string",
+              "const": "2.0"
+            },
+            "id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "method": {
+              "type": "string",
               "const": "shutdown"
             },
             "params": {
@@ -951,6 +1199,7 @@
                     "usage_changed",
                     "mode_changed",
                     "model_changed",
+                    "thinking_changed",
                     "task_mode_changed",
                     "todos_changed",
                     "tasks_changed",
@@ -2604,6 +2853,33 @@
           "type": "object",
           "properties": {}
         },
+        "session/setPermissionMode": {
+          "type": "object",
+          "properties": {}
+        },
+        "session/setModel": {
+          "type": "object",
+          "properties": {}
+        },
+        "session/setThinking": {
+          "type": "object",
+          "properties": {}
+        },
+        "session/setEffort": {
+          "type": "object",
+          "properties": {}
+        },
+        "session/stopBackgroundAgent": {
+          "type": "object",
+          "properties": {
+            "stopped": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "stopped"
+          ]
+        },
         "shutdown": {
           "type": "object",
           "properties": {}
@@ -2626,6 +2902,11 @@
         "session/state",
         "session/shell",
         "session/close",
+        "session/setPermissionMode",
+        "session/setModel",
+        "session/setThinking",
+        "session/setEffort",
+        "session/stopBackgroundAgent",
         "shutdown"
       ]
     }

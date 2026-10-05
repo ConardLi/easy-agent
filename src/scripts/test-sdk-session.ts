@@ -280,6 +280,49 @@ try {
     await session.close();
   });
 
+  await check("model, thinking, effort, and mode switch right away, also during a turn", async () => {
+    const session = await runtime.createSession({ model: FIXTURE_MODEL });
+    const events = record(session);
+    fixture.script([{ kind: "text", text: "Slow.", delayMs: 300 }]);
+    const running = session.send("Go.");
+    await until("turn running", () => session.getState().busy);
+    session.setModel("other-model");
+    session.setThinking("off");
+    session.setEffort("high");
+    session.setPermissionMode("plan");
+    let state = session.getState();
+    assert.equal(state.busy, true, "the switches did not wait for the turn");
+    await running;
+    state = session.getState();
+    assert.equal(state.model, "other-model");
+    assert.equal(state.modelSource, "session");
+    assert.deepEqual(state.thinking, { type: "disabled" });
+    assert.equal(state.effort, "high");
+    assert.equal(state.permissionMode, "plan");
+    assert.deepEqual(types(events, "model_changed", "thinking_changed", "mode_changed"), [
+      "model_changed",
+      "thinking_changed",
+      "thinking_changed",
+      "mode_changed",
+    ]);
+
+    session.setModel("default");
+    session.setPermissionMode("default");
+    assert.equal(session.getState().modelSource, "default");
+    await session.runCommand("effort", ["low"]);
+    const last = events.filter((event) => event.type === "thinking_changed").at(-1);
+    assert.equal(last?.type === "thinking_changed" && last.effort, "low", "/effort reports the change too");
+    assert.throws(
+      () => session.setThinking(0),
+      (error: unknown) => sdk.isAgentSdkError(error, "invalid_argument"),
+    );
+    assert.throws(
+      () => session.setModel(" "),
+      (error: unknown) => sdk.isAgentSdkError(error, "invalid_argument"),
+    );
+    await session.close();
+  });
+
   console.log("\n[3] plan approval");
 
   await check("approving with a context clear runs the implementation turn", async () => {

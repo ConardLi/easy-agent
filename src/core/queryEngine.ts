@@ -1290,6 +1290,12 @@ export class QueryEngine {
     }
   }
 
+  /** Override the model for this session, or clear the override with null. Returns the active model. */
+  setSessionModel(model: string | null): { model: string; source: "default" | "session" } {
+    this.sessionModelOverride = model;
+    return { model: this.getActiveModel(), source: this.getModelSource() };
+  }
+
   /**
    * Build the structured allow/deny rule list for the `/permissions` overlay.
    * Public because the UI overlay calls it directly; the implementation lives

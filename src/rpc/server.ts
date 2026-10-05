@@ -106,6 +106,25 @@ export class RpcServer {
     "session/interrupt": async ({ sessionId }) => ({ outcome: this.#session(sessionId).interrupt() }),
     "session/state": async ({ sessionId }) => this.#session(sessionId).getState(),
     "session/shell": async ({ sessionId, command }) => this.#session(sessionId).runShell(command),
+    "session/setPermissionMode": async ({ sessionId, mode }) => {
+      this.#session(sessionId).setPermissionMode(mode);
+      return {};
+    },
+    "session/setModel": async ({ sessionId, model }) => {
+      this.#session(sessionId).setModel(model);
+      return {};
+    },
+    "session/setThinking": async ({ sessionId, thinking }) => {
+      this.#session(sessionId).setThinking(thinking);
+      return {};
+    },
+    "session/setEffort": async ({ sessionId, effort }) => {
+      this.#session(sessionId).setEffort(effort);
+      return {};
+    },
+    "session/stopBackgroundAgent": async ({ sessionId, agentId }) => ({
+      stopped: this.#session(sessionId).stopBackgroundAgent(agentId),
+    }),
     "session/close": async ({ sessionId }) => {
       await this.#session(sessionId).close();
       this.#forgetClosedSessions();
