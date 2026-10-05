@@ -26,6 +26,8 @@ export function electronEnv(extra: Record<string, string> = {}): Record<string, 
 
 export async function fitWindow(app: ElectronApplication, page: Page): Promise<void> {
   await app.evaluate(({ BrowserWindow }, size) => BrowserWindow.getAllWindows()[0]?.setContentSize(size.width, size.height), WINDOW);
+  // CI displays can be smaller than the window, which then gets clamped; pin the viewport instead.
+  await page.setViewportSize(WINDOW);
   await page.waitForFunction((size) => window.innerWidth === size.width && window.innerHeight === size.height, WINDOW);
   await page.evaluate(() => document.fonts.ready);
 }
