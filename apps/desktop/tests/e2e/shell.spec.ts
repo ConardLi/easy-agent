@@ -19,7 +19,7 @@ test("the renderer has no Node access and only sees the preload API", async () =
       "undefined",
       "undefined",
     ]);
-    expect(await page.evaluate(() => Object.keys(window.easyAgent).sort())).toEqual(["app", "menu", "platform", "prefs"]);
+    expect(await page.evaluate(() => Object.keys(window.easyAgent).sort())).toEqual(["agent", "app", "menu", "platform", "prefs", "workspaces"]);
 
     const url = page.url();
     await page.evaluate(() => {
@@ -37,8 +37,14 @@ test("the first-run shell offers to open a folder", async () => {
   try {
     await expect(page.getByRole("heading", { name: "欢迎使用 Easy Agent" })).toBeVisible();
     await expect(page.getByRole("button", { name: "新建会话" }).first()).toBeDisabled();
+    // Cancelling the folder dialog leaves the first-run page as it was.
+    await app.evaluate(({ dialog }) => {
+      dialog.showOpenDialog = (async () => ({ canceled: true, filePaths: [] })) as typeof dialog.showOpenDialog;
+    });
     await page.getByRole("button", { name: /^打开文件夹/ }).click();
-    await expect(page.getByText("打开文件夹还没接入")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "欢迎使用 Easy Agent" })).toBeVisible();
+    await page.getByRole("button", { name: /^克隆仓库/ }).click();
+    await expect(page.getByText("克隆仓库还没接入")).toBeVisible();
   } finally {
     await app.close();
   }

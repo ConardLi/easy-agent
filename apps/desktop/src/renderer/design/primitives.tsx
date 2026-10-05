@@ -175,6 +175,7 @@ export function MenuItem({
   hint,
   danger,
   selected,
+  disabled,
   className,
 }: {
   children: ReactNode;
@@ -183,13 +184,15 @@ export function MenuItem({
   hint?: ReactNode;
   danger?: boolean;
   selected?: boolean;
+  disabled?: boolean;
   className?: string;
 }) {
   return (
     <DropdownMenu.Item
       onSelect={onSelect}
+      disabled={disabled}
       className={cn(
-        "group flex h-8 cursor-default select-none items-center gap-2.5 rounded-lg px-2 text-[13px] text-fg outline-none data-[highlighted]:bg-surface-2 [&_svg]:size-[15px] [&_svg]:shrink-0",
+        "group flex h-8 cursor-default select-none items-center gap-2.5 rounded-lg px-2 text-[13px] text-fg outline-none data-[highlighted]:bg-surface-2 data-[disabled]:opacity-45 [&_svg]:size-[15px] [&_svg]:shrink-0",
         danger && "text-danger data-[highlighted]:bg-danger/10",
         className,
       )}

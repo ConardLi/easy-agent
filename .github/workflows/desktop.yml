@@ -37,6 +37,9 @@ jobs:
         with:
           node-version: "22"
           package-manager-cache: false
+      - name: Build eagent (the client runs the repository's own build)
+        working-directory: .
+        run: npm ci && npm run build
       - run: npm ci
       - run: npm run typecheck
       - run: npm run lint
@@ -53,6 +56,9 @@ jobs:
         with:
           node-version: "22"
           package-manager-cache: false
+      - name: Build eagent (the client runs the repository's own build)
+        working-directory: .
+        run: npm ci && npm run build
       - run: npm ci
       - run: npm run build
       - run: npx playwright test --project=e2e --project=visual

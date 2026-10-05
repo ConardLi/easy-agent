@@ -28,7 +28,9 @@
     "rules": {
       "preset": "recommended",
       "style": {
-        "noNonNullAssertion": "off"
+        "noNonNullAssertion": "off",
+        // prose.css keeps the style reference's rule order; the flagged pairs set different properties.
+        "noDescendingSpecificity": "off"
       },
       "complexity": {
         // The theme fade in tokens.css has to override every component's own transition.

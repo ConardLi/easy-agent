@@ -1,9 +1,11 @@
 import { join } from "node:path";
 import { app, BrowserWindow, Menu, nativeTheme, session } from "electron";
 import { IPC, type MenuCommand } from "../shared/contract";
+import { HostManager } from "./agent/hosts";
 import { registerIpc } from "./ipc";
 import { buildMenu } from "./menu";
 import { createPrefsStore } from "./services/prefs";
+import { createWorkspaceStore } from "./services/workspaces";
 import { applyWindowTheme, createMainWindow } from "./window";
 
 // Tests point the app at a throwaway data directory.
@@ -28,9 +30,23 @@ function focusOrOpen(): BrowserWindow {
 async function start(): Promise<void> {
   await app.whenReady();
   const prefs = createPrefsStore(join(app.getPath("userData"), "preferences.json"));
+  const workspaces = createWorkspaceStore(join(app.getPath("userData"), "workspaces.json"));
+  const hosts = new HostManager(workspaces);
   nativeTheme.themeSource = prefs.get().theme;
   lockDownSession();
-  registerIpc(prefs);
+  registerIpc({ prefs, workspaces, hosts });
+  workspaces.onChange((state) => {
+    for (const win of BrowserWindow.getAllWindows()) win.webContents.send(IPC.workspacesChanged, state);
+  });
+
+  // Let every Agent process end its turns and save its sessions before the app exits.
+  let quitting = false;
+  app.on("will-quit", (event) => {
+    if (quitting || !hosts.running) return;
+    event.preventDefault();
+    quitting = true;
+    void hosts.stopAll().finally(() => app.quit());
+  });
 
   const send = (command: MenuCommand) => (BrowserWindow.getFocusedWindow() ?? focusOrOpen()).webContents.send(IPC.menuCommand, command);
   const refreshMenu = () => Menu.setApplicationMenu(buildMenu({ prefs: prefs.get(), send, updatePrefs: (patch) => void prefs.update(patch) }));
