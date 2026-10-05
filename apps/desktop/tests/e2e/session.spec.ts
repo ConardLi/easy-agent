@@ -157,6 +157,8 @@ test("a crashed Agent process restarts and reopens its sessions", async () => {
     execSync(`pkill -KILL -P ${app.process().pid} -f -- "--rpc"`);
     await expect(page.getByText("Agent 进程退出了，正在重新启动。")).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText("Agent 进程退出了，正在重新启动。")).toHaveCount(0, { timeout: 20_000 });
+    // The composer takes input again once the restarted process is ready.
+    await expect(page.getByPlaceholder("继续对话")).toBeVisible({ timeout: 20_000 });
 
     await expect(page.getByText("崩溃前的回答。")).toBeVisible();
     await send(page, "第二句");
