@@ -41,7 +41,7 @@
     "shiki": "4.4.3",
     "tailwindcss": "4.3.3",
     "typescript": "6.0.3",
-    "vite": "7.3.2",
+    "vite": "7.3.6",
     "zustand": "5.0.15"
   },
   "dependencies": {
