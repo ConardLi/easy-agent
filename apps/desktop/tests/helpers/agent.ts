@@ -1,8 +1,10 @@
 import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { expect, type Page } from "@playwright/test";
 // The repository's scripted Anthropic API; the Agent the app starts talks to it instead of a real provider.
 import { type AnthropicFixture, createAnthropicFixture, FIXTURE_MODEL } from "../../../../src/scripts/fixtures/anthropicFixture";
+import { answerFolderDialog, type LaunchedApp, launchApp } from "./app";
 
 export interface AgentWorld {
   fixture: AnthropicFixture;
@@ -40,3 +42,20 @@ export async function createAgentWorld(): Promise<AgentWorld> {
     },
   };
 }
+
+/** Launch the app on the world's project and wait until its Agent is ready. */
+export async function openProject(world: AgentWorld): Promise<LaunchedApp> {
+  const launched = await launchApp({ prefs: { theme: "dark" }, env: world.env });
+  await answerFolderDialog(launched.app, world.project);
+  await launched.page.getByRole("button", { name: /^打开文件夹/ }).click();
+  await expect(launched.page.getByPlaceholder("在 demo-project 里想做点什么？")).toBeVisible({ timeout: 20_000 });
+  return launched;
+}
+
+export async function send(page: Page, text: string): Promise<void> {
+  const input = page.getByRole("textbox", { name: "消息" });
+  await input.fill(text);
+  await input.press("Enter");
+}
+
+export const sessionRow = (page: Page, title: string) => page.locator("nav").getByRole("button", { name: title, exact: true });

@@ -32,3 +32,8 @@ test("a replacement diff keeps shared lines as context", () => {
   expect(diff.lines.map((l) => `${l.type}:${l.text}`)).toEqual(["ctx:a", "del:b", "del:c", "add:B", "add:C", "ctx:d"]);
   expect([diff.added, diff.removed]).toEqual([2, 2]);
 });
+
+test("Agent calls become sub-agent cards", () => {
+  const card = toolCall({ id: "1", name: "Agent", input: { description: "Find it", subagent_type: "Explore" }, running: true });
+  expect(card).toMatchObject({ name: "Task", target: "Find it", status: "running", agent: { type: "Explore", steps: [] } });
+});

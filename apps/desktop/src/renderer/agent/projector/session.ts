@@ -10,10 +10,10 @@
  * number of messages that existed when they happened.
  */
 
-import type { InteractionRequest, MessageParam, SessionEvent, SessionState, SessionUsage } from "../../../shared/agent";
+import type { BackgroundAgentInfo, InteractionRequest, MessageParam, SessionEvent, SessionState, SessionUsage, Task, TodoItem } from "../../../shared/agent";
 import { toolCall } from "../tools";
 import type { Block, Effort, NoticeIcon, PermissionMode, SessionStatus } from "../viewModel";
-import { projectMessages, resultText, type ToolLive, thinkingKey } from "./messages";
+import { CARDLESS_TOOLS, projectMessages, resultText, type ToolLive, thinkingKey } from "./messages";
 
 type NoticeTone = Extract<Block, { kind: "notice" }>["tone"];
 
@@ -52,6 +52,10 @@ export interface SessionView {
   /** The running turn's input and whether it runs the model. */
   turn: { input: string; runsModel: boolean } | null;
   pendingRequests: InteractionRequest[];
+  todos: TodoItem[];
+  tasks: Task[];
+  taskMode: SessionState["taskMode"];
+  backgroundAgents: BackgroundAgentInfo[];
   /** Increments for every notice, so notice ids stay unique. */
   counter: number;
 }
@@ -68,8 +72,17 @@ export function effortOf(state: Pick<SessionState, "thinking" | "effort">): Effo
   return state.effort ?? "default";
 }
 
+/** Pending requests show as cards at the end of the conversation, once each. */
+function withRequestBlocks(view: SessionView): SessionView {
+  const shown = new Set(view.extras.map((e) => e.block.id));
+  const missing = view.pendingRequests.filter((r) => !shown.has(r.id));
+  if (missing.length === 0) return view;
+  const blocks = missing.map((request): Extra => ({ anchor: view.messages.length, block: { kind: "request", id: request.id, request } }));
+  return { ...view, extras: [...view.extras, ...blocks] };
+}
+
 export function viewFromState(workspaceId: string, state: SessionState, seq: number, previous?: SessionView): SessionView {
-  return {
+  return withRequestBlocks({
     id: state.sessionId,
     workspaceId,
     seq,
@@ -87,8 +100,12 @@ export function viewFromState(workspaceId: string, state: SessionState, seq: num
     thinkingMs: previous?.thinkingMs ?? {},
     turn: null,
     pendingRequests: state.pendingRequests,
+    todos: state.todos ?? [],
+    tasks: state.tasks ?? [],
+    taskMode: state.taskMode,
+    backgroundAgents: state.backgroundAgents ?? [],
     counter: previous?.counter ?? 0,
-  };
+  });
 }
 
 export function statusOf(view: SessionView): SessionStatus {
@@ -133,7 +150,7 @@ export function blocksOf(view: SessionView): Block[] {
   if (stream.text) blocks.push({ kind: "assistant", id: "live-text", text: stream.text, streaming: view.busy });
   for (const id of stream.tools) {
     const live = view.tools[id];
-    if (!live || shown.has(id)) continue;
+    if (!live || shown.has(id) || CARDLESS_TOOLS.has(live.name)) continue;
     blocks.push({
       kind: "tool",
       id,
@@ -147,6 +164,7 @@ export function blocksOf(view: SessionView): Block[] {
         ...(live.startedAt ? { startedAt: live.startedAt } : {}),
         ...(live.completedAt ? { completedAt: live.completedAt } : {}),
         ...(live.liveOutput ? { liveOutput: live.liveOutput } : {}),
+        ...(live.subagent ? { subagent: live.subagent } : {}),
       }),
     });
   }
@@ -223,14 +241,28 @@ export function applyEvent(view: SessionView, event: SessionEvent, now = Date.no
         stream: { ...next.stream, thinking: event.thinking, thinkingDone: true },
       };
     }
+    case "thinking_changed":
+      return { ...next, effort: effortOf(event) };
+    case "todos_changed":
+      return { ...next, todos: event.todos };
+    case "tasks_changed":
+      return { ...next, tasks: event.tasks };
+    case "task_mode_changed":
+      return { ...next, taskMode: event.mode };
+    case "background_agents_changed":
+      return { ...next, backgroundAgents: event.agents };
     case "tool_started": {
-      const out = patchTool(next, event.toolUseId, { name: event.name, startedAt: now });
+      const out = patchTool(next, event.toolUseId, {
+        name: event.name,
+        startedAt: now,
+        ...(event.subAgentProgress ? { subagent: event.subAgentProgress } : {}),
+      });
       return { ...out, stream: { ...out.stream, tools: [...out.stream.tools, event.toolUseId] } };
     }
     case "tool_progress":
-      return event.progress.kind === "bash" && event.progress.progress
-        ? patchTool(next, event.toolUseId, { liveOutput: event.progress.progress.output })
-        : next;
+      if (event.progress.kind === "bash" && event.progress.progress) return patchTool(next, event.toolUseId, { liveOutput: event.progress.progress.output });
+      if (event.progress.kind === "subagent" && event.progress.progress) return patchTool(next, event.toolUseId, { subagent: event.progress.progress });
+      return next;
     case "tool_completed":
       return patchTool(next, event.toolUseId, {
         name: event.name,
@@ -239,9 +271,15 @@ export function applyEvent(view: SessionView, event: SessionEvent, now = Date.no
         completedAt: now,
       });
     case "request_opened":
-      return { ...next, pendingRequests: [...next.pendingRequests.filter((r) => r.id !== event.request.id), event.request] };
+      return withRequestBlocks({ ...next, pendingRequests: [...next.pendingRequests.filter((r) => r.id !== event.request.id), event.request] });
     case "request_resolved":
-      return { ...next, pendingRequests: next.pendingRequests.filter((r) => r.id !== event.requestId) };
+      return {
+        ...next,
+        pendingRequests: next.pendingRequests.filter((r) => r.id !== event.requestId),
+        extras: next.extras.map((e) =>
+          e.block.kind === "request" && e.block.id === event.requestId ? { ...e, block: { ...e.block, resolution: event.resolution } } : e,
+        ),
+      };
     case "api_retry": {
       const text = `请求失败，正在重试（第 ${event.attempt}/${event.maxRetries} 次）`;
       const last = next.extras[next.extras.length - 1];

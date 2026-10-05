@@ -1,4 +1,4 @@
-import type { MessageParam } from "../../../shared/agent";
+import type { MessageParam, SubAgentProgress } from "../../../shared/agent";
 import { type ToolFacts, toolCall } from "../tools";
 import type { Attachment, Block } from "../viewModel";
 
@@ -16,6 +16,9 @@ const HIDDEN_PREFIXES = [
   "This session is being continued from a previous conversation",
 ];
 
+/** Tools whose call is shown by the request card it raises (question, plan approval) or by a notice. */
+export const CARDLESS_TOOLS = new Set(["AskUserQuestion", "ExitPlanMode", "EnterPlanMode"]);
+
 /** What the live events know about a tool call beyond the committed messages. */
 export interface ToolLive {
   name: string;
@@ -24,6 +27,7 @@ export interface ToolLive {
   input?: Record<string, unknown>;
   result?: { text: string; isError: boolean };
   liveOutput?: string;
+  subagent?: SubAgentProgress;
 }
 
 type ContentBlock = { type: string; [key: string]: unknown };
@@ -120,7 +124,7 @@ export function projectMessages(messages: readonly MessageParam[], { tools, busy
         out.push({ at: mi, block: { kind: "thinking", id: `m${mi}.${bi}`, text, ...(durationMs !== undefined ? { durationMs } : {}) } });
       } else if (block.type === "text" && String(block.text ?? "").trim()) {
         out.push({ at: mi, block: { kind: "assistant", id: `m${mi}.${bi}`, text: String(block.text) } });
-      } else if (block.type === "tool_use") {
+      } else if (block.type === "tool_use" && !CARDLESS_TOOLS.has(String(block.name))) {
         const id = String(block.id);
         const live = tools[id];
         const facts: ToolFacts = {
@@ -135,6 +139,7 @@ export function projectMessages(messages: readonly MessageParam[], { tools, busy
         if (live?.startedAt) facts.startedAt = live.startedAt;
         if (live?.completedAt) facts.completedAt = live.completedAt;
         if (live?.liveOutput && !result) facts.liveOutput = live.liveOutput;
+        if (live?.subagent) facts.subagent = live.subagent;
         out.push({ at: mi, block: { kind: "tool", id, tool: toolCall(facts) } });
       }
     }

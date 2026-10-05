@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { SessionEvent } from "../../shared/agent";
+import type { InteractionResponse, SessionEvent } from "../../shared/agent";
 import { applyEvent, type SessionView, viewFromState } from "../agent/projector/session";
 import type { Effort, PermissionMode } from "../agent/viewModel";
 
@@ -19,6 +19,8 @@ interface SessionsStore {
   draft: Draft;
   /** Sessions that finished a turn while another one was on screen. */
   unread: Record<string, true>;
+  /** What this window answered to each request, to show on the resolved card. */
+  responses: Record<string, InteractionResponse>;
   applyEvents(events: { workspaceId: string; event: SessionEvent }[]): void;
   setDraft(patch: Partial<Draft>): void;
 }
@@ -28,6 +30,7 @@ export const useSessions = create<SessionsStore>()((set) => ({
   activeId: null,
   draft: { mode: "default", effort: "default" },
   unread: {},
+  responses: {},
   applyEvents: (events) =>
     set((s) => {
       const views = { ...s.views };

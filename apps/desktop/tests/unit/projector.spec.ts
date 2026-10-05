@@ -184,3 +184,80 @@ test("a state snapshot replaces the view, also from a restarted process", () => 
   const next = applyEvent(restarted, { sessionId: SESSION, seq: 1, type: "text_delta", text: "y" } as SessionEvent);
   expect(next.stream.text).toBe("y");
 });
+
+test("requests show as cards where they were raised and keep how they ended", () => {
+  const request = {
+    id: "r1",
+    kind: "permission",
+    turnId: "t1",
+    toolUseId: "tu1",
+    toolName: "Write",
+    input: { file_path: "/work/demo/a.ts", content: "x" },
+    summary: "Write(a.ts)",
+    risk: "Medium risk: writes files in the workspace",
+    ruleHint: "Write",
+  };
+  const assistant = { role: "assistant", content: [{ type: "tool_use", id: "tu1", name: "Write", input: request.input }] };
+  let view = run(start(), [
+    { type: "turn_started", turnId: "t1", input: "go", source: "user", runsModel: true },
+    { type: "messages_changed", messages: [user("go"), assistant] },
+    { type: "request_opened", request },
+  ]);
+  expect(view.pendingRequests).toHaveLength(1);
+  expect(blocksOf(view).map((b) => b.kind)).toEqual(["user", "tool", "request"]);
+
+  view = run(view, [{ type: "request_resolved", requestId: "r1", kind: "permission", resolution: "response" }]);
+  expect(view.pendingRequests).toHaveLength(0);
+  expect(blocksOf(view).at(-1)).toMatchObject({ kind: "request", id: "r1", resolution: "response" });
+
+  // A snapshot with a pending request (e.g. after the window reloads) shows its card once.
+  const restored = viewFromState(
+    "w1",
+    state({ messages: [user("go"), assistant] as SessionState["messages"], pendingRequests: [request] as SessionState["pendingRequests"] }),
+    0,
+  );
+  expect(blocksOf(restored).filter((b) => b.kind === "request")).toHaveLength(1);
+});
+
+test("thinking, todos, tasks, and background agents follow their events", () => {
+  const view = run(start(), [
+    { type: "thinking_changed", thinking: { type: "disabled" }, effort: null },
+    { type: "todos_changed", todos: [{ content: "Run tests", activeForm: "Running tests", status: "in_progress" }] },
+    { type: "task_mode_changed", mode: "todo" },
+    {
+      type: "background_agents_changed",
+      agents: [{ agentId: "a1", agentType: "Explore", prompt: "p", startedAt: "2026-01-01T00:00:00Z", status: "running", toolUseCount: 2 }],
+    },
+  ]);
+  expect(view.effort).toBe("off");
+  expect(view.todos[0]?.status).toBe("in_progress");
+  expect(view.taskMode).toBe("todo");
+  expect(view.backgroundAgents[0]?.agentId).toBe("a1");
+  const high = run(view, [{ type: "thinking_changed", thinking: { type: "adaptive" }, effort: "high" }]);
+  expect(high.effort).toBe("high");
+});
+
+test("a sub-agent call shows its progress and conclusion", () => {
+  const progress = { agentType: "Explore", description: "Find the entry", toolUseCount: 0, startTime: 0, status: "running" };
+  let view = run(start(), [
+    { type: "turn_started", turnId: "t1", input: "go", source: "user", runsModel: true },
+    { type: "tool_started", toolUseId: "ag1", name: "Agent", subAgentProgress: progress },
+    { type: "tool_progress", toolUseId: "ag1", progress: { kind: "subagent", progress: { ...progress, toolUseCount: 3, lastToolName: "Grep" } } },
+  ]);
+  expect(blocksOf(view).at(-1)).toMatchObject({
+    kind: "tool",
+    tool: { name: "Task", status: "running", target: "Find the entry", agent: { type: "Explore", toolUses: 3, lastTool: "Grep" } },
+  });
+  const assistant = {
+    role: "assistant",
+    content: [{ type: "tool_use", id: "ag1", name: "Agent", input: { description: "Find the entry", prompt: "p", subagent_type: "Explore" } }],
+  };
+  view = run(view, [
+    {
+      type: "messages_changed",
+      messages: [user("go"), assistant, { role: "user", content: [{ type: "tool_result", tool_use_id: "ag1", content: "It is src/cli.ts." }] }],
+    },
+    { type: "turn_completed", turnId: "t1", handled: true, reason: "completed" },
+  ]);
+  expect(blocksOf(view).find((b) => b.kind === "tool")).toMatchObject({ tool: { status: "success", agent: { result: "It is src/cli.ts." } } });
+});

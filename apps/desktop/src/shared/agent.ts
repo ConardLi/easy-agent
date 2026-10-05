@@ -5,6 +5,7 @@
  */
 
 import type {
+  EffortLevel,
   ImageInput,
   InteractionResponse,
   InterruptOutcome,
@@ -20,9 +21,20 @@ import type {
 } from "eagent/sdk";
 
 export type {
+  BackgroundAgentInfo,
   EffortLevel,
+  ImageInput,
   InteractionRequest,
+  InteractionResolution,
+  InteractionResponse,
   MessageParam,
+  PermissionInteraction,
+  PlanApprovalInteraction,
+  QuestionInteraction,
+  RuntimeCapabilities,
+  SubAgentProgress,
+  Task,
+  TodoItem,
   PermissionMode,
   SessionEvent,
   SessionState,
@@ -64,6 +76,11 @@ export interface AgentMethods {
   "session/interrupt": { params: { sessionId: string }; result: { outcome: InterruptOutcome } };
   "session/state": { params: { sessionId: string }; result: SessionState };
   "session/close": { params: { sessionId: string }; result: Record<string, never> };
+  "session/setPermissionMode": { params: { sessionId: string; mode: PermissionMode }; result: Record<string, never> };
+  "session/setModel": { params: { sessionId: string; model: string }; result: Record<string, never> };
+  "session/setThinking": { params: { sessionId: string; thinking: "on" | "off" | number }; result: Record<string, never> };
+  "session/setEffort": { params: { sessionId: string; effort: EffortLevel | null }; result: Record<string, never> };
+  "session/stopBackgroundAgent": { params: { sessionId: string; agentId: string }; result: { stopped: boolean } };
 }
 
 export type AgentMethod = keyof AgentMethods;
@@ -85,6 +102,11 @@ export const AGENT_METHODS = [
   "session/interrupt",
   "session/state",
   "session/close",
+  "session/setPermissionMode",
+  "session/setModel",
+  "session/setThinking",
+  "session/setEffort",
+  "session/stopBackgroundAgent",
 ] as const satisfies readonly AgentMethod[];
 
 /** A JSON-RPC error, or a failure of the process behind it (`code` 0). */

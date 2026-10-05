@@ -12,12 +12,10 @@ import {
   SquareArrowOutUpRight,
   SquarePen,
 } from "lucide-react";
-import { agent, describeError } from "../../agent/client";
-import { blocksOf } from "../../agent/projector/session";
 import { ContextRing } from "../../design/ContextRing";
 import { IconButton, Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger, MOD, Tooltip } from "../../design/primitives";
 import { tokens } from "../../lib/format";
-import { forkSession, newSession } from "../../state/actions";
+import { copyLastReply, exportSession, forkSession, newSession, runCommand } from "../../state/actions";
 import { usePrefs } from "../../state/prefs";
 import { useActiveView } from "../../state/sessions";
 import { notYet, useUi } from "../../state/ui";
@@ -32,23 +30,13 @@ export function TopBar() {
   const runtime = useRuntime(workspace?.id);
   const view = useActiveView();
   const items = useSessionList(workspace?.id);
-  const toast = useUi((s) => s.toast);
 
   const title = !workspace ? "Easy Agent" : view ? (items.find((i) => i.id === view.id)?.title ?? "新会话") : "新会话";
   const context = view?.usage?.context ?? null;
 
-  const command = (name: string) => {
-    if (!view) return;
-    if (view.busy) return toast("这一轮结束后再操作");
-    void agent.call(view.workspaceId, "session/command", { sessionId: view.id, name }).catch((error) => toast(describeError(error), "danger"));
-  };
-
-  const copyLastReply = () => {
-    if (!view) return;
-    const last = [...blocksOf(view)].reverse().find((b) => b.kind === "assistant");
-    if (last?.kind !== "assistant") return toast("还没有回复可以复制");
-    void navigator.clipboard.writeText(last.text).then(() => toast("已复制到剪贴板"));
-  };
+  const rightPanel = useUi((s) => s.rightPanel);
+  const rightTab = useUi((s) => s.rightTab);
+  const setRightPanel = useUi((s) => s.setRightPanel);
 
   return (
     <header className="drag titlebar-end flex h-[52px] shrink-0 items-center gap-3 border-b border-line px-3">
@@ -101,10 +89,14 @@ export function TopBar() {
               </span>
             }
           >
-            <span className="no-drag tabular flex h-7 items-center gap-1.5 rounded-lg px-2 text-[12px] text-fg-3">
+            <button
+              type="button"
+              onClick={() => setRightPanel(!(rightPanel && rightTab === "context"), "context")}
+              className="no-drag tabular flex h-7 items-center gap-1.5 rounded-lg px-2 text-[12px] text-fg-3 transition-colors hover:bg-surface-2 hover:text-fg-2"
+            >
               <ContextRing used={context.tokens} total={context.window} size={15} />
               {context.percent}%
-            </span>
+            </button>
           </Tooltip>
         )}
         {workspace && (
@@ -127,24 +119,24 @@ export function TopBar() {
               <MenuItem icon={<GitFork />} onSelect={() => void forkSession(view.workspaceId, view.id, title)}>
                 分叉会话
               </MenuItem>
-              <MenuItem icon={<Copy />} onSelect={copyLastReply}>
+              <MenuItem icon={<Copy />} onSelect={() => void copyLastReply()}>
                 复制最后一条回复
               </MenuItem>
-              <MenuItem icon={<Download />} onSelect={() => notYet("导出")}>
+              <MenuItem icon={<Download />} onSelect={() => void exportSession(view.id)}>
                 导出为 Markdown
               </MenuItem>
               <MenuSeparator />
-              <MenuItem icon={<Layers />} onSelect={() => command("compact")}>
+              <MenuItem icon={<Layers />} onSelect={() => void runCommand("compact")}>
                 压缩上下文
               </MenuItem>
-              <MenuItem icon={<Eraser />} onSelect={() => command("clear")}>
+              <MenuItem icon={<Eraser />} onSelect={() => void runCommand("clear")}>
                 清空上下文
               </MenuItem>
             </MenuContent>
           </Menu>
         )}
-        <Tooltip content="显示详情面板" keys={[MOD, "J"]}>
-          <IconButton disabled aria-label="详情面板">
+        <Tooltip content={rightPanel ? "隐藏详情面板" : "显示详情面板"} keys={[MOD, "J"]}>
+          <IconButton active={rightPanel && !!view} disabled={!view} onClick={() => setRightPanel(!rightPanel)} aria-label="详情面板">
             <PanelRight />
           </IconButton>
         </Tooltip>
