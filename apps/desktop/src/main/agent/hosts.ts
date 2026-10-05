@@ -1,10 +1,12 @@
 import { app, BrowserWindow } from "electron";
 import { AGENT_METHODS, type AgentMethod, type CallOutcome, type HostStatus, type ParamsOf, type ResultOf } from "../../shared/agent";
 import { IPC } from "../../shared/contract";
+import type { PrefsStore } from "../services/prefs";
+import type { SecretStore } from "../services/secrets";
 import type { WorkspaceStore } from "../services/workspaces";
 import { AgentHost } from "./host";
 import { RpcError } from "./rpc";
-import { bundledAgentScript } from "./runtime";
+import { launchCommand } from "./runtime";
 
 const broadcast = (channel: string, ...args: unknown[]) => {
   for (const win of BrowserWindow.getAllWindows()) win.webContents.send(channel, ...args);
@@ -23,9 +25,13 @@ async function outcome<T>(run: () => Promise<T>): Promise<CallOutcome<T>> {
 export class HostManager {
   readonly #hosts = new Map<string, AgentHost>();
   readonly #workspaces: WorkspaceStore;
+  readonly #prefs: PrefsStore;
+  readonly #secrets: SecretStore;
 
-  constructor(workspaces: WorkspaceStore) {
+  constructor(workspaces: WorkspaceStore, prefs: PrefsStore, secrets: SecretStore) {
     this.#workspaces = workspaces;
+    this.#prefs = prefs;
+    this.#secrets = secrets;
   }
 
   async start(workspaceId: string): Promise<HostStatus> {
@@ -89,9 +95,9 @@ export class HostManager {
     if (!workspace) throw new Error(`Unknown workspace ${workspaceId}`);
     const host = new AgentHost({
       cwd: workspace.path,
-      script: bundledAgentScript(),
+      launch: () => launchCommand(this.#prefs.get(), this.#secrets.env()),
       clientVersion: app.getVersion(),
-      autoRestart: true,
+      autoRestart: () => this.#prefs.get().autoRestart,
       onStatus: (status) => broadcast(IPC.agentStatus, workspaceId, status),
       onEvent: (event) => broadcast(IPC.agentEvent, { workspaceId, event }),
       onLog: (level, message) => broadcast(IPC.agentLog, { workspaceId, level, message }),

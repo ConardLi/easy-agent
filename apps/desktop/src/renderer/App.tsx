@@ -5,6 +5,7 @@ import { useShallow } from "zustand/react/shallow";
 import type { MenuCommand, Theme } from "../shared/contract";
 import { Composer } from "./features/composer/Composer";
 import { RightPanel } from "./features/panels/RightPanel";
+import { SettingsView } from "./features/settings/SettingsView";
 import { Conversation } from "./features/session/Conversation";
 import { Toasts } from "./features/shell/Toasts";
 import { TopBar } from "./features/shell/TopBar";
@@ -17,7 +18,8 @@ import { desktop } from "./lib/desktop";
 import { newSession, openFolder } from "./state/actions";
 import { usePrefs } from "./state/prefs";
 import { useActiveView } from "./state/sessions";
-import { notYet, useUi } from "./state/ui";
+import { useSettings } from "./state/settings";
+import { useUi } from "./state/ui";
 import { useActiveWorkspace } from "./state/workspaces";
 
 /** Put the theme on the document root; "system" follows the OS color scheme. */
@@ -50,7 +52,11 @@ const MENU_ACTIONS: Record<MenuCommand, () => void> = {
   "toggle-sidebar": () => usePrefs.getState().toggleSidebar(),
   "new-session": () => newSession(),
   "open-folder": () => void openFolder(),
-  "open-settings": () => notYet("设置"),
+  "open-settings": () => {
+    const settings = useSettings.getState();
+    if (settings.open) settings.closeSettings();
+    else settings.openSettings();
+  },
 };
 
 function Main() {
@@ -91,6 +97,7 @@ export function App() {
   const sidebarOpen = usePrefs((s) => s.sidebarOpen);
   const rightPanel = useUi((s) => s.rightPanel);
   const hasSession = !!useActiveView();
+  const settingsOpen = useSettings((s) => s.open);
 
   return (
     <Tooltip.Provider delayDuration={350} skipDelayDuration={200}>
@@ -112,12 +119,16 @@ export function App() {
 
         <main className={sidebarOpen ? "min-w-0 flex-1 py-2 pr-2" : "min-w-0 flex-1 p-2"}>
           <div className="flex h-full overflow-hidden rounded-[14px] bg-canvas shadow-canvas">
-            <section className="flex min-w-0 flex-1 flex-col">
-              <TopBar />
-              <Main />
-            </section>
+            {settingsOpen ? (
+              <SettingsView />
+            ) : (
+              <section className="flex min-w-0 flex-1 flex-col">
+                <TopBar />
+                <Main />
+              </section>
+            )}
             <AnimatePresence initial={false}>
-              {rightPanel && hasSession && (
+              {rightPanel && hasSession && !settingsOpen && (
                 <motion.div
                   key="right"
                   initial={{ width: 0, opacity: 0 }}

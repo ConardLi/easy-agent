@@ -48,6 +48,11 @@ Requests sent while `initialize` is running wait for it to finish, so a client m
 | --- | --- | --- |
 | `initialize` | `protocolVersion`, `clientInfo?`, `trust?`, `interactions?`, `services?` | `protocolVersion`, `sessionProtocolVersion`, `serverInfo`, `workspace`, `capabilities` |
 | `runtime/capabilities` | | built-in commands, skills, user commands, sub-agent types, output style |
+| `config/read` | | every settings source (path, whether it applies, display-safe values), the effective value, source, and reload policy of each key, the model profiles, and the keys only user settings may set |
+| `config/write` | `scope` (`user`, `project`, `local`), `key`, `value` (`null` deletes) | `reload`; validated before writing, `[redacted]` inside the value keeps the stored secret, `mode` and `autoMode` only in `user` |
+| `workspace/trust` | `trusted` | `trusted`; saved trust applies when the next process starts |
+| `models/check` | `model` (profile id or model name) | `ok`, `protocol`, `model`, `latencyMs`, and `error` without credentials |
+| `models/list` | `model` | `models`: ids from the provider's model list |
 | `session/create` | `model?`, `permissionMode?`, `persist?` | `sessionId`, `state` |
 | `session/resume` | `sessionId?` (default: latest), `model?`, `permissionMode?` | `sessionId`, `state` |
 | `session/list` | `limit?` | `sessions`: saved sessions, most recent first |

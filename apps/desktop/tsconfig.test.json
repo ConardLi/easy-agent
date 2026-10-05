@@ -2,7 +2,10 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     // page.evaluate callbacks run in the renderer.
-    "lib": ["ES2023", "DOM", "DOM.Iterable"]
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    // Unit tests import renderer modules that reference components.
+    "jsx": "react-jsx",
+    "types": ["node", "vite/client"]
   },
   "include": ["tests", "src/renderer/env.d.ts"]
 }

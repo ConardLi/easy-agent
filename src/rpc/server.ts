@@ -64,6 +64,11 @@ export class RpcServer {
   readonly #handlers: { [M in MethodName]: (params: ParamsOf<M>) => Promise<unknown> } = {
     initialize: (params) => this.#initialize(params),
     "runtime/capabilities": async () => this.#requireRuntime().getCapabilities(),
+    "config/read": async () => this.#requireRuntime().readConfig(),
+    "config/write": async ({ scope, key, value }) => this.#requireRuntime().writeConfig(scope, key, value ?? null),
+    "workspace/trust": async ({ trusted }) => this.#requireRuntime().setWorkspaceTrust(trusted),
+    "models/check": async ({ model }) => this.#requireRuntime().checkModel(model),
+    "models/list": async ({ model }) => this.#requireRuntime().listModels(model),
     "session/create": async ({ persist, ...open }) =>
       this.#attach(
         await this.#requireRuntime().createSession({

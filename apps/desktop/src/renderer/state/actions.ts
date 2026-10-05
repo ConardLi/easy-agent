@@ -29,6 +29,7 @@ const refreshTimers = new Map<string, ReturnType<typeof setTimeout>>();
 function enqueue(workspaceId: string, event: SessionEvent): void {
   pending.push({ workspaceId, event });
   if (event.type === "turn_completed") scheduleRefresh(workspaceId);
+  if (event.type === "turn_completed" || event.type === "request_opened") void notify(event.sessionId, event.type);
   if (frame) return;
   frame = requestAnimationFrame(() => {
     frame = 0;
@@ -46,13 +47,29 @@ function scheduleRefresh(workspaceId: string): void {
   );
 }
 
+/** A system notification when a session finishes or needs an answer while the window is in the background. */
+async function notify(sessionId: string, kind: "turn_completed" | "request_opened"): Promise<void> {
+  const { usePrefs } = await import("./prefs");
+  if (!usePrefs.getState().notifyOnFinish || document.hasFocus()) return;
+  const title = titleOf(sessionId);
+  const notification = new Notification(kind === "request_opened" ? "Easy Agent 在等你确认" : "Easy Agent 完成了一轮", { body: title, silent: false });
+  notification.onclick = () => {
+    window.focus();
+    const view = useSessions.getState().views[sessionId];
+    if (view) void openSession(view.workspaceId, sessionId);
+  };
+}
+
 // ─── Workspaces ───────────────────────────────────────────────────────────
 
 export async function bootstrap(): Promise<void> {
   desktop.agent.onEvent(({ workspaceId, event }) => enqueue(workspaceId, event));
   desktop.agent.onStatus((workspaceId, status) => {
     useWorkspaces.getState().patchRuntime(workspaceId, { status });
-    if (status.state === "ready") void refreshSessions(workspaceId);
+    if (status.state === "ready") {
+      void refreshSessions(workspaceId);
+      if (workspaceId === useWorkspaces.getState().activeId) void import("./settings").then((m) => m.loadConfig());
+    }
   });
   desktop.agent.onLog(({ level, message }) => {
     if (level === "error") toast(message, "danger");
@@ -62,7 +79,8 @@ export async function bootstrap(): Promise<void> {
 
   const state = await desktop.workspaces.get();
   useWorkspaces.setState(state);
-  if (state.activeId) await showWorkspace(state.activeId, { reopenLast: true });
+  const { usePrefs } = await import("./prefs");
+  if (state.activeId && usePrefs.getState().reopenLastWorkspace) await showWorkspace(state.activeId, { reopenLast: true });
 }
 
 /** Start the workspace's Agent, load its sessions, and pick the conversation to show. */
@@ -368,8 +386,25 @@ export function runUiAction(action: UiAction): boolean {
     case "tools":
       notYet("自定义");
       break;
+    case "permissions":
+      void openSettingsAt("permissions");
+      break;
+    case "output-style":
+      void openSettingsAt("behavior");
+      break;
+    case "doctor":
+      void openSettingsAt("about");
+      break;
+    case "help":
+      void openSettingsAt("shortcuts");
+      break;
     default:
-      notYet("设置");
+      void openSettingsAt();
   }
   return true;
+}
+
+async function openSettingsAt(section?: import("./settings").SettingsSection): Promise<void> {
+  const { useSettings } = await import("./settings");
+  useSettings.getState().openSettings(section);
 }

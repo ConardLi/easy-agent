@@ -14,6 +14,12 @@ const api: DesktopApi = {
     info: () => ipcRenderer.invoke(IPC.appInfo),
     captureScreen: () => ipcRenderer.invoke(IPC.appCaptureScreen),
     saveText: (defaultName, text) => ipcRenderer.invoke(IPC.appSaveText, defaultName, text),
+    openPath: (path) => ipcRenderer.invoke(IPC.appOpenPath, path),
+    openExternal: (url) => ipcRenderer.invoke(IPC.appOpenExternal, url),
+  },
+  secrets: {
+    list: () => ipcRenderer.invoke(IPC.secretsList),
+    set: (name, value) => ipcRenderer.invoke(IPC.secretsSet, name, value),
   },
   pathOf: (file) => webUtils.getPathForFile(file),
   prefs: {

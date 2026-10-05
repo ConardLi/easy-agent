@@ -72,6 +72,10 @@ const runtime = await createAgentRuntime({
 | `startServices(options?)` | Connect MCP servers and plugin services |
 | `connectMcpServers(servers)` | Connect more MCP servers, such as the ones an editor supplies; a name that is already configured keeps its server |
 | `hasModelCredentials(model?)` | Whether requests for the model have an API key, an auth header, or a custom endpoint |
+| `readConfig()` | Settings sources, effective values with their source and reload policy, and model profiles; inline secrets come back as `[redacted]`, `${VAR}` references as written |
+| `writeConfig(scope, key, value)` | Set or (with `null`) delete one key in user, project, or local settings, after validation; open sessions pick up permission rules right away |
+| `setWorkspaceTrust(trusted)` | Save or revoke trust for the workspace; it applies to the next runtime |
+| `checkModel(model)`, `listModels(model)` | Send a one-token request through a model handle; list the models its provider offers |
 | `dispose()` | Close every session and free the process for another runtime |
 
 ## Sessions

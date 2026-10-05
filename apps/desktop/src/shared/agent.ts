@@ -5,8 +5,11 @@
  */
 
 import type {
+  ConfigScope,
+  ConfigSnapshot,
   EffortLevel,
   ImageInput,
+  ModelCheckResult,
   InteractionResponse,
   InterruptOutcome,
   PermissionMode,
@@ -22,6 +25,11 @@ import type {
 
 export type {
   BackgroundAgentInfo,
+  ConfigScope,
+  ConfigSnapshot,
+  EffectiveSetting,
+  ModelCheckResult,
+  ModelProfileInfo,
   EffortLevel,
   ImageInput,
   InteractionRequest,
@@ -81,6 +89,11 @@ export interface AgentMethods {
   "session/setThinking": { params: { sessionId: string; thinking: "on" | "off" | number }; result: Record<string, never> };
   "session/setEffort": { params: { sessionId: string; effort: EffortLevel | null }; result: Record<string, never> };
   "session/stopBackgroundAgent": { params: { sessionId: string; agentId: string }; result: { stopped: boolean } };
+  "config/read": { params: Record<string, never>; result: ConfigSnapshot };
+  "config/write": { params: { scope: ConfigScope; key: string; value: unknown }; result: { reload: string } };
+  "workspace/trust": { params: { trusted: boolean }; result: { trusted: boolean } };
+  "models/check": { params: { model: string }; result: ModelCheckResult };
+  "models/list": { params: { model: string }; result: { models: string[] } };
 }
 
 export type AgentMethod = keyof AgentMethods;
@@ -107,6 +120,11 @@ export const AGENT_METHODS = [
   "session/setThinking",
   "session/setEffort",
   "session/stopBackgroundAgent",
+  "config/read",
+  "config/write",
+  "workspace/trust",
+  "models/check",
+  "models/list",
 ] as const satisfies readonly AgentMethod[];
 
 /** A JSON-RPC error, or a failure of the process behind it (`code` 0). */

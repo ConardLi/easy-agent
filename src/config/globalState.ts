@@ -184,6 +184,19 @@ export async function trustProject(cwd: string): Promise<void> {
   });
 }
 
+/**
+ * Revoke saved trust for this working directory (and this process's session
+ * trust). Trust saved on an ancestor directory still applies.
+ */
+export async function untrustProject(cwd: string): Promise<void> {
+  const key = await getProjectKey(cwd);
+  sessionTrusted.delete(key);
+  if (isHomeDir(key)) return;
+  await saveGlobalState((draft) => {
+    if (draft.projects[key]) draft.projects[key] = { ...draft.projects[key], trusted: false };
+  });
+}
+
 /** Trust this working directory for the current process without persisting it. */
 export async function trustProjectForSession(cwd: string): Promise<void> {
   sessionTrusted.add(await getProjectKey(cwd));

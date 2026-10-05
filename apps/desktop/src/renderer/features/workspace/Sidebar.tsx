@@ -6,6 +6,7 @@ import { type DayBucket, dayBucket, shortTime } from "../../lib/format";
 import { deleteSession, exportSession, forkSession, newSession, openSession, renameSession, togglePin } from "../../state/actions";
 import { usePrefs } from "../../state/prefs";
 import { useSessions } from "../../state/sessions";
+import { useSettings } from "../../state/settings";
 import { notYet, useUi } from "../../state/ui";
 import { useActiveWorkspace } from "../../state/workspaces";
 import { WindowControls } from "../shell/WindowControls";
@@ -220,7 +221,7 @@ export function Sidebar() {
         <div className="flex items-center gap-2.5 rounded-xl px-2 py-1.5">
           <UserBadge />
           <Tooltip content="设置" keys={[MOD, ","]} side="top">
-            <IconButton onClick={() => notYet("设置")} aria-label="设置">
+            <IconButton onClick={() => useSettings.getState().openSettings()} aria-label="设置">
               <Settings />
             </IconButton>
           </Tooltip>

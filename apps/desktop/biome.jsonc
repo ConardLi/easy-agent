@@ -41,6 +41,8 @@
         "useExhaustiveDependencies": "off"
       },
       "suspicious": {
+        // Settings pages show `${VAR}` references literally; they are text, not templates.
+        "noTemplateCurlyInString": "off",
         // Lists rendered from static arrays.
         "noArrayIndexKey": "off"
       }

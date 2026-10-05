@@ -28,9 +28,37 @@ export interface Prefs {
   accent: AccentId;
   fontSize: FontSize;
   sidebarOpen: boolean;
+  /** The key that sends a message; the other combination inserts a newline. */
+  sendWith: "enter" | "mod-enter";
+  /** Notify when a session finishes a turn or waits for an answer while the window is in the background. */
+  notifyOnFinish: boolean;
+  reopenLastWorkspace: boolean;
+  /** Keep thinking expanded while it streams. */
+  showThinking: boolean;
+  /** Run the bundled Agent, or an `eagent` installed on the system. */
+  agentRuntime: "bundled" | "system";
+  agentPath: string;
+  /** Passed as `--settings`; layered above user, project, and local settings. */
+  extraSettingsFile: string;
+  autoRestart: boolean;
+  debugLogging: boolean;
 }
 
-export const DEFAULT_PREFS: Prefs = { theme: "system", accent: "iris", fontSize: 15, sidebarOpen: true };
+export const DEFAULT_PREFS: Prefs = {
+  theme: "system",
+  accent: "iris",
+  fontSize: 15,
+  sidebarOpen: true,
+  sendWith: "enter",
+  notifyOnFinish: true,
+  reopenLastWorkspace: true,
+  showThinking: true,
+  agentRuntime: "bundled",
+  agentPath: "eagent",
+  extraSettingsFile: "",
+  autoRestart: true,
+  debugLogging: false,
+};
 
 export interface AppInfo {
   name: string;
@@ -62,6 +90,9 @@ export interface WorkspacesState {
   activeId: string | null;
 }
 
+/** Environment variable a keychain key is passed to the Agent as; settings files refer to it as `${…}`. */
+export const secretEnvName = (name: string) => `EASY_AGENT_KEY_${name.toUpperCase().replace(/[^A-Z0-9]+/g, "_")}`;
+
 /** An image the main process produced, e.g. a screen capture. */
 export interface CapturedImage {
   data: string;
@@ -85,6 +116,10 @@ export const IPC = {
   workspacesFiles: "workspaces:files",
   appCaptureScreen: "app:capture-screen",
   appSaveText: "app:save-text",
+  appOpenPath: "app:open-path",
+  appOpenExternal: "app:open-external",
+  secretsList: "secrets:list",
+  secretsSet: "secrets:set",
   workspacesChanged: "workspaces:changed",
   agentStart: "agent:start",
   agentRestart: "agent:restart",
@@ -104,6 +139,17 @@ export interface DesktopApi {
     captureScreen(): Promise<CapturedImage | null>;
     /** Save text through the system save dialog; returns the path, or null when cancelled. */
     saveText(defaultName: string, text: string): Promise<string | null>;
+    /** Show a folder in the file manager; `~` is the home directory. */
+    openPath(path: string): Promise<void>;
+    /** Open an https link in the default browser. */
+    openExternal(url: string): Promise<void>;
+  };
+  /** API keys kept in the OS keychain; the Agent gets each as `${EASY_AGENT_KEY_<NAME>}`. */
+  secrets: {
+    /** Stored names with masked values. */
+    list(): Promise<Record<string, string>>;
+    /** Store a key, or delete it with null. Agent processes see the change after they restart. */
+    set(name: string, value: string | null): Promise<void>;
   };
   /** Absolute path of a file dropped or pasted into the page, or "" when it has none. */
   pathOf(file: File): string;

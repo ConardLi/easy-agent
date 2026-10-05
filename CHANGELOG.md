@@ -21,6 +21,7 @@ All notable changes to Easy Agent are documented in this file.
 - `eagent --login` saves a model API key, base URL, and model in the user settings. ACP editors offer it as terminal login when no credentials are configured.
 - `npm run acp:registry-entry` writes the ACP Registry entry (`agent.json`, `icon.svg`) for the current version.
 - RPC: `session/setPermissionMode`, `session/setModel`, `session/setThinking`, `session/setEffort`, and `session/stopBackgroundAgent`.
+- SDK and RPC: read and write settings (`readConfig()`/`config/read`, `writeConfig()`/`config/write`), save or revoke workspace trust (`setWorkspaceTrust()`/`workspace/trust`), and check a model connection or list a provider's models (`checkModel()`/`models/check`, `listModels()`/`models/list`). Inline secrets are never returned.
 - SDK: `send()` takes images, `AgentRuntime.connectMcpServers()` adds MCP servers at runtime, and `AgentRuntime.hasModelCredentials()` reports whether the model has credentials. RPC `session/send` accepts `images`.
 
 ### Changed

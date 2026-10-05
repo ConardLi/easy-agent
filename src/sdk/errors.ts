@@ -20,7 +20,9 @@ export type AgentSdkErrorCode =
   /** No saved session has this id. */
   | "not_found"
   /** An argument is malformed, such as a session id that is not one. */
-  | "invalid_argument";
+  | "invalid_argument"
+  /** A model provider request failed (listing models, for example). */
+  | "provider";
 
 export class AgentSdkError extends Error {
   readonly code: AgentSdkErrorCode;

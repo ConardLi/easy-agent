@@ -434,6 +434,86 @@ try {
     assert.equal(fixture.requests.length, before, "none of these runs the model");
   });
 
+  await check(
+    "config/read shows sources and effective values; config/write validates, keeps secrets, refuses escalation",
+    async () => {
+      const userFile = path.join(home, ".easy-agent", "settings.json");
+      let config = await rpc.call<Json>("config/read", {});
+      assert.equal(config.workspaceTrusted, false);
+      const sources = config.sources as Json[];
+      assert.deepEqual(
+        sources.map((s) => s.source),
+        ["user", "project", "local", "flag", "policy"],
+      );
+      assert.equal(
+        sources.find((s) => s.source === "project")?.applied,
+        false,
+        "untrusted project settings are not applied",
+      );
+      const effective = config.effective as Record<string, Json>;
+      assert.deepEqual(effective.deny?.value, ["WebFetch"]);
+      assert.equal(effective.deny?.source, "user");
+      assert.equal(effective.allow?.source, "default", "the untrusted project allow rule is not effective");
+
+      assert.deepEqual(await rpc.call("config/write", { scope: "user", key: "maxTurns", value: 42 }), {
+        reload: "next turn",
+      });
+      config = await rpc.call<Json>("config/read", {});
+      assert.equal((config.effective as Record<string, Json>).maxTurns?.value, 42);
+      await rejects(
+        rpc.call("config/write", { scope: "user", key: "maxTurns", value: -1 }),
+        protocol.RpcErrorCode.AgentError,
+        "invalid_argument",
+      );
+      await rejects(
+        rpc.call("config/write", { scope: "user", key: "noSuchKey", value: 1 }),
+        protocol.RpcErrorCode.AgentError,
+        "invalid_argument",
+      );
+      await rejects(
+        rpc.call("config/write", { scope: "project", key: "mode", value: "auto" }),
+        protocol.RpcErrorCode.AgentError,
+        "invalid_argument",
+      );
+
+      const secret = "sk-test-secret-123456";
+      const profile = { protocol: "openai-chat", model: "gpt-x", baseURL: "http://127.0.0.1:9/v1", apiKey: secret };
+      await rpc.call("config/write", { scope: "user", key: "models", value: { bad: profile } });
+      config = await rpc.call<Json>("config/read", {});
+      assert.ok(!JSON.stringify(config).includes(secret), "config/read never returns an inline key");
+      const bad = ((config.models as Json).profiles as Record<string, Json>).bad!;
+      assert.equal(bad.apiKey, "[redacted]");
+      assert.equal(bad.hasApiKey, true);
+      // Sending the redacted marker back keeps the stored key.
+      await rpc.call("config/write", {
+        scope: "user",
+        key: "models",
+        value: { bad: { ...profile, model: "gpt-y", apiKey: "[redacted]" } },
+      });
+      const stored = JSON.parse(await readFile(userFile, "utf8")) as { models: Record<string, Json> };
+      assert.equal(stored.models.bad?.apiKey, secret);
+      assert.equal(stored.models.bad?.model, "gpt-y");
+
+      const failed = await rpc.call<Json>("models/check", { model: "bad" });
+      assert.equal(failed.ok, false);
+      assert.ok(typeof failed.error === "string" && !failed.error.includes(secret));
+
+      await rpc.call("config/write", { scope: "user", key: "models", value: null });
+      await rpc.call("config/write", { scope: "user", key: "maxTurns", value: null });
+      assert.deepEqual(JSON.parse(await readFile(userFile, "utf8")), { deny: ["WebFetch"] });
+    },
+  );
+
+  await check("models/check sends one request; models/list asks the provider", async () => {
+    fixture.script([{ kind: "text", text: "pong" }]);
+    const before = fixture.requests.length;
+    const checked = await rpc.call<Json>("models/check", { model: FIXTURE_MODEL });
+    assert.equal(checked.ok, true, String(checked.error));
+    assert.equal(checked.protocol, "anthropic");
+    assert.equal(fixture.requests.length, before + 1);
+    assert.deepEqual(await rpc.call("models/list", { model: FIXTURE_MODEL }), { models: [FIXTURE_MODEL] });
+  });
+
   console.log("\n[3] saved sessions");
 
   await check("list, rename, read, fork, and delete saved sessions", async () => {
@@ -535,6 +615,23 @@ try {
     assert.equal((reinit.workspace as Json).projectTrusted, false, "trust was not persisted");
     again.child.stdin.end();
     assert.equal(await again.exited, 0, "closing stdin exits cleanly");
+  });
+
+  await check("workspace/trust saves trust for the next process and can revoke it", async () => {
+    const first = startClient();
+    await first.initialize();
+    assert.deepEqual(await first.call("workspace/trust", { trusted: true }), { trusted: true });
+    assert.equal(await first.shutdown(), 0);
+
+    const second = startClient();
+    const init = await second.initialize();
+    assert.equal((init.workspace as Json).projectTrusted, true);
+    assert.deepEqual(await second.call("workspace/trust", { trusted: false }), { trusted: false });
+    assert.equal(await second.shutdown(), 0);
+
+    const third = startClient();
+    assert.equal(((await third.initialize()).workspace as Json).projectTrusted, false);
+    assert.equal(await third.shutdown(), 0);
   });
 
   await check("requests pipelined behind initialize wait for it, and closing stdin still answers them", async () => {

@@ -3,7 +3,8 @@
  *
  * Each request is answered with the next scripted step, streamed as SSE:
  * either a text reply or a single tool call. Requests are recorded so tests
- * can assert what reached the provider. `start()` points ANTHROPIC_BASE_URL
+ * can assert what reached the provider. `GET /v1/models` lists the fixture
+ * model and consumes no step. `start()` points ANTHROPIC_BASE_URL
  * at the server; call it before importing modules that create API clients.
  */
 
@@ -97,6 +98,18 @@ export function createAnthropicFixture(): AnthropicFixture {
   };
 
   const server: Server = createServer((request, response) => {
+    if (request.method === "GET" && request.url?.startsWith("/v1/models")) {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(
+        JSON.stringify({
+          data: [{ type: "model", id: FIXTURE_MODEL, display_name: "Fixture", created_at: "2026-01-01T00:00:00Z" }],
+          has_more: false,
+          first_id: FIXTURE_MODEL,
+          last_id: FIXTURE_MODEL,
+        }),
+      );
+      return;
+    }
     const chunks: Buffer[] = [];
     request.on("data", (chunk: Buffer) => chunks.push(chunk));
     request.on("end", () => {

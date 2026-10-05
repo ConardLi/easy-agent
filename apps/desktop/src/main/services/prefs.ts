@@ -9,6 +9,9 @@ export interface PrefsStore {
   onChange(listener: (prefs: Prefs) => void): void;
 }
 
+const bool = (value: unknown, fallback: boolean) => (typeof value === "boolean" ? value : fallback);
+const text = (value: unknown, fallback: string) => (typeof value === "string" && value.length <= 1000 ? value : fallback);
+
 /** Keep the known keys with valid values; anything else falls back to `base`. */
 export function sanitizePrefs(raw: unknown, base: Prefs = DEFAULT_PREFS): Prefs {
   const v = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
@@ -17,6 +20,15 @@ export function sanitizePrefs(raw: unknown, base: Prefs = DEFAULT_PREFS): Prefs 
     accent: ACCENTS.some((a) => a.id === v.accent) ? (v.accent as AccentId) : base.accent,
     fontSize: FONT_SIZES.includes(v.fontSize as FontSize) ? (v.fontSize as FontSize) : base.fontSize,
     sidebarOpen: typeof v.sidebarOpen === "boolean" ? v.sidebarOpen : base.sidebarOpen,
+    sendWith: v.sendWith === "enter" || v.sendWith === "mod-enter" ? v.sendWith : base.sendWith,
+    notifyOnFinish: bool(v.notifyOnFinish, base.notifyOnFinish),
+    reopenLastWorkspace: bool(v.reopenLastWorkspace, base.reopenLastWorkspace),
+    showThinking: bool(v.showThinking, base.showThinking),
+    agentRuntime: v.agentRuntime === "bundled" || v.agentRuntime === "system" ? v.agentRuntime : base.agentRuntime,
+    agentPath: text(v.agentPath, base.agentPath),
+    extraSettingsFile: text(v.extraSettingsFile, base.extraSettingsFile),
+    autoRestart: bool(v.autoRestart, base.autoRestart),
+    debugLogging: bool(v.debugLogging, base.debugLogging),
   };
 }
 

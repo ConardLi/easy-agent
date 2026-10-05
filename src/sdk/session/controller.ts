@@ -242,6 +242,11 @@ export class SessionController {
     this.#engine.setPermissionMode(mode);
   }
 
+  /** Re-read permission rules and mode from the settings files. */
+  reloadSettings(): Promise<void> {
+    return this.#inScope(() => this.#engine.reloadPermissionSettings());
+  }
+
   /** Switch the model for this session now, also while a turn runs; `"default"` clears the override. */
   setModel(model: string): void {
     this.#assertOpen();

@@ -5,6 +5,7 @@ import { HostManager } from "./agent/hosts";
 import { registerIpc } from "./ipc";
 import { buildMenu } from "./menu";
 import { createPrefsStore } from "./services/prefs";
+import { createSecretStore } from "./services/secrets";
 import { createWorkspaceStore } from "./services/workspaces";
 import { applyWindowTheme, createMainWindow } from "./window";
 
@@ -14,9 +15,11 @@ if (userDataDir) app.setPath("userData", userDataDir);
 
 app.setName("Easy Agent");
 
-/** Deny every web permission except clipboard writes, which copy buttons need. */
+/** Deny every web permission except clipboard writes (copy buttons) and notifications (finished sessions). */
 function lockDownSession(): void {
-  session.defaultSession.setPermissionRequestHandler((_contents, permission, callback) => callback(permission === "clipboard-sanitized-write"));
+  session.defaultSession.setPermissionRequestHandler((_contents, permission, callback) =>
+    callback(permission === "clipboard-sanitized-write" || permission === "notifications"),
+  );
   app.on("web-contents-created", (_event, contents) => contents.on("will-attach-webview", (e) => e.preventDefault()));
 }
 
@@ -31,10 +34,11 @@ async function start(): Promise<void> {
   await app.whenReady();
   const prefs = createPrefsStore(join(app.getPath("userData"), "preferences.json"));
   const workspaces = createWorkspaceStore(join(app.getPath("userData"), "workspaces.json"));
-  const hosts = new HostManager(workspaces);
+  const secrets = createSecretStore(join(app.getPath("userData"), "secrets.json"));
+  const hosts = new HostManager(workspaces, prefs, secrets);
   nativeTheme.themeSource = prefs.get().theme;
   lockDownSession();
-  registerIpc({ prefs, workspaces, hosts });
+  registerIpc({ prefs, workspaces, hosts, secrets });
   workspaces.onChange((state) => {
     for (const win of BrowserWindow.getAllWindows()) win.webContents.send(IPC.workspacesChanged, state);
   });
