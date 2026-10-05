@@ -20,11 +20,13 @@ All notable changes to Easy Agent are documented in this file.
 - ACP mode: `eagent --acp` runs Easy Agent as an Agent Client Protocol v1 agent for Zed, JetBrains IDEs, and other ACP editors. Sessions can be created, loaded with replay, resumed, listed, closed, and deleted; prompts accept text, images, and embedded files; tool calls carry titles, kinds, file locations, and diffs; permission requests, plan approval, and questions (as form elicitations) go to the editor; permission modes are session modes; MCP servers configured in the editor are connected. It passes the ACP Test Compatibility Kit v1 suite. See `docs/acp.md`.
 - `eagent --login` saves a model API key, base URL, and model in the user settings. ACP editors offer it as terminal login when no credentials are configured.
 - `npm run acp:registry-entry` writes the ACP Registry entry (`agent.json`, `icon.svg`) for the current version.
+- RPC: `session/setPermissionMode`, `session/setModel`, `session/setThinking`, `session/setEffort`, and `session/stopBackgroundAgent`.
 - SDK: `send()` takes images, `AgentRuntime.connectMcpServers()` adds MCP servers at runtime, and `AgentRuntime.hasModelCredentials()` reports whether the model has credentials. RPC `session/send` accepts `images`.
 
 ### Changed
 
 - SDK: `AgentSession.setPermissionMode()` switches the mode right away, also while a turn runs, and returns nothing; it ran `/mode` as a turn.
+- SDK: `AgentSession.setModel()` switches the model right away, also while a turn runs, and returns nothing; it ran `/model` as a turn. New `setThinking()` and `setEffort()` do the same for extended thinking and reasoning effort, and a `thinking_changed` event reports them, also when `/think` or `/effort` runs.
 - The npm description and keywords describe product capabilities.
 - The development milestone table moved from the README to `docs/learning-path.md`.
 - The system prompt is written once per session so later turns reuse the provider prompt cache. The date has day precision and git status is a session-start snapshot. Changes to AGENT.md, memory, language, output style, skills, agents, or the date reach the model as a hidden context update before the next message. `/clear`, compaction, and resume rebuild the prompt. Anthropic markers now cover both system blocks, so a full conversation is read from cache on the next user message.

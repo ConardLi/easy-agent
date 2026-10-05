@@ -62,6 +62,12 @@ export interface WorkspacesState {
   activeId: string | null;
 }
 
+/** An image the main process produced, e.g. a screen capture. */
+export interface CapturedImage {
+  data: string;
+  mimeType: "image/png";
+}
+
 export type WorkspacePatch = Partial<Pick<WorkspaceInfo, "lastSessionId" | "pinnedSessions">>;
 
 export const IPC = {
@@ -76,6 +82,9 @@ export const IPC = {
   workspacesRemove: "workspaces:remove",
   workspacesUpdate: "workspaces:update",
   workspacesBranch: "workspaces:branch",
+  workspacesFiles: "workspaces:files",
+  appCaptureScreen: "app:capture-screen",
+  appSaveText: "app:save-text",
   workspacesChanged: "workspaces:changed",
   agentStart: "agent:start",
   agentRestart: "agent:restart",
@@ -89,7 +98,15 @@ export const IPC = {
 
 export interface DesktopApi {
   platform: string;
-  app: { info(): Promise<AppInfo> };
+  app: {
+    info(): Promise<AppInfo>;
+    /** Let the user select a screen region; null when cancelled or unsupported on this platform. */
+    captureScreen(): Promise<CapturedImage | null>;
+    /** Save text through the system save dialog; returns the path, or null when cancelled. */
+    saveText(defaultName: string, text: string): Promise<string | null>;
+  };
+  /** Absolute path of a file dropped or pasted into the page, or "" when it has none. */
+  pathOf(file: File): string;
   prefs: {
     get(): Promise<Prefs>;
     update(patch: Partial<Prefs>): Promise<Prefs>;
@@ -106,6 +123,8 @@ export interface DesktopApi {
     update(id: string, patch: WorkspacePatch): Promise<void>;
     /** Current git branch, or null outside a repository. */
     branch(id: string): Promise<string | null>;
+    /** Workspace files matching a query, relative to the workspace root. */
+    files(id: string, query: string): Promise<string[]>;
     onChange(listener: (state: WorkspacesState) => void): () => void;
   };
   agent: {

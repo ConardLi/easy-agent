@@ -1,4 +1,4 @@
-import { contextBridge, type IpcRendererEvent, ipcRenderer } from "electron";
+import { contextBridge, type IpcRendererEvent, ipcRenderer, webUtils } from "electron";
 import type { AgentEventMessage, AgentLogMessage, HostStatus } from "../shared/agent";
 import { type DesktopApi, IPC, type MenuCommand, type Prefs, type WorkspacesState } from "../shared/contract";
 
@@ -10,7 +10,12 @@ function subscribe<A extends unknown[]>(channel: string, listener: (...args: A) 
 
 const api: DesktopApi = {
   platform: process.platform,
-  app: { info: () => ipcRenderer.invoke(IPC.appInfo) },
+  app: {
+    info: () => ipcRenderer.invoke(IPC.appInfo),
+    captureScreen: () => ipcRenderer.invoke(IPC.appCaptureScreen),
+    saveText: (defaultName, text) => ipcRenderer.invoke(IPC.appSaveText, defaultName, text),
+  },
+  pathOf: (file) => webUtils.getPathForFile(file),
   prefs: {
     get: () => ipcRenderer.invoke(IPC.prefsGet),
     update: (patch) => ipcRenderer.invoke(IPC.prefsUpdate, patch),
@@ -24,6 +29,7 @@ const api: DesktopApi = {
     remove: (id) => ipcRenderer.invoke(IPC.workspacesRemove, id),
     update: (id, patch) => ipcRenderer.invoke(IPC.workspacesUpdate, id, patch),
     branch: (id) => ipcRenderer.invoke(IPC.workspacesBranch, id),
+    files: (id, query) => ipcRenderer.invoke(IPC.workspacesFiles, id, query),
     onChange: (listener) => subscribe<[WorkspacesState]>(IPC.workspacesChanged, listener),
   },
   agent: {

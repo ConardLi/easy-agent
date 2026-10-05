@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect } from "react";
 import { useShallow } from "zustand/react/shallow";
 import type { MenuCommand, Theme } from "../shared/contract";
 import { Composer } from "./features/composer/Composer";
+import { RightPanel } from "./features/panels/RightPanel";
 import { Conversation } from "./features/session/Conversation";
 import { Toasts } from "./features/shell/Toasts";
 import { TopBar } from "./features/shell/TopBar";
@@ -16,7 +17,7 @@ import { desktop } from "./lib/desktop";
 import { newSession, openFolder } from "./state/actions";
 import { usePrefs } from "./state/prefs";
 import { useActiveView } from "./state/sessions";
-import { notYet } from "./state/ui";
+import { notYet, useUi } from "./state/ui";
 import { useActiveWorkspace } from "./state/workspaces";
 
 /** Put the theme on the document root; "system" follows the OS color scheme. */
@@ -69,10 +70,27 @@ function Main() {
   );
 }
 
+/** ⌘J toggles the details panel; the other shortcuts are application menu items. */
+function useShortcuts() {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "j") return;
+      const ui = useUi.getState();
+      ui.setRightPanel(!ui.rightPanel);
+      e.preventDefault();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+}
+
 export function App() {
   useAppearance();
+  useShortcuts();
   useEffect(() => desktop.menu.onCommand((command) => MENU_ACTIONS[command]()), []);
   const sidebarOpen = usePrefs((s) => s.sidebarOpen);
+  const rightPanel = useUi((s) => s.rightPanel);
+  const hasSession = !!useActiveView();
 
   return (
     <Tooltip.Provider delayDuration={350} skipDelayDuration={200}>
@@ -98,6 +116,20 @@ export function App() {
               <TopBar />
               <Main />
             </section>
+            <AnimatePresence initial={false}>
+              {rightPanel && hasSession && (
+                <motion.div
+                  key="right"
+                  initial={{ width: 0, opacity: 0 }}
+                  animate={{ width: 360, opacity: 1 }}
+                  exit={{ width: 0, opacity: 0 }}
+                  transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+                  className="h-full shrink-0 overflow-hidden"
+                >
+                  <RightPanel />
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         </main>
       </div>

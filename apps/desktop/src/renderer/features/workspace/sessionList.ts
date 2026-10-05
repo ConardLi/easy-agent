@@ -18,7 +18,7 @@ export interface SessionListItem {
 
 const NEW_TITLE = "新会话";
 
-function firstPrompt(messages: readonly MessageParam[]): string | null {
+export function firstPrompt(messages: readonly MessageParam[]): string | null {
   for (const message of messages) {
     if (message.role !== "user") continue;
     const content = message.content as unknown;
@@ -70,4 +70,11 @@ export function useSessionList(workspaceId: string | undefined): SessionListItem
     }
     return items.sort((a, b) => b.updatedAt - a.updatedAt);
   }, [workspaceId, saved, pinned, views, unread]);
+}
+
+/** The title the sidebar shows for an open session. */
+export function titleOf(sessionId: string): string {
+  const view = useSessions.getState().views[sessionId];
+  const summary = view ? useWorkspaces.getState().runtime[view.workspaceId]?.sessions?.find((s) => s.sessionId === sessionId) : undefined;
+  return summary?.title || summary?.firstPrompt || (view && firstPrompt(view.messages)) || NEW_TITLE;
 }

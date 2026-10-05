@@ -4,13 +4,16 @@
  * requests and keep the workspace list and saved-session list current.
  */
 
-import type { SessionEvent } from "../../shared/agent";
+import type { ImageInput, InteractionResponse, SessionEvent } from "../../shared/agent";
 import { agent, describeError } from "../agent/client";
-import { viewFromState } from "../agent/projector/session";
+import { exportMarkdown } from "../agent/projector/derive";
+import { blocksOf, viewFromState } from "../agent/projector/session";
+import { titleOf } from "../features/workspace/sessionList";
+import type { UiAction } from "../lib/slash";
 import type { Effort, PermissionMode } from "../agent/viewModel";
 import { desktop } from "../lib/desktop";
 import { useSessions } from "./sessions";
-import { useUi } from "./ui";
+import { notYet, useUi } from "./ui";
 import { useWorkspaces } from "./workspaces";
 
 const toast = (text: string, tone: "default" | "success" | "danger" = "default") => useUi.getState().toast(text, tone);
@@ -156,38 +159,16 @@ export async function openSession(workspaceId: string, sessionId: string): Promi
   remember(workspaceId, sessionId);
 }
 
-const EFFORT_COMMANDS: Record<Effort, [string, string[]][]> = {
-  off: [["think", ["off"]]],
-  default: [
-    ["think", ["on"]],
-    ["effort", ["default"]],
-  ],
-  low: [
-    ["think", ["on"]],
-    ["effort", ["low"]],
-  ],
-  medium: [
-    ["think", ["on"]],
-    ["effort", ["medium"]],
-  ],
-  high: [
-    ["think", ["on"]],
-    ["effort", ["high"]],
-  ],
-  max: [
-    ["think", ["on"]],
-    ["effort", ["max"]],
-  ],
-};
-
-async function runCommands(workspaceId: string, sessionId: string, commands: [string, string[]][]): Promise<void> {
-  for (const [name, args] of commands) await agent.call(workspaceId, "session/command", { sessionId, name, args });
+/** The calls that put a session at an effort level: thinking on or off, then the effort itself. */
+async function applyEffort(workspaceId: string, sessionId: string, effort: Effort): Promise<void> {
+  await agent.call(workspaceId, "session/setThinking", { sessionId, thinking: effort === "off" ? "off" : "on" });
+  if (effort !== "off") await agent.call(workspaceId, "session/setEffort", { sessionId, effort: effort === "default" ? null : effort });
 }
 
-export async function sendMessage(text: string): Promise<boolean> {
+export async function sendMessage(text: string, images: ImageInput[] = []): Promise<boolean> {
   const workspaceId = activeWorkspaceId();
   const input = text.trim();
-  if (!workspaceId || !input) return false;
+  if (!workspaceId || (!input && images.length === 0)) return false;
   let sessionId = useSessions.getState().activeId;
   try {
     if (!sessionId) {
@@ -203,10 +184,10 @@ export async function sendMessage(text: string): Promise<boolean> {
         views: s.views[id] ? s.views : { ...s.views, [id]: viewFromState(workspaceId, created.state, -1) },
       }));
       remember(workspaceId, id);
-      if (draft.effort !== "default") await runCommands(workspaceId, id, EFFORT_COMMANDS[draft.effort]);
+      if (draft.effort !== "default") await applyEffort(workspaceId, id, draft.effort);
     }
     // The reply streams in as events; the returned turn result is not needed.
-    void agent.call(workspaceId, "session/send", { sessionId, input }).catch(fail);
+    void agent.call(workspaceId, "session/send", { sessionId, input, ...(images.length ? { images } : {}) }).catch(fail);
     return true;
   } catch (error) {
     fail(error);
@@ -220,22 +201,54 @@ export async function interrupt(): Promise<void> {
   await agent.call(view.workspaceId, "session/interrupt", { sessionId: view.id }).catch(fail);
 }
 
-/**
- * Mode, model, and effort changes run as local commands, which wait for an
- * idle session. TODO(G1): `session/setPermissionMode` and friends switch
- * immediately, also while a turn runs.
- */
-async function changeActive(commands: [string, string[]][], draftPatch: Parameters<ReturnType<typeof useSessions.getState>["setDraft"]>[0]): Promise<void> {
+/** Mode, model, and effort switch right away, also while a turn runs; a new session takes them from the draft. */
+async function changeActive(
+  apply: (workspaceId: string, sessionId: string) => Promise<unknown>,
+  draftPatch: Parameters<ReturnType<typeof useSessions.getState>["setDraft"]>[0],
+): Promise<void> {
   const { activeId, views, setDraft } = useSessions.getState();
   const view = activeId ? views[activeId] : undefined;
   if (!view) return setDraft(draftPatch);
-  if (view.busy) return toast("这一轮结束后才能切换");
-  await runCommands(view.workspaceId, view.id, commands).catch(fail);
+  await apply(view.workspaceId, view.id).catch(fail);
 }
 
-export const setMode = (mode: PermissionMode) => changeActive([["mode", [mode]]], { mode });
-export const setModel = (model: string) => changeActive([["model", [model]]], { model });
-export const setEffort = (effort: Effort) => changeActive(EFFORT_COMMANDS[effort], { effort });
+export const setMode = (mode: PermissionMode) =>
+  changeActive((workspaceId, sessionId) => agent.call(workspaceId, "session/setPermissionMode", { sessionId, mode }), { mode });
+export const setModel = (model: string) =>
+  changeActive((workspaceId, sessionId) => agent.call(workspaceId, "session/setModel", { sessionId, model }), { model });
+export const setEffort = (effort: Effort) => changeActive((workspaceId, sessionId) => applyEffort(workspaceId, sessionId, effort), { effort });
+
+/** Answer a permission, plan, or question request; the card resolves when the Agent says so. */
+export async function respond(sessionId: string, requestId: string, response: InteractionResponse): Promise<void> {
+  const view = useSessions.getState().views[sessionId];
+  if (!view) return;
+  useSessions.setState((s) => ({ responses: { ...s.responses, [requestId]: response } }));
+  try {
+    const { outcome } = await agent.call(view.workspaceId, "session/respond", { sessionId, requestId, response });
+    if (outcome === "stale") toast("这个请求已经结束了");
+  } catch (error) {
+    fail(error);
+  }
+}
+
+export async function stopBackgroundAgent(sessionId: string, agentId: string): Promise<void> {
+  const view = useSessions.getState().views[sessionId];
+  if (!view) return;
+  try {
+    const { stopped } = await agent.call(view.workspaceId, "session/stopBackgroundAgent", { sessionId, agentId });
+    toast(stopped ? "已停止后台 Agent" : "这个后台 Agent 已经结束了");
+  } catch (error) {
+    fail(error);
+  }
+}
+
+/** Run a local command (`compact`, `clear`, `init`, …) in the active session. */
+export async function runCommand(name: string, args: string[] = []): Promise<void> {
+  const view = useSessions.getState().activeId ? useSessions.getState().views[useSessions.getState().activeId!] : undefined;
+  if (!view) return;
+  if (view.busy) return toast("这一轮结束后再操作");
+  await agent.call(view.workspaceId, "session/command", { sessionId: view.id, name, args }).catch(fail);
+}
 
 export async function renameSession(workspaceId: string, sessionId: string, title: string): Promise<void> {
   try {
@@ -282,4 +295,81 @@ export async function togglePin(workspaceId: string, sessionId: string): Promise
     ? workspace.pinnedSessions.filter((id) => id !== sessionId)
     : [...workspace.pinnedSessions, sessionId];
   await desktop.workspaces.update(workspaceId, { pinnedSessions: pinned });
+}
+
+// ─── Session tools ────────────────────────────────────────────────────────
+
+const activeView = () => {
+  const { activeId, views } = useSessions.getState();
+  return activeId ? views[activeId] : undefined;
+};
+
+export async function copyLastReply(): Promise<void> {
+  const view = activeView();
+  const last = view ? [...blocksOf(view)].reverse().find((b) => b.kind === "assistant") : undefined;
+  if (last?.kind !== "assistant") return toast("还没有回复可以复制");
+  await navigator.clipboard.writeText(last.text);
+  toast("已复制到剪贴板");
+}
+
+export async function exportSession(sessionId = useSessions.getState().activeId): Promise<void> {
+  const view = sessionId ? useSessions.getState().views[sessionId] : undefined;
+  if (!view) return toast("先打开这个会话再导出");
+  const title = titleOf(view.id);
+  const path = await desktop.app.saveText(`${title.slice(0, 40)}.md`, exportMarkdown(view, title));
+  if (path) toast("已导出", "success");
+}
+
+/** UI aliases typed after `/` that do not need the composer. Returns false for the composer's own pickers and modes. */
+export function runUiAction(action: UiAction): boolean {
+  const { setRightPanel } = useUi.getState();
+  const panel = (tab: "context" | "changes" | "tasks" | "agents") => (activeView() ? setRightPanel(true, tab) : toast("先开始一个会话"));
+  switch (action) {
+    case "model":
+    case "effort":
+    case "plan":
+    case "auto":
+      return false;
+    case "context":
+      panel("context");
+      break;
+    case "changes":
+      panel("changes");
+      break;
+    case "tasks":
+      panel("tasks");
+      break;
+    case "background":
+      panel("agents");
+      break;
+    case "new":
+      newSession();
+      break;
+    case "clear":
+      void runCommand("clear");
+      break;
+    case "export":
+      void exportSession();
+      break;
+    case "copy":
+      void copyLastReply();
+      break;
+    case "rewind":
+      toast("在你的消息上悬停，点回退按钮");
+      break;
+    case "resume":
+      toast("在左侧会话列表里选择要继续的会话");
+      break;
+    case "skills":
+    case "mcp":
+    case "plugins":
+    case "hooks":
+    case "rules":
+    case "tools":
+      notYet("自定义");
+      break;
+    default:
+      notYet("设置");
+  }
+  return true;
 }

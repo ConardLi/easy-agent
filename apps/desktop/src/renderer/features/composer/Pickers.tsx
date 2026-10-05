@@ -73,8 +73,23 @@ export function ModePicker({ mode, onChange }: { mode: PermissionMode; onChange:
  * Model picker. TODO(G6): the configured model list comes with `config/read`;
  * until then it shows the current model and takes a model name or profile id.
  */
-export function ModelPicker({ model, onChange }: { model: string | undefined; onChange: (id: string) => void }) {
-  const [open, setOpen] = useState(false);
+export function ModelPicker({
+  model,
+  onChange,
+  open: openProp,
+  onOpenChange,
+}: {
+  model: string | undefined;
+  onChange: (id: string) => void;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+}) {
+  const [openState, setOpenState] = useState(false);
+  const open = openProp ?? openState;
+  const setOpen = (v: boolean) => {
+    setOpenState(v);
+    onOpenChange?.(v);
+  };
   const [query, setQuery] = useState("");
   const typed = query.trim();
   const choose = (id: string) => {
@@ -165,11 +180,21 @@ export function ModelPicker({ model, onChange }: { model: string | undefined; on
   );
 }
 
-export function EffortPicker({ effort, onChange }: { effort: Effort; onChange: (e: Effort) => void }) {
+export function EffortPicker({
+  effort,
+  onChange,
+  open,
+  onOpenChange,
+}: {
+  effort: Effort;
+  onChange: (e: Effort) => void;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+}) {
   const current = EFFORTS.find((e) => e.id === effort) ?? EFFORTS[1]!;
   const level = effort === "off" ? 0 : effort === "default" ? 2 : ["low", "medium", "high", "max"].indexOf(effort) + 1;
   return (
-    <Menu>
+    <Menu {...(open !== undefined ? { open } : {})} {...(onOpenChange ? { onOpenChange } : {})}>
       <Tooltip content={`思考强度：${current.label}`} side="top">
         <MenuTrigger asChild>
           <button type="button" className={cn(pill, effort === "off" && "text-fg-3")}>

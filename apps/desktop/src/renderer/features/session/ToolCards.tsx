@@ -317,10 +317,17 @@ export function TaskCard({ tool }: { tool: ToolCall }) {
             </span>
             <span className={cn("block truncate text-[13px]", running ? "text-shimmer font-medium" : "text-fg")}>{tool.target}</span>
           </span>
-          {tool.status === "running" || tool.status === "success" ? (
+          {(tool.status === "running" || tool.status === "success") && agent.steps.length > 0 ? (
             <span className="tabular text-[11.5px] text-fg-3">
               {done}/{agent.steps.length}
             </span>
+          ) : tool.status === "running" || tool.status === "success" ? (
+            // The Agent reports a count of tool calls rather than a step list.
+            agent.toolUses !== undefined && (
+              <span className="tabular text-[11.5px] text-fg-3">
+                {agent.toolUses} 次工具调用{running && agent.lastTool ? ` · ${agent.lastTool}` : ""}
+              </span>
+            )
           ) : (
             <StatusMark status={tool.status} />
           )}

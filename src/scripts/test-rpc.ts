@@ -405,6 +405,35 @@ try {
     assert.equal(fixture.requests.length, before);
   });
 
+  await check("mode, model, thinking, and effort switch without a turn; background agents stop by id", async () => {
+    const before = fixture.requests.length;
+    await rpc.call("session/setPermissionMode", { sessionId, mode: "plan" });
+    await rpc.call("session/setModel", { sessionId, model: "other-model" });
+    await rpc.call("session/setThinking", { sessionId, thinking: "off" });
+    await rpc.call("session/setEffort", { sessionId, effort: "high" });
+    const state = await rpc.call<Json>("session/state", { sessionId });
+    assert.equal(state.permissionMode, "plan");
+    assert.equal(state.model, "other-model");
+    assert.deepEqual(state.thinking, { type: "disabled" });
+    assert.equal(state.effort, "high");
+    assert.equal(rpc.eventsOf(sessionId, "model_changed").at(-1)?.model, "other-model");
+    assert.equal(rpc.eventsOf(sessionId, "thinking_changed").at(-1)?.effort, "high");
+
+    await rpc.call("session/setModel", { sessionId, model: "default" });
+    await rpc.call("session/setPermissionMode", { sessionId, mode: "default" });
+    await rpc.call("session/setThinking", { sessionId, thinking: "on" });
+    await rpc.call("session/setEffort", { sessionId, effort: null });
+    assert.equal((await rpc.call<Json>("session/state", { sessionId })).effort, null);
+    assert.deepEqual(await rpc.call("session/stopBackgroundAgent", { sessionId, agentId: "no-such-agent" }), {
+      stopped: false,
+    });
+    await rejects(
+      rpc.call("session/setThinking", { sessionId, thinking: 0 }, { valid: false }),
+      protocol.RpcErrorCode.InvalidParams,
+    );
+    assert.equal(fixture.requests.length, before, "none of these runs the model");
+  });
+
   console.log("\n[3] saved sessions");
 
   await check("list, rename, read, fork, and delete saved sessions", async () => {

@@ -143,8 +143,7 @@ export class AgentHost {
         protocolVersion: RPC_PROTOCOL_VERSION,
         clientInfo: { name: "easy-agent-desktop", version: this.#options.clientVersion },
         trust,
-        // Interaction cards arrive in a later milestone; until then the SDK applies its safe defaults.
-        interactions: [],
+        interactions: ["permission", "plan_approval", "question"],
         services: "background",
       });
       // Reopen before reporting ready, straight on the connection: `call()` waits for this very promise.

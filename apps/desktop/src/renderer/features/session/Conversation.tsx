@@ -5,6 +5,7 @@ import { blocksOf, type SessionView } from "../../agent/projector/session";
 import type { Block, ToolCall } from "../../agent/viewModel";
 import { cn, Spinner } from "../../design/primitives";
 import { AssistantMessage, NoticeBlock, ThinkingBlock, UserMessage } from "./Messages";
+import { RequestBlock } from "./RequestCards";
 import { ExploreGroup, isExploreTool, ToolBlock } from "./ToolCards";
 
 type Item = { key: string; kind: "block"; block: Block } | { key: string; kind: "explore"; tools: ToolCall[] };
@@ -52,7 +53,8 @@ function Working({ busy, blocks }: { busy: boolean; blocks: Block[] }) {
     busy &&
     !(
       last &&
-      ((last.kind === "assistant" && last.streaming) ||
+      ((last.kind === "request" && !last.resolution) ||
+        (last.kind === "assistant" && last.streaming) ||
         (last.kind === "thinking" && last.streaming) ||
         (last.kind === "tool" && last.tool.status === "running"))
     );
@@ -80,6 +82,15 @@ export function Conversation({ view, workspaceName, startedAt }: { view: Session
   const [away, setAway] = useState(false);
   const blocks = useMemo(() => blocksOf(view), [view]);
   const items = useMemo(() => toItems(blocks), [blocks]);
+
+  // Only the newest open request takes keyboard shortcuts.
+  const latestRequest = useMemo(() => {
+    for (let i = blocks.length - 1; i >= 0; i--) {
+      const b = blocks[i]!;
+      if (b.kind === "request" && !b.resolution) return b.id;
+    }
+    return null;
+  }, [blocks]);
 
   const lastAssistant = useMemo(() => {
     for (let i = blocks.length - 1; i >= 0; i--) if (blocks[i]!.kind === "assistant") return blocks[i]!.id;
@@ -143,6 +154,8 @@ export function Conversation({ view, workspaceName, startedAt }: { view: Session
                   <ThinkingBlock block={item.block} />
                 ) : item.block.kind === "tool" ? (
                   <ToolBlock tool={item.block.tool} />
+                ) : item.block.kind === "request" ? (
+                  <RequestBlock block={item.block} sessionId={view.id} cwd={view.cwd} latest={item.block.id === latestRequest} />
                 ) : (
                   <NoticeBlock block={item.block} />
                 )}

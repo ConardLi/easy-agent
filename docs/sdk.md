@@ -93,8 +93,10 @@ const session = await runtime.createSession({
 | `waitForIdle()` | Resolves once no turn runs; use it to queue input |
 | `interrupt()` | Stop the running turn. A pending permission request is denied, or a pending question cancelled, so the tool call gets a result; the model is not called again. Returns what it did |
 | `respond(requestId, response)` | Answer a pending request; returns `stale` if it was already settled |
-| `runCommand(name, args)`, `setModel(model)` | Local commands without building strings |
+| `runCommand(name, args)` | Local commands without building strings |
 | `setPermissionMode(mode)` | Switch the permission mode right away, also while a turn runs; the next tool call uses it |
+| `setModel(model)` | Switch the model right away, also while a turn runs; `"default"` clears the override |
+| `setThinking("on" \| "off" \| budget)`, `setEffort(level \| null)` | Extended thinking and reasoning effort for the session, right away; `thinking_changed` reports the result |
 | `runShell(command)` | Run a shell command without the model, under the usual Bash permission and sandbox rules |
 | `stopBackgroundAgent(agentId)` | Stop a background agent this session started |
 | `getState()` | Snapshot: messages, usage and context size, model, modes, thinking, pending requests, todos, tasks, background agents |
@@ -112,7 +114,7 @@ Every event carries `sessionId` and `seq`, a per-session sequence number. A new 
 | Tools | `tool_started`, `tool_progress` (execution status, Bash output, MCP progress, sub-agent progress), `tool_completed`, `tool_results` |
 | Interaction | `request_opened`, `request_resolved` |
 | Conversation | `messages_changed`, `usage_changed`, `compacted`, `token_warning`, `api_retry`, `stream_restart`, `error`, `notice` |
-| Session settings | `mode_changed`, `model_changed`, `task_mode_changed`, `todos_changed`, `tasks_changed`, `background_agents_changed`, `session_cleared`, `session_replaced` |
+| Session settings | `mode_changed`, `model_changed`, `thinking_changed`, `task_mode_changed`, `todos_changed`, `tasks_changed`, `background_agents_changed`, `session_cleared`, `session_replaced` |
 | Local commands | `command_progress`, `command_output`, `command_view` (session picker, diff, memory files, permission rules, plugins), `editor_requested` |
 
 Stop reasons are `completed`, `aborted`, `model_error`, `max_turns`, and `blocking_limit`.

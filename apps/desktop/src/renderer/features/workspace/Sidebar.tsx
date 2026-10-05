@@ -3,7 +3,7 @@ import { motion } from "motion/react";
 import { useMemo, useState } from "react";
 import { cn, IconButton, Kbd, Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger, MOD, Spinner, Tooltip } from "../../design/primitives";
 import { type DayBucket, dayBucket, shortTime } from "../../lib/format";
-import { deleteSession, forkSession, newSession, openSession, renameSession, togglePin } from "../../state/actions";
+import { deleteSession, exportSession, forkSession, newSession, openSession, renameSession, togglePin } from "../../state/actions";
 import { usePrefs } from "../../state/prefs";
 import { useSessions } from "../../state/sessions";
 import { notYet, useUi } from "../../state/ui";
@@ -100,7 +100,7 @@ function SessionItem({ item, workspaceId }: { item: SessionListItem; workspaceId
             <MenuItem icon={<GitFork />} onSelect={() => void forkSession(workspaceId, item.id, item.title)}>
               分叉
             </MenuItem>
-            <MenuItem icon={<Download />} onSelect={() => notYet("导出")}>
+            <MenuItem icon={<Download />} onSelect={() => void exportSession(item.id)}>
               导出为 Markdown
             </MenuItem>
             <MenuSeparator />

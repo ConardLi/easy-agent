@@ -51,7 +51,15 @@ import {
 import type { Task } from "../../types/task.js";
 import type { Usage } from "../../types/message.js";
 import { hasPendingLeadMailboxSignal, subscribeMailboxWrites } from "../../utils/teammateMailbox.js";
-import { buildDefaultThinkingConfig, getSessionEffortLevel } from "../../utils/thinking.js";
+import {
+  buildDefaultThinkingConfig,
+  type EffortLevel,
+  getSessionEffortLevel,
+  modelSupportsAdaptiveThinking,
+  setSessionEffortLevel,
+  setSessionThinkingConfig,
+  type ThinkingConfig,
+} from "../../utils/thinking.js";
 import { buildTokenBudgetSnapshot } from "../../utils/tokens.js";
 import { AgentSdkError } from "../errors.js";
 import type {
@@ -68,6 +76,7 @@ import type {
   SessionState,
   SessionUsage,
   ShellResult,
+  ThinkingSetting,
   TurnContinuation,
   TurnResult,
   TurnSource,
@@ -233,6 +242,43 @@ export class SessionController {
     this.#engine.setPermissionMode(mode);
   }
 
+  /** Switch the model for this session now, also while a turn runs; `"default"` clears the override. */
+  setModel(model: string): void {
+    this.#assertOpen();
+    const name = model.trim();
+    if (!name) throw new AgentSdkError("invalid_argument", "The model name is empty.");
+    const next = this.#inScope(() => this.#engine.setSessionModel(name === "default" ? null : name));
+    this.#model = next.model;
+    this.#modelSource = next.source;
+    this.#emit({ type: "model_changed", model: next.model, source: next.source });
+  }
+
+  /** Turn extended thinking on (adaptive where the model supports it), off, or to a token budget. */
+  setThinking(setting: ThinkingSetting): void {
+    this.#assertOpen();
+    let config: ThinkingConfig;
+    if (setting === "off") config = { type: "disabled" };
+    else if (setting === "on")
+      config = modelSupportsAdaptiveThinking(this.#model)
+        ? { type: "adaptive" }
+        : { type: "enabled", budgetTokens: 10_000 };
+    else if (Number.isInteger(setting) && setting > 0) config = { type: "enabled", budgetTokens: setting };
+    else throw new AgentSdkError("invalid_argument", 'Thinking must be "on", "off", or a positive token budget.');
+    this.#inScope(() => setSessionThinkingConfig(config));
+    this.#emit({ type: "thinking_changed", ...this.#thinkingState() });
+  }
+
+  /** Set the reasoning effort; null leaves it to the model. */
+  setEffort(effort: EffortLevel | null): void {
+    this.#assertOpen();
+    this.#inScope(() => setSessionEffortLevel(effort ?? undefined));
+    this.#emit({ type: "thinking_changed", ...this.#thinkingState() });
+  }
+
+  #thinkingState(): { thinking: ThinkingConfig; effort: EffortLevel | null } {
+    return this.#inScope(() => ({ thinking: buildDefaultThinkingConfig(), effort: getSessionEffortLevel() ?? null }));
+  }
+
   /** Stash each image and return the `[Image #N]` tokens the engine expands into image blocks. */
   #attachImages(images: readonly ImageInput[]): string[] {
     return images.map((image, index) => {
@@ -332,6 +378,8 @@ export class SessionController {
 
     let outcome: { handled: boolean; reason?: TurnResult["reason"] };
     let toolTurns: number | undefined;
+    // `/think` and `/effort` change the thinking settings without an engine event.
+    const thinkingBefore = isLlmTriggering ? null : JSON.stringify(this.#thinkingState());
     try {
       // Open the turn before the engine adds the prompt, so its messages and
       // file-history snapshot share one id. Background wake-ups have no typed
@@ -356,6 +404,10 @@ export class SessionController {
       throw error;
     }
     this.#endTurn();
+    if (thinkingBefore !== null) {
+      const after = this.#thinkingState();
+      if (JSON.stringify(after) !== thinkingBefore) this.#emit({ type: "thinking_changed", ...after });
+    }
 
     const continuation = this.#continuation;
     this.#continuation = null;

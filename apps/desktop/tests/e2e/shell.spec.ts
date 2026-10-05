@@ -19,7 +19,7 @@ test("the renderer has no Node access and only sees the preload API", async () =
       "undefined",
       "undefined",
     ]);
-    expect(await page.evaluate(() => Object.keys(window.easyAgent).sort())).toEqual(["agent", "app", "menu", "platform", "prefs", "workspaces"]);
+    expect(await page.evaluate(() => Object.keys(window.easyAgent).sort())).toEqual(["agent", "app", "menu", "pathOf", "platform", "prefs", "workspaces"]);
 
     const url = page.url();
     await page.evaluate(() => {

@@ -1,3 +1,4 @@
+import type { SubAgentProgress } from "../../../shared/agent";
 import type { DiffLine, ToolCall, ToolName, ToolStatus } from "../viewModel";
 
 /** What is known about one tool call, from the committed messages and the live events. */
@@ -13,6 +14,8 @@ export interface ToolFacts {
   completedAt?: number;
   /** Live output of a running shell command. */
   liveOutput?: string;
+  /** Progress of a sub-agent the call started. */
+  subagent?: SubAgentProgress;
   cwd?: string;
 }
 
@@ -113,6 +116,9 @@ function card(name: string): { name: ToolName; label?: string; server?: string }
       return { name: "Edit" };
     case "PowerShell":
       return { name: "Bash" };
+    case "Agent":
+    case "Task":
+      return { name: "Task" };
     default:
       return { name: "other", label: name };
   }
@@ -167,6 +173,7 @@ export function toolCall(facts: ToolFacts): ToolCall {
         out.added = diff.added;
         out.removed = diff.removed;
       }
+      if (facts.name === "Write" && result !== undefined && /^Created file:/.test(result)) out.created = true;
       break;
     }
     case "Bash":
@@ -189,6 +196,19 @@ export function toolCall(facts: ToolFacts): ToolCall {
     case "TodoWrite":
       out.target = Array.isArray(input.todos) ? `${input.todos.length} 项待办` : "待办清单";
       break;
+    case "Task": {
+      const progress = facts.subagent;
+      out.target = str(input.description) || progress?.description || str(input.prompt).slice(0, 80);
+      out.agent = {
+        type: progress?.teammateName || str(input.subagent_type) || progress?.agentType || "general-purpose",
+        steps: [],
+        ...(progress ? { toolUses: progress.toolUseCount } : {}),
+        ...(progress?.lastToolName ? { lastTool: progress.lastToolName } : {}),
+        ...(progress?.totalTokens ? { tokens: progress.totalTokens } : {}),
+        ...(result !== undefined && !facts.result?.isError ? { result } : {}),
+      };
+      return out;
+    }
     default:
       out.target = describe(input, facts.cwd);
   }

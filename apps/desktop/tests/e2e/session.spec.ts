@@ -1,10 +1,11 @@
 import { execSync } from "node:child_process";
 import { join } from "node:path";
-import { expect, type Page, test } from "@playwright/test";
-import { type AgentWorld, createAgentWorld } from "../helpers/agent";
-import { answerFolderDialog, type LaunchedApp, launchApp } from "../helpers/app";
+import { expect, test } from "@playwright/test";
+import { type AgentWorld, createAgentWorld, openProject as open, send, sessionRow } from "../helpers/agent";
+import { launchApp } from "../helpers/app";
 
 let world: AgentWorld;
+const openProject = () => open(world);
 
 test.beforeEach(async () => {
   world = await createAgentWorld();
@@ -13,22 +14,6 @@ test.beforeEach(async () => {
 test.afterEach(async () => {
   await world.fixture.close();
 });
-
-async function openProject(): Promise<LaunchedApp> {
-  const launched = await launchApp({ prefs: { theme: "dark" }, env: world.env });
-  await answerFolderDialog(launched.app, world.project);
-  await launched.page.getByRole("button", { name: /^打开文件夹/ }).click();
-  await expect(launched.page.getByPlaceholder("在 demo-project 里想做点什么？")).toBeVisible({ timeout: 20_000 });
-  return launched;
-}
-
-async function send(page: Page, text: string): Promise<void> {
-  const input = page.getByRole("textbox", { name: "消息" });
-  await input.fill(text);
-  await input.press("Enter");
-}
-
-const sessionRow = (page: Page, title: string) => page.locator("nav").getByRole("button", { name: title, exact: true });
 
 test("a conversation streams from the Agent and shows up in the session list", async () => {
   world.fixture.script([{ kind: "text", text: "你好，我是测试模型。" }]);

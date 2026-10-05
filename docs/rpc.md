@@ -61,6 +61,11 @@ Requests sent while `initialize` is running wait for it to finish, so a client m
 | `session/interrupt` | `sessionId` | `outcome`: `permission_denied`, `question_cancelled`, `turn_aborted`, or `idle` |
 | `session/state` | `sessionId` | `SessionState` |
 | `session/shell` | `sessionId`, `command` | `output`, `isError`: a shell command run without the model, under the Bash tool rules |
+| `session/setPermissionMode` | `sessionId`, `mode` | `{}`; takes effect right away, also while a turn runs |
+| `session/setModel` | `sessionId`, `model` (`"default"` clears the override) | `{}`; right away, emits `model_changed` |
+| `session/setThinking` | `sessionId`, `thinking`: `"on"`, `"off"`, or a token budget | `{}`; emits `thinking_changed` |
+| `session/setEffort` | `sessionId`, `effort`: `low`, `medium`, `high`, `max`, or `null` for the model default | `{}`; emits `thinking_changed` |
+| `session/stopBackgroundAgent` | `sessionId`, `agentId` | `stopped`: false when the session did not start that agent |
 | `session/close` | `sessionId` | `{}` |
 | `shutdown` | | `{}`, then the process exits |
 

@@ -4,6 +4,8 @@
  * Migrated from the style reference's `lib/types.ts`.
  */
 
+import type { InteractionRequest, InteractionResolution } from "../../shared/agent";
+
 export type PermissionMode = "default" | "plan" | "auto";
 /** "default" leaves reasoning effort to the model. */
 export type Effort = "off" | "default" | "low" | "medium" | "high" | "max";
@@ -42,7 +44,9 @@ export interface ToolCall {
   removed?: number;
   startedAt: number;
   durationMs?: number;
-  agent?: { type: string; steps: AgentStep[]; result?: string; tokens?: number };
+  /** A Write that created the file rather than replacing it. */
+  created?: boolean;
+  agent?: { type: string; steps: AgentStep[]; result?: string; tokens?: number; toolUses?: number; lastTool?: string };
   server?: string;
 }
 
@@ -62,4 +66,15 @@ export type Block =
   | { kind: "assistant"; id: string; text: string; streaming?: boolean }
   | { kind: "thinking"; id: string; text: string; streaming?: boolean; durationMs?: number }
   | { kind: "tool"; id: string; tool: ToolCall }
+  /** A request the Agent raised: pending until `resolution` says how it ended. */
+  | { kind: "request"; id: string; request: InteractionRequest; resolution?: InteractionResolution }
   | { kind: "notice"; id: string; tone: "info" | "success" | "warning" | "danger"; icon: NoticeIcon; text: string; detail?: string };
+
+/** A file this session changed, for the Changes panel. */
+export interface FileChange {
+  path: string;
+  kind: "modified" | "added" | "deleted";
+  added: number;
+  removed: number;
+  diff: DiffLine[];
+}

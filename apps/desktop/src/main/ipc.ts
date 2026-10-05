@@ -3,6 +3,9 @@ import { app, BrowserWindow, dialog, ipcMain } from "electron";
 import type { AgentMethod } from "../shared/agent";
 import { type AppInfo, IPC, type Prefs, type WorkspacePatch } from "../shared/contract";
 import type { HostManager } from "./agent/hosts";
+import { writeFile } from "node:fs/promises";
+import { captureScreenRegion } from "./services/capture";
+import { searchFiles } from "./services/files";
 import { currentBranch } from "./services/git";
 import type { PrefsStore } from "./services/prefs";
 import type { WorkspaceStore } from "./services/workspaces";
@@ -25,6 +28,15 @@ const asString = (value: unknown) => (typeof value === "string" ? value : "");
 
 export function registerIpc({ prefs, workspaces, hosts }: { prefs: PrefsStore; workspaces: WorkspaceStore; hosts: HostManager }): void {
   ipcMain.handle(IPC.appInfo, () => appInfo());
+  ipcMain.handle(IPC.appCaptureScreen, () => captureScreenRegion());
+  ipcMain.handle(IPC.appSaveText, async (event, defaultName: unknown, text: unknown) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    const options = { defaultPath: asString(defaultName).replace(/[/\\]/g, "-") || "export.md" };
+    const picked = win ? await dialog.showSaveDialog(win, options) : await dialog.showSaveDialog(options);
+    if (picked.canceled || !picked.filePath) return null;
+    await writeFile(picked.filePath, asString(text), "utf8");
+    return picked.filePath;
+  });
   ipcMain.handle(IPC.prefsGet, () => prefs.get());
   // Everything below comes from the renderer, so values are checked before use.
   ipcMain.handle(IPC.prefsUpdate, (_event, patch: Partial<Prefs>) => prefs.update(patch && typeof patch === "object" ? patch : {}));
@@ -48,6 +60,11 @@ export function registerIpc({ prefs, workspaces, hosts }: { prefs: PrefsStore; w
   ipcMain.handle(IPC.workspacesBranch, (_event, id: unknown) => {
     const workspace = workspaces.find(asString(id));
     return workspace ? currentBranch(workspace.path) : null;
+  });
+
+  ipcMain.handle(IPC.workspacesFiles, (_event, id: unknown, query: unknown) => {
+    const workspace = workspaces.find(asString(id));
+    return workspace ? searchFiles(workspace.path, asString(query).slice(0, 200)) : [];
   });
 
   ipcMain.handle(IPC.agentStart, (_event, id: unknown) => hosts.start(asString(id)));
