@@ -1,0 +1,59 @@
+import { join } from "node:path";
+import { app, BrowserWindow, Menu, nativeTheme, session } from "electron";
+import { IPC, type MenuCommand } from "../shared/contract";
+import { registerIpc } from "./ipc";
+import { buildMenu } from "./menu";
+import { createPrefsStore } from "./services/prefs";
+import { applyWindowTheme, createMainWindow } from "./window";
+
+// Tests point the app at a throwaway data directory.
+const userDataDir = process.env.EASY_AGENT_DESKTOP_USER_DATA;
+if (userDataDir) app.setPath("userData", userDataDir);
+
+app.setName("Easy Agent");
+
+/** Deny every web permission except clipboard writes, which copy buttons need. */
+function lockDownSession(): void {
+  session.defaultSession.setPermissionRequestHandler((_contents, permission, callback) => callback(permission === "clipboard-sanitized-write"));
+  app.on("web-contents-created", (_event, contents) => contents.on("will-attach-webview", (e) => e.preventDefault()));
+}
+
+function focusOrOpen(): BrowserWindow {
+  const win = BrowserWindow.getAllWindows()[0] ?? createMainWindow();
+  if (win.isMinimized()) win.restore();
+  win.focus();
+  return win;
+}
+
+async function start(): Promise<void> {
+  await app.whenReady();
+  const prefs = createPrefsStore(join(app.getPath("userData"), "preferences.json"));
+  nativeTheme.themeSource = prefs.get().theme;
+  lockDownSession();
+  registerIpc(prefs);
+
+  const send = (command: MenuCommand) => (BrowserWindow.getFocusedWindow() ?? focusOrOpen()).webContents.send(IPC.menuCommand, command);
+  const refreshMenu = () => Menu.setApplicationMenu(buildMenu({ prefs: prefs.get(), send, updatePrefs: (patch) => void prefs.update(patch) }));
+  refreshMenu();
+
+  prefs.onChange((next) => {
+    nativeTheme.themeSource = next.theme;
+    refreshMenu();
+    for (const win of BrowserWindow.getAllWindows()) win.webContents.send(IPC.prefsChanged, next);
+  });
+  nativeTheme.on("updated", () => {
+    for (const win of BrowserWindow.getAllWindows()) applyWindowTheme(win);
+  });
+
+  createMainWindow();
+  app.on("activate", () => focusOrOpen());
+}
+
+if (!app.requestSingleInstanceLock()) app.quit();
+else {
+  app.on("second-instance", () => focusOrOpen());
+  app.on("window-all-closed", () => {
+    if (process.platform !== "darwin") app.quit();
+  });
+  void start();
+}

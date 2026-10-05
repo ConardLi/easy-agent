@@ -1,0 +1,68 @@
+name: Desktop client
+
+on:
+  push:
+    paths:
+      - "apps/desktop/**"
+      - "src/sdk/**"
+      - "src/rpc/**"
+      - "src/jsonrpc/**"
+      - ".github/workflows/desktop.yml"
+  pull_request:
+    paths:
+      - "apps/desktop/**"
+      - "src/sdk/**"
+      - "src/rpc/**"
+      - "src/jsonrpc/**"
+      - ".github/workflows/desktop.yml"
+
+concurrency:
+  group: desktop-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: apps/desktop
+
+jobs:
+  checks:
+    name: Typecheck, lint, build, unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          package-manager-cache: false
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm run build
+      - run: npx playwright test --project=unit
+
+  app:
+    name: App tests (macOS)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          package-manager-cache: false
+      - run: npm ci
+      # Electron fetches its binary on first use; do it here, not inside the first test.
+      - run: node node_modules/electron/install.js
+      - run: npm run build
+      # Visual baselines depend on the macOS version's CJK system fonts, so they are compared on
+      # the machine that captured them (tests/visual/README.md), not on CI runners.
+      - run: npx playwright test --project=e2e
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-test-results
+          path: apps/desktop/test-results
+          retention-days: 7
