@@ -135,6 +135,158 @@
             },
             "method": {
               "type": "string",
+              "const": "runtime/inventory"
+            },
+            "params": {
+              "type": "object",
+              "properties": {}
+            }
+          },
+          "required": [
+            "jsonrpc",
+            "method"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "jsonrpc": {
+              "type": "string",
+              "const": "2.0"
+            },
+            "id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "method": {
+              "type": "string",
+              "const": "runtime/reload"
+            },
+            "params": {
+              "type": "object",
+              "properties": {}
+            }
+          },
+          "required": [
+            "jsonrpc",
+            "method"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "jsonrpc": {
+              "type": "string",
+              "const": "2.0"
+            },
+            "id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "method": {
+              "type": "string",
+              "const": "mcp/approve"
+            },
+            "params": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "approved": {
+                  "type": "boolean"
+                },
+                "scope": {
+                  "type": "string",
+                  "enum": [
+                    "user",
+                    "project",
+                    "local"
+                  ]
+                }
+              },
+              "required": [
+                "name",
+                "approved"
+              ]
+            }
+          },
+          "required": [
+            "jsonrpc",
+            "method"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "jsonrpc": {
+              "type": "string",
+              "const": "2.0"
+            },
+            "id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "method": {
+              "type": "string",
+              "const": "mcp/reconnect"
+            },
+            "params": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "name"
+              ]
+            }
+          },
+          "required": [
+            "jsonrpc",
+            "method"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "jsonrpc": {
+              "type": "string",
+              "const": "2.0"
+            },
+            "id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "method": {
+              "type": "string",
               "const": "config/read"
             },
             "params": {
@@ -1284,6 +1436,45 @@
             },
             "method": {
               "type": "string",
+              "const": "session/context"
+            },
+            "params": {
+              "type": "object",
+              "properties": {
+                "sessionId": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "sessionId"
+              ]
+            }
+          },
+          "required": [
+            "jsonrpc",
+            "method"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "jsonrpc": {
+              "type": "string",
+              "const": "2.0"
+            },
+            "id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "method": {
+              "type": "string",
               "const": "shutdown"
             },
             "params": {
@@ -1861,6 +2052,899 @@
             "builtinCommands"
           ],
           "additionalProperties": {}
+        },
+        "runtime/inventory": {
+          "type": "object",
+          "properties": {
+            "workspaceTrusted": {
+              "type": "boolean"
+            },
+            "ignoredProjectConfig": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "skills": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "skill"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "source": {
+                    "type": "string",
+                    "enum": [
+                      "built-in",
+                      "user",
+                      "project",
+                      "local",
+                      "flag",
+                      "policy",
+                      "plugin"
+                    ]
+                  },
+                  "pluginId": {
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "reason": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "invocation": {
+                    "type": "string",
+                    "enum": [
+                      "model",
+                      "manual",
+                      "paths"
+                    ]
+                  },
+                  "listing": {
+                    "type": "object",
+                    "properties": {
+                      "value": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "estimated": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "value",
+                      "estimated"
+                    ]
+                  },
+                  "body": {
+                    "type": "object",
+                    "properties": {
+                      "value": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "estimated": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "value",
+                      "estimated"
+                    ]
+                  }
+                },
+                "required": [
+                  "kind",
+                  "id",
+                  "name",
+                  "source",
+                  "enabled",
+                  "description",
+                  "invocation",
+                  "listing",
+                  "body"
+                ],
+                "additionalProperties": {}
+              }
+            },
+            "commands": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "command"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "source": {
+                    "type": "string",
+                    "enum": [
+                      "built-in",
+                      "user",
+                      "project",
+                      "local",
+                      "flag",
+                      "policy",
+                      "plugin"
+                    ]
+                  },
+                  "pluginId": {
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "reason": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "id",
+                  "name",
+                  "source",
+                  "enabled",
+                  "description"
+                ],
+                "additionalProperties": {}
+              }
+            },
+            "agents": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "agent"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "source": {
+                    "type": "string",
+                    "enum": [
+                      "built-in",
+                      "user",
+                      "project",
+                      "local",
+                      "flag",
+                      "policy",
+                      "plugin"
+                    ]
+                  },
+                  "pluginId": {
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "reason": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "listing": {
+                    "type": "object",
+                    "properties": {
+                      "value": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "estimated": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "value",
+                      "estimated"
+                    ]
+                  }
+                },
+                "required": [
+                  "kind",
+                  "id",
+                  "name",
+                  "source",
+                  "enabled",
+                  "description",
+                  "listing"
+                ],
+                "additionalProperties": {}
+              }
+            },
+            "outputStyles": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "output_style"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "source": {
+                    "type": "string",
+                    "enum": [
+                      "built-in",
+                      "user",
+                      "project",
+                      "local",
+                      "flag",
+                      "policy",
+                      "plugin"
+                    ]
+                  },
+                  "pluginId": {
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "reason": {
+                    "type": "string"
+                  },
+                  "active": {
+                    "type": "boolean"
+                  },
+                  "prompt": {
+                    "type": "object",
+                    "properties": {
+                      "value": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "estimated": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "value",
+                      "estimated"
+                    ]
+                  }
+                },
+                "required": [
+                  "kind",
+                  "id",
+                  "name",
+                  "source",
+                  "enabled",
+                  "active",
+                  "prompt"
+                ],
+                "additionalProperties": {}
+              }
+            },
+            "mcpServers": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "mcp_server"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "source": {
+                    "type": "string",
+                    "enum": [
+                      "built-in",
+                      "user",
+                      "project",
+                      "local",
+                      "flag",
+                      "policy",
+                      "plugin"
+                    ]
+                  },
+                  "pluginId": {
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "reason": {
+                    "type": "string"
+                  },
+                  "transport": {
+                    "type": "string",
+                    "enum": [
+                      "stdio",
+                      "http",
+                      "sse"
+                    ]
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "connected",
+                      "pending",
+                      "failed",
+                      "disabled",
+                      "awaiting_approval",
+                      "rejected",
+                      "ignored"
+                    ]
+                  },
+                  "error": {
+                    "type": "string"
+                  },
+                  "tools": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "readOnly": {
+                          "type": "boolean"
+                        },
+                        "deferred": {
+                          "type": "boolean"
+                        },
+                        "schema": {
+                          "type": "object",
+                          "properties": {
+                            "value": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            "estimated": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "value",
+                            "estimated"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "name",
+                        "readOnly",
+                        "deferred",
+                        "schema"
+                      ],
+                      "additionalProperties": {}
+                    }
+                  }
+                },
+                "required": [
+                  "kind",
+                  "id",
+                  "name",
+                  "source",
+                  "enabled",
+                  "transport",
+                  "status",
+                  "tools"
+                ],
+                "additionalProperties": {}
+              }
+            },
+            "plugins": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "plugin"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "source": {
+                    "type": "string",
+                    "enum": [
+                      "built-in",
+                      "user",
+                      "project",
+                      "local",
+                      "flag",
+                      "policy",
+                      "plugin"
+                    ]
+                  },
+                  "pluginId": {
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "reason": {
+                    "type": "string"
+                  },
+                  "marketplace": {
+                    "type": "string"
+                  },
+                  "version": {
+                    "type": "string"
+                  },
+                  "executablesTrusted": {
+                    "type": "boolean"
+                  },
+                  "errors": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "kind",
+                  "id",
+                  "name",
+                  "source",
+                  "enabled",
+                  "marketplace",
+                  "version",
+                  "executablesTrusted",
+                  "errors"
+                ],
+                "additionalProperties": {}
+              }
+            },
+            "hooks": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "hook"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "source": {
+                    "type": "string",
+                    "enum": [
+                      "built-in",
+                      "user",
+                      "project",
+                      "local",
+                      "flag",
+                      "policy",
+                      "plugin"
+                    ]
+                  },
+                  "pluginId": {
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "reason": {
+                    "type": "string"
+                  },
+                  "event": {
+                    "type": "string"
+                  },
+                  "command": {
+                    "type": "string"
+                  },
+                  "timeout": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "id",
+                  "name",
+                  "source",
+                  "enabled",
+                  "event",
+                  "command",
+                  "timeout"
+                ],
+                "additionalProperties": {}
+              }
+            },
+            "rules": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "rule"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "source": {
+                    "type": "string",
+                    "enum": [
+                      "built-in",
+                      "user",
+                      "project",
+                      "local",
+                      "flag",
+                      "policy",
+                      "plugin"
+                    ]
+                  },
+                  "pluginId": {
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "reason": {
+                    "type": "string"
+                  },
+                  "scope": {
+                    "type": "string",
+                    "enum": [
+                      "global",
+                      "ancestor",
+                      "project",
+                      "memory"
+                    ]
+                  },
+                  "excluded": {
+                    "type": "boolean"
+                  },
+                  "lines": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "tokens": {
+                    "type": "object",
+                    "properties": {
+                      "value": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "estimated": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "value",
+                      "estimated"
+                    ]
+                  }
+                },
+                "required": [
+                  "kind",
+                  "id",
+                  "name",
+                  "source",
+                  "enabled",
+                  "scope",
+                  "excluded",
+                  "lines",
+                  "tokens"
+                ],
+                "additionalProperties": {}
+              }
+            },
+            "tools": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "tool"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "source": {
+                    "type": "string",
+                    "enum": [
+                      "built-in",
+                      "user",
+                      "project",
+                      "local",
+                      "flag",
+                      "policy",
+                      "plugin"
+                    ]
+                  },
+                  "pluginId": {
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "reason": {
+                    "type": "string"
+                  },
+                  "readOnly": {
+                    "type": "boolean"
+                  },
+                  "mcpServer": {
+                    "type": "string"
+                  },
+                  "deferred": {
+                    "type": "boolean"
+                  },
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "value": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "estimated": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "value",
+                      "estimated"
+                    ]
+                  }
+                },
+                "required": [
+                  "kind",
+                  "id",
+                  "name",
+                  "source",
+                  "enabled",
+                  "readOnly",
+                  "deferred",
+                  "schema"
+                ],
+                "additionalProperties": {}
+              }
+            }
+          },
+          "required": [
+            "workspaceTrusted",
+            "ignoredProjectConfig",
+            "skills",
+            "commands",
+            "agents",
+            "outputStyles",
+            "mcpServers",
+            "plugins",
+            "hooks",
+            "rules",
+            "tools"
+          ],
+          "additionalProperties": {}
+        },
+        "runtime/reload": {
+          "type": "object",
+          "properties": {
+            "plugins": {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "disabled": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "enabled",
+                "disabled"
+              ]
+            },
+            "skills": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "commands": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "agents": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "outputStyles": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "mcpStarted": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "mcpStopped": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "errors": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "plugins",
+            "skills",
+            "commands",
+            "agents",
+            "outputStyles",
+            "mcpStarted",
+            "mcpStopped",
+            "errors"
+          ],
+          "additionalProperties": {}
+        },
+        "mcp/approve": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "approved": {
+              "type": "boolean"
+            },
+            "scope": {
+              "type": "string",
+              "enum": [
+                "user",
+                "project",
+                "local"
+              ]
+            },
+            "status": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "connected",
+                    "pending",
+                    "failed",
+                    "disabled",
+                    "awaiting_approval",
+                    "rejected",
+                    "ignored"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "error": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "approved",
+            "scope",
+            "status"
+          ]
+        },
+        "mcp/reconnect": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "connected",
+                "pending",
+                "failed",
+                "disabled",
+                "awaiting_approval",
+                "rejected",
+                "ignored"
+              ]
+            },
+            "error": {
+              "type": "string"
+            },
+            "toolCount": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": [
+            "name",
+            "status",
+            "toolCount"
+          ]
         },
         "config/read": {
           "type": "object",
@@ -3261,6 +4345,174 @@
             "stopped"
           ]
         },
+        "session/context": {
+          "type": "object",
+          "properties": {
+            "model": {
+              "type": "string"
+            },
+            "contextWindow": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "estimated": {
+              "type": "boolean",
+              "const": true
+            },
+            "used": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "free": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "conversationTokens": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "autoCompactThreshold": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "categories": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "enum": [
+                      "system",
+                      "tools",
+                      "mcp",
+                      "skills",
+                      "plugins",
+                      "rules",
+                      "messages"
+                    ]
+                  },
+                  "tokens": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "label": {
+                          "type": "string"
+                        },
+                        "tokens": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "source": {
+                          "type": "string"
+                        },
+                        "pluginId": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "label",
+                        "tokens"
+                      ],
+                      "additionalProperties": {}
+                    }
+                  }
+                },
+                "required": [
+                  "id",
+                  "tokens",
+                  "items"
+                ]
+              }
+            },
+            "totals": {
+              "type": "object",
+              "properties": {
+                "systemPrompt": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "memory": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "tools": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "conversation": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "systemPrompt",
+                "memory",
+                "tools",
+                "conversation"
+              ]
+            },
+            "toolSearch": {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "deferred": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "loaded": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "enabled",
+                "deferred",
+                "loaded"
+              ],
+              "additionalProperties": {}
+            }
+          },
+          "required": [
+            "model",
+            "contextWindow",
+            "estimated",
+            "used",
+            "free",
+            "conversationTokens",
+            "autoCompactThreshold",
+            "categories",
+            "totals",
+            "toolSearch"
+          ],
+          "additionalProperties": {}
+        },
         "shutdown": {
           "type": "object",
           "properties": {}
@@ -3269,6 +4521,10 @@
       "required": [
         "initialize",
         "runtime/capabilities",
+        "runtime/inventory",
+        "runtime/reload",
+        "mcp/approve",
+        "mcp/reconnect",
         "config/read",
         "config/write",
         "workspace/trust",
@@ -3293,6 +4549,7 @@
         "session/setThinking",
         "session/setEffort",
         "session/stopBackgroundAgent",
+        "session/context",
         "shutdown"
       ]
     }

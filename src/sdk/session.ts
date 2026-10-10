@@ -20,6 +20,7 @@ import type {
   PermissionMode,
   RespondOutcome,
   SendOptions,
+  SessionContext,
   SessionEvent,
   SessionEventListener,
   SessionState,
@@ -140,6 +141,14 @@ export class AgentSession {
   /** Names of the tools the model is offered in the current mode. */
   getToolNames(): string[] {
     return this.#active().getToolNames();
+  }
+
+  /**
+   * How the next request would fill the context window, by category, with
+   * the same totals `/context` prints. All figures are estimates.
+   */
+  async getContext(): Promise<SessionContext> {
+    return this.#active().engineCall((engine) => engine.getContextBreakdown());
   }
 
   async getPermissionsView(): Promise<PermissionsViewData> {

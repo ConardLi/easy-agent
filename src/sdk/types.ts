@@ -9,6 +9,12 @@
 import type { MessageParam } from "@anthropic-ai/sdk/resources/messages.js";
 import type { LoopTerminationReason } from "../core/agenticLoop.js";
 import type {
+  ContextBreakdown,
+  ContextCategory,
+  ContextCategoryId,
+  ContextItem,
+} from "../core/queryEngine/contextBreakdown.js";
+import type {
   DiffViewData,
   MemoryPickerItem,
   PermissionsViewData,
@@ -34,6 +40,9 @@ import type { EffortLevel, ThinkingConfig } from "../utils/thinking.js";
 
 export type {
   BashProgress,
+  ContextCategory,
+  ContextCategoryId,
+  ContextItem,
   DiffViewData,
   EffortLevel,
   LoopTerminationReason,
@@ -203,6 +212,212 @@ export interface RuntimeCapabilities {
   /** Active output style name. */
   outputStyle: string;
 }
+
+// ─── Runtime inventory ────────────────────────────────────────────────────
+
+/** Where an item is configured: built in, a settings layer, or a plugin. */
+export type InventorySource = "built-in" | SettingSource | "plugin";
+
+/** A token count; `estimated` when it comes from character counts rather than the provider. */
+export interface TokenCount {
+  value: number;
+  estimated: boolean;
+}
+
+interface InventoryItemBase {
+  /** Unique within its list, e.g. `skill:project:review`. */
+  id: string;
+  name: string;
+  source: InventorySource;
+  /** Owning plugin, when `source` is `plugin`. */
+  pluginId?: string;
+  /** File the item is defined in. */
+  path?: string;
+  /** Takes part in sessions: listed to the model, connected, loaded, or run. */
+  enabled: boolean;
+  /** Why the item is off or limited, when that is not plain from the other fields. */
+  reason?: string;
+}
+
+export interface SkillInventoryItem extends InventoryItemBase {
+  kind: "skill";
+  description: string;
+  whenToUse?: string;
+  argumentHint?: string;
+  /** `model`: listed to the model; `manual`: only `/name`; `paths`: listed once a matching file is touched. */
+  invocation: "model" | "manual" | "paths";
+  paths?: string[];
+  /** For `paths` skills: a matching file was touched, so the skill is listed now. */
+  activated?: boolean;
+  allowedTools: string[];
+  /** Runs in a forked sub-agent context. */
+  fork: boolean;
+  /** Its line in the system prompt's skill list; zero when not listed. */
+  listing: TokenCount;
+  /** The skill body, loaded into the conversation when the skill runs. */
+  body: TokenCount;
+}
+
+export interface CommandInventoryItem extends InventoryItemBase {
+  kind: "command";
+  description: string;
+  argumentHint?: string;
+}
+
+export interface AgentInventoryItem extends InventoryItemBase {
+  kind: "agent";
+  description: string;
+  model?: string;
+  tools?: string[];
+  /** Its line in the system prompt's sub-agent list. */
+  listing: TokenCount;
+}
+
+export interface OutputStyleInventoryItem extends InventoryItemBase {
+  kind: "output_style";
+  description: string;
+  active: boolean;
+  /** Prompt text the style adds while active. */
+  prompt: TokenCount;
+}
+
+export type McpServerStatus =
+  | "connected"
+  | "pending"
+  | "failed"
+  | "disabled"
+  /** A `.mcp.json` server nobody approved or rejected yet. */
+  | "awaiting_approval"
+  /** A `.mcp.json` server listed in `disabledMcpjsonServers`. */
+  | "rejected"
+  /** In `.mcp.json` of an untrusted workspace. */
+  | "ignored";
+
+export interface McpToolInfo {
+  name: string;
+  description: string;
+  readOnly: boolean;
+  /** Offered by name only until ToolSearch loads it. */
+  deferred: boolean;
+  schema: TokenCount;
+}
+
+export interface McpServerInventoryItem extends InventoryItemBase {
+  kind: "mcp_server";
+  transport: "stdio" | "http" | "sse";
+  /** stdio command line, without environment values. */
+  command?: string;
+  url?: string;
+  status: McpServerStatus;
+  error?: string;
+  tools: McpToolInfo[];
+}
+
+export interface PluginInventoryItem extends InventoryItemBase {
+  kind: "plugin";
+  marketplace: string;
+  version: string;
+  description?: string;
+  author?: string;
+  /** Settings layer that enabled it. */
+  scope?: "user" | "project" | "local";
+  components: {
+    skills: string[];
+    commands: string[];
+    agents: string[];
+    outputStyles: string[];
+    hooks: string[];
+    mcpServers: string[];
+    lspServers: string[];
+  };
+  /** Ships hooks, MCP, or LSP servers. */
+  hasExecutableComponents: boolean;
+  /** False when enabled from a project or local file of an untrusted workspace: its executables do not run. */
+  executablesTrusted: boolean;
+  errors: string[];
+  warnings: string[];
+}
+
+export interface HookInventoryItem extends InventoryItemBase {
+  kind: "hook";
+  event: string;
+  matcher?: string;
+  command: string;
+  /** Seconds. */
+  timeout: number;
+  shell?: string;
+}
+
+export interface RuleInventoryItem extends InventoryItemBase {
+  kind: "rule";
+  /** `global`: user-wide AGENT.md; `ancestor`: a parent directory; `project`: the workspace; `memory`: the memory index. */
+  scope: "global" | "ancestor" | "project" | "memory";
+  /** Matched by `claudeMdExcludes`. */
+  excluded: boolean;
+  lines: number;
+  tokens: TokenCount;
+}
+
+export interface ToolInventoryItem extends InventoryItemBase {
+  kind: "tool";
+  description: string;
+  readOnly: boolean;
+  /** MCP server that provides the tool. */
+  mcpServer?: string;
+  /** Offered by name only until ToolSearch loads it, for the runtime's default model. */
+  deferred: boolean;
+  schema: TokenCount;
+}
+
+/** Everything the workspace runtime has loaded, with sources and state. */
+export interface RuntimeInventory {
+  workspaceTrusted: boolean;
+  /** Project configuration ignored because the workspace is not trusted. */
+  ignoredProjectConfig: string[];
+  skills: SkillInventoryItem[];
+  commands: CommandInventoryItem[];
+  agents: AgentInventoryItem[];
+  outputStyles: OutputStyleInventoryItem[];
+  mcpServers: McpServerInventoryItem[];
+  plugins: PluginInventoryItem[];
+  hooks: HookInventoryItem[];
+  rules: RuleInventoryItem[];
+  tools: ToolInventoryItem[];
+}
+
+export interface ReloadResult {
+  plugins: { enabled: number; disabled: number };
+  /** Registry sizes after the reload. */
+  skills: number;
+  commands: number;
+  agents: number;
+  outputStyles: number;
+  /** Plugin MCP servers started and stopped. */
+  mcpStarted: string[];
+  mcpStopped: string[];
+  errors: string[];
+}
+
+export interface McpApprovalResult {
+  name: string;
+  approved: boolean;
+  /** Settings file the decision went to. */
+  scope: ConfigScope;
+  /** Connection state afterwards; null when the server is not running. */
+  status: McpServerStatus | null;
+  error?: string;
+}
+
+export interface McpReconnectResult {
+  name: string;
+  status: McpServerStatus;
+  error?: string;
+  toolCount: number;
+}
+
+// ─── Session context ──────────────────────────────────────────────────────
+
+export type SessionContext = ContextBreakdown;
 
 // ─── Session options ──────────────────────────────────────────────────────
 

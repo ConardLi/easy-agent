@@ -65,6 +65,8 @@ export interface SessionPromptContext {
   prepareTurn(options?: { userQuery?: string }): Promise<PreparedTurnContext>;
   /** The system prompt the next request would use, without advancing tracked state. */
   peekSystemParts(): Promise<string[]>;
+  /** The same prompt with the dynamic sections it was assembled from. */
+  peek(): Promise<{ systemParts: string[]; sections: PromptSection[] }>;
   /** Drop the snapshot so the next turn builds a fresh system prompt. */
   reset(): void;
 }
@@ -73,6 +75,8 @@ interface Snapshot {
   environment: RuntimeEnvironmentContext;
   staticParts: string[];
   systemParts: string[];
+  /** Dynamic sections in `systemParts`, as built. */
+  sections: PromptSection[];
   /** Section text as the model last saw it, from the prompt or a later update. */
   seen: Map<PromptSectionName, string>;
   /** Last date the model was told about. */
@@ -104,9 +108,15 @@ export function createSessionPromptContext(options: SessionPromptContextOptions)
       environment,
       staticParts,
       systemParts: assembleSystemPrompt(staticParts, sections),
+      sections,
       seen: new Map(sections.map((section) => [section.name, section.text])),
       seenDate: environment.date,
     };
+  }
+
+  async function peek(): Promise<{ systemParts: string[]; sections: PromptSection[] }> {
+    snapshot ??= await build();
+    return { systemParts: snapshot.systemParts, sections: snapshot.sections };
   }
 
   return {
@@ -145,8 +155,10 @@ export function createSessionPromptContext(options: SessionPromptContextOptions)
     },
 
     async peekSystemParts() {
-      return snapshot?.systemParts ?? (snapshot = await build()).systemParts;
+      return (await peek()).systemParts;
     },
+
+    peek,
 
     reset() {
       snapshot = null;

@@ -99,6 +99,7 @@ import { createEmptyUsage } from "./queryEngine/helpers.js";
 // Extracted slash-command handlers + the context seam they run against.
 import type { CommandContext } from "./queryEngine/commands/context.js";
 import { handleStatusCommand, handleContextCommand, handleDoctorCommand } from "./queryEngine/commands/diagnostics.js";
+import { computeContextBreakdown, type ContextBreakdown } from "./queryEngine/contextBreakdown.js";
 import { handleDiffCommand } from "./queryEngine/commands/diff.js";
 import { handleCopyCommand, handleExportCommand, handleResumeCommand } from "./queryEngine/commands/sessionExport.js";
 import {
@@ -907,7 +908,19 @@ export class QueryEngine {
       getPermissionSettings: () => this.permissionSettings,
       getSessionPermissionRules: () => this.sessionPermissionRules,
       reloadPermissionSettings: () => this.reloadPermissionSettings(),
+      getContextBreakdown: () => this.getContextBreakdown(),
     };
+  }
+
+  /** How the next request would fill the context window, by category. */
+  async getContextBreakdown(): Promise<ContextBreakdown> {
+    return computeContextBreakdown({
+      cwd: this.toolContext.cwd,
+      model: this.getActiveModel(),
+      permissionMode: this.currentPermissionMode,
+      messages: this.messages,
+      systemPrompt: await this.promptContext.peek(),
+    });
   }
 
   private async *handleCommand(command: string): AsyncGenerator<QueryEngineEvent, { handled: boolean }> {

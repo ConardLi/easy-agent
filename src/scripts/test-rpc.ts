@@ -8,8 +8,9 @@
  *
  * Covers the protocol layer (initialize and version negotiation, JSON-RPC
  * errors), conversations (text, permission round trips, interrupt, questions,
- * busy and queued sends, local commands), session management, resume, the
- * security boundaries under RPC, process lifecycle, and the example client.
+ * busy and queued sends, local commands), the runtime inventory, reload, MCP
+ * approval and context breakdown, session management, resume, the security
+ * boundaries under RPC, process lifecycle, and the example client.
  *
  * Run: node --import tsx src/scripts/test-rpc.ts
  */
@@ -194,6 +195,35 @@ const opened = (client: RpcClient, sessionId: string) =>
 const QUESTION = {
   questions: [{ question: "Which size?", header: "Size", options: [{ label: "S" }, { label: "L" }] }],
 };
+
+/** A stdio MCP server with one read-only `echo` tool, written next to the test data. */
+async function writeEchoServer(): Promise<string> {
+  const serverPath = path.join(root, "echo-server.mjs");
+  const serverModule = (specifier: string) => import.meta.resolve(`@modelcontextprotocol/sdk/${specifier}`);
+  await writeFile(
+    serverPath,
+    `
+import { Server } from ${JSON.stringify(serverModule("server/index.js"))};
+import { StdioServerTransport } from ${JSON.stringify(serverModule("server/stdio.js"))};
+import { CallToolRequestSchema, ListToolsRequestSchema } from ${JSON.stringify(serverModule("types.js"))};
+
+const server = new Server({ name: "echo", version: "0.0.1" }, { capabilities: { tools: {} } });
+server.setRequestHandler(ListToolsRequestSchema, async () => ({
+  tools: [{
+    name: "echo",
+    description: "Echo back the message argument.",
+    inputSchema: { type: "object", properties: { message: { type: "string" } }, required: ["message"] },
+    annotations: { readOnlyHint: true },
+  }],
+}));
+server.setRequestHandler(CallToolRequestSchema, async (request) => ({
+  content: [{ type: "text", text: "echo:" + String(request.params.arguments?.message ?? "") }],
+}));
+await server.connect(new StdioServerTransport());
+`,
+  );
+  return serverPath;
+}
 
 const clients: RpcClient[] = [];
 function startClient(args: string[] = []): RpcClient {
@@ -514,7 +544,56 @@ try {
     assert.deepEqual(await rpc.call("models/list", { model: FIXTURE_MODEL }), { models: [FIXTURE_MODEL] });
   });
 
-  console.log("\n[3] saved sessions");
+  console.log("\n[3] extensions, context, and saved sessions");
+
+  await check("runtime/inventory and runtime/reload; untrusted .mcp.json servers are ignored", async () => {
+    await writeFile(
+      path.join(cwd, ".mcp.json"),
+      JSON.stringify({ mcpServers: { echo: { command: process.execPath, args: [await writeEchoServer()] } } }),
+    );
+    await mkdir(path.join(cwd, ".easy-agent", "skills", "rpc-skill"), { recursive: true });
+    await writeFile(
+      path.join(cwd, ".easy-agent", "skills", "rpc-skill", "SKILL.md"),
+      "---\nname: rpc-skill\ndescription: A skill added while the server runs.\n---\nDo the thing.\n",
+    );
+    let inventory = await rpc.call<Json>("runtime/inventory");
+    assert.equal(inventory.workspaceTrusted, false);
+    const echo = (inventory.mcpServers as Json[]).find((server) => server.name === "echo");
+    assert.equal(echo?.status, "ignored");
+    assert.equal(echo?.enabled, false);
+    assert.ok((inventory.tools as Json[]).some((tool) => tool.name === "Read" && tool.source === "built-in"));
+    assert.ok(!(inventory.skills as Json[]).some((skill) => skill.name === "rpc-skill"));
+
+    const reloaded = await rpc.call<Json>("runtime/reload");
+    assert.ok((reloaded.skills as number) >= 1);
+    inventory = await rpc.call<Json>("runtime/inventory");
+    assert.ok((inventory.skills as Json[]).some((skill) => skill.name === "rpc-skill" && skill.source === "project"));
+
+    await rejects(
+      rpc.call("mcp/approve", { name: "echo", approved: true }),
+      protocol.RpcErrorCode.AgentError,
+      "untrusted",
+    );
+    await rejects(rpc.call("mcp/reconnect", { name: "echo" }), protocol.RpcErrorCode.AgentError, "not_found");
+    // The .mcp.json stays for the trusted-process check below.
+    await rm(path.join(cwd, ".easy-agent", "skills"), { recursive: true, force: true });
+  });
+
+  await check("session/context splits the same totals /context prints", async () => {
+    const context = await rpc.call<Json>("session/context", { sessionId });
+    const categories = context.categories as Array<{ id: string; tokens: number; items: Array<{ tokens: number }> }>;
+    const sum = (values: number[]) => values.reduce((total, value) => total + value, 0);
+    assert.equal(sum(categories.map((category) => category.tokens)), context.used);
+    for (const category of categories) assert.equal(sum(category.items.map((item) => item.tokens)), category.tokens);
+    const before = rpc.events.length;
+    await rpc.call("session/command", { sessionId, name: "context" });
+    const output = rpc.events.slice(before).find((event) => event.type === "command_output");
+    assert.match(
+      String(output?.message),
+      new RegExp(`Estimated used: ${(context.used as number).toLocaleString("en-US")} `),
+    );
+    await rejects(rpc.call("session/context", { sessionId: "nope" }), protocol.RpcErrorCode.SessionNotFound);
+  });
 
   await check("list, rename, read, fork, and delete saved sessions", async () => {
     await rpc.call("session/close", { sessionId });
@@ -608,6 +687,33 @@ try {
     await trusted.call("session/send", { sessionId: id, input: "Edit it." });
     assert.equal(opened(trusted, id).length, 0, "the project allow rule applies");
     assert.equal(await readFile(path.join(cwd, "rpc-allowed.txt"), "utf8"), "edited\n");
+
+    const status = async () =>
+      ((await trusted.call<Json>("runtime/inventory")).mcpServers as Json[]).find((server) => server.name === "echo")
+        ?.status;
+    assert.equal(await status(), "awaiting_approval");
+    assert.deepEqual(await trusted.call("mcp/approve", { name: "echo", approved: true }), {
+      name: "echo",
+      approved: true,
+      scope: "local",
+      status: "connected",
+    });
+    assert.equal(await status(), "connected");
+    assert.deepEqual(await trusted.call("mcp/reconnect", { name: "echo" }), {
+      name: "echo",
+      status: "connected",
+      toolCount: 1,
+    });
+    const rejected = await trusted.call<Json>("mcp/approve", { name: "echo", approved: false });
+    assert.equal(rejected.status, null);
+    assert.equal(await status(), "rejected");
+    assert.deepEqual(JSON.parse(await readFile(path.join(cwd, ".easy-agent", "settings.local.json"), "utf8")), {
+      disabledMcpjsonServers: ["echo"],
+    });
+    await Promise.all([
+      rm(path.join(cwd, ".easy-agent", "settings.local.json"), { force: true }),
+      rm(path.join(cwd, ".mcp.json"), { force: true }),
+    ]);
     assert.equal(await trusted.shutdown(), 0);
 
     const again = startClient();

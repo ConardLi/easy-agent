@@ -62,11 +62,16 @@ function buildNameOnly(skill: Skill): string {
  * unconditionally concatenate it without producing trailing whitespace.
  */
 export function formatSkillsWithinBudget(skills: Skill[], budget: number = getSkillCharBudget()): string {
-  if (skills.length === 0) return "";
+  return formatSkillListingLines(skills, budget).join("\n");
+}
+
+/** The listing lines of `formatSkillsWithinBudget`, one per skill in input order. */
+export function formatSkillListingLines(skills: Skill[], budget: number = getSkillCharBudget()): string[] {
+  if (skills.length === 0) return [];
 
   const tier1 = skills.map((s) => buildLine(s, MAX_LISTING_DESC_CHARS));
   const tier1Total = tier1.reduce((acc, line) => acc + line.length + 1, 0);
-  if (tier1Total <= budget) return tier1.join("\n");
+  if (tier1Total <= budget) return tier1;
 
   // Tier 2: distribute remaining budget evenly across skills. We reserve
   // the prefix length (`- name: `) per line, then split what's left.
@@ -76,13 +81,13 @@ export function formatSkillsWithinBudget(skills: Skill[], budget: number = getSk
     const perDesc = Math.max(MIN_DESC_CHARS_PER_SKILL, Math.floor(descBudget / skills.length));
     const tier2 = skills.map((s) => buildLine(s, perDesc));
     const tier2Total = tier2.reduce((acc, line) => acc + line.length + 1, 0);
-    if (tier2Total <= budget) return tier2.join("\n");
+    if (tier2Total <= budget) return tier2;
   }
 
   // Tier 3: names only. No further degradation — at this point we either
   // fit the names or we accept overshoot (unavoidable, the model gets to
   // see the full set).
-  return skills.map(buildNameOnly).join("\n");
+  return skills.map(buildNameOnly);
 }
 
 /**

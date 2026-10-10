@@ -22,7 +22,9 @@ export type AgentSdkErrorCode =
   /** An argument is malformed, such as a session id that is not one. */
   | "invalid_argument"
   /** A model provider request failed (listing models, for example). */
-  | "provider";
+  | "provider"
+  /** The call needs project configuration, which an untrusted workspace ignores. */
+  | "untrusted";
 
 export class AgentSdkError extends Error {
   readonly code: AgentSdkErrorCode;

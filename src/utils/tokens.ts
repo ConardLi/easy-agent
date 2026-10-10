@@ -52,6 +52,16 @@ function roughTokenCountEstimation(content: string, charsPerToken = TEXT_CHARS_P
   return Math.max(1, Math.round(content.length / charsPerToken));
 }
 
+/** Estimated tokens of prompt text, zero for empty text. */
+export function estimateTextTokens(text: string): number {
+  return Math.max(0, Math.round(text.length / TEXT_CHARS_PER_TOKEN));
+}
+
+/** Estimated tokens of serialized JSON such as tool schemas, zero for an empty string. */
+export function estimateJsonTokens(json: string): number {
+  return Math.max(0, Math.round(json.length / JSON_CHARS_PER_TOKEN));
+}
+
 function estimateUnknownObjectTokens(value: unknown): number {
   return roughTokenCountEstimation(JSON.stringify(value ?? ""), JSON_CHARS_PER_TOKEN);
 }

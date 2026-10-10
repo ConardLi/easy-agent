@@ -95,7 +95,12 @@ export function clearMcpTools(): void {
 }
 
 export function getAllTools(): Tool[] {
-  return [...VALID_BUILTIN_TOOLS, ...mcpTools].filter((tool) => tool.isEnabled());
+  return getRegisteredTools().filter((tool) => tool.isEnabled());
+}
+
+/** Built-in and MCP tools, including the ones `isEnabled()` currently turns off. */
+export function getRegisteredTools(): Tool[] {
+  return [...VALID_BUILTIN_TOOLS, ...mcpTools];
 }
 
 export function findToolByName(name: string): Tool | undefined {
