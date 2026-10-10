@@ -7,10 +7,11 @@ import { cn, Kbd, Menu, MenuContent, MenuItem, MenuTrigger, MOD, Tooltip } from 
 import { desktop } from "../../lib/desktop";
 import { basename, dirname, uid } from "../../lib/format";
 import { aliasFor, GROUP_LABEL, listSlash, matchSlash, type SlashEntry, type SlashGroup } from "../../lib/slash";
+import { useCustomize } from "../../state/customize";
 import { usePrefs } from "../../state/prefs";
 import { interrupt, runUiAction, sendMessage, setEffort, setMode, setModel } from "../../state/actions";
 import { useActiveView, useSessions } from "../../state/sessions";
-import { notYet, useUi } from "../../state/ui";
+import { useUi } from "../../state/ui";
 import { useActiveWorkspace, useRuntime } from "../../state/workspaces";
 import { EffortPicker, MODES, ModelPicker, ModePicker } from "./Pickers";
 
@@ -82,7 +83,8 @@ export function Composer({ variant = "dock" }: { variant?: "dock" | "hero" }) {
     setSuggest(null);
   }, [view?.id]);
 
-  const entries = useMemo(() => listSlash(status.state === "ready" ? status.init.capabilities : undefined), [status]);
+  const inventory = useCustomize((s) => (workspace ? s.inventories[workspace.id] : undefined));
+  const entries = useMemo(() => listSlash(status.state === "ready" ? status.init.capabilities : undefined, inventory), [status, inventory]);
   const commands = useMemo(() => (suggest?.kind === "slash" ? matchSlash(entries, suggest.query) : []), [suggest, entries]);
   /** The skill or command the message starts with, shown above the text. */
   const invoked = useMemo(() => {
@@ -358,7 +360,7 @@ export function Composer({ variant = "dock" }: { variant?: "dock" | "hero" }) {
                 onMouseDown={(e) => {
                   e.preventDefault();
                   setSuggest(null);
-                  notYet("自定义");
+                  useCustomize.getState().openCustomize("skills");
                 }}
                 className="flex h-8 w-full items-center gap-1.5 border-t border-line px-3 text-left text-[11.5px] text-fg-3 hover:bg-surface-2 hover:text-fg"
               >

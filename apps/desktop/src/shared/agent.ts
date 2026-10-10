@@ -9,12 +9,17 @@ import type {
   ConfigSnapshot,
   EffortLevel,
   ImageInput,
+  McpApprovalResult,
+  McpReconnectResult,
   ModelCheckResult,
   InteractionResponse,
   InterruptOutcome,
   PermissionMode,
+  ReloadResult,
   RespondOutcome,
   RuntimeCapabilities,
+  RuntimeInventory,
+  SessionContext,
   SessionEvent,
   SessionState,
   StoredSession,
@@ -24,7 +29,26 @@ import type {
 } from "eagent/sdk";
 
 export type {
+  AgentInventoryItem,
   BackgroundAgentInfo,
+  CommandInventoryItem,
+  ContextCategory,
+  ContextCategoryId,
+  ContextItem,
+  HookInventoryItem,
+  InventorySource,
+  McpServerInventoryItem,
+  McpServerStatus,
+  McpToolInfo,
+  OutputStyleInventoryItem,
+  PluginInventoryItem,
+  ReloadResult,
+  RuleInventoryItem,
+  RuntimeInventory,
+  SessionContext,
+  SkillInventoryItem,
+  TokenCount,
+  ToolInventoryItem,
   ConfigScope,
   ConfigSnapshot,
   EffectiveSetting,
@@ -71,6 +95,11 @@ interface OpenSession {
 /** Methods the renderer may call; `initialize` and `shutdown` belong to the host. */
 export interface AgentMethods {
   "runtime/capabilities": { params: Record<string, never>; result: RuntimeCapabilities };
+  "runtime/inventory": { params: Record<string, never>; result: RuntimeInventory };
+  "runtime/reload": { params: Record<string, never>; result: ReloadResult };
+  "mcp/approve": { params: { name: string; approved: boolean; scope?: ConfigScope }; result: McpApprovalResult };
+  "mcp/reconnect": { params: { name: string }; result: McpReconnectResult };
+  "session/context": { params: { sessionId: string }; result: SessionContext };
   "session/create": { params: OpenSession & { persist?: boolean }; result: { sessionId: string; state: SessionState } };
   "session/resume": { params: OpenSession & { sessionId?: string }; result: { sessionId: string; state: SessionState } };
   "session/list": { params: { limit?: number }; result: { sessions: StoredSessionSummary[] } };
@@ -102,6 +131,11 @@ export type ResultOf<M extends AgentMethod> = AgentMethods[M]["result"];
 
 export const AGENT_METHODS = [
   "runtime/capabilities",
+  "runtime/inventory",
+  "runtime/reload",
+  "mcp/approve",
+  "mcp/reconnect",
+  "session/context",
   "session/create",
   "session/resume",
   "session/list",

@@ -9,7 +9,7 @@
  * typed.
  */
 
-import type { RuntimeCapabilities } from "../../shared/agent";
+import type { RuntimeCapabilities, RuntimeInventory } from "../../shared/agent";
 
 export type SlashGroup = "skill" | "command" | "agent" | "action";
 
@@ -89,11 +89,47 @@ export const UI_ACTIONS: SlashEntry[] = (
   ] as const
 ).map(([action, aliases, name, description]) => ({ group: "action", action, aliases: [...aliases], name, description }));
 
+const SOURCE_LABEL: Partial<Record<string, string>> = { user: "全局", project: "项目", local: "本机" };
+
 /**
- * Skills and commands the Agent offers in this workspace. Plugin commands are
- * namespaced `plugin:command`. TODO(G4): user, project, and plugin source labels need `runtime/inventory`.
+ * Skills and commands the Agent offers in this workspace, with where each one
+ * comes from once the inventory is read. Plugin commands are namespaced
+ * `plugin:command`. Until then the capabilities from startup are listed.
  */
-export function listSlash(capabilities: Pick<RuntimeCapabilities, "skills" | "userCommands"> | undefined): SlashEntry[] {
+export function listSlash(
+  capabilities: Pick<RuntimeCapabilities, "skills" | "userCommands"> | undefined,
+  inventory?: Pick<RuntimeInventory, "skills" | "commands" | "plugins">,
+): SlashEntry[] {
+  if (inventory) {
+    const source = (item: { source: string; pluginId?: string }) => {
+      if (item.source !== "plugin") return SOURCE_LABEL[item.source];
+      const name = inventory.plugins.find((p) => p.pluginId === item.pluginId)?.name ?? item.pluginId?.split("@")[0];
+      return name ? `插件 ${name}` : "插件";
+    };
+    const skills: SlashEntry[] = inventory.skills.map((s) => {
+      const label = source(s);
+      return {
+        group: "skill",
+        name: s.name,
+        description: s.description,
+        ...(s.argumentHint ? { args: s.argumentHint } : {}),
+        ...(label ? { source: label } : {}),
+      };
+    });
+    const commands: SlashEntry[] = inventory.commands
+      .filter((c) => c.source !== "built-in")
+      .map((c) => {
+        const label = source(c);
+        return {
+          group: "command",
+          name: c.name,
+          description: c.description,
+          ...(c.argumentHint ? { args: c.argumentHint } : {}),
+          ...(label ? { source: label } : {}),
+        };
+      });
+    return [...skills, ...commands, ...AGENT_COMMANDS];
+  }
   const skills: SlashEntry[] = (capabilities?.skills ?? []).map((s) => ({ group: "skill", name: s.name, description: s.description }));
   const commands: SlashEntry[] = (capabilities?.userCommands ?? []).map((c) => {
     const plugin = c.name.includes(":") ? c.name.split(":")[0] : undefined;

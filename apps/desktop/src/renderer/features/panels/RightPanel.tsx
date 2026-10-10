@@ -1,6 +1,6 @@
-import { Bot, Check, ChevronRight, Circle, FileMinus2, FilePen, FilePlus2, Layers, Plug, Square, X } from "lucide-react";
+import { ArrowRight, Bot, Check, ChevronRight, Circle, FileMinus2, FilePen, FilePlus2, Layers, Plug, Square, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { type ReactNode, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { changesOf } from "../../agent/projector/derive";
 import type { SessionView } from "../../agent/projector/session";
 import type { FileChange } from "../../agent/viewModel";
@@ -8,8 +8,11 @@ import { ContextRing } from "../../design/ContextRing";
 import { Button, cn, IconButton, Spinner, Tooltip } from "../../design/primitives";
 import { basename, dirname, relativeTime, tokens } from "../../lib/format";
 import { runCommand, stopBackgroundAgent } from "../../state/actions";
+import { loadContext, useCustomize } from "../../state/customize";
 import { useActiveView } from "../../state/sessions";
 import { type RightTab, useUi } from "../../state/ui";
+import { useActiveWorkspace } from "../../state/workspaces";
+import { type ContextGroupView, contextGroups } from "../customize/model";
 import { DiffStat, DiffView } from "../session/DiffView";
 
 const TABS: { id: RightTab; label: string }[] = [
@@ -144,36 +147,161 @@ function TasksTab({ view }: { view: SessionView }) {
   );
 }
 
+function ContextGroupRow({ group, windowSize, open, onToggle }: { group: ContextGroupView; windowSize: number; open: boolean; onToggle: () => void }) {
+  const openCustomize = useCustomize((s) => s.openCustomize);
+  const max = Math.max(1, ...group.items.map((i) => i.tokens));
+  const expandable = group.items.length > 0;
+  return (
+    <div className="border-b border-line last:border-b-0">
+      <button
+        type="button"
+        disabled={!expandable}
+        onClick={onToggle}
+        className="group flex w-full items-start gap-2.5 px-3 py-2.5 text-left transition-colors enabled:hover:bg-surface-2/50"
+      >
+        <span className="mt-[3px] h-[30px] w-1 shrink-0 rounded-full" style={{ background: group.color }} />
+        <span className="min-w-0 flex-1">
+          <span className="flex items-center gap-2">
+            <span className="text-[13px] font-medium text-fg">{group.label}</span>
+            {expandable && group.id !== "system" && group.id !== "messages" && (
+              <span className="tabular rounded-md bg-surface-2 px-1.5 text-[11px] text-fg-3">{group.items.length}</span>
+            )}
+            <span className="flex-1" />
+            <span className="tabular text-[13px] font-medium text-fg">{tokens(group.tokens)}</span>
+            <span className="tabular w-9 text-right text-[11.5px] text-fg-3">
+              {((group.tokens / windowSize) * 100).toFixed(group.tokens / windowSize < 0.1 ? 1 : 0)}%
+            </span>
+          </span>
+          <span className="mt-0.5 block truncate text-[11.5px] text-fg-3">{expandable ? group.items.map((i) => i.label).join("、") : group.hint}</span>
+        </span>
+        <ChevronRight className={cn("mt-1 size-3.5 shrink-0 text-fg-4 transition-transform", !expandable && "opacity-0", open && "rotate-90")} />
+      </button>
+      <AnimatePresence initial={false}>
+        {open && expandable && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+            className="overflow-hidden"
+          >
+            <div className="px-3 pb-3">
+              <div className="mb-2 text-[11.5px] leading-[1.5] text-fg-3">{group.hint}</div>
+              <div className="flex flex-col gap-1">
+                {group.items.map((item) => (
+                  <div key={item.id} className="rounded-lg px-2 py-1.5 hover:bg-surface-2/60">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={cn(
+                          "min-w-0 truncate text-[12.5px]",
+                          item.tokens > 0 ? "text-fg" : "text-fg-3",
+                          group.id !== "system" && group.id !== "messages" && "font-mono",
+                        )}
+                      >
+                        {item.label}
+                      </span>
+                      {item.source && group.id !== "rules" && <span className="shrink-0 rounded bg-surface-2 px-1 text-[10.5px] text-fg-3">{item.source}</span>}
+                      <span className="flex-1" />
+                      <span className={cn("tabular shrink-0 text-[12px]", item.tokens > 0 ? "text-fg-2" : "text-fg-4")}>
+                        {item.tokens > 0 ? tokens(item.tokens) : "0"}
+                      </span>
+                    </div>
+                    <div className="mt-1 h-[3px] overflow-hidden rounded-full bg-surface-3">
+                      <span className="block h-full rounded-full" style={{ width: `${(item.tokens / max) * 100}%`, background: group.color, opacity: 0.85 }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {group.tab && (
+                <button
+                  type="button"
+                  onClick={() => openCustomize(group.tab)}
+                  className="mt-2 flex h-7 items-center gap-1 rounded-md px-2 text-[12px] font-medium text-fg-2 transition-colors hover:bg-surface-2 hover:text-fg"
+                >
+                  在自定义中管理
+                  <ArrowRight className="size-3" />
+                </button>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 function ContextTab({ view }: { view: SessionView }) {
   const usage = view.usage;
-  const context = usage?.context;
   const total = usage?.total;
   const input = (total?.input_tokens ?? 0) + (total?.cache_read_input_tokens ?? 0) + (total?.cache_creation_input_tokens ?? 0);
   const hit = input > 0 ? (total?.cache_read_input_tokens ?? 0) / input : 0;
+  const breakdown = useCustomize((s) => s.contexts[view.id]);
+  const workspace = useActiveWorkspace();
+  const [open, setOpen] = useState<Set<string>>(() => new Set());
+  // Measure again whenever the conversation settles: after a turn, a compaction, or a clear.
+  useEffect(() => {
+    if (!view.busy) void loadContext(view.workspaceId, view.id);
+  }, [view.workspaceId, view.id, view.busy, view.messages.length]);
+  const groups = breakdown && workspace ? contextGroups(breakdown, workspace.path) : [];
+  const conversation = groups.find((g) => g.id === "messages")?.tokens ?? 0;
+  const used = breakdown?.used ?? 0;
+  const windowSize = breakdown?.contextWindow ?? usage?.context?.window ?? 1;
+  const toggle = (id: string) =>
+    setOpen((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
   return (
     <div className="flex flex-col gap-3 p-3">
       <div className="rounded-xl border border-line bg-canvas p-4">
         <div className="flex items-center gap-4">
           <div className="relative">
-            <ContextRing used={context?.tokens ?? 0} total={context?.window ?? 1} size={60} stroke={6} />
+            <ContextRing used={used} total={windowSize} size={60} stroke={6} />
             <span className="tabular absolute inset-0 flex items-center justify-center text-[12.5px] font-semibold text-fg">
-              {context ? `${context.percent}%` : "–"}
+              {breakdown ? `${Math.round((used / windowSize) * 100)}%` : "–"}
             </span>
           </div>
           <div className="min-w-0">
             <div className="tabular text-[20px] font-semibold tracking-[-0.02em] text-fg">
-              {context ? tokens(context.tokens) : "–"}
-              {context && <span className="ml-1 text-[13px] font-normal text-fg-3">/ {tokens(context.window)}</span>}
+              {breakdown ? tokens(used) : "–"}
+              {breakdown && <span className="ml-1 text-[13px] font-normal text-fg-3">/ {tokens(windowSize)}</span>}
             </div>
-            <div className="text-[12px] text-fg-3">{context ? "最近一次请求占用的上下文" : "发出第一条消息后显示"}</div>
+            <div className="text-[12px] text-fg-3">
+              {breakdown ? (
+                <>
+                  每轮固定 <span className="tabular text-fg-2">{tokens(used - conversation)}</span> · 对话{" "}
+                  <span className="tabular text-fg-2">{tokens(conversation)}</span> · 估算
+                </>
+              ) : (
+                "正在计算下一次请求的上下文…"
+              )}
+            </div>
           </div>
         </div>
+        {breakdown && (
+          <div className="mt-4 flex h-2 gap-[2px] overflow-hidden rounded-full">
+            {groups
+              .filter((g) => g.tokens > 0)
+              .map((g) => (
+                <Tooltip key={g.id} content={`${g.label} ${tokens(g.tokens)}`} side="top">
+                  <span className="h-full min-w-[3px] first:rounded-l-full last:rounded-r-full" style={{ flexGrow: g.tokens, background: g.color }} />
+                </Tooltip>
+              ))}
+            <span className="h-full rounded-r-full bg-surface-3" style={{ flexGrow: Math.max(0, windowSize - used) }} />
+          </div>
+        )}
       </div>
 
-      {/* TODO(G5): the per-category breakdown needs `session/context`. */}
-      <div className="rounded-xl border border-dashed border-line px-4 py-4 text-center text-[12px] leading-[1.6] text-fg-3">
-        按类别拆分（系统提示词、工具、MCP、技能、规则、对话）需要 Agent 提供 session/context（G5）。
-      </div>
+      {groups.length > 0 && (
+        <div className="overflow-hidden rounded-xl border border-line bg-canvas">
+          {groups.map((g) => (
+            <ContextGroupRow key={g.id} group={g} windowSize={windowSize} open={open.has(g.id)} onToggle={() => toggle(g.id)} />
+          ))}
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-2">
         {[
@@ -189,7 +317,7 @@ function ContextTab({ view }: { view: SessionView }) {
         ))}
       </div>
 
-      <Button variant="secondary" size="sm" disabled={!context || view.busy} onClick={() => void runCommand("compact")}>
+      <Button variant="secondary" size="sm" disabled={conversation === 0 || view.busy} onClick={() => void runCommand("compact")}>
         <Layers />
         压缩对话消息
       </Button>
@@ -198,6 +326,9 @@ function ContextTab({ view }: { view: SessionView }) {
 }
 
 function AgentsTab({ view }: { view: SessionView }) {
+  const openCustomize = useCustomize((s) => s.openCustomize);
+  const inventory = useCustomize((s) => s.inventories[view.workspaceId]);
+  const servers = (inventory?.mcpServers ?? []).filter((s) => s.enabled || s.status === "failed" || s.status === "awaiting_approval");
   return (
     <div className="flex flex-col gap-4 p-3">
       <section>
@@ -239,12 +370,31 @@ function AgentsTab({ view }: { view: SessionView }) {
         )}
       </section>
       <section>
-        <h4 className="mb-1.5 px-0.5 text-[11.5px] font-medium text-fg-3">MCP 服务器</h4>
-        {/* TODO(G4): server status comes with `runtime/inventory`. */}
-        <div className="flex items-center gap-2.5 rounded-xl border border-dashed border-line px-3 py-3 text-[12px] text-fg-3">
-          <Plug className="size-3.5 shrink-0" />
-          连接状态需要 Agent 提供 runtime/inventory（G4）。
+        <div className="mb-1.5 flex items-center justify-between px-0.5">
+          <h4 className="text-[11.5px] font-medium text-fg-3">MCP 服务器</h4>
+          <button type="button" onClick={() => openCustomize("mcp")} className="text-[11.5px] text-fg-3 hover:text-fg">
+            管理
+          </button>
         </div>
+        {servers.length === 0 ? (
+          <div className="flex items-center gap-2.5 rounded-xl border border-dashed border-line px-3 py-3 text-[12px] text-fg-3">
+            <Plug className="size-3.5 shrink-0" />
+            这个工作区没有连接 MCP 服务器。
+          </div>
+        ) : (
+          <div className="overflow-hidden rounded-xl border border-line bg-canvas">
+            {servers.map((s) => (
+              <div key={s.id} className="flex h-10 items-center gap-2.5 border-b border-line px-3 last:border-b-0">
+                <Plug className="size-3.5 text-fg-3" />
+                <span className="flex-1 truncate font-mono text-[12.5px] text-fg">{s.name}</span>
+                <span className="text-[11.5px] text-fg-3">
+                  {s.status === "connected" ? `${s.tools.length} 个工具` : s.status === "failed" ? "连接失败" : s.status === "pending" ? "连接中" : "等待批准"}
+                </span>
+                <span className={cn("size-1.5 rounded-full", s.status === "connected" ? "bg-success" : s.status === "failed" ? "bg-danger" : "bg-warning")} />
+              </div>
+            ))}
+          </div>
+        )}
       </section>
     </div>
   );

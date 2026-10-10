@@ -6,6 +6,7 @@ import { type DayBucket, dayBucket, shortTime } from "../../lib/format";
 import { deleteSession, exportSession, forkSession, newSession, openSession, renameSession, togglePin } from "../../state/actions";
 import { usePrefs } from "../../state/prefs";
 import { useSessions } from "../../state/sessions";
+import { useCustomize } from "../../state/customize";
 import { useSettings } from "../../state/settings";
 import { notYet, useUi } from "../../state/ui";
 import { useActiveWorkspace } from "../../state/workspaces";
@@ -187,7 +188,7 @@ export function Sidebar() {
         </button>
         <button
           type="button"
-          onClick={() => notYet("自定义")}
+          onClick={() => useCustomize.getState().openCustomize()}
           className="group flex h-[34px] items-center gap-2.5 rounded-[9px] px-2 text-[13px] font-medium text-fg-2 transition-colors hover:bg-fg/[0.06] hover:text-fg"
         >
           <SlidersHorizontal className="size-[15px]" />

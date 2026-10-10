@@ -22,6 +22,7 @@ test("the renderer has no Node access and only sees the preload API", async () =
     expect(await page.evaluate(() => Object.keys(window.easyAgent).sort())).toEqual([
       "agent",
       "app",
+      "customize",
       "menu",
       "pathOf",
       "platform",

@@ -70,7 +70,7 @@ export interface AppInfo {
 }
 
 /** Application menu items the renderer acts on. */
-export type MenuCommand = "toggle-sidebar" | "new-session" | "open-folder" | "open-settings";
+export type MenuCommand = "toggle-sidebar" | "new-session" | "open-folder" | "open-settings" | "open-customize";
 
 /** A folder the user opened; each one gets its own Agent process. */
 export interface WorkspaceInfo {
@@ -129,7 +129,23 @@ export const IPC = {
   agentStatus: "agent:status",
   agentEvent: "agent:event",
   agentLog: "agent:log",
+  customizeRead: "customize:read",
+  customizeWrite: "customize:write",
+  customizeList: "customize:list",
+  customizePickSkill: "customize:pick-skill",
+  customizePreviewSkill: "customize:preview-skill",
+  customizeInstallSkill: "customize:install-skill",
+  customizeTrashSkill: "customize:trash-skill",
+  customizeMcpJson: "customize:mcp-json",
 } as const;
+
+/** A skill folder read before it is installed. */
+export interface SkillPreview {
+  source: string;
+  name: string;
+  description: string;
+  files: string[];
+}
 
 export interface DesktopApi {
   platform: string;
@@ -183,5 +199,26 @@ export interface DesktopApi {
     onStatus(listener: (workspaceId: string, status: HostStatus) => void): () => void;
     onEvent(listener: (message: AgentEventMessage) => void): () => void;
     onLog(listener: (message: AgentLogMessage) => void): () => void;
+  };
+  /**
+   * Files behind the customize pages. Paths must be inside the workspace or
+   * `~/.easy-agent`, or be an AGENTS.md / AGENT.md in a parent folder; only
+   * Markdown files can be written.
+   */
+  customize: {
+    readText(workspaceId: string, path: string): Promise<string>;
+    writeText(workspaceId: string, path: string, content: string): Promise<void>;
+    /** Files in a folder, relative to it. */
+    listFiles(workspaceId: string, dir: string): Promise<string[]>;
+    /** Choose a skill folder with the system dialog; null when cancelled. */
+    pickSkill(): Promise<SkillPreview | null>;
+    /** Read a dropped skill folder or SKILL.md. */
+    previewSkill(path: string): Promise<SkillPreview>;
+    /** Copy a skill into the user or project skills folder; returns the new folder. */
+    installSkill(workspaceId: string, source: string, scope: "user" | "project"): Promise<string>;
+    /** Move a skill folder from the user or project skills folder to the trash. */
+    trashSkill(workspaceId: string, dir: string): Promise<void>;
+    /** Add, replace, or (with null) remove one server in the project's `.mcp.json`. */
+    setMcpJsonServer(workspaceId: string, name: string, entry: Record<string, unknown> | null): Promise<void>;
   };
 }

@@ -13,7 +13,7 @@ import type { UiAction } from "../lib/slash";
 import type { Effort, PermissionMode } from "../agent/viewModel";
 import { desktop } from "../lib/desktop";
 import { useSessions } from "./sessions";
-import { notYet, useUi } from "./ui";
+import { useUi } from "./ui";
 import { useWorkspaces } from "./workspaces";
 
 const toast = (text: string, tone: "default" | "success" | "danger" = "default") => useUi.getState().toast(text, tone);
@@ -68,6 +68,7 @@ export async function bootstrap(): Promise<void> {
     useWorkspaces.getState().patchRuntime(workspaceId, { status });
     if (status.state === "ready") {
       void refreshSessions(workspaceId);
+      void import("./customize").then((m) => m.loadInventory(workspaceId));
       if (workspaceId === useWorkspaces.getState().activeId) void import("./settings").then((m) => m.loadConfig());
     }
   });
@@ -90,6 +91,7 @@ async function showWorkspace(id: string, { reopenLast = false } = {}): Promise<v
   const status = await desktop.agent.start(id);
   patchRuntime(id, { status });
   if (status.state !== "ready") return;
+  void import("./customize").then((m) => m.loadInventory(id));
   await adoptOpenSessions(id);
   await refreshSessions(id);
   const workspace = useWorkspaces.getState().workspaces.find((w) => w.id === id);
@@ -384,7 +386,7 @@ export function runUiAction(action: UiAction): boolean {
     case "hooks":
     case "rules":
     case "tools":
-      notYet("自定义");
+      void import("./customize").then(({ useCustomize }) => useCustomize.getState().openCustomize(action));
       break;
     case "permissions":
       void openSettingsAt("permissions");
