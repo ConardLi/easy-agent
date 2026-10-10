@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect } from "react";
 import { useShallow } from "zustand/react/shallow";
 import type { MenuCommand, Theme } from "../shared/contract";
 import { Composer } from "./features/composer/Composer";
+import { CustomizeView } from "./features/customize/CustomizeView";
 import { RightPanel } from "./features/panels/RightPanel";
 import { SettingsView } from "./features/settings/SettingsView";
 import { Conversation } from "./features/session/Conversation";
@@ -16,6 +17,7 @@ import { useSessionList } from "./features/workspace/sessionList";
 import { Welcome } from "./features/workspace/Welcome";
 import { desktop } from "./lib/desktop";
 import { newSession, openFolder } from "./state/actions";
+import { useCustomize } from "./state/customize";
 import { usePrefs } from "./state/prefs";
 import { useActiveView } from "./state/sessions";
 import { useSettings } from "./state/settings";
@@ -56,6 +58,11 @@ const MENU_ACTIONS: Record<MenuCommand, () => void> = {
     const settings = useSettings.getState();
     if (settings.open) settings.closeSettings();
     else settings.openSettings();
+  },
+  "open-customize": () => {
+    const customize = useCustomize.getState();
+    if (customize.open) customize.closeCustomize();
+    else customize.openCustomize();
   },
 };
 
@@ -98,6 +105,7 @@ export function App() {
   const rightPanel = useUi((s) => s.rightPanel);
   const hasSession = !!useActiveView();
   const settingsOpen = useSettings((s) => s.open);
+  const customizeOpen = useCustomize((s) => s.open);
 
   return (
     <Tooltip.Provider delayDuration={350} skipDelayDuration={200}>
@@ -121,6 +129,8 @@ export function App() {
           <div className="flex h-full overflow-hidden rounded-[14px] bg-canvas shadow-canvas">
             {settingsOpen ? (
               <SettingsView />
+            ) : customizeOpen ? (
+              <CustomizeView />
             ) : (
               <section className="flex min-w-0 flex-1 flex-col">
                 <TopBar />
@@ -128,7 +138,7 @@ export function App() {
               </section>
             )}
             <AnimatePresence initial={false}>
-              {rightPanel && hasSession && !settingsOpen && (
+              {rightPanel && hasSession && !settingsOpen && !customizeOpen && (
                 <motion.div
                   key="right"
                   initial={{ width: 0, opacity: 0 }}

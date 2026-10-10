@@ -46,6 +46,8 @@ export function buildMenu({ prefs, send, updatePrefs }: MenuOptions): Menu {
         command("新建会话", "CmdOrCtrl+N", "new-session"),
         command("打开文件夹…", "CmdOrCtrl+O", "open-folder"),
         { type: "separator" },
+        command("自定义…", "CmdOrCtrl+;", "open-customize"),
+        { type: "separator" },
         ...(isMac ? [] : [command("设置…", "CmdOrCtrl+,", "open-settings"), { type: "separator" } as const]),
         isMac ? { role: "close", label: "关闭窗口" } : { role: "quit", label: "退出" },
       ],
