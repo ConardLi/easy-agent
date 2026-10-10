@@ -182,7 +182,7 @@ export type PluginMutation =
       confirmedExecutableComponents: true;
       expectedFingerprint: string;
     }
-  | { op: "uninstall"; pluginId: string; scope: PluginScope }
+  | { op: "uninstall"; pluginId: string; scope: PluginScope; keepData?: boolean }
   | { op: "marketplace-add"; source: string }
   | { op: "marketplace-update"; name: string }
   | { op: "marketplace-remove"; name: string }
@@ -193,29 +193,33 @@ export type PluginMutation =
  * visible immediately. Returns the rebuilt view; errors propagate to the caller
  * so the overlay can surface them without closing.
  */
-export async function mutatePlugin(ctx: CommandContext, action: PluginMutation): Promise<PluginViewData> {
+export async function mutatePlugin(cwd: string, action: PluginMutation): Promise<PluginViewData> {
   switch (action.op) {
     case "enable":
     case "disable":
-      await setPluginEnabled(ctx.cwd, action.pluginId, action.op === "enable", action.scope);
+      await setPluginEnabled(cwd, action.pluginId, action.op === "enable", action.scope);
       break;
     case "install":
-      await installPlugin(action.pluginId, action.scope, ctx.cwd, {
+      await installPlugin(action.pluginId, action.scope, cwd, {
         allowExecutableComponents: action.confirmedExecutableComponents,
         expectedFingerprint: action.expectedFingerprint,
       });
       break;
     case "update":
-      await updatePlugin(action.pluginId, action.scope, ctx.cwd, {
+      await updatePlugin(action.pluginId, action.scope, cwd, {
         allowExecutableComponents: action.confirmedExecutableComponents,
         expectedFingerprint: action.expectedFingerprint,
       });
       break;
     case "uninstall":
-      await uninstallPlugin(action.pluginId, { scope: action.scope, cwd: ctx.cwd });
+      await uninstallPlugin(action.pluginId, {
+        scope: action.scope,
+        cwd,
+        ...(action.keepData ? { keepData: true } : {}),
+      });
       break;
     case "marketplace-add":
-      await addMarketplace(await marketplaceSourceFor(action.source, ctx.cwd));
+      await addMarketplace(await marketplaceSourceFor(action.source, cwd));
       break;
     case "marketplace-update":
       await updateMarketplace(action.name);
@@ -226,8 +230,8 @@ export async function mutatePlugin(ctx: CommandContext, action: PluginMutation):
     case "reload":
       break;
   }
-  await refreshActivePlugins(ctx.cwd);
-  return buildPluginView(ctx.cwd);
+  await refreshActivePlugins(cwd);
+  return buildPluginView(cwd);
 }
 
 /** Read-only preflight used by the manager before install/update confirmation. */

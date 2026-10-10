@@ -52,6 +52,14 @@ Requests sent while `initialize` is running wait for it to finish, so a client m
 | `runtime/reload` | | registry sizes after reloading skills, commands, sub-agents, output styles, and plugins from disk, plugin MCP servers started and stopped, plugin errors; open sessions use the new set from their next turn |
 | `mcp/approve` | `name`, `approved`, `scope?` (`user`, `project`, `local`; default `local`) | `name`, `approved`, `scope`, `status` (null when not running), `error?`; saves the decision for a `.mcp.json` server and connects or stops it. Fails with data code `untrusted` in an untrusted workspace |
 | `mcp/reconnect` | `name` | `name`, `status`, `error?`, `toolCount` |
+| `plugins/list` | | `installed` (version, `enabled`, `scope`, components, `hasExecutableComponents`, `executablesTrusted`, warnings), `available` from the registered marketplaces, `marketplaces`, `errors`, `projectTrusted` |
+| `plugins/preview` | `pluginId` (`name@marketplace`) | `pluginId`, `version`, `fingerprint`, `description?`, `components`, `hasExecutableComponents`, `warnings`, `errors`; fetches and validates without installing. Show it to the user before installing |
+| `plugins/install` | `pluginId`, `scope?` (default `user`), `fingerprint` | the `plugins/list` view; `fingerprint` comes from the preview the user confirmed, and content that changed since fails with data code `plugin` |
+| `plugins/update` | `pluginId`, `scope?`, `fingerprint` | the `plugins/list` view |
+| `plugins/enable`, `plugins/disable` | `pluginId`, `scope?` (default `user`) | the `plugins/list` view. In an untrusted workspace the `project` and `local` scopes fail with data code `untrusted` (also for install and update), since those settings would not apply |
+| `plugins/uninstall` | `pluginId`, `scope?`, `keepData?` | the `plugins/list` view; the plugin's files go when no scope still has it installed |
+| `marketplace/add` | `source`: a local directory, a Git URL, or GitHub `owner/repo` | the `plugins/list` view |
+| `marketplace/update`, `marketplace/remove` | `name` | the `plugins/list` view |
 | `config/read` | | every settings source (path, whether it applies, display-safe values), the effective value, source, and reload policy of each key, the model profiles, and the keys only user settings may set |
 | `config/write` | `scope` (`user`, `project`, `local`), `key`, `value` (`null` deletes) | `reload`; validated before writing, `[redacted]` inside the value keeps the stored secret, `mode` and `autoMode` only in `user` |
 | `workspace/trust` | `trusted` | `trusted`; saved trust applies when the next process starts |
@@ -129,7 +137,7 @@ Deny rules, the sandbox, and the Auto Mode classifier decide before a request is
 | `-32601` | Unknown method | |
 | `-32602` | Invalid params, or a response that does not answer the request's kind | `issues` for schema failures |
 | `-32603` | Internal error | |
-| `-32000` | The session SDK rejected the call | `code`: `busy`, `closed`, `replaced`, `not_found`, `invalid_argument`, `already_open`, `session_restore`, `session_storage`, `permission_settings`, `provider`, `untrusted` |
+| `-32000` | The session SDK rejected the call | `code`: `busy`, `closed`, `replaced`, `not_found`, `invalid_argument`, `already_open`, `session_restore`, `session_storage`, `permission_settings`, `provider`, `untrusted`, `plugin` |
 | `-32001` | Called before `initialize` | |
 | `-32002` | Unsupported protocol version | `supported` |
 | `-32003` | No open session with this id on this connection | `sessionId` |

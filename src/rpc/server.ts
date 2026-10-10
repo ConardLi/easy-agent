@@ -69,6 +69,38 @@ export class RpcServer {
     "mcp/approve": async ({ name, approved, scope }) =>
       this.#requireRuntime().approveMcpServer(name, approved, scope ?? "local"),
     "mcp/reconnect": async ({ name }) => this.#requireRuntime().reconnectMcpServer(name),
+    "plugins/list": async () => this.#requireRuntime().listPlugins(),
+    "plugins/preview": async ({ pluginId }) => this.#requireRuntime().previewPlugin(pluginId),
+    "plugins/install": async ({ pluginId, scope, fingerprint }) =>
+      this.#requireRuntime().mutatePlugin({
+        op: "install",
+        pluginId,
+        scope: scope ?? "user",
+        confirmedExecutableComponents: true,
+        expectedFingerprint: fingerprint,
+      }),
+    "plugins/update": async ({ pluginId, scope, fingerprint }) =>
+      this.#requireRuntime().mutatePlugin({
+        op: "update",
+        pluginId,
+        scope: scope ?? "user",
+        confirmedExecutableComponents: true,
+        expectedFingerprint: fingerprint,
+      }),
+    "plugins/enable": async ({ pluginId, scope }) =>
+      this.#requireRuntime().mutatePlugin({ op: "enable", pluginId, scope: scope ?? "user" }),
+    "plugins/disable": async ({ pluginId, scope }) =>
+      this.#requireRuntime().mutatePlugin({ op: "disable", pluginId, scope: scope ?? "user" }),
+    "plugins/uninstall": async ({ pluginId, scope, keepData }) =>
+      this.#requireRuntime().mutatePlugin({
+        op: "uninstall",
+        pluginId,
+        scope: scope ?? "user",
+        ...(keepData ? { keepData } : {}),
+      }),
+    "marketplace/add": async ({ source }) => this.#requireRuntime().mutatePlugin({ op: "marketplace-add", source }),
+    "marketplace/update": async ({ name }) => this.#requireRuntime().mutatePlugin({ op: "marketplace-update", name }),
+    "marketplace/remove": async ({ name }) => this.#requireRuntime().mutatePlugin({ op: "marketplace-remove", name }),
     "config/read": async () => this.#requireRuntime().readConfig(),
     "config/write": async ({ scope, key, value }) => this.#requireRuntime().writeConfig(scope, key, value ?? null),
     "workspace/trust": async ({ trusted }) => this.#requireRuntime().setWorkspaceTrust(trusted),

@@ -24,7 +24,9 @@ export type AgentSdkErrorCode =
   /** A model provider request failed (listing models, for example). */
   | "provider"
   /** The call needs project configuration, which an untrusted workspace ignores. */
-  | "untrusted";
+  | "untrusted"
+  /** A plugin or marketplace operation failed: not found, invalid, changed since the preview, or not confirmed. */
+  | "plugin";
 
 export class AgentSdkError extends Error {
   readonly code: AgentSdkErrorCode;

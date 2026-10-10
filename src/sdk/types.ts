@@ -18,9 +18,14 @@ import type {
   DiffViewData,
   MemoryPickerItem,
   PermissionsViewData,
+  PluginAvailableRow,
+  PluginInstalledRow,
+  PluginMarketplaceRow,
   PluginViewData,
   ResumeSessionInfo,
 } from "../core/queryEngine/types.js";
+import type { PluginMutation } from "../core/queryEngine/commands/plugin.js";
+import type { PluginInstallPreview } from "../plugins/install.js";
 import type { SettingSource } from "../config/sources.js";
 import type { TokenWarningResult } from "../context/autoCompact.js";
 import type { PermissionMode } from "../permissions/permissions.js";
@@ -51,6 +56,11 @@ export type {
   MessageParam,
   PermissionMode,
   PermissionsViewData,
+  PluginAvailableRow,
+  PluginInstalledRow,
+  PluginInstallPreview,
+  PluginMarketplaceRow,
+  PluginMutation,
   PluginViewData,
   ResumeSessionInfo,
   SubAgentProgress,

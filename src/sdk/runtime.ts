@@ -47,6 +47,7 @@ import { checkModel, listModels, readConfig, setWorkspaceTrust, writeConfig } fr
 import { AgentSdkError } from "./errors.js";
 import { approveMcpServer, reconnectMcpServer, reloadExtensions } from "./extensions.js";
 import { buildRuntimeInventory } from "./inventory.js";
+import { listPlugins, mutatePlugins, previewPlugin } from "./plugins.js";
 import { AgentSession, reloadSettingsOf } from "./session.js";
 import { SessionController } from "./session/controller.js";
 import type {
@@ -57,6 +58,9 @@ import type {
   McpApprovalResult,
   McpReconnectResult,
   ModelCheckResult,
+  PluginInstallPreview,
+  PluginMutation,
+  PluginViewData,
   ReloadResult,
   RuntimeCapabilities,
   RuntimeInventory,
@@ -365,6 +369,28 @@ export class AgentRuntime {
   reconnectMcpServer(name: string): Promise<McpReconnectResult> {
     this.#assertActive();
     return reconnectMcpServer(name);
+  }
+
+  /** Installed plugins, what the registered marketplaces offer, the marketplaces, and load errors. */
+  listPlugins(): Promise<PluginViewData> {
+    this.#assertActive();
+    return listPlugins(this.cwd);
+  }
+
+  /** Fetch and validate a plugin without installing it. Pass the returned fingerprint to install or update it. */
+  previewPlugin(pluginId: string): Promise<PluginInstallPreview> {
+    this.#assertActive();
+    return previewPlugin(pluginId);
+  }
+
+  /**
+   * Install, update, enable, disable, or uninstall a plugin, or add, update,
+   * or remove a marketplace. Registries reload right away; open sessions use
+   * the change from their next turn. Returns the new plugin view.
+   */
+  mutatePlugin(action: PluginMutation): Promise<PluginViewData> {
+    this.#assertActive();
+    return mutatePlugins(this.cwd, action);
   }
 
   getCapabilities(): RuntimeCapabilities {

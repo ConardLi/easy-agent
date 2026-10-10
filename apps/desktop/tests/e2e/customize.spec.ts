@@ -26,7 +26,7 @@ test.afterEach(async () => {
 
 async function openCustomize(page: Page, tab?: string): Promise<void> {
   await page.getByRole("button", { name: /^自定义/ }).click();
-  await expect(page.getByRole("heading", { name: /技能/ })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole("heading", { name: "自定义", exact: true })).toBeVisible({ timeout: 20_000 });
   if (tab)
     await page
       .locator("nav")
@@ -145,6 +145,58 @@ test("a global MCP server is added and connects after the Agent restarts", async
     await dialog.getByRole("button", { name: "添加并连接" }).click();
     await expect.poll(() => (userSettings().mcpServers as Record<string, unknown> | undefined)?.echo).toEqual({ command: process.execPath, args: [server] });
     await expect(page.getByText("已连接", { exact: true }).first()).toBeVisible({ timeout: 30_000 });
+  } finally {
+    await app.close();
+  }
+});
+
+test("a plugin is installed from a marketplace after its preview, then disabled and uninstalled", async () => {
+  const market = join(world.home, "market");
+  const kit = join(market, "plugins", "kit");
+  const put = (file: string, content: string) => {
+    mkdirSync(join(file, ".."), { recursive: true });
+    writeFileSync(file, content);
+  };
+  put(
+    join(market, ".easy-agent-plugin", "marketplace.json"),
+    JSON.stringify({ name: "e2emp", plugins: [{ name: "kit", source: "./plugins/kit", description: "Team kit" }] }),
+  );
+  put(join(kit, ".easy-agent-plugin", "plugin.json"), JSON.stringify({ name: "kit", version: "1.2.0", description: "Team kit" }));
+  put(join(kit, "skills", "notes", "SKILL.md"), "---\nname: notes\ndescription: Draft release notes\n---\n\nWrite notes.\n");
+  put(join(kit, "hooks", "hooks.json"), JSON.stringify({ hooks: { Stop: [{ hooks: [{ type: "command", command: "echo done" }] }] } }));
+  const enabledPlugins = () => userSettings().enabledPlugins as Record<string, boolean> | undefined;
+
+  const { app, page } = await openProject();
+  try {
+    await openCustomize(page, "插件");
+    await page.getByRole("button", { name: "插件市场" }).click();
+    await page.getByRole("button", { name: "添加市场" }).click();
+    await page.getByRole("dialog").getByPlaceholder("acme/agent-plugins").fill(market);
+    await page.getByRole("dialog").getByRole("button", { name: "添加", exact: true }).click();
+    await expect(page.getByText("Team kit", { exact: true })).toBeVisible({ timeout: 20_000 });
+
+    await page.getByRole("button", { name: "安装", exact: true }).click();
+    await page.getByRole("menuitem", { name: /^全局/ }).click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog.getByText("这个插件会在你的电脑上运行程序")).toBeVisible({ timeout: 20_000 });
+    await expect(dialog.getByText("/kit:notes", { exact: true })).toBeVisible();
+    await dialog.getByRole("button", { name: "安装到全局" }).click();
+    await expect.poll(enabledPlugins).toEqual({ "kit@e2emp": true });
+
+    await page.getByRole("button", { name: /^已安装 \d+$/ }).click();
+    await expect(page.getByText("由全局设置")).toBeVisible();
+    await page.getByRole("button", { name: "返回对话" }).click();
+    await page.getByRole("textbox", { name: "消息" }).fill("/kit");
+    await expect(page.getByRole("listbox", { name: "技能与命令" }).getByRole("option", { name: /\/kit:notes/ })).toContainText("插件 kit");
+
+    await openCustomize(page, "插件");
+    await page.locator("main").getByRole("switch").click();
+    await expect.poll(enabledPlugins).toEqual({ "kit@e2emp": false });
+
+    await page.getByText("1.2.0 · e2emp").click();
+    await page.getByRole("button", { name: "卸载", exact: true }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "卸载", exact: true }).click();
+    await expect(page.getByText("还没有安装插件，到「插件市场」里装一个")).toBeVisible({ timeout: 20_000 });
   } finally {
     await app.close();
   }

@@ -15,6 +15,8 @@ import type {
   InteractionResponse,
   InterruptOutcome,
   PermissionMode,
+  PluginInstallPreview,
+  PluginViewData,
   ReloadResult,
   RespondOutcome,
   RuntimeCapabilities,
@@ -41,7 +43,12 @@ export type {
   McpServerStatus,
   McpToolInfo,
   OutputStyleInventoryItem,
+  PluginAvailableRow,
+  PluginInstalledRow,
+  PluginInstallPreview,
   PluginInventoryItem,
+  PluginMarketplaceRow,
+  PluginViewData,
   ReloadResult,
   RuleInventoryItem,
   RuntimeInventory,
@@ -99,6 +106,16 @@ export interface AgentMethods {
   "runtime/reload": { params: Record<string, never>; result: ReloadResult };
   "mcp/approve": { params: { name: string; approved: boolean; scope?: ConfigScope }; result: McpApprovalResult };
   "mcp/reconnect": { params: { name: string }; result: McpReconnectResult };
+  "plugins/list": { params: Record<string, never>; result: PluginViewData };
+  "plugins/preview": { params: { pluginId: string }; result: PluginInstallPreview };
+  "plugins/install": { params: { pluginId: string; scope?: ConfigScope; fingerprint: string }; result: PluginViewData };
+  "plugins/update": { params: { pluginId: string; scope?: ConfigScope; fingerprint: string }; result: PluginViewData };
+  "plugins/enable": { params: { pluginId: string; scope?: ConfigScope }; result: PluginViewData };
+  "plugins/disable": { params: { pluginId: string; scope?: ConfigScope }; result: PluginViewData };
+  "plugins/uninstall": { params: { pluginId: string; scope?: ConfigScope; keepData?: boolean }; result: PluginViewData };
+  "marketplace/add": { params: { source: string }; result: PluginViewData };
+  "marketplace/update": { params: { name: string }; result: PluginViewData };
+  "marketplace/remove": { params: { name: string }; result: PluginViewData };
   "session/context": { params: { sessionId: string }; result: SessionContext };
   "session/create": { params: OpenSession & { persist?: boolean }; result: { sessionId: string; state: SessionState } };
   "session/resume": { params: OpenSession & { sessionId?: string }; result: { sessionId: string; state: SessionState } };
@@ -135,6 +152,16 @@ export const AGENT_METHODS = [
   "runtime/reload",
   "mcp/approve",
   "mcp/reconnect",
+  "plugins/list",
+  "plugins/preview",
+  "plugins/install",
+  "plugins/update",
+  "plugins/enable",
+  "plugins/disable",
+  "plugins/uninstall",
+  "marketplace/add",
+  "marketplace/update",
+  "marketplace/remove",
   "session/context",
   "session/create",
   "session/resume",

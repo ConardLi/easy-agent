@@ -27,6 +27,7 @@ All notable changes to Easy Agent are documented in this file.
 - SDK and RPC: `reload()`/`runtime/reload` reloads skills, commands, sub-agents, output styles, and plugins without a session; open sessions use them from their next turn.
 - SDK and RPC: approve or reject a `.mcp.json` server (`approveMcpServer()`/`mcp/approve`), which saves the decision and connects or stops the server right away, and reconnect a server (`reconnectMcpServer()`/`mcp/reconnect`). New SDK error code `untrusted`.
 - SDK and RPC: `AgentSession.getContext()`/`session/context` splits the context window into system prompt, built-in tools, MCP tools, skills, plugins, rules, and messages, with items per tool, server, plugin, and file. The totals are the ones `/context` prints.
+- SDK and RPC: plugin and marketplace management without a session (`listPlugins()`, `previewPlugin()`, `mutatePlugin()` / `plugins/list`, `plugins/preview`, `plugins/install`, `plugins/update`, `plugins/enable`, `plugins/disable`, `plugins/uninstall`, `marketplace/add`, `marketplace/update`, `marketplace/remove`). Installs and updates need the fingerprint of the preview the user confirmed; the project and local scopes are refused in an untrusted workspace. New SDK error code `plugin`.
 
 ### Changed
 

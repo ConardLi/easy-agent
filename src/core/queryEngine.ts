@@ -1336,7 +1336,7 @@ export class QueryEngine {
    * registries, and return the refreshed view so the overlay stays in sync.
    */
   async mutatePlugin(action: PluginMutation): Promise<PluginViewData> {
-    return mutatePluginImpl(this.commandContext(), action);
+    return mutatePluginImpl(this.commandContext().cwd, action);
   }
 
   /** Validate and describe a plugin package without changing any state. */

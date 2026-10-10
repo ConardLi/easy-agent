@@ -2,15 +2,16 @@
  * The customize view and the data behind it: what each workspace's Agent has
  * loaded (`runtime/inventory`), the settings files as the Agent reads them
  * (`config/read`, for editing hooks, MCP servers, and rule exclusions), and
- * the context breakdown of open sessions (`session/context`).
+ * the plugins and marketplaces (`plugins/list`), and the context breakdown of
+ * open sessions (`session/context`).
  *
  * Every change goes to the Agent or to a file, then the inventory is read
  * again, so the pages show what the Agent actually uses.
  */
 
 import { create } from "zustand";
-import type { ConfigSnapshot, RuntimeInventory, SessionContext } from "../../shared/agent";
-import { agent, describeError } from "../agent/client";
+import type { ConfigSnapshot, ParamsOf, PluginInstallPreview, PluginViewData, RuntimeInventory, SessionContext } from "../../shared/agent";
+import { AgentCallError, agent, describeError } from "../agent/client";
 import { SCOPE_FILE, type WriteScope } from "../lib/scopes";
 import { useUi } from "./ui";
 import { useWorkspaces } from "./workspaces";
@@ -25,6 +26,8 @@ interface CustomizeStore {
   inventories: Record<string, RuntimeInventory>;
   configs: Record<string, ConfigSnapshot>;
   errors: Record<string, string>;
+  /** Installed plugins, marketplaces, and what they offer, per workspace. */
+  plugins: Record<string, PluginViewData>;
   /** Context breakdown of each open session, from its latest read. */
   contexts: Record<string, SessionContext>;
   openCustomize(tab?: CustomizeTab): void;
@@ -39,6 +42,7 @@ export const useCustomize = create<CustomizeStore>()((set) => ({
   inventories: {},
   configs: {},
   errors: {},
+  plugins: {},
   contexts: {},
   openCustomize: (tab) => {
     set((s) => ({ open: true, tab: tab ?? s.tab }));
@@ -177,5 +181,67 @@ export async function loadContext(workspaceId: string, sessionId: string): Promi
     useCustomize.setState((s) => ({ contexts: { ...s.contexts, [sessionId]: context } }));
   } catch {
     // The session closed or the Agent restarted; the panel keeps the last reading.
+  }
+}
+
+// ─── Plugins ──────────────────────────────────────────────────────────────
+
+export type PluginChange =
+  | "plugins/install"
+  | "plugins/update"
+  | "plugins/enable"
+  | "plugins/disable"
+  | "plugins/uninstall"
+  | "marketplace/add"
+  | "marketplace/update"
+  | "marketplace/remove";
+
+function pluginError(error: unknown): string {
+  if (error instanceof AgentCallError && error.sdkCode === "untrusted") return "工作区还没被信任，项目和本机配置不会生效。先信任工作区，或者写到全局配置";
+  return describeError(error);
+}
+
+/** Read the active workspace's plugins and marketplaces. */
+export async function loadPlugins(workspaceId = activeId()): Promise<void> {
+  if (!ready(workspaceId)) return;
+  try {
+    const view = await agent.call(workspaceId, "plugins/list", {});
+    useCustomize.setState((s) => ({ plugins: { ...s.plugins, [workspaceId]: view } }));
+  } catch (error) {
+    fail(error);
+  }
+}
+
+/** Fetch and validate a plugin before installing or updating it; null when that failed (the reason is shown). */
+export async function previewPlugin(pluginId: string): Promise<PluginInstallPreview | null> {
+  const workspaceId = activeId();
+  if (!ready(workspaceId)) return null;
+  try {
+    return await agent.call(workspaceId, "plugins/preview", { pluginId });
+  } catch (error) {
+    toast(pluginError(error), "danger");
+    return null;
+  }
+}
+
+/** Change a plugin or marketplace, then read the plugins and the inventory again. Returns whether it worked. */
+export async function changePlugins<M extends PluginChange>(
+  method: M,
+  params: ParamsOf<M>,
+  message: string | ((before: PluginViewData | undefined, after: PluginViewData) => string),
+): Promise<boolean> {
+  const workspaceId = activeId();
+  if (!ready(workspaceId)) return false;
+  try {
+    const before = useCustomize.getState().plugins[workspaceId];
+    const view = (await agent.call(workspaceId, method, params)) as PluginViewData;
+    useCustomize.setState((s) => ({ plugins: { ...s.plugins, [workspaceId]: view } }));
+    toast(typeof message === "string" ? message : message(before, view), "success");
+    return true;
+  } catch (error) {
+    toast(pluginError(error), "danger");
+    return false;
+  } finally {
+    await loadInventory(workspaceId);
   }
 }

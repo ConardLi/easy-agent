@@ -579,6 +579,82 @@ try {
     await rm(path.join(cwd, ".easy-agent", "skills"), { recursive: true, force: true });
   });
 
+  await check("plugins and marketplaces: preview, confirmed install, enable, disable, uninstall", async () => {
+    const market = path.join(root, "rpc-market");
+    const kit = path.join(market, "plugins", "kit");
+    const put = async (file: string, content: string) => {
+      await mkdir(path.dirname(file), { recursive: true });
+      await writeFile(file, content);
+    };
+    await put(
+      path.join(market, ".easy-agent-plugin", "marketplace.json"),
+      JSON.stringify({ name: "rpcmp", plugins: [{ name: "kit", source: "./plugins/kit", description: "Team kit" }] }),
+    );
+    await put(
+      path.join(kit, ".easy-agent-plugin", "plugin.json"),
+      JSON.stringify({ name: "kit", version: "1.2.0", description: "Team kit" }),
+    );
+    await put(
+      path.join(kit, "skills", "notes", "SKILL.md"),
+      "---\nname: notes\ndescription: Draft release notes.\n---\nWrite notes.\n",
+    );
+    await put(
+      path.join(kit, "hooks", "hooks.json"),
+      JSON.stringify({ hooks: { Stop: [{ hooks: [{ type: "command", command: "echo done" }] }] } }),
+    );
+    type View = { installed: Json[]; available: Json[]; marketplaces: Json[]; projectTrusted: boolean };
+    const row = (view: View) => view.installed.find((p) => p.pluginId === "kit@rpcmp");
+    const pluginSkill = async () =>
+      ((await rpc.call<Json>("runtime/inventory")).skills as Json[]).some(
+        (s) => s.source === "plugin" && s.pluginId === "kit@rpcmp",
+      );
+
+    let view = await rpc.call<View>("marketplace/add", { source: market });
+    assert.deepEqual(
+      view.marketplaces.map((m) => [m.name, m.pluginCount]),
+      [["rpcmp", 1]],
+    );
+    assert.ok(view.available.some((p) => p.pluginId === "kit@rpcmp"));
+
+    const preview = await rpc.call<Json>("plugins/preview", { pluginId: "kit@rpcmp" });
+    assert.equal(preview.version, "1.2.0");
+    assert.equal(preview.hasExecutableComponents, true);
+    assert.deepEqual((preview.components as Json).skills, ["kit:notes"]);
+    await rejects(
+      rpc.call("plugins/install", { pluginId: "kit@rpcmp", fingerprint: "stale" }),
+      protocol.RpcErrorCode.AgentError,
+      "plugin",
+    );
+    assert.equal(await pluginSkill(), false);
+
+    view = await rpc.call<View>("plugins/install", {
+      pluginId: "kit@rpcmp",
+      scope: "user",
+      fingerprint: preview.fingerprint,
+    });
+    assert.deepEqual([row(view)?.enabled, row(view)?.scope, row(view)?.executablesTrusted], [true, "user", true]);
+    assert.equal(await pluginSkill(), true);
+
+    view = await rpc.call<View>("plugins/disable", { pluginId: "kit@rpcmp", scope: "user" });
+    assert.equal(row(view)?.enabled, false);
+    assert.equal(await pluginSkill(), false);
+
+    // An untrusted workspace ignores project settings, so the project scope is refused there.
+    assert.equal(view.projectTrusted, false);
+    await rejects(
+      rpc.call("plugins/enable", { pluginId: "kit@rpcmp", scope: "project" }),
+      protocol.RpcErrorCode.AgentError,
+      "untrusted",
+    );
+
+    view = await rpc.call<View>("plugins/uninstall", { pluginId: "kit@rpcmp", scope: "user" });
+    assert.equal(row(view), undefined);
+    await rejects(rpc.call("plugins/uninstall", { pluginId: "kit@rpcmp" }), protocol.RpcErrorCode.AgentError, "plugin");
+    view = await rpc.call<View>("marketplace/remove", { name: "rpcmp" });
+    assert.deepEqual(view.marketplaces, []);
+    await rejects(rpc.call("plugins/preview", { pluginId: "kit@rpcmp" }), protocol.RpcErrorCode.AgentError, "plugin");
+  });
+
   await check("session/context splits the same totals /context prints", async () => {
     const context = await rpc.call<Json>("session/context", { sessionId });
     const categories = context.categories as Array<{ id: string; tokens: number; items: Array<{ tokens: number }> }>;
