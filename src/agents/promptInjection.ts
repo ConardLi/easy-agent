@@ -64,6 +64,12 @@ const CREATION_GUIDANCE = [
   "```",
 ].join("\n");
 
+/** One agent's line in the listing. */
+export function formatAgentListingLine(a: AgentDefinition): string {
+  const tag = a.source === "built-in" ? "built-in" : a.source === "project" ? "project" : "user";
+  return `- ${a.agentType} [${tag}]: ${truncate(a.whenToUse, MAX_DESC_CHARS)}`;
+}
+
 /**
  * Render the "available sub-agents" system-reminder block. Returns an
  * empty string when there are no agents loaded (so callers can
@@ -83,10 +89,7 @@ export function formatAgentsSystemReminder(agents: AgentDefinition[]): string {
     return a.agentType.localeCompare(b.agentType);
   });
 
-  const lines = sorted.map((a) => {
-    const tag = a.source === "built-in" ? "built-in" : a.source === "project" ? "project" : "user";
-    return `- ${a.agentType} [${tag}]: ${truncate(a.whenToUse, MAX_DESC_CHARS)}`;
-  });
+  const lines = sorted.map(formatAgentListingLine);
 
   return [
     "<system-reminder>",

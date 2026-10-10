@@ -76,7 +76,26 @@ const runtime = await createAgentRuntime({
 | `writeConfig(scope, key, value)` | Set or (with `null`) delete one key in user, project, or local settings, after validation; open sessions pick up permission rules right away |
 | `setWorkspaceTrust(trusted)` | Save or revoke trust for the workspace; it applies to the next runtime |
 | `checkModel(model)`, `listModels(model)` | Send a one-token request through a model handle; list the models its provider offers |
+| `getInventory()` | Everything the runtime has loaded, see [Inventory](#inventory) |
+| `reload()` | Reload skills, commands, sub-agents, output styles, and plugins from disk. Open sessions use the new set from their next turn; returns the registry sizes, plugin MCP servers started and stopped, and plugin errors |
+| `approveMcpServer(name, approved, scope?)` | Approve or reject a server from the project's `.mcp.json`. The decision is saved in `enabledMcpjsonServers` or `disabledMcpjsonServers` of `scope` (default `local`); an approved server connects right away, a rejected one stops. Rejects with `untrusted` in an untrusted workspace |
+| `reconnectMcpServer(name)` | Drop a registered MCP server's connection and connect again; returns the status, the error if it failed, and the tool count |
 | `dispose()` | Close every session and free the process for another runtime |
+
+### Inventory
+
+`getInventory()` returns one list per kind: `skills`, `commands`, `agents`, `outputStyles`, `mcpServers`, `plugins`, `hooks`, `rules` (AGENT.md and AGENTS.md files and the memory index), and `tools`. Every item has:
+
+| Field | Meaning |
+| --- | --- |
+| `id` | Unique within its list |
+| `kind`, `name` | What it is |
+| `source` | `built-in`, `user`, `project`, `local`, `flag`, `policy`, or `plugin`; `pluginId` names the plugin |
+| `path` | The file that defines it, when there is one |
+| `enabled` | Whether sessions use it: listed to the model, connected, loaded, or run |
+| `reason` | Why it is off or limited, such as an untrusted workspace, `claudeMdExcludes`, or hooks turned off |
+
+Items that occupy context carry token counts as `{ value, estimated }`: a skill's line in the skill list and its body, a sub-agent's line, an output style's prompt, a rule file, a tool's schema. Counts come from character lengths, so `estimated` is `true`. MCP servers report `status` (`connected`, `pending`, `failed`, `disabled`, `awaiting_approval`, `rejected`, or `ignored` in an untrusted workspace), their tools, and the error when connecting failed. Tools report whether ToolSearch defers them for the runtime's model. Project configuration an untrusted workspace ignores still appears, disabled, with the reason.
 
 ## Sessions
 
@@ -104,8 +123,25 @@ const session = await runtime.createSession({
 | `runShell(command)` | Run a shell command without the model, under the usual Bash permission and sandbox rules |
 | `stopBackgroundAgent(agentId)` | Stop a background agent this session started |
 | `getState()` | Snapshot: messages, usage and context size, model, modes, thinking, pending requests, todos, tasks, background agents |
+| `getContext()` | How the next request fills the context window, see [Context breakdown](#context-breakdown) |
 | `subscribe(listener)` / `events(signal?)` | Event stream, as a callback or an async iterator |
 | `close()` | Abort the running turn, settle pending requests, release the session |
+
+### Context breakdown
+
+`getContext()` measures what the next request would carry: the system prompt the session has fixed, the tool list after ToolSearch, and the conversation. It returns the context window, `used` and `free` tokens, the conversation size and the auto-compact threshold, and `categories` in a fixed order:
+
+| Category | Contents |
+| --- | --- |
+| `system` | Instructions, environment, output style, memory instructions, and the framing of the skill and sub-agent lists |
+| `tools` | Built-in tool schemas, one item per tool |
+| `mcp` | MCP tool schemas, one item per server |
+| `skills` | Lines of the skill list |
+| `plugins` | Skills, sub-agents, and MCP tools that plugins contribute, one item per plugin |
+| `rules` | AGENT.md and AGENTS.md files and the memory index |
+| `messages` | User messages, assistant replies, and tool results |
+
+Each category's items add up to the category, and the categories add up to `used`. `totals` holds the four figures `/context` prints, so the two always agree. All figures are estimates from character counts (`estimated: true`).
 
 ### Events
 
@@ -163,4 +199,4 @@ The SDK uses the same checks as the terminal:
 
 ## Errors
 
-Errors raised by the SDK are `AgentSdkError` with a stable `code`: `busy`, `closed`, `replaced`, `permission_settings`, `session_restore`, `session_storage`, `already_open`, `runtime_active`, `not_found` (no saved session with that id), `invalid_argument` (for example a session id that is not one). Use `isAgentSdkError(error, code)` to check. A turn that fails for any other reason rejects `send()` with the original error and emits `turn_failed`.
+Errors raised by the SDK are `AgentSdkError` with a stable `code`: `busy`, `closed`, `replaced`, `permission_settings`, `session_restore`, `session_storage`, `already_open`, `runtime_active`, `not_found` (no saved session, `.mcp.json` server, or MCP server with that name), `invalid_argument` (for example a session id that is not one), `provider` (a model provider request failed), `untrusted` (the call needs project configuration an untrusted workspace ignores). Use `isAgentSdkError(error, code)` to check. A turn that fails for any other reason rejects `send()` with the original error and emits `turn_failed`.

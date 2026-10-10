@@ -45,6 +45,8 @@ import type { McpServerConfig } from "../types/mcp.js";
 import { activateWorkspace, consoleLogger, loadWorkspace, type WorkspaceReport } from "./bootstrap.js";
 import { checkModel, listModels, readConfig, setWorkspaceTrust, writeConfig } from "./config.js";
 import { AgentSdkError } from "./errors.js";
+import { approveMcpServer, reconnectMcpServer, reloadExtensions } from "./extensions.js";
+import { buildRuntimeInventory } from "./inventory.js";
 import { AgentSession, reloadSettingsOf } from "./session.js";
 import { SessionController } from "./session/controller.js";
 import type {
@@ -52,8 +54,12 @@ import type {
   AgentSessionOptions,
   ConfigScope,
   ConfigSnapshot,
+  McpApprovalResult,
+  McpReconnectResult,
   ModelCheckResult,
+  ReloadResult,
   RuntimeCapabilities,
+  RuntimeInventory,
   RuntimeLogger,
   StartServicesOptions,
   StoredSession,
@@ -327,6 +333,38 @@ export class AgentRuntime {
   listModels(model: string): Promise<{ models: string[] }> {
     this.#assertActive();
     return listModels(this.cwd, model);
+  }
+
+  // ─── Extensions ─────────────────────────────────────────────────────────
+
+  /**
+   * Skills, commands, sub-agents, output styles, MCP servers, plugins, hooks,
+   * rule files, and tools, each with its source, state, and token estimate.
+   */
+  async getInventory(): Promise<RuntimeInventory> {
+    this.#assertActive();
+    return buildRuntimeInventory(this.cwd, this.report, await this.resolveModel());
+  }
+
+  /** Reload skills, commands, sub-agents, output styles, and plugins; open sessions use them from their next turn. */
+  reload(): Promise<ReloadResult> {
+    this.#assertActive();
+    return reloadExtensions(this.cwd);
+  }
+
+  /**
+   * Approve or reject a `.mcp.json` server in a trusted workspace. The decision
+   * is saved in `scope` (default `local`); an approved server connects now.
+   */
+  approveMcpServer(name: string, approved: boolean, scope: ConfigScope = "local"): Promise<McpApprovalResult> {
+    this.#assertActive();
+    return approveMcpServer(this.cwd, name, approved, scope);
+  }
+
+  /** Reconnect a registered MCP server and report the new state. */
+  reconnectMcpServer(name: string): Promise<McpReconnectResult> {
+    this.#assertActive();
+    return reconnectMcpServer(name);
   }
 
   getCapabilities(): RuntimeCapabilities {

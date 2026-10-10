@@ -204,6 +204,41 @@ export async function loadHooksDiagnosticReport(cwd: string): Promise<HooksDiagn
   };
 }
 
+/** One hook command and the settings layer that declares it. */
+export interface ConfiguredHook {
+  source: LoadedSource["source"];
+  path: string | null;
+  event: HookEvent;
+  matcher?: string;
+  hook: HookCommand;
+}
+
+/**
+ * Every hook command in every settings source, in execution order, including
+ * sources that trust rules currently skip. Read-only: it neither logs nor
+ * updates the last-valid snapshot the executor falls back to.
+ */
+export async function listConfiguredHooks(cwd: string): Promise<ConfiguredHook[]> {
+  const hooks: ConfiguredHook[] = [];
+  for (const src of await loadSettingSources(cwd)) {
+    const block = hooksFromSource(src);
+    for (const event of HOOK_EVENTS) {
+      for (const group of block[event] ?? []) {
+        for (const hook of group.hooks) {
+          hooks.push({
+            source: src.source,
+            path: src.path,
+            event,
+            ...(group.matcher ? { matcher: group.matcher } : {}),
+            hook,
+          });
+        }
+      }
+    }
+  }
+  return hooks;
+}
+
 // ─── Matcher selection ────────────────────────────────────────────────
 
 /** Plain identifiers match exactly; patterns with regex syntax are compiled. */

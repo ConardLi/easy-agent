@@ -16,6 +16,7 @@
 import type { MessageParam } from "@anthropic-ai/sdk/resources/messages.js";
 import type { Usage } from "../../../types/message.js";
 import type { PermissionMode, PermissionSettings, PermissionRuleSet } from "../../../permissions/permissions.js";
+import type { ContextBreakdown } from "../contextBreakdown.js";
 
 export interface CommandContext {
   /** Working directory for this session (mirrors toolContext.cwd). */
@@ -56,4 +57,6 @@ export interface CommandContext {
   getSessionPermissionRules(): PermissionRuleSet;
   /** Re-read permission settings from disk so the next tool call sees them. */
   reloadPermissionSettings(): Promise<void>;
+  /** How the next request would fill the context window. */
+  getContextBreakdown(): Promise<ContextBreakdown>;
 }

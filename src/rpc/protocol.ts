@@ -139,6 +139,125 @@ const SessionStateSchema = z
   })
   .loose();
 
+const TokenCountSchema = z.object({ value: z.number().int().nonnegative(), estimated: z.boolean() });
+const InventorySourceSchema = z.enum(["built-in", "user", "project", "local", "flag", "policy", "plugin"]);
+const McpServerStatusSchema = z.enum([
+  "connected",
+  "pending",
+  "failed",
+  "disabled",
+  "awaiting_approval",
+  "rejected",
+  "ignored",
+]);
+
+/** Fields every inventory item has; each list adds the fields of its kind. */
+const inventoryItem = <K extends string>(kind: K, fields: z.ZodRawShape = {}) =>
+  z
+    .object({
+      kind: z.literal(kind),
+      id: z.string(),
+      name: z.string(),
+      source: InventorySourceSchema,
+      pluginId: z.string().optional(),
+      path: z.string().optional(),
+      enabled: z.boolean(),
+      reason: z.string().optional(),
+      ...fields,
+    })
+    .loose();
+
+const RuntimeInventorySchema = z
+  .object({
+    workspaceTrusted: z.boolean(),
+    ignoredProjectConfig: z.array(z.string()),
+    skills: z.array(
+      inventoryItem("skill", {
+        description: z.string(),
+        invocation: z.enum(["model", "manual", "paths"]),
+        listing: TokenCountSchema,
+        body: TokenCountSchema,
+      }),
+    ),
+    commands: z.array(inventoryItem("command", { description: z.string() })),
+    agents: z.array(inventoryItem("agent", { description: z.string(), listing: TokenCountSchema })),
+    outputStyles: z.array(inventoryItem("output_style", { active: z.boolean(), prompt: TokenCountSchema })),
+    mcpServers: z.array(
+      inventoryItem("mcp_server", {
+        transport: z.enum(["stdio", "http", "sse"]),
+        status: McpServerStatusSchema,
+        error: z.string().optional(),
+        tools: z.array(
+          z
+            .object({ name: z.string(), readOnly: z.boolean(), deferred: z.boolean(), schema: TokenCountSchema })
+            .loose(),
+        ),
+      }),
+    ),
+    plugins: z.array(
+      inventoryItem("plugin", {
+        marketplace: z.string(),
+        version: z.string(),
+        executablesTrusted: z.boolean(),
+        errors: z.array(z.string()),
+      }),
+    ),
+    hooks: z.array(inventoryItem("hook", { event: z.string(), command: z.string(), timeout: z.number() })),
+    rules: z.array(
+      inventoryItem("rule", {
+        scope: z.enum(["global", "ancestor", "project", "memory"]),
+        excluded: z.boolean(),
+        lines: z.number().int(),
+        tokens: TokenCountSchema,
+      }),
+    ),
+    tools: z.array(
+      inventoryItem("tool", {
+        readOnly: z.boolean(),
+        mcpServer: z.string().optional(),
+        deferred: z.boolean(),
+        schema: TokenCountSchema,
+      }),
+    ),
+  })
+  .loose();
+
+const ContextItemSchema = z
+  .object({
+    id: z.string(),
+    label: z.string(),
+    tokens: z.number().int().nonnegative(),
+    source: z.string().optional(),
+    pluginId: z.string().optional(),
+  })
+  .loose();
+
+const SessionContextSchema = z
+  .object({
+    model: z.string(),
+    contextWindow: z.number().int(),
+    estimated: z.literal(true),
+    used: z.number().int().nonnegative(),
+    free: z.number().int().nonnegative(),
+    conversationTokens: z.number().int().nonnegative(),
+    autoCompactThreshold: z.number().int().nonnegative(),
+    categories: z.array(
+      z.object({
+        id: z.enum(["system", "tools", "mcp", "skills", "plugins", "rules", "messages"]),
+        tokens: z.number().int().nonnegative(),
+        items: z.array(ContextItemSchema),
+      }),
+    ),
+    totals: z.object({
+      systemPrompt: z.number().int(),
+      memory: z.number().int(),
+      tools: z.number().int(),
+      conversation: z.number().int(),
+    }),
+    toolSearch: z.object({ enabled: z.boolean(), deferred: z.array(z.string()), loaded: z.array(z.string()) }).loose(),
+  })
+  .loose();
+
 // ─── Client → server ──────────────────────────────────────────────────────
 
 const OpenSessionOptions = {
@@ -160,6 +279,16 @@ export const MethodParams = {
     services: z.enum(["background", "wait"]).optional(),
   }),
   "runtime/capabilities": z.object({}),
+  "runtime/inventory": z.object({}),
+  /** Reloads skills, commands, sub-agents, output styles, and plugins; open sessions use them from their next turn. */
+  "runtime/reload": z.object({}),
+  /** Approve or reject a `.mcp.json` server; the decision goes to `scope` (default `local`). Needs a trusted workspace. */
+  "mcp/approve": z.object({
+    name: z.string().min(1),
+    approved: z.boolean(),
+    scope: z.enum(["user", "project", "local"]).optional(),
+  }),
+  "mcp/reconnect": z.object({ name: z.string().min(1) }),
   "config/read": z.object({}),
   /** `value: null` deletes the key. `[redacted]` inside the value keeps what the file already holds there. */
   "config/write": z.object({ scope: z.enum(["user", "project", "local"]), key: z.string().min(1), value: z.unknown() }),
@@ -199,6 +328,7 @@ export const MethodParams = {
   /** `null` leaves the effort to the model. */
   "session/setEffort": z.object({ sessionId: SessionId, effort: z.enum(["low", "medium", "high", "max"]).nullable() }),
   "session/stopBackgroundAgent": z.object({ sessionId: SessionId, agentId: z.string().min(1) }),
+  "session/context": z.object({ sessionId: SessionId }),
   shutdown: z.object({}),
 } as const;
 
@@ -229,6 +359,32 @@ export const MethodResults = {
       .loose(),
   }),
   "runtime/capabilities": z.object({ builtinCommands: z.array(z.string()) }).loose(),
+  "runtime/inventory": RuntimeInventorySchema,
+  "runtime/reload": z
+    .object({
+      plugins: z.object({ enabled: z.number().int(), disabled: z.number().int() }),
+      skills: z.number().int(),
+      commands: z.number().int(),
+      agents: z.number().int(),
+      outputStyles: z.number().int(),
+      mcpStarted: z.array(z.string()),
+      mcpStopped: z.array(z.string()),
+      errors: z.array(z.string()),
+    })
+    .loose(),
+  "mcp/approve": z.object({
+    name: z.string(),
+    approved: z.boolean(),
+    scope: z.enum(["user", "project", "local"]),
+    status: McpServerStatusSchema.nullable(),
+    error: z.string().optional(),
+  }),
+  "mcp/reconnect": z.object({
+    name: z.string(),
+    status: McpServerStatusSchema,
+    error: z.string().optional(),
+    toolCount: z.number().int(),
+  }),
   "config/read": z
     .object({
       workspaceTrusted: z.boolean(),
@@ -280,6 +436,7 @@ export const MethodResults = {
   "session/setThinking": z.object({}),
   "session/setEffort": z.object({}),
   "session/stopBackgroundAgent": z.object({ stopped: z.boolean() }),
+  "session/context": SessionContextSchema,
   shutdown: z.object({}),
 } as const satisfies Record<MethodName, z.ZodType>;
 

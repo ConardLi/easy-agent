@@ -64,6 +64,11 @@ export class RpcServer {
   readonly #handlers: { [M in MethodName]: (params: ParamsOf<M>) => Promise<unknown> } = {
     initialize: (params) => this.#initialize(params),
     "runtime/capabilities": async () => this.#requireRuntime().getCapabilities(),
+    "runtime/inventory": async () => this.#requireRuntime().getInventory(),
+    "runtime/reload": async () => this.#requireRuntime().reload(),
+    "mcp/approve": async ({ name, approved, scope }) =>
+      this.#requireRuntime().approveMcpServer(name, approved, scope ?? "local"),
+    "mcp/reconnect": async ({ name }) => this.#requireRuntime().reconnectMcpServer(name),
     "config/read": async () => this.#requireRuntime().readConfig(),
     "config/write": async ({ scope, key, value }) => this.#requireRuntime().writeConfig(scope, key, value ?? null),
     "workspace/trust": async ({ trusted }) => this.#requireRuntime().setWorkspaceTrust(trusted),
@@ -130,6 +135,7 @@ export class RpcServer {
     "session/stopBackgroundAgent": async ({ sessionId, agentId }) => ({
       stopped: this.#session(sessionId).stopBackgroundAgent(agentId),
     }),
+    "session/context": async ({ sessionId }) => this.#session(sessionId).getContext(),
     "session/close": async ({ sessionId }) => {
       await this.#session(sessionId).close();
       this.#forgetClosedSessions();

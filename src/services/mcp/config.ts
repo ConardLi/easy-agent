@@ -22,6 +22,19 @@ export interface McpConfigLoadResult {
   errors: string[];
   /** `.mcp.json` servers awaiting approval (not yet enabled). */
   pending?: string[];
+  /** Every valid `.mcp.json` server and its approval state; `ignored` while the workspace is not trusted. */
+  projectServers?: ProjectMcpServer[];
+}
+
+export interface ProjectMcpServer {
+  name: string;
+  config: ScopedMcpServerConfig;
+  state: "approved" | "pending" | "rejected" | "ignored";
+}
+
+/** Path of the project-level MCP server file. */
+export function getProjectMcpJsonPath(cwd: string): string {
+  return path.join(cwd, ".mcp.json");
 }
 
 /** Validate one configured server without rejecting unrelated servers. */
@@ -293,32 +306,45 @@ async function loadProjectMcpJson(
   cwd: string,
   approval: { enableAll: boolean; enabled: string[]; disabled: string[] },
   errors: string[],
-): Promise<{ approved: Record<string, ScopedMcpServerConfig>; pending: string[] }> {
+): Promise<{ approved: Record<string, ScopedMcpServerConfig>; pending: string[]; listed: ProjectMcpServer[] }> {
   const approved: Record<string, ScopedMcpServerConfig> = {};
   const pending: string[] = [];
+  const listed: ProjectMcpServer[] = [];
 
-  if (!(await isProjectTrusted(cwd))) return { approved, pending };
+  const filePath = getProjectMcpJsonPath(cwd);
+  if (!(await isProjectTrusted(cwd))) {
+    // Listed for display only; nothing from an untrusted file is started.
+    const { raw } = await readJsonSettingsFile<RawSettings>(filePath);
+    for (const [name, config] of Object.entries(extractScopedServers(raw, "project", filePath, []))) {
+      listed.push({ name, config, state: "ignored" });
+    }
+    return { approved, pending, listed };
+  }
 
-  const filePath = path.join(cwd, ".mcp.json");
   const { raw, parseError } = await readJsonSettingsFile<RawSettings>(filePath);
   if (parseError) {
     errors.push(parseError);
-    return { approved, pending };
+    return { approved, pending, listed };
   }
-  if (!raw) return { approved, pending };
+  if (!raw) return { approved, pending, listed };
 
   const enabledSet = new Set(approval.enabled);
   const disabledSet = new Set(approval.disabled);
   const scoped = extractScopedServers(raw, "project", filePath, errors);
   for (const [name, config] of Object.entries(scoped)) {
-    if (disabledSet.has(name)) continue;
+    if (disabledSet.has(name)) {
+      listed.push({ name, config, state: "rejected" });
+      continue;
+    }
     if (approval.enableAll || enabledSet.has(name)) {
       approved[name] = config;
+      listed.push({ name, config, state: "approved" });
     } else {
       pending.push(name);
+      listed.push({ name, config, state: "pending" });
     }
   }
-  return { approved, pending };
+  return { approved, pending, listed };
 }
 
 /**
@@ -330,7 +356,7 @@ async function loadProjectMcpJson(
  * settings entry wins). Servers that fail schema validation are dropped with a
  * warning, so one malformed entry cannot prevent other servers from loading.
  */
-export async function loadMcpConfigs(cwd: string): Promise<McpConfigLoadResult> {
+export async function loadMcpConfigs(cwd: string, options: { quiet?: boolean } = {}): Promise<McpConfigLoadResult> {
   const [allSources, sources] = await Promise.all([loadSettingSources(cwd), loadTrustedSettingSources(cwd)]);
 
   const errors: string[] = [];
@@ -363,14 +389,16 @@ export async function loadMcpConfigs(cwd: string): Promise<McpConfigLoadResult> 
     Object.assign(servers, scoped);
   }
 
-  for (const error of errors) {
-    logWarn(`[mcp] config: ${error}`);
+  if (!options.quiet) {
+    for (const error of errors) {
+      logWarn(`[mcp] config: ${error}`);
+    }
+    if (projectMcp.pending.length > 0) {
+      logWarn(
+        `[mcp] .mcp.json: ${projectMcp.pending.length} server(s) awaiting approval: ${projectMcp.pending.join(", ")}. ` +
+          `Add them to "enabledMcpjsonServers" or set "enableAllProjectMcpServers": true to enable.`,
+      );
+    }
   }
-  if (projectMcp.pending.length > 0) {
-    logWarn(
-      `[mcp] .mcp.json: ${projectMcp.pending.length} server(s) awaiting approval: ${projectMcp.pending.join(", ")}. ` +
-        `Add them to "enabledMcpjsonServers" or set "enableAllProjectMcpServers": true to enable.`,
-    );
-  }
-  return { servers, errors, pending: projectMcp.pending };
+  return { servers, errors, pending: projectMcp.pending, projectServers: projectMcp.listed };
 }

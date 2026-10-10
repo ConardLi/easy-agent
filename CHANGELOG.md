@@ -23,9 +23,14 @@ All notable changes to Easy Agent are documented in this file.
 - RPC: `session/setPermissionMode`, `session/setModel`, `session/setThinking`, `session/setEffort`, and `session/stopBackgroundAgent`.
 - SDK and RPC: read and write settings (`readConfig()`/`config/read`, `writeConfig()`/`config/write`), save or revoke workspace trust (`setWorkspaceTrust()`/`workspace/trust`), and check a model connection or list a provider's models (`checkModel()`/`models/check`, `listModels()`/`models/list`). Inline secrets are never returned.
 - SDK: `send()` takes images, `AgentRuntime.connectMcpServers()` adds MCP servers at runtime, and `AgentRuntime.hasModelCredentials()` reports whether the model has credentials. RPC `session/send` accepts `images`.
+- SDK and RPC: a runtime inventory (`getInventory()`/`runtime/inventory`) lists skills, commands, sub-agents, output styles, MCP servers, plugins, hooks, rule files, and tools with their source, file, state, the reason when one is off, and estimated token counts. Project configuration an untrusted workspace ignores is listed as disabled.
+- SDK and RPC: `reload()`/`runtime/reload` reloads skills, commands, sub-agents, output styles, and plugins without a session; open sessions use them from their next turn.
+- SDK and RPC: approve or reject a `.mcp.json` server (`approveMcpServer()`/`mcp/approve`), which saves the decision and connects or stops the server right away, and reconnect a server (`reconnectMcpServer()`/`mcp/reconnect`). New SDK error code `untrusted`.
+- SDK and RPC: `AgentSession.getContext()`/`session/context` splits the context window into system prompt, built-in tools, MCP tools, skills, plugins, rules, and messages, with items per tool, server, plugin, and file. The totals are the ones `/context` prints.
 
 ### Changed
 
+- `/context` measures the system prompt the session has fixed for its requests instead of building a fresh one, so its figures match what the model receives.
 - SDK: `AgentSession.setPermissionMode()` switches the mode right away, also while a turn runs, and returns nothing; it ran `/mode` as a turn.
 - SDK: `AgentSession.setModel()` switches the model right away, also while a turn runs, and returns nothing; it ran `/model` as a turn. New `setThinking()` and `setEffort()` do the same for extended thinking and reasoning effort, and a `thinking_changed` event reports them, also when `/think` or `/effort` runs.
 - The npm description and keywords describe product capabilities.

@@ -363,6 +363,9 @@ async function main(): Promise<void> {
     getPermissionSettings: () => undefined,
     getSessionPermissionRules: () => ({ allow: [], deny: [] }),
     reloadPermissionSettings: async () => {},
+    getContextBreakdown: async () => {
+      throw new Error("not used by /plugin");
+    },
   };
   const marketplaceUpdateRun = handlePluginCommand(commandContext, ["marketplace", "update", "testmp"]);
   const progressEvent = await marketplaceUpdateRun.next();

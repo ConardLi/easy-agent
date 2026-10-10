@@ -6,7 +6,7 @@
  * and yields the same QueryEngineEvent stream the original methods produced.
  */
 
-import { getAllTools, getToolsForMode } from "../../../tools/index.js";
+import { getAllTools } from "../../../tools/index.js";
 import {
   getProfileBaseURL,
   loadProfiles,
@@ -15,22 +15,10 @@ import {
 } from "../../../services/api/providers/profile.js";
 import { loadTrustedSettingSources } from "../../../config/sources.js";
 import { MIN_NODE_MAJOR } from "../../../version.js";
-import { hasPendingMcpServers } from "../../../services/mcp/registry.js";
-import { prepareToolSearchRequest } from "../../../utils/toolSearch.js";
-import { loadFeatureSettings } from "../../../config/features.js";
 import { getMcpRegistry } from "../../../services/mcp/registry.js";
 import { getTaskMode } from "../../../state/taskModeStore.js";
 import { getActiveOutputStyleName } from "../../../styles/registry.js";
-import { buildSystemPrompt, renderSystemPrompt } from "../../../context/systemPrompt.js";
-import { loadAgentMdContext } from "../../../context/claudeMd.js";
-import { readMemoryEntrypoint } from "../../../context/memory/memdir.js";
-import {
-  buildTokenBudgetSnapshot,
-  estimateSystemPromptTokens,
-  roughTokenCountEstimationForMessages,
-  getContextWindowForModel,
-  getCacheHitRate,
-} from "../../../utils/tokens.js";
+import { getCacheHitRate } from "../../../utils/tokens.js";
 import type { Usage } from "../../../types/message.js";
 import {
   isPlatformSupported as isSandboxPlatformSupported,
@@ -90,53 +78,20 @@ function formatStatusTokens(usage: Usage): string {
 /**
  * `/context` — visualize how the context window is currently split across
  * System prompt / AGENT.md + memory / Tool definitions / Conversation history /
- * Free space, each as a proportional bar. Estimates reuse the same token
- * heuristics the auto-compactor relies on.
+ * Free space, each as a proportional bar. The figures come from the session's
+ * context breakdown, the same data `AgentSession.getContext()` returns.
  */
 export async function* handleContextCommand(
   ctx: CommandContext,
 ): AsyncGenerator<QueryEngineEvent, { handled: boolean }> {
-  const cwd = ctx.cwd;
-  const model = ctx.getActiveModel();
-  const messages = ctx.getMessages();
-
-  const systemParts = await buildSystemPrompt({ cwd });
-  const systemPrompt = renderSystemPrompt(systemParts);
-  // Mirror the real request: with tool search on, deferred tools that
-  // haven't been loaded cost nothing — only the shaped `tools[]` counts.
-  const profile = await resolveProfile(model, cwd);
-  const shaped = prepareToolSearchRequest({
-    tools: getToolsForMode(ctx.getPermissionMode()),
-    messages,
-    model: profile.model,
-    env: {
-      protocol: profile.protocol,
-      baseURL: profile.baseURL ?? process.env.ANTHROPIC_BASE_URL,
-      settings: await loadFeatureSettings(cwd),
-    },
-    hasPendingMcpServers: hasPendingMcpServers(),
-    source: "context",
-  });
-  const toolsJson = JSON.stringify(shaped.tools);
-  const [agentMd, memoryEntry] = await Promise.all([
-    loadAgentMdContext(cwd).catch(() => null),
-    readMemoryEntrypoint(cwd).catch(() => null),
-  ]);
-
-  const roughText = (s: string): number => Math.max(0, Math.round(s.length / 4));
-  const roughJson = (s: string): number => Math.max(0, Math.round(s.length / 2));
-
-  const memoryTokens = roughText(`${agentMd ?? ""}\n${memoryEntry ?? ""}`);
-  const systemTotalTokens = estimateSystemPromptTokens(systemPrompt);
-  const systemCoreTokens = Math.max(0, systemTotalTokens - memoryTokens);
-  const toolTokens = roughJson(toolsJson);
-  const historyTokens = roughTokenCountEstimationForMessages(messages);
-
-  const contextWindow = getContextWindowForModel(model);
-  const used = systemCoreTokens + memoryTokens + toolTokens + historyTokens;
-  const free = Math.max(0, contextWindow - used);
-
-  const snapshot = buildTokenBudgetSnapshot(messages, { systemPrompt, model });
+  const breakdown = await ctx.getContextBreakdown();
+  const { model, contextWindow, used, free, toolSearch } = breakdown;
+  const {
+    systemPrompt: systemCoreTokens,
+    memory: memoryTokens,
+    tools: toolTokens,
+    conversation: historyTokens,
+  } = breakdown.totals;
 
   const fmt = (n: number): string => n.toLocaleString("en-US");
   const pct = (n: number): string => `${((n / contextWindow) * 100).toFixed(1)}%`;
@@ -161,18 +116,18 @@ export async function* handleContextCommand(
     "",
     `Estimated used: ${fmt(used)} / ${fmt(contextWindow)} (${pct(used)})`,
   ];
-  if (shaped.enabled) {
-    const loaded = [...shaped.deferredToolNames].filter((n) => shaped.discoveredToolNames.has(n));
+  if (toolSearch.enabled) {
+    const { loaded, deferred } = toolSearch;
     lines.push(
       "",
-      `Tool search: on — ${shaped.deferredToolNames.size} deferred tool(s), ${loaded.length} loaded via ToolSearch` +
+      `Tool search: on — ${deferred.length} deferred tool(s), ${loaded.length} loaded via ToolSearch` +
         (loaded.length > 0 ? ` (${loaded.join(", ")})` : ""),
-      `  Always loaded: ${shaped.tools.length - loaded.length} tool(s), ~${roughJson(JSON.stringify(shaped.tools.filter((t) => !shaped.deferredToolNames.has(t.name))))} tok`,
-      `  Deferred loaded: ${loaded.length} tool(s), ~${loaded.length ? roughJson(JSON.stringify(shaped.tools.filter((t) => shaped.deferredToolNames.has(t.name)))) : 0} tok`,
-      `  Deferred not loaded: ${shaped.deferredToolNames.size - loaded.length} tool(s), 0 schema tok`,
+      `  Always loaded: ${toolSearch.sentTools - loaded.length} tool(s), ~${toolSearch.alwaysLoadedTokens} tok`,
+      `  Deferred loaded: ${loaded.length} tool(s), ~${toolSearch.loadedTokens} tok`,
+      `  Deferred not loaded: ${deferred.length - loaded.length} tool(s), 0 schema tok`,
     );
   }
-  if (snapshot.estimatedConversationTokens >= snapshot.autoCompactThreshold) {
+  if (breakdown.conversationTokens >= breakdown.autoCompactThreshold) {
     lines.push("", "⚠ Approaching the auto-compact threshold — consider /compact.");
   }
   yield { type: "command", kind: "info", message: lines.join("\n") };

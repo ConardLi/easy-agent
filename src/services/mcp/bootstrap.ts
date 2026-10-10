@@ -172,6 +172,19 @@ export async function connectAdditionalMcpServers(
   return { added, skipped };
 }
 
+/** Stop a server and drop it with its tools from the registry. Returns false when it was not registered. */
+export async function disconnectMcpServer(name: string): Promise<boolean> {
+  const entry = getMcpRegistryEntry(name);
+  if (!entry) return false;
+  stopReconnect(name);
+  deleteMcpRegistryEntry(name);
+  refreshGlobalToolRegistry();
+  await clearServerCache(name, entry.connection.config).catch((error) => {
+    debugLog("mcp", `[${name}] cleanup during disconnect failed: ${(error as Error).message}`);
+  });
+  return true;
+}
+
 /** Flatten every registered MCP server's tools and push them to the global Tool registry. */
 function refreshGlobalToolRegistry(): void {
   const allTools = getMcpRegistry().flatMap((entry) => entry.tools);

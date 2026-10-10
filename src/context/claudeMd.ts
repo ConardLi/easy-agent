@@ -114,19 +114,42 @@ export async function getAgentMdFiles(cwd: string): Promise<string[]> {
   return files;
 }
 
-export async function loadAgentMdContext(cwd: string): Promise<string> {
+/** A project memory file that exists, in load order. */
+export interface AgentMdFile {
+  filePath: string;
+  /** `global` is the user-wide file, `project` sits in the workspace, `ancestor` in a parent directory. */
+  scope: "global" | "ancestor" | "project";
+  /** Matched by `claudeMdExcludes`, so it is not loaded. */
+  excluded: boolean;
+  /** Content as loaded: HTML comments removed, trimmed. */
+  content: string;
+}
+
+/** Every non-empty project memory file in load order, excluded ones included and marked. */
+export async function listAgentMdFiles(cwd: string): Promise<AgentMdFile[]> {
   const [allFiles, excludes] = await Promise.all([getAgentMdFiles(cwd), loadAgentMdExcludes(cwd)]);
-  const files = allFiles.filter((filePath) => !isAgentMdExcluded(filePath, excludes));
+  const globalPath = getGlobalAgentMdPath();
+  const workspace = path.resolve(cwd);
   const loaded = await Promise.all(
-    files.map(async (filePath) => {
+    allFiles.map(async (filePath): Promise<AgentMdFile | null> => {
       const content = await readIfExists(filePath);
-      return content ? { filePath, content } : null;
+      if (!content) return null;
+      const scope = filePath === globalPath ? "global" : path.dirname(filePath) === workspace ? "project" : "ancestor";
+      return { filePath, scope, excluded: isAgentMdExcluded(filePath, excludes), content };
     }),
   );
+  return loaded.filter((entry): entry is AgentMdFile => entry !== null);
+}
 
-  const sections = loaded
-    .filter((entry): entry is { filePath: string; content: string } => entry !== null)
-    .map((entry) => "# Source: " + entry.filePath + "\n" + entry.content);
+/** The text one loaded file contributes to the project memory section. */
+export function formatAgentMdSection(file: Pick<AgentMdFile, "filePath" | "content">): string {
+  return "# Source: " + file.filePath + "\n" + file.content;
+}
 
-  return sections.join("\n\n");
+export async function loadAgentMdContext(cwd: string): Promise<string> {
+  const files = await listAgentMdFiles(cwd);
+  return files
+    .filter((file) => !file.excluded)
+    .map(formatAgentMdSection)
+    .join("\n\n");
 }

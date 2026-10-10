@@ -8,6 +8,8 @@
  *   - security boundaries: deny rules, safe defaults without a frontend,
  *     and workspace trust;
  *   - isolation of two sessions sharing one process;
+ *   - the runtime inventory, extension reload, `.mcp.json` approval, and the
+ *     context breakdown matching `/context`;
  *   - `/resume` replacing the session handle.
  *
  * Run: node --import tsx src/scripts/test-sdk-session.ts
@@ -91,6 +93,35 @@ async function transcriptTypes(sessionId: string): Promise<string[]> {
           ? `${entry.type}:${entry.phase}`
           : entry.type;
     });
+}
+
+/** A stdio MCP server with one read-only `echo` tool, written next to the test data. */
+async function writeEchoServer(): Promise<string> {
+  const serverPath = path.join(root, "echo-server.mjs");
+  const serverModule = (specifier: string) => import.meta.resolve(`@modelcontextprotocol/sdk/${specifier}`);
+  await writeFile(
+    serverPath,
+    `
+import { Server } from ${JSON.stringify(serverModule("server/index.js"))};
+import { StdioServerTransport } from ${JSON.stringify(serverModule("server/stdio.js"))};
+import { CallToolRequestSchema, ListToolsRequestSchema } from ${JSON.stringify(serverModule("types.js"))};
+
+const server = new Server({ name: "echo", version: "0.0.1" }, { capabilities: { tools: {} } });
+server.setRequestHandler(ListToolsRequestSchema, async () => ({
+  tools: [{
+    name: "echo",
+    description: "Echo back the message argument.",
+    inputSchema: { type: "object", properties: { message: { type: "string" } }, required: ["message"] },
+    annotations: { readOnlyHint: true },
+  }],
+}));
+server.setRequestHandler(CallToolRequestSchema, async (request) => ({
+  content: [{ type: "text", text: "echo:" + String(request.params.arguments?.message ?? "") }],
+}));
+await server.connect(new StdioServerTransport());
+`,
+  );
+  return serverPath;
 }
 
 let runtime: AgentRuntime = await sdk.createAgentRuntime({ cwd, services: false, logger: { warn() {}, error() {} } });
@@ -655,7 +686,164 @@ try {
     }
   });
 
-  console.log("\n[7] lifecycle");
+  console.log("\n[7] inventory, reload, MCP approval, and context");
+
+  const userSettingsFile = path.join(home, ".easy-agent", "settings.json");
+  const localSettingsFile = path.join(cwd, ".easy-agent", "settings.local.json");
+  const userSettings = await readFile(userSettingsFile, "utf8");
+  const skillDir = path.join(cwd, ".easy-agent", "skills", "sdk-review");
+  await writeFile(path.join(cwd, "AGENTS.md"), "# Rules\nKeep answers short.\n");
+  await writeFile(
+    userSettingsFile,
+    JSON.stringify({
+      deny: ["WebFetch"],
+      hooks: { PreToolUse: [{ matcher: "Write", hooks: [{ type: "command", command: "true" }] }] },
+    }),
+  );
+  await writeFile(
+    path.join(cwd, ".mcp.json"),
+    JSON.stringify({ mcpServers: { echo: { command: process.execPath, args: [await writeEchoServer()] } } }),
+  );
+
+  try {
+    await check("reload picks up a new skill and drops a deleted one", async () => {
+      const names = async () => (await runtime.getInventory()).skills.map((skill) => skill.name);
+      assert.ok(!(await names()).includes("sdk-review"));
+      await mkdir(skillDir, { recursive: true });
+      await writeFile(
+        path.join(skillDir, "SKILL.md"),
+        "---\nname: sdk-review\ndescription: Review the change before committing.\n---\nRead the diff and list problems.\n",
+      );
+      const reloaded = await runtime.reload();
+      assert.ok(reloaded.skills >= 1);
+      const skill = (await runtime.getInventory()).skills.find((item) => item.name === "sdk-review");
+      assert.ok(skill, "the new skill is listed after reload");
+      assert.equal(skill.source, "project");
+      assert.equal(skill.invocation, "model");
+      assert.ok(skill.listing.value > 0 && skill.listing.estimated);
+      assert.ok(skill.body.value > 0);
+      await rm(skillDir, { recursive: true, force: true });
+      await runtime.reload();
+      assert.ok(!(await names()).includes("sdk-review"), "the deleted skill is gone after reload");
+      await mkdir(skillDir, { recursive: true });
+      await writeFile(
+        path.join(skillDir, "SKILL.md"),
+        "---\nname: sdk-review\ndescription: Review the change before committing.\n---\nRead the diff and list problems.\n",
+      );
+      await runtime.reload();
+    });
+
+    await check("the inventory lists rules, hooks, tools, commands, and agents with sources and state", async () => {
+      const inventory = await runtime.getInventory();
+      assert.equal(inventory.workspaceTrusted, true);
+      const rule = inventory.rules.find((item) => item.path === path.join(cwd, "AGENTS.md"));
+      assert.ok(rule, "the project AGENTS.md is a rule");
+      assert.equal(rule.scope, "project");
+      assert.equal(rule.lines, 2);
+      assert.ok(rule.enabled && rule.tokens.value > 0);
+      const hook = inventory.hooks.find((item) => item.source === "user" && item.event === "PreToolUse");
+      assert.ok(hook);
+      assert.equal(hook.matcher, "Write");
+      assert.equal(hook.enabled, false, "hooks are turned off in this test process");
+      assert.match(hook.reason ?? "", /turned off/);
+      const read = inventory.tools.find((tool) => tool.name === "Read");
+      assert.ok(read?.enabled && read.readOnly && read.source === "built-in" && read.schema.value > 0);
+      assert.ok(inventory.commands.some((command) => command.name === "help" && command.source === "built-in"));
+      assert.ok(inventory.agents.some((agent) => agent.source === "built-in" && agent.listing.value > 0));
+      assert.ok(inventory.outputStyles.some((style) => style.active));
+      const ids = Object.values(inventory)
+        .filter(Array.isArray)
+        .flatMap((items) => (items as Array<{ id?: string }>).map((item) => item.id))
+        .filter(Boolean);
+      assert.equal(new Set(ids).size, ids.length, "ids are unique");
+    });
+
+    await check("a .mcp.json server waits for approval, connects when approved, and stops when rejected", async () => {
+      let echo = (await runtime.getInventory()).mcpServers.find((server) => server.name === "echo");
+      assert.equal(echo?.status, "awaiting_approval");
+      assert.equal(echo?.enabled, false);
+      assert.equal(echo?.path, path.join(cwd, ".mcp.json"));
+
+      const approved = await runtime.approveMcpServer("echo", true);
+      assert.deepEqual(approved, { name: "echo", approved: true, scope: "local", status: "connected" });
+      assert.deepEqual(JSON.parse(await readFile(localSettingsFile, "utf8")), { enabledMcpjsonServers: ["echo"] });
+      echo = (await runtime.getInventory()).mcpServers.find((server) => server.name === "echo");
+      assert.equal(echo?.status, "connected");
+      assert.deepEqual(
+        echo?.tools.map((tool) => [tool.name, tool.readOnly]),
+        [["mcp__echo__echo", true]],
+      );
+      assert.equal(
+        (await runtime.getInventory()).tools.find((tool) => tool.name === "mcp__echo__echo")?.mcpServer,
+        "echo",
+      );
+
+      const reconnected = await runtime.reconnectMcpServer("echo");
+      assert.deepEqual(reconnected, { name: "echo", status: "connected", toolCount: 1 });
+
+      const session = await runtime.createSession({ model: FIXTURE_MODEL });
+      fixture.script([{ kind: "text", text: "Counted." }]);
+      await session.send("Hello.");
+      const context = await session.getContext();
+      assert.deepEqual(
+        context.categories.map((category) => category.id),
+        ["system", "tools", "mcp", "skills", "plugins", "rules", "messages"],
+      );
+      const sum = (values: number[]) => values.reduce((total, value) => total + value, 0);
+      assert.equal(sum(context.categories.map((category) => category.tokens)), context.used);
+      assert.equal(sum(Object.values(context.totals)), context.used);
+      for (const category of context.categories) {
+        assert.equal(sum(category.items.map((item) => item.tokens)), category.tokens, `${category.id} items add up`);
+      }
+      const byId = Object.fromEntries(context.categories.map((category) => [category.id, category]));
+      assert.ok(
+        byId.mcp!.items.some((item) => item.id === "echo" && item.tokens > 0),
+        "MCP tools are counted",
+      );
+      assert.ok(
+        byId.skills!.items.some((item) => item.id === "sdk-review"),
+        "listed skills are counted",
+      );
+      assert.ok(byId.rules!.items.some((item) => item.id === path.join(cwd, "AGENTS.md")));
+      assert.equal(byId.rules!.tokens, context.totals.memory);
+      assert.equal(byId.messages!.tokens, context.totals.conversation);
+      assert.equal(context.free, context.contextWindow - context.used);
+
+      const events = record(session);
+      await session.runCommand("context");
+      const output = events.find((event) => event.type === "command_output");
+      assert.ok(output?.type === "command_output");
+      const fmt = (n: number) => n.toLocaleString("en-US");
+      assert.match(output.message, new RegExp(`Estimated used: ${fmt(context.used)} / ${fmt(context.contextWindow)}`));
+      assert.match(output.message, new RegExp(`Tool definitions .* ${fmt(context.totals.tools)} tok`));
+      await session.close();
+
+      const rejected = await runtime.approveMcpServer("echo", false);
+      assert.deepEqual(rejected, { name: "echo", approved: false, scope: "local", status: null });
+      assert.deepEqual(JSON.parse(await readFile(localSettingsFile, "utf8")), { disabledMcpjsonServers: ["echo"] });
+      echo = (await runtime.getInventory()).mcpServers.find((server) => server.name === "echo");
+      assert.equal(echo?.status, "rejected");
+      assert.ok(!(await runtime.getInventory()).tools.some((tool) => tool.name === "mcp__echo__echo"));
+
+      await assert.rejects(runtime.approveMcpServer("missing", true), (error: unknown) =>
+        sdk.isAgentSdkError(error, "not_found"),
+      );
+      await assert.rejects(runtime.reconnectMcpServer("missing"), (error: unknown) =>
+        sdk.isAgentSdkError(error, "not_found"),
+      );
+    });
+  } finally {
+    await writeFile(userSettingsFile, userSettings);
+    await Promise.all([
+      rm(localSettingsFile, { force: true }),
+      rm(path.join(cwd, ".mcp.json"), { force: true }),
+      rm(path.join(cwd, "AGENTS.md"), { force: true }),
+      rm(skillDir, { recursive: true, force: true }),
+    ]);
+    await runtime.reload();
+  }
+
+  console.log("\n[8] lifecycle");
 
   await check("/resume hands out a new session handle", async () => {
     const saved = await runtime.createSession({ model: FIXTURE_MODEL });
