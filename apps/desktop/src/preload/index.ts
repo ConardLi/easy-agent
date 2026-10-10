@@ -48,6 +48,16 @@ const api: DesktopApi = {
     onEvent: (listener) => subscribe<[AgentEventMessage]>(IPC.agentEvent, listener),
     onLog: (listener) => subscribe<[AgentLogMessage]>(IPC.agentLog, listener),
   },
+  customize: {
+    readText: (workspaceId, path) => ipcRenderer.invoke(IPC.customizeRead, workspaceId, path),
+    writeText: (workspaceId, path, content) => ipcRenderer.invoke(IPC.customizeWrite, workspaceId, path, content),
+    listFiles: (workspaceId, dir) => ipcRenderer.invoke(IPC.customizeList, workspaceId, dir),
+    pickSkill: () => ipcRenderer.invoke(IPC.customizePickSkill),
+    previewSkill: (path) => ipcRenderer.invoke(IPC.customizePreviewSkill, path),
+    installSkill: (workspaceId, source, scope) => ipcRenderer.invoke(IPC.customizeInstallSkill, workspaceId, source, scope),
+    trashSkill: (workspaceId, dir) => ipcRenderer.invoke(IPC.customizeTrashSkill, workspaceId, dir),
+    setMcpJsonServer: (workspaceId, name, entry) => ipcRenderer.invoke(IPC.customizeMcpJson, workspaceId, name, entry),
+  },
 };
 
 contextBridge.exposeInMainWorld("easyAgent", api);

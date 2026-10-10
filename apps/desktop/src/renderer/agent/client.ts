@@ -33,5 +33,7 @@ export const agent = {
 /** A message for the person, from any failure. */
 export function describeError(error: unknown): string {
   if (error instanceof AgentCallError && error.sdkCode === "busy") return "Agent 正在处理上一条消息";
-  return error instanceof Error ? error.message : String(error);
+  // Errors thrown in the main process arrive wrapped in the IPC channel name.
+  const message = error instanceof Error ? error.message : String(error);
+  return message.replace(/^Error invoking remote method '[^']+': (?:Error: )?/, "");
 }

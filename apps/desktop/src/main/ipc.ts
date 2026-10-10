@@ -7,6 +7,7 @@ import { type AppInfo, IPC, type Prefs, type WorkspacePatch } from "../shared/co
 import type { HostManager } from "./agent/hosts";
 import { writeFile } from "node:fs/promises";
 import { captureScreenRegion } from "./services/capture";
+import { installSkill, listFiles, previewSkill, readText, setMcpJsonServer, skillFolderToRemove, writeText } from "./services/customize";
 import { searchFiles } from "./services/files";
 import { currentBranch } from "./services/git";
 import type { PrefsStore } from "./services/prefs";
@@ -101,4 +102,34 @@ export function registerIpc({
   );
   ipcMain.handle(IPC.agentSnapshot, (_event, id: unknown, sessionId: unknown) => hosts.snapshot(asString(id), asString(sessionId)));
   ipcMain.handle(IPC.agentOpenSessions, (_event, id: unknown) => hosts.openSessions(asString(id)));
+
+  const workspacePath = (id: unknown): string => {
+    const workspace = workspaces.find(asString(id));
+    if (!workspace) throw new Error("没有这个工作区");
+    return workspace.path;
+  };
+  ipcMain.handle(IPC.customizeRead, (_event, id: unknown, path: unknown) => readText(workspacePath(id), asString(path)));
+  ipcMain.handle(IPC.customizeWrite, (_event, id: unknown, path: unknown, content: unknown) => writeText(workspacePath(id), asString(path), asString(content)));
+  ipcMain.handle(IPC.customizeList, (_event, id: unknown, dir: unknown) => listFiles(workspacePath(id), asString(dir)));
+  ipcMain.handle(IPC.customizePickSkill, async (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    const options = { title: "选择技能文件夹", properties: ["openDirectory"] as "openDirectory"[] };
+    const picked = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options);
+    const path = picked.filePaths[0];
+    return picked.canceled || !path ? null : previewSkill(path);
+  });
+  ipcMain.handle(IPC.customizePreviewSkill, (_event, path: unknown) => previewSkill(asString(path)));
+  ipcMain.handle(IPC.customizeInstallSkill, (_event, id: unknown, source: unknown, scope: unknown) =>
+    installSkill(workspacePath(id), asString(source), scope === "user" ? "user" : "project"),
+  );
+  ipcMain.handle(IPC.customizeTrashSkill, async (_event, id: unknown, dir: unknown) => {
+    await shell.trashItem(await skillFolderToRemove(workspacePath(id), asString(dir)));
+  });
+  ipcMain.handle(IPC.customizeMcpJson, (_event, id: unknown, name: unknown, entry: unknown) =>
+    setMcpJsonServer(
+      workspacePath(id),
+      asString(name),
+      entry && typeof entry === "object" && !Array.isArray(entry) ? (entry as Record<string, unknown>) : null,
+    ),
+  );
 }
