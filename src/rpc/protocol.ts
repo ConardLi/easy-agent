@@ -167,6 +167,71 @@ const inventoryItem = <K extends string>(kind: K, fields: z.ZodRawShape = {}) =>
     })
     .loose();
 
+const PluginScopeSchema = z.enum(["user", "project", "local"]);
+
+const PluginComponentNamesSchema = z
+  .object({
+    skills: z.array(z.string()),
+    agents: z.array(z.string()),
+    commands: z.array(z.string()),
+    outputStyles: z.array(z.string()),
+    hooks: z.array(z.string()),
+    mcpServers: z.array(z.string()),
+    lspServers: z.array(z.string()).optional(),
+  })
+  .loose();
+
+const PluginViewSchema = z
+  .object({
+    installed: z.array(
+      z
+        .object({
+          pluginId: z.string(),
+          name: z.string(),
+          marketplace: z.string(),
+          version: z.string(),
+          enabled: z.boolean(),
+          scope: PluginScopeSchema.optional(),
+          components: z.record(z.string(), z.number().int()),
+          componentNames: PluginComponentNamesSchema,
+          hasExecutableComponents: z.boolean(),
+          warnings: z.array(z.string()),
+          errorCount: z.number().int(),
+          executablesTrusted: z.boolean(),
+        })
+        .loose(),
+    ),
+    available: z.array(z.object({ pluginId: z.string(), name: z.string(), marketplace: z.string() }).loose()),
+    marketplaces: z.array(
+      z
+        .object({
+          name: z.string(),
+          kind: z.enum(["local", "git"]),
+          location: z.string(),
+          lastUpdated: z.string(),
+          pluginCount: z.number().int().nullable(),
+          error: z.string().optional(),
+        })
+        .loose(),
+    ),
+    errors: z.array(z.object({ pluginId: z.string(), scope: z.string(), message: z.string() })),
+    projectTrusted: z.boolean(),
+  })
+  .loose();
+
+const PluginPreviewSchema = z
+  .object({
+    pluginId: z.string(),
+    version: z.string(),
+    fingerprint: z.string(),
+    description: z.string().optional(),
+    components: PluginComponentNamesSchema,
+    hasExecutableComponents: z.boolean(),
+    warnings: z.array(z.string()),
+    errors: z.array(z.string()),
+  })
+  .loose();
+
 const RuntimeInventorySchema = z
   .object({
     workspaceTrusted: z.boolean(),
@@ -289,6 +354,31 @@ export const MethodParams = {
     scope: z.enum(["user", "project", "local"]).optional(),
   }),
   "mcp/reconnect": z.object({ name: z.string().min(1) }),
+  "plugins/list": z.object({}),
+  /** Fetches and validates the plugin without installing it; show the result to the user before installing. */
+  "plugins/preview": z.object({ pluginId: z.string().min(1) }),
+  /** `fingerprint` comes from the preview the user confirmed; the install fails when the content changed since. */
+  "plugins/install": z.object({
+    pluginId: z.string().min(1),
+    scope: PluginScopeSchema.optional(),
+    fingerprint: z.string().min(1),
+  }),
+  "plugins/update": z.object({
+    pluginId: z.string().min(1),
+    scope: PluginScopeSchema.optional(),
+    fingerprint: z.string().min(1),
+  }),
+  "plugins/enable": z.object({ pluginId: z.string().min(1), scope: PluginScopeSchema.optional() }),
+  "plugins/disable": z.object({ pluginId: z.string().min(1), scope: PluginScopeSchema.optional() }),
+  "plugins/uninstall": z.object({
+    pluginId: z.string().min(1),
+    scope: PluginScopeSchema.optional(),
+    keepData: z.boolean().optional(),
+  }),
+  /** A local directory, a Git URL, or GitHub `owner/repo`. */
+  "marketplace/add": z.object({ source: z.string().min(1) }),
+  "marketplace/update": z.object({ name: z.string().min(1) }),
+  "marketplace/remove": z.object({ name: z.string().min(1) }),
   "config/read": z.object({}),
   /** `value: null` deletes the key. `[redacted]` inside the value keeps what the file already holds there. */
   "config/write": z.object({ scope: z.enum(["user", "project", "local"]), key: z.string().min(1), value: z.unknown() }),
@@ -385,6 +475,16 @@ export const MethodResults = {
     error: z.string().optional(),
     toolCount: z.number().int(),
   }),
+  "plugins/list": PluginViewSchema,
+  "plugins/preview": PluginPreviewSchema,
+  "plugins/install": PluginViewSchema,
+  "plugins/update": PluginViewSchema,
+  "plugins/enable": PluginViewSchema,
+  "plugins/disable": PluginViewSchema,
+  "plugins/uninstall": PluginViewSchema,
+  "marketplace/add": PluginViewSchema,
+  "marketplace/update": PluginViewSchema,
+  "marketplace/remove": PluginViewSchema,
   "config/read": z
     .object({
       workspaceTrusted: z.boolean(),

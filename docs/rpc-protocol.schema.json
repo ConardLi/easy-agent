@@ -287,6 +287,441 @@
             },
             "method": {
               "type": "string",
+              "const": "plugins/list"
+            },
+            "params": {
+              "type": "object",
+              "properties": {}
+            }
+          },
+          "required": [
+            "jsonrpc",
+            "method"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "jsonrpc": {
+              "type": "string",
+              "const": "2.0"
+            },
+            "id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "method": {
+              "type": "string",
+              "const": "plugins/preview"
+            },
+            "params": {
+              "type": "object",
+              "properties": {
+                "pluginId": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "pluginId"
+              ]
+            }
+          },
+          "required": [
+            "jsonrpc",
+            "method"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "jsonrpc": {
+              "type": "string",
+              "const": "2.0"
+            },
+            "id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "method": {
+              "type": "string",
+              "const": "plugins/install"
+            },
+            "params": {
+              "type": "object",
+              "properties": {
+                "pluginId": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "scope": {
+                  "type": "string",
+                  "enum": [
+                    "user",
+                    "project",
+                    "local"
+                  ]
+                },
+                "fingerprint": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "pluginId",
+                "fingerprint"
+              ]
+            }
+          },
+          "required": [
+            "jsonrpc",
+            "method"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "jsonrpc": {
+              "type": "string",
+              "const": "2.0"
+            },
+            "id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "method": {
+              "type": "string",
+              "const": "plugins/update"
+            },
+            "params": {
+              "type": "object",
+              "properties": {
+                "pluginId": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "scope": {
+                  "type": "string",
+                  "enum": [
+                    "user",
+                    "project",
+                    "local"
+                  ]
+                },
+                "fingerprint": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "pluginId",
+                "fingerprint"
+              ]
+            }
+          },
+          "required": [
+            "jsonrpc",
+            "method"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "jsonrpc": {
+              "type": "string",
+              "const": "2.0"
+            },
+            "id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "method": {
+              "type": "string",
+              "const": "plugins/enable"
+            },
+            "params": {
+              "type": "object",
+              "properties": {
+                "pluginId": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "scope": {
+                  "type": "string",
+                  "enum": [
+                    "user",
+                    "project",
+                    "local"
+                  ]
+                }
+              },
+              "required": [
+                "pluginId"
+              ]
+            }
+          },
+          "required": [
+            "jsonrpc",
+            "method"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "jsonrpc": {
+              "type": "string",
+              "const": "2.0"
+            },
+            "id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "method": {
+              "type": "string",
+              "const": "plugins/disable"
+            },
+            "params": {
+              "type": "object",
+              "properties": {
+                "pluginId": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "scope": {
+                  "type": "string",
+                  "enum": [
+                    "user",
+                    "project",
+                    "local"
+                  ]
+                }
+              },
+              "required": [
+                "pluginId"
+              ]
+            }
+          },
+          "required": [
+            "jsonrpc",
+            "method"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "jsonrpc": {
+              "type": "string",
+              "const": "2.0"
+            },
+            "id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "method": {
+              "type": "string",
+              "const": "plugins/uninstall"
+            },
+            "params": {
+              "type": "object",
+              "properties": {
+                "pluginId": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "scope": {
+                  "type": "string",
+                  "enum": [
+                    "user",
+                    "project",
+                    "local"
+                  ]
+                },
+                "keepData": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "pluginId"
+              ]
+            }
+          },
+          "required": [
+            "jsonrpc",
+            "method"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "jsonrpc": {
+              "type": "string",
+              "const": "2.0"
+            },
+            "id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "method": {
+              "type": "string",
+              "const": "marketplace/add"
+            },
+            "params": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "source"
+              ]
+            }
+          },
+          "required": [
+            "jsonrpc",
+            "method"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "jsonrpc": {
+              "type": "string",
+              "const": "2.0"
+            },
+            "id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "method": {
+              "type": "string",
+              "const": "marketplace/update"
+            },
+            "params": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "name"
+              ]
+            }
+          },
+          "required": [
+            "jsonrpc",
+            "method"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "jsonrpc": {
+              "type": "string",
+              "const": "2.0"
+            },
+            "id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "method": {
+              "type": "string",
+              "const": "marketplace/remove"
+            },
+            "params": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "name"
+              ]
+            }
+          },
+          "required": [
+            "jsonrpc",
+            "method"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "jsonrpc": {
+              "type": "string",
+              "const": "2.0"
+            },
+            "id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "method": {
+              "type": "string",
               "const": "config/read"
             },
             "params": {
@@ -2946,6 +3381,2237 @@
             "toolCount"
           ]
         },
+        "plugins/list": {
+          "type": "object",
+          "properties": {
+            "installed": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "pluginId": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "marketplace": {
+                    "type": "string"
+                  },
+                  "version": {
+                    "type": "string"
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "scope": {
+                    "type": "string",
+                    "enum": [
+                      "user",
+                      "project",
+                      "local"
+                    ]
+                  },
+                  "components": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "componentNames": {
+                    "type": "object",
+                    "properties": {
+                      "skills": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "agents": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "commands": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "outputStyles": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "hooks": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "mcpServers": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "lspServers": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "required": [
+                      "skills",
+                      "agents",
+                      "commands",
+                      "outputStyles",
+                      "hooks",
+                      "mcpServers"
+                    ],
+                    "additionalProperties": {}
+                  },
+                  "hasExecutableComponents": {
+                    "type": "boolean"
+                  },
+                  "warnings": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "errorCount": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "executablesTrusted": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "pluginId",
+                  "name",
+                  "marketplace",
+                  "version",
+                  "enabled",
+                  "components",
+                  "componentNames",
+                  "hasExecutableComponents",
+                  "warnings",
+                  "errorCount",
+                  "executablesTrusted"
+                ],
+                "additionalProperties": {}
+              }
+            },
+            "available": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "pluginId": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "marketplace": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "pluginId",
+                  "name",
+                  "marketplace"
+                ],
+                "additionalProperties": {}
+              }
+            },
+            "marketplaces": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "local",
+                      "git"
+                    ]
+                  },
+                  "location": {
+                    "type": "string"
+                  },
+                  "lastUpdated": {
+                    "type": "string"
+                  },
+                  "pluginCount": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "error": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name",
+                  "kind",
+                  "location",
+                  "lastUpdated",
+                  "pluginCount"
+                ],
+                "additionalProperties": {}
+              }
+            },
+            "errors": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "pluginId": {
+                    "type": "string"
+                  },
+                  "scope": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "pluginId",
+                  "scope",
+                  "message"
+                ]
+              }
+            },
+            "projectTrusted": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "installed",
+            "available",
+            "marketplaces",
+            "errors",
+            "projectTrusted"
+          ],
+          "additionalProperties": {}
+        },
+        "plugins/preview": {
+          "type": "object",
+          "properties": {
+            "pluginId": {
+              "type": "string"
+            },
+            "version": {
+              "type": "string"
+            },
+            "fingerprint": {
+              "type": "string"
+            },
+            "description": {
+              "type": "string"
+            },
+            "components": {
+              "type": "object",
+              "properties": {
+                "skills": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "agents": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "commands": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "outputStyles": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "hooks": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "mcpServers": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "lspServers": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "skills",
+                "agents",
+                "commands",
+                "outputStyles",
+                "hooks",
+                "mcpServers"
+              ],
+              "additionalProperties": {}
+            },
+            "hasExecutableComponents": {
+              "type": "boolean"
+            },
+            "warnings": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "errors": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "pluginId",
+            "version",
+            "fingerprint",
+            "components",
+            "hasExecutableComponents",
+            "warnings",
+            "errors"
+          ],
+          "additionalProperties": {}
+        },
+        "plugins/install": {
+          "type": "object",
+          "properties": {
+            "installed": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "pluginId": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "marketplace": {
+                    "type": "string"
+                  },
+                  "version": {
+                    "type": "string"
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "scope": {
+                    "type": "string",
+                    "enum": [
+                      "user",
+                      "project",
+                      "local"
+                    ]
+                  },
+                  "components": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "componentNames": {
+                    "type": "object",
+                    "properties": {
+                      "skills": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "agents": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "commands": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "outputStyles": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "hooks": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "mcpServers": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "lspServers": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "required": [
+                      "skills",
+                      "agents",
+                      "commands",
+                      "outputStyles",
+                      "hooks",
+                      "mcpServers"
+                    ],
+                    "additionalProperties": {}
+                  },
+                  "hasExecutableComponents": {
+                    "type": "boolean"
+                  },
+                  "warnings": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "errorCount": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "executablesTrusted": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "pluginId",
+                  "name",
+                  "marketplace",
+                  "version",
+                  "enabled",
+                  "components",
+                  "componentNames",
+                  "hasExecutableComponents",
+                  "warnings",
+                  "errorCount",
+                  "executablesTrusted"
+                ],
+                "additionalProperties": {}
+              }
+            },
+            "available": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "pluginId": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "marketplace": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "pluginId",
+                  "name",
+                  "marketplace"
+                ],
+                "additionalProperties": {}
+              }
+            },
+            "marketplaces": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "local",
+                      "git"
+                    ]
+                  },
+                  "location": {
+                    "type": "string"
+                  },
+                  "lastUpdated": {
+                    "type": "string"
+                  },
+                  "pluginCount": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "error": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name",
+                  "kind",
+                  "location",
+                  "lastUpdated",
+                  "pluginCount"
+                ],
+                "additionalProperties": {}
+              }
+            },
+            "errors": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "pluginId": {
+                    "type": "string"
+                  },
+                  "scope": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "pluginId",
+                  "scope",
+                  "message"
+                ]
+              }
+            },
+            "projectTrusted": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "installed",
+            "available",
+            "marketplaces",
+            "errors",
+            "projectTrusted"
+          ],
+          "additionalProperties": {}
+        },
+        "plugins/update": {
+          "type": "object",
+          "properties": {
+            "installed": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "pluginId": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "marketplace": {
+                    "type": "string"
+                  },
+                  "version": {
+                    "type": "string"
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "scope": {
+                    "type": "string",
+                    "enum": [
+                      "user",
+                      "project",
+                      "local"
+                    ]
+                  },
+                  "components": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "componentNames": {
+                    "type": "object",
+                    "properties": {
+                      "skills": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "agents": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "commands": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "outputStyles": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "hooks": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "mcpServers": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "lspServers": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "required": [
+                      "skills",
+                      "agents",
+                      "commands",
+                      "outputStyles",
+                      "hooks",
+                      "mcpServers"
+                    ],
+                    "additionalProperties": {}
+                  },
+                  "hasExecutableComponents": {
+                    "type": "boolean"
+                  },
+                  "warnings": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "errorCount": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "executablesTrusted": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "pluginId",
+                  "name",
+                  "marketplace",
+                  "version",
+                  "enabled",
+                  "components",
+                  "componentNames",
+                  "hasExecutableComponents",
+                  "warnings",
+                  "errorCount",
+                  "executablesTrusted"
+                ],
+                "additionalProperties": {}
+              }
+            },
+            "available": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "pluginId": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "marketplace": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "pluginId",
+                  "name",
+                  "marketplace"
+                ],
+                "additionalProperties": {}
+              }
+            },
+            "marketplaces": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "local",
+                      "git"
+                    ]
+                  },
+                  "location": {
+                    "type": "string"
+                  },
+                  "lastUpdated": {
+                    "type": "string"
+                  },
+                  "pluginCount": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "error": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name",
+                  "kind",
+                  "location",
+                  "lastUpdated",
+                  "pluginCount"
+                ],
+                "additionalProperties": {}
+              }
+            },
+            "errors": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "pluginId": {
+                    "type": "string"
+                  },
+                  "scope": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "pluginId",
+                  "scope",
+                  "message"
+                ]
+              }
+            },
+            "projectTrusted": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "installed",
+            "available",
+            "marketplaces",
+            "errors",
+            "projectTrusted"
+          ],
+          "additionalProperties": {}
+        },
+        "plugins/enable": {
+          "type": "object",
+          "properties": {
+            "installed": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "pluginId": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "marketplace": {
+                    "type": "string"
+                  },
+                  "version": {
+                    "type": "string"
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "scope": {
+                    "type": "string",
+                    "enum": [
+                      "user",
+                      "project",
+                      "local"
+                    ]
+                  },
+                  "components": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "componentNames": {
+                    "type": "object",
+                    "properties": {
+                      "skills": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "agents": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "commands": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "outputStyles": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "hooks": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "mcpServers": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "lspServers": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "required": [
+                      "skills",
+                      "agents",
+                      "commands",
+                      "outputStyles",
+                      "hooks",
+                      "mcpServers"
+                    ],
+                    "additionalProperties": {}
+                  },
+                  "hasExecutableComponents": {
+                    "type": "boolean"
+                  },
+                  "warnings": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "errorCount": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "executablesTrusted": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "pluginId",
+                  "name",
+                  "marketplace",
+                  "version",
+                  "enabled",
+                  "components",
+                  "componentNames",
+                  "hasExecutableComponents",
+                  "warnings",
+                  "errorCount",
+                  "executablesTrusted"
+                ],
+                "additionalProperties": {}
+              }
+            },
+            "available": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "pluginId": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "marketplace": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "pluginId",
+                  "name",
+                  "marketplace"
+                ],
+                "additionalProperties": {}
+              }
+            },
+            "marketplaces": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "local",
+                      "git"
+                    ]
+                  },
+                  "location": {
+                    "type": "string"
+                  },
+                  "lastUpdated": {
+                    "type": "string"
+                  },
+                  "pluginCount": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "error": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name",
+                  "kind",
+                  "location",
+                  "lastUpdated",
+                  "pluginCount"
+                ],
+                "additionalProperties": {}
+              }
+            },
+            "errors": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "pluginId": {
+                    "type": "string"
+                  },
+                  "scope": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "pluginId",
+                  "scope",
+                  "message"
+                ]
+              }
+            },
+            "projectTrusted": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "installed",
+            "available",
+            "marketplaces",
+            "errors",
+            "projectTrusted"
+          ],
+          "additionalProperties": {}
+        },
+        "plugins/disable": {
+          "type": "object",
+          "properties": {
+            "installed": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "pluginId": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "marketplace": {
+                    "type": "string"
+                  },
+                  "version": {
+                    "type": "string"
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "scope": {
+                    "type": "string",
+                    "enum": [
+                      "user",
+                      "project",
+                      "local"
+                    ]
+                  },
+                  "components": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "componentNames": {
+                    "type": "object",
+                    "properties": {
+                      "skills": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "agents": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "commands": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "outputStyles": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "hooks": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "mcpServers": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "lspServers": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "required": [
+                      "skills",
+                      "agents",
+                      "commands",
+                      "outputStyles",
+                      "hooks",
+                      "mcpServers"
+                    ],
+                    "additionalProperties": {}
+                  },
+                  "hasExecutableComponents": {
+                    "type": "boolean"
+                  },
+                  "warnings": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "errorCount": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "executablesTrusted": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "pluginId",
+                  "name",
+                  "marketplace",
+                  "version",
+                  "enabled",
+                  "components",
+                  "componentNames",
+                  "hasExecutableComponents",
+                  "warnings",
+                  "errorCount",
+                  "executablesTrusted"
+                ],
+                "additionalProperties": {}
+              }
+            },
+            "available": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "pluginId": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "marketplace": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "pluginId",
+                  "name",
+                  "marketplace"
+                ],
+                "additionalProperties": {}
+              }
+            },
+            "marketplaces": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "local",
+                      "git"
+                    ]
+                  },
+                  "location": {
+                    "type": "string"
+                  },
+                  "lastUpdated": {
+                    "type": "string"
+                  },
+                  "pluginCount": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "error": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name",
+                  "kind",
+                  "location",
+                  "lastUpdated",
+                  "pluginCount"
+                ],
+                "additionalProperties": {}
+              }
+            },
+            "errors": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "pluginId": {
+                    "type": "string"
+                  },
+                  "scope": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "pluginId",
+                  "scope",
+                  "message"
+                ]
+              }
+            },
+            "projectTrusted": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "installed",
+            "available",
+            "marketplaces",
+            "errors",
+            "projectTrusted"
+          ],
+          "additionalProperties": {}
+        },
+        "plugins/uninstall": {
+          "type": "object",
+          "properties": {
+            "installed": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "pluginId": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "marketplace": {
+                    "type": "string"
+                  },
+                  "version": {
+                    "type": "string"
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "scope": {
+                    "type": "string",
+                    "enum": [
+                      "user",
+                      "project",
+                      "local"
+                    ]
+                  },
+                  "components": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "componentNames": {
+                    "type": "object",
+                    "properties": {
+                      "skills": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "agents": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "commands": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "outputStyles": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "hooks": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "mcpServers": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "lspServers": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "required": [
+                      "skills",
+                      "agents",
+                      "commands",
+                      "outputStyles",
+                      "hooks",
+                      "mcpServers"
+                    ],
+                    "additionalProperties": {}
+                  },
+                  "hasExecutableComponents": {
+                    "type": "boolean"
+                  },
+                  "warnings": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "errorCount": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "executablesTrusted": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "pluginId",
+                  "name",
+                  "marketplace",
+                  "version",
+                  "enabled",
+                  "components",
+                  "componentNames",
+                  "hasExecutableComponents",
+                  "warnings",
+                  "errorCount",
+                  "executablesTrusted"
+                ],
+                "additionalProperties": {}
+              }
+            },
+            "available": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "pluginId": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "marketplace": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "pluginId",
+                  "name",
+                  "marketplace"
+                ],
+                "additionalProperties": {}
+              }
+            },
+            "marketplaces": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "local",
+                      "git"
+                    ]
+                  },
+                  "location": {
+                    "type": "string"
+                  },
+                  "lastUpdated": {
+                    "type": "string"
+                  },
+                  "pluginCount": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "error": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name",
+                  "kind",
+                  "location",
+                  "lastUpdated",
+                  "pluginCount"
+                ],
+                "additionalProperties": {}
+              }
+            },
+            "errors": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "pluginId": {
+                    "type": "string"
+                  },
+                  "scope": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "pluginId",
+                  "scope",
+                  "message"
+                ]
+              }
+            },
+            "projectTrusted": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "installed",
+            "available",
+            "marketplaces",
+            "errors",
+            "projectTrusted"
+          ],
+          "additionalProperties": {}
+        },
+        "marketplace/add": {
+          "type": "object",
+          "properties": {
+            "installed": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "pluginId": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "marketplace": {
+                    "type": "string"
+                  },
+                  "version": {
+                    "type": "string"
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "scope": {
+                    "type": "string",
+                    "enum": [
+                      "user",
+                      "project",
+                      "local"
+                    ]
+                  },
+                  "components": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "componentNames": {
+                    "type": "object",
+                    "properties": {
+                      "skills": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "agents": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "commands": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "outputStyles": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "hooks": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "mcpServers": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "lspServers": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "required": [
+                      "skills",
+                      "agents",
+                      "commands",
+                      "outputStyles",
+                      "hooks",
+                      "mcpServers"
+                    ],
+                    "additionalProperties": {}
+                  },
+                  "hasExecutableComponents": {
+                    "type": "boolean"
+                  },
+                  "warnings": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "errorCount": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "executablesTrusted": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "pluginId",
+                  "name",
+                  "marketplace",
+                  "version",
+                  "enabled",
+                  "components",
+                  "componentNames",
+                  "hasExecutableComponents",
+                  "warnings",
+                  "errorCount",
+                  "executablesTrusted"
+                ],
+                "additionalProperties": {}
+              }
+            },
+            "available": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "pluginId": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "marketplace": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "pluginId",
+                  "name",
+                  "marketplace"
+                ],
+                "additionalProperties": {}
+              }
+            },
+            "marketplaces": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "local",
+                      "git"
+                    ]
+                  },
+                  "location": {
+                    "type": "string"
+                  },
+                  "lastUpdated": {
+                    "type": "string"
+                  },
+                  "pluginCount": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "error": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name",
+                  "kind",
+                  "location",
+                  "lastUpdated",
+                  "pluginCount"
+                ],
+                "additionalProperties": {}
+              }
+            },
+            "errors": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "pluginId": {
+                    "type": "string"
+                  },
+                  "scope": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "pluginId",
+                  "scope",
+                  "message"
+                ]
+              }
+            },
+            "projectTrusted": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "installed",
+            "available",
+            "marketplaces",
+            "errors",
+            "projectTrusted"
+          ],
+          "additionalProperties": {}
+        },
+        "marketplace/update": {
+          "type": "object",
+          "properties": {
+            "installed": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "pluginId": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "marketplace": {
+                    "type": "string"
+                  },
+                  "version": {
+                    "type": "string"
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "scope": {
+                    "type": "string",
+                    "enum": [
+                      "user",
+                      "project",
+                      "local"
+                    ]
+                  },
+                  "components": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "componentNames": {
+                    "type": "object",
+                    "properties": {
+                      "skills": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "agents": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "commands": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "outputStyles": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "hooks": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "mcpServers": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "lspServers": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "required": [
+                      "skills",
+                      "agents",
+                      "commands",
+                      "outputStyles",
+                      "hooks",
+                      "mcpServers"
+                    ],
+                    "additionalProperties": {}
+                  },
+                  "hasExecutableComponents": {
+                    "type": "boolean"
+                  },
+                  "warnings": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "errorCount": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "executablesTrusted": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "pluginId",
+                  "name",
+                  "marketplace",
+                  "version",
+                  "enabled",
+                  "components",
+                  "componentNames",
+                  "hasExecutableComponents",
+                  "warnings",
+                  "errorCount",
+                  "executablesTrusted"
+                ],
+                "additionalProperties": {}
+              }
+            },
+            "available": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "pluginId": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "marketplace": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "pluginId",
+                  "name",
+                  "marketplace"
+                ],
+                "additionalProperties": {}
+              }
+            },
+            "marketplaces": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "local",
+                      "git"
+                    ]
+                  },
+                  "location": {
+                    "type": "string"
+                  },
+                  "lastUpdated": {
+                    "type": "string"
+                  },
+                  "pluginCount": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "error": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name",
+                  "kind",
+                  "location",
+                  "lastUpdated",
+                  "pluginCount"
+                ],
+                "additionalProperties": {}
+              }
+            },
+            "errors": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "pluginId": {
+                    "type": "string"
+                  },
+                  "scope": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "pluginId",
+                  "scope",
+                  "message"
+                ]
+              }
+            },
+            "projectTrusted": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "installed",
+            "available",
+            "marketplaces",
+            "errors",
+            "projectTrusted"
+          ],
+          "additionalProperties": {}
+        },
+        "marketplace/remove": {
+          "type": "object",
+          "properties": {
+            "installed": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "pluginId": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "marketplace": {
+                    "type": "string"
+                  },
+                  "version": {
+                    "type": "string"
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "scope": {
+                    "type": "string",
+                    "enum": [
+                      "user",
+                      "project",
+                      "local"
+                    ]
+                  },
+                  "components": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "componentNames": {
+                    "type": "object",
+                    "properties": {
+                      "skills": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "agents": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "commands": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "outputStyles": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "hooks": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "mcpServers": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "lspServers": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "required": [
+                      "skills",
+                      "agents",
+                      "commands",
+                      "outputStyles",
+                      "hooks",
+                      "mcpServers"
+                    ],
+                    "additionalProperties": {}
+                  },
+                  "hasExecutableComponents": {
+                    "type": "boolean"
+                  },
+                  "warnings": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "errorCount": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "executablesTrusted": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "pluginId",
+                  "name",
+                  "marketplace",
+                  "version",
+                  "enabled",
+                  "components",
+                  "componentNames",
+                  "hasExecutableComponents",
+                  "warnings",
+                  "errorCount",
+                  "executablesTrusted"
+                ],
+                "additionalProperties": {}
+              }
+            },
+            "available": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "pluginId": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "marketplace": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "pluginId",
+                  "name",
+                  "marketplace"
+                ],
+                "additionalProperties": {}
+              }
+            },
+            "marketplaces": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "local",
+                      "git"
+                    ]
+                  },
+                  "location": {
+                    "type": "string"
+                  },
+                  "lastUpdated": {
+                    "type": "string"
+                  },
+                  "pluginCount": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "error": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name",
+                  "kind",
+                  "location",
+                  "lastUpdated",
+                  "pluginCount"
+                ],
+                "additionalProperties": {}
+              }
+            },
+            "errors": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "pluginId": {
+                    "type": "string"
+                  },
+                  "scope": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "pluginId",
+                  "scope",
+                  "message"
+                ]
+              }
+            },
+            "projectTrusted": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "installed",
+            "available",
+            "marketplaces",
+            "errors",
+            "projectTrusted"
+          ],
+          "additionalProperties": {}
+        },
         "config/read": {
           "type": "object",
           "properties": {
@@ -4525,6 +7191,16 @@
         "runtime/reload",
         "mcp/approve",
         "mcp/reconnect",
+        "plugins/list",
+        "plugins/preview",
+        "plugins/install",
+        "plugins/update",
+        "plugins/enable",
+        "plugins/disable",
+        "plugins/uninstall",
+        "marketplace/add",
+        "marketplace/update",
+        "marketplace/remove",
         "config/read",
         "config/write",
         "workspace/trust",
