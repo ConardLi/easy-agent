@@ -11,6 +11,7 @@
  */
 
 import type { BackgroundAgentInfo, InteractionRequest, MessageParam, SessionEvent, SessionState, SessionUsage, Task, TodoItem } from "../../../shared/agent";
+import { partialInput } from "../../lib/partialJson";
 import { toolCall } from "../tools";
 import type { Block, Effort, NoticeIcon, PermissionMode, SessionStatus } from "../viewModel";
 import { CARDLESS_TOOLS, projectMessages, resultText, type ToolLive, thinkingKey } from "./messages";
@@ -196,6 +197,7 @@ export function blocksOf(view: SessionView): Block[] {
   for (const id of stream.tools) {
     const live = view.tools[id];
     if (!live || shown.has(id) || CARDLESS_TOOLS.has(live.name)) continue;
+    const input = live.input ?? partialInput(live.inputJson);
     blocks.push({
       kind: "tool",
       id,
@@ -204,7 +206,7 @@ export function blocksOf(view: SessionView): Block[] {
         name: live.name,
         running: view.busy,
         cwd: view.cwd,
-        ...(live.input ? { input: live.input } : {}),
+        ...(input ? { input } : {}),
         ...(live.result ? { result: live.result } : {}),
         ...(live.startedAt ? { startedAt: live.startedAt } : {}),
         ...(live.completedAt ? { completedAt: live.completedAt } : {}),
@@ -306,17 +308,25 @@ export function applyEvent(view: SessionView, event: SessionEvent, now = Date.no
       });
       return { ...out, stream: { ...out.stream, tools: [...out.stream.tools, event.toolUseId] } };
     }
+    case "tool_input_delta":
+      return patchTool(next, event.toolUseId, { inputJson: (next.tools[event.toolUseId]?.inputJson ?? "") + event.partialJson });
+    case "stream_restart":
+      // The request starts over; what streamed so far is never committed.
+      return { ...next, stream: EMPTY_STREAM };
     case "tool_progress":
       if (event.progress.kind === "bash" && event.progress.progress) return patchTool(next, event.toolUseId, { liveOutput: event.progress.progress.output });
       if (event.progress.kind === "subagent" && event.progress.progress) return patchTool(next, event.toolUseId, { subagent: event.progress.progress });
       return next;
-    case "tool_completed":
-      return patchTool(next, event.toolUseId, {
+    case "tool_completed": {
+      // The streamed input JSON is no longer needed once the call has its input.
+      const { inputJson: _, ...live } = next.tools[event.toolUseId] ?? { name: event.name };
+      return patchTool({ ...next, tools: { ...next.tools, [event.toolUseId]: live } }, event.toolUseId, {
         name: event.name,
         input: event.input,
         result: { text: resultText(event.result.content), isError: event.result.isError === true },
         completedAt: now,
       });
+    }
     case "request_opened":
       return withRequestBlocks({ ...next, pendingRequests: [...next.pendingRequests.filter((r) => r.id !== event.request.id), event.request] });
     case "request_resolved":

@@ -328,8 +328,9 @@ try {
   });
 
   await check("a permission request round-trips and names its tool call", async () => {
+    const input = { file_path: "rpc-allowed.txt", content: "ok\n" };
     fixture.script([
-      { kind: "tool", name: "Write", input: { file_path: "rpc-allowed.txt", content: "ok\n" } },
+      { kind: "tool", name: "Write", input, inputChunk: 10 },
       { kind: "text", text: "Done." },
     ]);
     const done = rpc.call("session/send", { sessionId, input: "Write a file." });
@@ -338,6 +339,9 @@ try {
     assert.equal(request.kind, "permission");
     const started = rpc.eventsOf(sessionId, "tool_started").at(-1)!;
     assert.equal(request.toolUseId, started.toolUseId);
+    const deltas = rpc.eventsOf(sessionId, "tool_input_delta").filter((delta) => delta.toolUseId === started.toolUseId);
+    assert.ok(deltas.length > 1, "the input streams in fragments");
+    assert.deepEqual(JSON.parse(deltas.map((delta) => delta.partialJson).join("")), input);
     const state = await rpc.call<Json>("session/state", { sessionId });
     assert.deepEqual(
       (state.pendingRequests as Json[]).map((pending) => pending.id),

@@ -13,7 +13,13 @@ import type { AddressInfo } from "node:net";
 
 export type ScriptStep = (
   | { kind: "text"; text: string }
-  | { kind: "tool"; name: string; input: Record<string, unknown> }
+  | {
+      kind: "tool";
+      name: string;
+      input: Record<string, unknown>;
+      /** Stream the input JSON in fragments of this many characters instead of one delta. */
+      inputChunk?: number;
+    }
 ) & {
   /** Hold the reply this long after the response starts, to leave room for a cancel. */
   delayMs?: number;
@@ -38,6 +44,13 @@ export const FIXTURE_MODEL = "fixture-model";
 
 function sse(name: string, data: unknown): string {
   return `event: ${name}\ndata: ${JSON.stringify(data)}\n\n`;
+}
+
+function fragments(json: string, size: number | undefined): string[] {
+  if (!size || size <= 0) return [json];
+  const parts: string[] = [];
+  for (let start = 0; start < json.length; start += size) parts.push(json.slice(start, start + size));
+  return parts;
 }
 
 export function createAnthropicFixture(): AnthropicFixture {
@@ -66,11 +79,13 @@ export function createAnthropicFixture(): AnthropicFixture {
               index: 0,
               content_block: { type: "tool_use", id: `toolu_${++toolSeq}`, name: step.name, input: {} },
             }),
-            sse("content_block_delta", {
-              type: "content_block_delta",
-              index: 0,
-              delta: { type: "input_json_delta", partial_json: JSON.stringify(step.input) },
-            }),
+            ...fragments(JSON.stringify(step.input), step.inputChunk).map((partial_json) =>
+              sse("content_block_delta", {
+                type: "content_block_delta",
+                index: 0,
+                delta: { type: "input_json_delta", partial_json },
+              }),
+            ),
           ];
     return [
       sse("message_start", {

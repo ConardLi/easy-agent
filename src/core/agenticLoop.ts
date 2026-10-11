@@ -70,6 +70,8 @@ export type AgenticLoopEvent =
   | { type: "thinking_done"; thinking: string; signature?: string }
   | { type: "redacted_thinking"; data: string }
   | { type: "tool_use_start"; id: string; name: string }
+  /** A fragment of a tool call's input JSON while the model streams it; the fragments in order make up the input. */
+  | { type: "tool_use_input"; id: string; partial_json: string }
   | { type: "permission_request"; request: PermissionRequest }
   | {
       type: "tool_use_done";
@@ -840,6 +842,7 @@ export async function* query(params: QueryParams): AsyncGenerator<AgenticLoopEve
           yield value;
           break;
         case "tool_use_start":
+        case "tool_use_input":
           yield value;
           break;
         case "retry":
