@@ -25,6 +25,8 @@ export interface ToolLive {
   startedAt?: number;
   completedAt?: number;
   input?: Record<string, unknown>;
+  /** The input JSON the model has written so far, before the call is committed. */
+  inputJson?: string;
   result?: { text: string; isError: boolean };
   liveOutput?: string;
   subagent?: SubAgentProgress;

@@ -176,11 +176,13 @@ Every event carries `sessionId` and `seq`, a per-session sequence number. A new 
 | --- | --- |
 | Turn lifecycle | `turn_started` (with `source`: `user`, `background`, `plan_followup`, `feedback_followup`), `turn_completed` (stop `reason`, `toolTurns`, `continuation`), `turn_failed` |
 | Model output | `text_delta`, `thinking_started`, `thinking_delta`, `thinking_completed`, `redacted_thinking`, `assistant_message` |
-| Tools | `tool_started`, `tool_progress` (execution status, Bash output, MCP progress, sub-agent progress), `tool_completed`, `tool_results` |
+| Tools | `tool_started`, `tool_input_delta`, `tool_progress` (execution status, Bash output, MCP progress, sub-agent progress), `tool_completed`, `tool_results` |
 | Interaction | `request_opened`, `request_resolved` |
 | Conversation | `messages_changed`, `usage_changed`, `compacted`, `token_warning`, `api_retry`, `stream_restart`, `error`, `notice` |
 | Session settings | `mode_changed`, `model_changed`, `thinking_changed`, `task_mode_changed`, `todos_changed`, `tasks_changed`, `background_agents_changed`, `session_cleared`, `session_replaced`, `session_rewound` |
 | Local commands | `command_progress`, `command_output`, `command_view` (session picker, diff, memory files, permission rules, plugins), `editor_requested` |
+
+`tool_started` arrives as soon as the model begins a tool call, before its input exists. While the model writes the input, `tool_input_delta` events carry it as JSON fragments (`partialJson`); concatenated in order, the fragments of one `toolUseId` make up the input. A frontend can parse the unfinished JSON leniently to show a path or command early. The committed input is in the `assistant_message` that follows, and tools run only after it. Calls streamed before a `stream_restart` are never committed; the restarted request streams new ones.
 
 Stop reasons are `completed`, `aborted`, `model_error`, `max_turns`, and `blocking_limit`.
 

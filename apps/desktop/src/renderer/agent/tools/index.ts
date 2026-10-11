@@ -70,7 +70,9 @@ function editDiff(name: string, input: Record<string, unknown>) {
   let added = 0;
   let removed = 0;
   for (const edit of edits) {
-    const diff = replacementDiff(str(edit.old_string), str(edit.new_string));
+    // While the input streams, a replacement shows once its new text has started.
+    if (typeof edit.new_string !== "string") continue;
+    const diff = replacementDiff(str(edit.old_string), edit.new_string);
     if (edits.length > 1) all.push({ type: "hunk", text: "@@" });
     all.push(...diff.lines);
     added += diff.added;

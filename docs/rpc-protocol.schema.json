@@ -2139,6 +2139,7 @@
                     "redacted_thinking",
                     "assistant_message",
                     "tool_started",
+                    "tool_input_delta",
                     "tool_progress",
                     "tool_completed",
                     "tool_results",

@@ -747,6 +747,13 @@ export type SessionEventBody =
   | { type: "redacted_thinking"; data: string }
   | { type: "assistant_message"; message: MessageParam }
   | { type: "tool_started"; toolUseId: string; name: string; subAgentProgress?: SubAgentProgress }
+  /**
+   * The next fragment of a tool call's input JSON while the model writes it.
+   * Concatenated in order, the fragments of one `toolUseId` make up its input;
+   * they arrive after `tool_started` and before the `assistant_message` that
+   * commits the call.
+   */
+  | { type: "tool_input_delta"; toolUseId: string; partialJson: string }
   | { type: "tool_progress"; toolUseId: string; progress: ToolProgress }
   | { type: "tool_completed"; toolUseId: string; name: string; input: Record<string, unknown>; result: ToolResult }
   | { type: "tool_results"; message: MessageParam }
@@ -789,6 +796,7 @@ export const SESSION_EVENT_TYPES = [
   "redacted_thinking",
   "assistant_message",
   "tool_started",
+  "tool_input_delta",
   "tool_progress",
   "tool_completed",
   "tool_results",

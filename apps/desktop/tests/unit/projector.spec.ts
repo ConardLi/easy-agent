@@ -99,6 +99,57 @@ test("a tool call shows its input, live output, and result", () => {
   expect(tool?.kind === "tool" && tool.tool.durationMs).toBeGreaterThan(0);
 });
 
+test("a tool call shows its input while the model is still writing it", () => {
+  const input = { file_path: "/work/demo/src/app.ts", content: "one\ntwo\nthree\n" };
+  const json = JSON.stringify(input);
+  let view = run(start(), [
+    { type: "turn_started", turnId: "t1", input: "write", source: "user", runsModel: true },
+    { type: "messages_changed", messages: [user("write")] },
+    { type: "tool_started", toolUseId: "tu1", name: "Write" },
+    { type: "tool_input_delta", toolUseId: "tu1", partialJson: json.slice(0, 12) },
+  ]);
+  expect(blocksOf(view).at(-1)).toMatchObject({ kind: "tool", tool: { name: "Write", target: "", status: "running" } });
+
+  view = run(view, [{ type: "tool_input_delta", toolUseId: "tu1", partialJson: json.slice(12, json.indexOf("two") + 1) }]);
+  expect(blocksOf(view).at(-1)).toMatchObject({ kind: "tool", tool: { target: "src/app.ts", added: 2 } });
+
+  view = run(view, [{ type: "tool_input_delta", toolUseId: "tu1", partialJson: json.slice(json.indexOf("two") + 1) }]);
+  expect(blocksOf(view).at(-1)).toMatchObject({ kind: "tool", tool: { target: "src/app.ts", added: 3 } });
+
+  // The committed call replaces the streamed one.
+  const assistant = { role: "assistant", content: [{ type: "tool_use", id: "tu1", name: "Write", input }] };
+  view = run(view, [{ type: "messages_changed", messages: [user("write"), assistant] }]);
+  const tools = blocksOf(view).filter((b) => b.kind === "tool");
+  expect(tools).toHaveLength(1);
+  expect(tools[0]).toMatchObject({ tool: { target: "src/app.ts", added: 3 } });
+});
+
+test("an edit shows its diff once the new text starts", () => {
+  const json = JSON.stringify({ file_path: "a.ts", old_string: "let a = 1;\n", new_string: "const a = 1;\n" });
+  const at = json.indexOf("new_string");
+  let view = run(start(), [
+    { type: "turn_started", turnId: "t1", input: "edit", source: "user", runsModel: true },
+    { type: "tool_started", toolUseId: "tu1", name: "Edit" },
+    { type: "tool_input_delta", toolUseId: "tu1", partialJson: json.slice(0, at) },
+  ]);
+  let tool = blocksOf(view).at(-1);
+  expect(tool).toMatchObject({ kind: "tool", tool: { target: "a.ts", added: 0, removed: 0 } });
+
+  view = run(view, [{ type: "tool_input_delta", toolUseId: "tu1", partialJson: json.slice(at, at + 20) }]);
+  tool = blocksOf(view).at(-1);
+  expect(tool).toMatchObject({ kind: "tool", tool: { added: 1, removed: 1 } });
+});
+
+test("a restarted request drops what streamed before it", () => {
+  const view = run(start(), [
+    { type: "turn_started", turnId: "t1", input: "go", source: "user", runsModel: true },
+    { type: "text_delta", text: "Partial" },
+    { type: "tool_started", toolUseId: "tu1", name: "Bash" },
+    { type: "stream_restart", reason: "max_tokens_escalation" },
+  ]);
+  expect(blocksOf(view).filter((b) => b.kind === "assistant" || b.kind === "tool")).toEqual([]);
+});
+
 test("denied and unfinished calls get their own status", () => {
   const messages = [
     user("go"),
