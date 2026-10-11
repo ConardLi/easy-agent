@@ -8,6 +8,7 @@ import { CustomizeView } from "./features/customize/CustomizeView";
 import { RightPanel } from "./features/panels/RightPanel";
 import { SettingsView } from "./features/settings/SettingsView";
 import { Conversation } from "./features/session/Conversation";
+import { RewindDialog } from "./features/session/RewindDialog";
 import { Toasts } from "./features/shell/Toasts";
 import { TopBar } from "./features/shell/TopBar";
 import { FirstRun } from "./features/workspace/FirstRun";
@@ -155,6 +156,7 @@ export function App() {
         </main>
       </div>
       <Toasts />
+      <RewindDialog />
     </Tooltip.Provider>
   );
 }

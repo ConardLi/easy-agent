@@ -83,6 +83,28 @@ export function Composer({ variant = "dock" }: { variant?: "dock" | "hero" }) {
     setSuggest(null);
   }, [view?.id]);
 
+  // Take over a prompt put back after a rewind or a fork.
+  const inject = useUi((s) => s.composerInject);
+  useEffect(() => {
+    if (!inject) return;
+    useUi.setState({ composerInject: null });
+    setText(inject.text);
+    setAttachments(
+      inject.images.map((image, i) => ({
+        id: uid("att"),
+        kind: "image",
+        name: `图片 ${i + 1}`,
+        preview: `center / cover no-repeat url(data:${image.mimeType};base64,${image.data})`,
+        image,
+      })),
+    );
+    requestAnimationFrame(() => {
+      const el = input.current;
+      el?.focus();
+      el?.setSelectionRange(inject.text.length, inject.text.length);
+    });
+  }, [inject]);
+
   const inventory = useCustomize((s) => (workspace ? s.inventories[workspace.id] : undefined));
   const entries = useMemo(() => listSlash(status.state === "ready" ? status.init.capabilities : undefined, inventory), [status, inventory]);
   const commands = useMemo(() => (suggest?.kind === "slash" ? matchSlash(entries, suggest.query) : []), [suggest, entries]);

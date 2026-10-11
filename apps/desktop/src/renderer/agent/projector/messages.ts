@@ -1,4 +1,4 @@
-import type { MessageParam, SubAgentProgress } from "../../../shared/agent";
+import type { ImageInput, MessageParam, SubAgentProgress } from "../../../shared/agent";
 import { type ToolFacts, toolCall } from "../tools";
 import type { Attachment, Block } from "../viewModel";
 
@@ -60,6 +60,30 @@ export function visibleUserText(raw: string): string | null {
   return text.replace(/^\[user-context\][\s\S]*?\n\n/, "").trim() || null;
 }
 
+/**
+ * A prompt as it can be sent again: the typed text without the `[Image #N]`
+ * markers the Agent adds for attached images, and those images.
+ */
+export function promptOf(message: MessageParam | undefined): { text: string; images: ImageInput[] } {
+  if (message?.role !== "user") return { text: "", images: [] };
+  const texts: string[] = [];
+  const images: ImageInput[] = [];
+  for (const block of contentBlocks(message)) {
+    if (block.type === "text") {
+      const text = visibleUserText(String(block.text ?? ""));
+      if (text) texts.push(text);
+    } else if (block.type === "image") {
+      const source = block.source as { type?: string; media_type?: string; data?: string } | undefined;
+      if (source?.type === "base64" && source.media_type && source.data) images.push({ data: source.data, mimeType: source.media_type });
+    }
+  }
+  const text = texts
+    .join("\n\n")
+    .replace(/\n?\[Image #\d+\]/g, "")
+    .trim();
+  return { text, images };
+}
+
 /** Results of every tool call in the conversation, by tool_use id. */
 function toolResults(messages: readonly MessageParam[]): Map<string, { text: string; isError: boolean }> {
   const results = new Map<string, { text: string; isError: boolean }>();
@@ -114,7 +138,10 @@ export function projectMessages(messages: readonly MessageParam[], { tools, busy
         }
       }
       if (texts.length > 0 || attachments.length > 0)
-        out.push({ at: mi, block: { kind: "user", id: `m${mi}`, text: texts.join("\n\n"), ...(attachments.length ? { attachments } : {}) } });
+        out.push({
+          at: mi,
+          block: { kind: "user", id: `m${mi}`, messageIndex: mi, text: texts.join("\n\n"), ...(attachments.length ? { attachments } : {}) },
+        });
       return;
     }
     for (const [bi, block] of content.entries()) {

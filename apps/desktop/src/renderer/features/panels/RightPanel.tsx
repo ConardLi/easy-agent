@@ -1,4 +1,4 @@
-import { ArrowRight, Bot, Check, ChevronRight, Circle, FileMinus2, FilePen, FilePlus2, Layers, Plug, Square, X } from "lucide-react";
+import { ArrowRight, Bot, Check, ChevronRight, Circle, FileMinus2, FilePen, FilePlus2, Layers, Plug, Square, Undo2, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { changesOf } from "../../agent/projector/derive";
@@ -7,7 +7,7 @@ import type { FileChange } from "../../agent/viewModel";
 import { ContextRing } from "../../design/ContextRing";
 import { Button, cn, IconButton, Spinner, Tooltip } from "../../design/primitives";
 import { basename, dirname, relativeTime, tokens } from "../../lib/format";
-import { runCommand, stopBackgroundAgent } from "../../state/actions";
+import { requestRewind, runCommand, stopBackgroundAgent } from "../../state/actions";
 import { loadContext, useCustomize } from "../../state/customize";
 import { useActiveView } from "../../state/sessions";
 import { type RightTab, useUi } from "../../state/ui";
@@ -59,7 +59,7 @@ function ChangeRow({ change }: { change: FileChange }) {
   );
 }
 
-function ChangesTab({ changes }: { changes: FileChange[] }) {
+function ChangesTab({ changes, sessionId, busy }: { changes: FileChange[]; sessionId: string; busy: boolean }) {
   if (changes.length === 0) {
     return <Empty icon={<FilePen />} title="还没有文件改动" hint="Agent 编辑或创建文件后，改动会汇总在这里。命令行里改的文件不会出现在这里。" />;
   }
@@ -72,9 +72,12 @@ function ChangesTab({ changes }: { changes: FileChange[] }) {
           <span className="font-medium text-fg">{changes.length}</span> 个文件
           <DiffStat added={added} removed={removed} className="ml-2" />
         </div>
-        {/* TODO(G9): reverting every change needs `session/rewind`. */}
-        <Tooltip content="全部回退需要 Agent 提供 session/rewind（G9）">
-          <span className="text-[11.5px] text-fg-4">全部回退</span>
+        <Tooltip content={busy ? "这一轮结束后再回退" : "撤销本会话的全部文件改动"}>
+          <span>
+            <IconButton size="sm" aria-label="全部回退" disabled={busy} onClick={() => requestRewind(sessionId, null, "files")}>
+              <Undo2 />
+            </IconButton>
+          </span>
         </Tooltip>
       </div>
       <div className="overflow-hidden rounded-xl border border-line bg-canvas">
@@ -446,7 +449,7 @@ export function RightPanel() {
       <div className="scroll-thin min-h-0 flex-1 overflow-y-auto">
         <AnimatePresence mode="wait" initial={false}>
           <motion.div key={tab} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.16 }}>
-            {tab === "changes" && <ChangesTab changes={changes} />}
+            {tab === "changes" && <ChangesTab changes={changes} sessionId={view.id} busy={view.busy} />}
             {tab === "tasks" && <TasksTab view={view} />}
             {tab === "context" && <ContextTab view={view} />}
             {tab === "agents" && <AgentsTab view={view} />}

@@ -16,18 +16,40 @@ import {
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
+import type { SessionCheckpoint } from "../../../shared/agent";
 import type { Block } from "../../agent/viewModel";
 import { cn, IconButton, Menu, MenuContent, MenuItem, MenuTrigger, Tooltip } from "../../design/primitives";
 import { duration, shortTime } from "../../lib/format";
+import { forkFrom, loadCheckpoints, regenerate, requestRewind } from "../../state/actions";
 import { CopyButton, Markdown } from "./Markdown";
 
 type Of<K extends Block["kind"]> = Extract<Block, { kind: K }>;
 
-/** TODO(G9): message-level fork and rewind need `session/rewind` and `session/fork` with `fromMessage`. */
-const REWIND_PENDING = "需要 Agent 提供消息级回退（G9）";
+const BUSY = "这一轮结束后再操作";
 
-export function UserMessage({ block }: { block: Of<"user"> }) {
+export function UserMessage({ block, sessionId, busy }: { block: Of<"user">; sessionId: string; busy: boolean }) {
   const [menu, setMenu] = useState(false);
+  /** undefined while loading, null when this prompt cannot be gone back to. */
+  const [checkpoint, setCheckpoint] = useState<SessionCheckpoint | null | undefined>(undefined);
+
+  const openMenu = (open: boolean) => {
+    setMenu(open);
+    if (!open) return;
+    setCheckpoint(undefined);
+    if (block.messageIndex === undefined) return setCheckpoint(null);
+    void loadCheckpoints(sessionId).then((list) => setCheckpoint(list?.find((c) => c.messageIndex === block.messageIndex) ?? null));
+  };
+
+  const unavailable = busy
+    ? BUSY
+    : checkpoint === undefined
+      ? "正在读取检查点…"
+      : checkpoint === null
+        ? block.messageIndex === undefined
+          ? "上下文清空或压缩前的消息不能回退"
+          : "这条消息不能回退"
+        : null;
+  const ready = unavailable === null && checkpoint ? checkpoint : null;
 
   return (
     <div className="group/user flex flex-col items-end">
@@ -53,7 +75,7 @@ export function UserMessage({ block }: { block: Of<"user"> }) {
       <div className={cn("mt-1 flex h-7 items-center gap-0.5 opacity-0 transition-opacity group-hover/user:opacity-100", menu && "opacity-100")}>
         {block.at !== undefined && <span className="tabular mr-1 text-[11px] text-fg-3">{shortTime(block.at)}</span>}
         <CopyButton text={block.text} />
-        <Menu open={menu} onOpenChange={setMenu}>
+        <Menu open={menu} onOpenChange={openMenu}>
           <Tooltip content="回退">
             <MenuTrigger asChild>
               <IconButton size="sm" aria-label="回退" active={menu}>
@@ -62,17 +84,31 @@ export function UserMessage({ block }: { block: Of<"user"> }) {
             </MenuTrigger>
           </Tooltip>
           <MenuContent align="end" className="w-[264px]">
-            <MenuItem icon={<GitFork />} className="h-auto items-start py-2" disabled>
+            <MenuItem icon={<GitFork />} className="h-auto items-start py-2" disabled={!ready} onSelect={() => ready && void forkFrom(sessionId, ready)}>
               <span className="block font-medium">从这里分叉</span>
-              <span className="block whitespace-normal text-[12px] text-fg-3">{REWIND_PENDING}</span>
+              <span className="block whitespace-normal text-[12px] text-fg-3">{unavailable ?? "新开一个会话，从这条消息之前继续；代码不动"}</span>
             </MenuItem>
-            <MenuItem icon={<FileCode2 />} className="h-auto items-start py-2" disabled>
+            <MenuItem
+              icon={<FileCode2 />}
+              className="h-auto items-start py-2"
+              disabled={!ready?.files}
+              onSelect={() => ready && requestRewind(sessionId, ready, "files")}
+            >
               <span className="block font-medium">只回退代码</span>
-              <span className="block whitespace-normal text-[12px] text-fg-3">{REWIND_PENDING}</span>
+              <span className="block whitespace-normal text-[12px] text-fg-3">
+                {unavailable ?? (ready?.files ? "文件恢复到这条消息之前，对话保留" : "这条消息之前没有文件检查点")}
+              </span>
             </MenuItem>
-            <MenuItem icon={<RotateCcw />} className="h-auto items-start py-2" disabled>
+            <MenuItem
+              icon={<RotateCcw />}
+              className="h-auto items-start py-2"
+              disabled={!ready}
+              onSelect={() => ready && requestRewind(sessionId, ready, ready.files ? "both" : "conversation", "edit")}
+            >
               <span className="block font-medium">回退对话和代码</span>
-              <span className="block whitespace-normal text-[12px] text-fg-3">{REWIND_PENDING}</span>
+              <span className="block whitespace-normal text-[12px] text-fg-3">
+                {unavailable ?? (ready?.files ? "两者都回到这条消息之前，消息放回输入框" : "没有文件检查点，只回退对话，消息放回输入框")}
+              </span>
             </MenuItem>
           </MenuContent>
         </Menu>
@@ -81,16 +117,16 @@ export function UserMessage({ block }: { block: Of<"user"> }) {
   );
 }
 
-export function AssistantMessage({ block, last }: { block: Of<"assistant">; last: boolean }) {
+export function AssistantMessage({ block, last, sessionId, busy }: { block: Of<"assistant">; last: boolean; sessionId: string; busy: boolean }) {
   return (
     <div className="group/msg">
       <Markdown text={block.text} streaming={block.streaming} />
       {last && !block.streaming && block.text.length > 120 && (
         <div className="mt-1.5 flex h-7 items-center gap-0.5 opacity-0 transition-opacity group-hover/msg:opacity-100">
           <CopyButton text={block.text} />
-          <Tooltip content={`重新生成：${REWIND_PENDING}`}>
+          <Tooltip content={busy ? `重新生成：${BUSY}` : "重新生成"}>
             <span>
-              <IconButton size="sm" aria-label="重新生成" disabled>
+              <IconButton size="sm" aria-label="重新生成" disabled={busy} onClick={() => void regenerate(sessionId)}>
                 <Repeat2 />
               </IconButton>
             </span>
