@@ -204,6 +204,8 @@ export type QueryEngineEvent =
       messageIds: (string | null)[];
       totalUsage: Usage;
       fileHistorySnapshots: FileHistorySnapshotRecord[];
+      /** Tool calls in `messages` whose edits a files-only rewind restored. */
+      revertedToolUses: string[];
     };
 
 export interface QueryEngineOptions {

@@ -6165,6 +6165,12 @@
                       }
                     ]
                   }
+                },
+                "revertedToolUses": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
                 }
               },
               "required": [
@@ -6175,7 +6181,8 @@
                 "model",
                 "permissionMode",
                 "messages",
-                "pendingRequests"
+                "pendingRequests",
+                "revertedToolUses"
               ],
               "additionalProperties": {}
             }
@@ -6454,6 +6461,12 @@
                       }
                     ]
                   }
+                },
+                "revertedToolUses": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
                 }
               },
               "required": [
@@ -6464,7 +6477,8 @@
                 "model",
                 "permissionMode",
                 "messages",
-                "pendingRequests"
+                "pendingRequests",
+                "revertedToolUses"
               ],
               "additionalProperties": {}
             }
@@ -7051,6 +7065,12 @@
                   }
                 ]
               }
+            },
+            "revertedToolUses": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
             }
           },
           "required": [
@@ -7061,7 +7081,8 @@
             "model",
             "permissionMode",
             "messages",
-            "pendingRequests"
+            "pendingRequests",
+            "revertedToolUses"
           ],
           "additionalProperties": {}
         },

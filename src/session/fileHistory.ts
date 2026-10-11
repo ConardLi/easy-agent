@@ -219,6 +219,9 @@ export function restoreFileHistorySnapshots(records: FileHistorySnapshotRecord[]
 
 // ─── Track an edit (backup pre-edit content) ──────────────────────────────
 
+/** Tools whose edits are backed up before they run, so a rewind can restore them. */
+export const FILE_HISTORY_TOOLS: ReadonlySet<string> = new Set(["Write", "Edit", "MultiEdit"]);
+
 /**
  * Back up `filePath`'s current content before it is edited/created, attaching
  * the backup to the most-recent snapshot. No-op if the file is already tracked

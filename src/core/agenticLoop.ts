@@ -26,7 +26,7 @@ import { hasPendingMcpServers } from "../services/mcp/registry.js";
 import { buildSchemaNotSentHint, prepareToolSearchRequest } from "../utils/toolSearch.js";
 import { activateConditionalSkillsForPaths, extractToolFilePaths } from "../services/skills/conditional.js";
 import { tokenCountWithEstimation } from "../utils/tokens.js";
-import { fileHistoryTrackEdit } from "../session/fileHistory.js";
+import { FILE_HISTORY_TOOLS, fileHistoryTrackEdit } from "../session/fileHistory.js";
 import { setToolStatus } from "../state/toolStatusStore.js";
 import * as path from "node:path";
 import { calculateTokenWarningState, type TokenWarningResult } from "../context/autoCompact.js";
@@ -492,7 +492,7 @@ async function runOneToolBlock(
     // change, so /rewind can restore it. Runs before tool.call so the
     // backup reflects the original content. Best-effort & non-blocking on
     // failure (handled inside fileHistoryTrackEdit).
-    if (context.messageId && (block.name === "Write" || block.name === "Edit" || block.name === "MultiEdit")) {
+    if (context.messageId && FILE_HISTORY_TOOLS.has(block.name)) {
       const fp = toolInput["file_path"];
       if (typeof fp === "string" && fp) {
         const absPath = path.isAbsolute(fp) ? fp : path.resolve(context.cwd, fp);

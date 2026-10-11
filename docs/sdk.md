@@ -166,6 +166,8 @@ Only edits made by the Write, Edit, and MultiEdit tools of the session are track
 
 A rewind emits `session_rewound` with the scope, the checkpoint id and `messageIndex`, the remaining `messages`, and the restored `files`; a conversation rewind is followed by `messages_changed` and `usage_changed`. Todos return to the last list in the remaining conversation. A persisted session writes a new transcript segment, so resume continues from the rewound conversation and its checkpoints.
 
+A `files` rewind leaves the undone Write, Edit, and MultiEdit calls in the conversation. `SessionState.revertedToolUses` lists them, so a frontend that shows the session's changes can leave them out. The list is recorded in the transcript and survives resume and forks; calls that later leave the conversation drop out of it.
+
 ### Events
 
 Every event carries `sessionId` and `seq`, a per-session sequence number. A new subscriber first receives `state_snapshot` with the current state, so it never has to replay history.

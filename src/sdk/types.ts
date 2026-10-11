@@ -585,6 +585,12 @@ export interface SessionState {
   todos: TodoItem[];
   tasks: Task[];
   backgroundAgents: BackgroundAgentInfo[];
+  /**
+   * Write, Edit, and MultiEdit calls in `messages` whose file changes a
+   * `files` rewind restored; the conversation still holds them. Kept in the
+   * transcript, so it survives resume and forks.
+   */
+  revertedToolUses: string[];
 }
 
 // ─── Checkpoints ──────────────────────────────────────────────────────────

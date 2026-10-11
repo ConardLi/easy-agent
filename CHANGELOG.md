@@ -34,6 +34,7 @@ All notable changes to Easy Agent are documented in this file.
 ### Changed
 
 - A forked session keeps the file checkpoints of the turns it copies, so it can restore files to them; it started without any. Transcripts record the turn of every message, also in compaction segments, so checkpoints of turns kept by a compaction survive resume.
+- A files-only rewind is recorded in the transcript. `SessionState.revertedToolUses` lists the Write, Edit, and MultiEdit calls it undid that are still in the conversation, also after resume and in forks, so the desktop Changes panel no longer shows them again after a reload or restart.
 - `/context` measures the system prompt the session has fixed for its requests instead of building a fresh one, so its figures match what the model receives.
 - SDK: `AgentSession.setPermissionMode()` switches the mode right away, also while a turn runs, and returns nothing; it ran `/mode` as a turn.
 - SDK: `AgentSession.setModel()` switches the model right away, also while a turn runs, and returns nothing; it ran `/model` as a turn. New `setThinking()` and `setEffort()` do the same for extended thinking and reasoning effort, and a `thinking_changed` event reports them, also when `/think` or `/effort` runs.
