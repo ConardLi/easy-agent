@@ -174,7 +174,10 @@ test("archived prompts lose their message index, so they cannot be rewound to", 
 });
 
 test("a files rewind keeps the conversation, says what it restored, and leaves the undone edits out of the changes", () => {
-  const write = (id: string, file: string) => ({ role: "assistant", content: [{ type: "tool_use", id, name: "Write", input: { file_path: `/work/demo/${file}`, content: "x\n" } }] });
+  const write = (id: string, file: string) => ({
+    role: "assistant",
+    content: [{ type: "tool_use", id, name: "Write", input: { file_path: `/work/demo/${file}`, content: "x\n" } }],
+  });
   const done = (id: string) => ({ role: "user", content: [{ type: "tool_result", tool_use_id: id, content: "ok" }] });
   const messages = [user("first"), write("w1", "a.ts"), done("w1"), user("second"), write("w2", "b.ts"), done("w2")];
   let view = run(start(), [{ type: "messages_changed", messages }]);
