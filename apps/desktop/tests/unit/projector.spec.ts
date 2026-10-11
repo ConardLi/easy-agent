@@ -191,6 +191,10 @@ test("a files rewind keeps the conversation, says what it restored, and leaves t
   view = run(view, [{ type: "session_rewound", scope: "files", checkpointId: null, messageIndex: null, messages, files: ["a.ts"] }]);
   expect(changesOf(view)).toEqual([]);
   expect(blocksOf(view).at(-1)).toMatchObject({ kind: "notice", text: "已回退本会话的全部文件改动，恢复了 1 个文件" });
+
+  // A reloaded window starts from the snapshot; the Agent says which edits were undone.
+  const reloaded = viewFromState("w1", state({ messages, revertedToolUses: ["w2"] } as Partial<SessionState>), 0);
+  expect(changesOf(reloaded).map((c) => c.path)).toEqual(["a.ts"]);
 });
 
 test("a prompt is sent again without the image markers, with its images", () => {

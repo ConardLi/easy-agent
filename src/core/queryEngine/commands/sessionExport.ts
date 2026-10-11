@@ -274,6 +274,7 @@ export async function* handleResumeCommand(
     messageIds: [...restored.messageIds],
     totalUsage: { ...restored.summary.totalUsage },
     fileHistorySnapshots: restored.fileHistorySnapshots,
+    revertedToolUses: [...restored.revertedToolUses],
   };
   // Non-blocking `notice` (not a `command` panel): the switch already cleared
   // the screen and repainted the restored conversation, so this is just a

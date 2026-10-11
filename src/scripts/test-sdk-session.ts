@@ -798,6 +798,57 @@ try {
     await Promise.all(["rewind-a.txt", "rewind-b.txt"].map((name) => rm(file(name), { force: true })));
   });
 
+  await check("a files rewind marks the edits it undid, also after resume and in forks", async () => {
+    const allow = { permission: () => ({ decision: "allow_once" as const }) };
+    const writes = (state: { messages: import("../sdk/index.js").SessionState["messages"] }) =>
+      state.messages.flatMap((message) =>
+        message.role === "assistant" && Array.isArray(message.content)
+          ? message.content.flatMap((block) => (block.type === "tool_use" && block.name === "Write" ? [block.id] : []))
+          : [],
+      );
+    const session = await runtime.createSession({ model: FIXTURE_MODEL, handlers: allow });
+    fixture.script([
+      { kind: "tool", name: "Write", input: { file_path: "reverted-a.txt", content: "one\n" } },
+      { kind: "text", text: "Wrote one." },
+    ]);
+    await session.send("First change.");
+    fixture.script([
+      { kind: "tool", name: "Write", input: { file_path: "reverted-a.txt", content: "two\n" } },
+      { kind: "tool", name: "Write", input: { file_path: "reverted-b.txt", content: "new\n" } },
+      { kind: "text", text: "Wrote two." },
+    ]);
+    await session.send("Second change.");
+    assert.deepEqual(session.getState().revertedToolUses, []);
+    const [, second] = session.listCheckpoints();
+    const [one, ...later] = writes(session.getState());
+    assert.equal(later.length, 2);
+
+    await session.rewind({ to: second!.id, scope: "files" });
+    assert.deepEqual(session.getState().revertedToolUses, later, "the edits after the checkpoint are marked");
+    const id = session.id;
+    await session.close();
+
+    const resumed = await runtime.resumeSession(id, { model: FIXTURE_MODEL, handlers: allow });
+    assert.deepEqual(resumed.getState().revertedToolUses, later, "resume keeps the marks");
+    await resumed.close();
+    const copy = await runtime.resumeSession((await runtime.forkSession(id)).sessionId, { model: FIXTURE_MODEL });
+    assert.deepEqual(copy.getState().revertedToolUses, later, "a fork keeps the marks of its calls");
+    await copy.close();
+    const before = await runtime.resumeSession((await runtime.forkSession(id, { fromMessage: second!.id })).sessionId, {
+      model: FIXTURE_MODEL,
+    });
+    assert.deepEqual(before.getState().revertedToolUses, [], "a fork before the marked calls has none");
+    await before.close();
+
+    const again = await runtime.resumeSession(id, { model: FIXTURE_MODEL, handlers: allow });
+    await again.rewind({ scope: "files" });
+    assert.deepEqual(again.getState().revertedToolUses, [one, ...later], "a rewind to the start marks every edit");
+    await again.rewind({ to: second!.id, scope: "conversation" });
+    assert.deepEqual(again.getState().revertedToolUses, [one], "calls that leave the conversation drop out");
+    await again.close();
+    await Promise.all(["reverted-a.txt", "reverted-b.txt"].map((name) => rm(path.join(cwd, name), { force: true })));
+  });
+
   await check("a conversation rewind also drops the hidden context its turn added", async () => {
     const session = await runtime.createSession({ model: FIXTURE_MODEL, permissionMode: "plan" });
     fixture.script([{ kind: "text", text: "Plan one." }]);

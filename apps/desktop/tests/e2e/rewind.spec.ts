@@ -2,6 +2,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, type Page, test } from "@playwright/test";
 import { type AgentWorld, createAgentWorld, openProject, send } from "../helpers/agent";
+import { launchApp } from "../helpers/app";
 
 let world: AgentWorld;
 
@@ -81,6 +82,52 @@ test("rewinding files, the conversation, everything, and forking from a prompt",
     await expect(page.locator("nav").getByText(/（分叉）/)).toBeVisible();
   } finally {
     await app.close();
+  }
+});
+
+test("edits a files rewind undid stay out of the Changes panel after a reload and a restart", async () => {
+  const file = (name: string) => join(world.project, name);
+  world.fixture.script([
+    { kind: "tool", name: "Write", input: { file_path: file("kept.md"), content: "one\n" } },
+    { kind: "text", text: "写好了 kept。" },
+  ]);
+  const { app, page, userData } = await openProject(world);
+  const panelOf = (p: Page) => p.getByRole("complementary", { name: "详情面板" });
+  try {
+    await send(page, "写 kept");
+    await expect(page.getByText("写好了 kept。")).toBeVisible({ timeout: 20_000 });
+    world.fixture.script([
+      { kind: "tool", name: "Write", input: { file_path: file("undone.md"), content: "x\n" } },
+      { kind: "text", text: "写好了 undone。" },
+    ]);
+    await send(page, "写 undone");
+    await expect(page.getByText("写好了 undone。")).toBeVisible({ timeout: 20_000 });
+
+    await rewindMenu(page, "写 undone");
+    await page.getByRole("menuitem", { name: /只回退代码/ }).click();
+    await page.getByRole("dialog", { name: "只回退代码" }).getByRole("button", { name: "回退文件" }).click();
+    await expect(page.getByText("已把 1 个文件恢复到这条消息之前")).toBeVisible();
+    await page.getByRole("button", { name: "详情面板" }).click();
+    await expect(panelOf(page).getByText("kept.md")).toBeVisible();
+    await expect(panelOf(page).getByText("undone.md")).toHaveCount(0);
+
+    await page.reload();
+    await expect(page.getByText("写好了 undone。")).toBeVisible({ timeout: 20_000 });
+    if (!(await panelOf(page).isVisible())) await page.getByRole("button", { name: "详情面板" }).click();
+    await expect(panelOf(page).getByText("kept.md")).toBeVisible();
+    await expect(panelOf(page).getByText("undone.md")).toHaveCount(0);
+  } finally {
+    await app.close();
+  }
+
+  const second = await launchApp({ userData, env: world.env });
+  try {
+    await expect(second.page.getByText("写好了 undone。")).toBeVisible({ timeout: 20_000 });
+    if (!(await panelOf(second.page).isVisible())) await second.page.getByRole("button", { name: "详情面板" }).click();
+    await expect(panelOf(second.page).getByText("kept.md")).toBeVisible();
+    await expect(panelOf(second.page).getByText("undone.md")).toHaveCount(0);
+  } finally {
+    await second.app.close();
   }
 });
 

@@ -35,6 +35,7 @@ import {
   listProjectSessions,
   restoreSession,
   type RestoredSession,
+  toolUseIdsOf,
   writeSessionTitle,
 } from "../session/storage.js";
 import { getTaskListId, getTasksDir } from "../state/taskStore.js";
@@ -265,7 +266,8 @@ export class AgentRuntime {
         updatedAt: startedAt,
         model: source.summary.model,
       });
-      for (const [index, message] of source.messages.slice(0, end).entries()) {
+      const kept = source.messages.slice(0, end);
+      for (const [index, message] of kept.entries()) {
         const messageId = messageIds[index];
         await appendTranscriptEntry(this.cwd, forkId, {
           type: "message",
@@ -273,6 +275,15 @@ export class AgentRuntime {
           role: message.role === "assistant" ? "assistant" : "user",
           message,
           ...(messageId ? { messageId } : {}),
+        });
+      }
+      const keptCalls = new Set(toolUseIdsOf(kept));
+      const reverted = source.revertedToolUses.filter((id) => keptCalls.has(id));
+      if (reverted.length > 0) {
+        await appendTranscriptEntry(this.cwd, forkId, {
+          type: "files_rewound",
+          timestamp: new Date().toISOString(),
+          toolUseIds: reverted,
         });
       }
       await copyFileHistory(
@@ -478,6 +489,7 @@ export class AgentRuntime {
       initialMessageIds: params.restored?.messageIds ?? [],
       initialUsage: params.restored?.summary.totalUsage ?? { input_tokens: 0, output_tokens: 0 },
       fileHistorySnapshots: params.restored?.fileHistorySnapshots ?? [],
+      revertedToolUses: params.restored?.revertedToolUses ?? [],
       onSessionReplaced: (previousId, nextId) => {
         this.#sessions.get(previousId)?.markReplaced(nextId);
         this.#sessions.delete(previousId);

@@ -26,6 +26,7 @@ import type {
 import { type CheckpointPosition, findCheckpoints } from "../../session/checkpoints.js";
 import {
   configureFileHistory,
+  FILE_HISTORY_TOOLS,
   fileHistoryEnabled,
   fileHistoryGetDiffStats,
   fileHistoryRewind,
@@ -33,7 +34,7 @@ import {
   getSnapshotById,
   restoreFileHistorySnapshots,
 } from "../../session/fileHistory.js";
-import type { FileHistorySnapshotRecord } from "../../session/storage.js";
+import { type FileHistorySnapshotRecord, toolUseIdsOf } from "../../session/storage.js";
 import { getAsyncAgentsForScope, killAsyncAgent, subscribeAsyncAgents } from "../../state/asyncAgentStore.js";
 import { clearAllBashProgress, subscribeBashProgress } from "../../state/bashProgressStore.js";
 import { clearAllMcpProgress, subscribeMcpProgress } from "../../state/mcpProgressStore.js";
@@ -123,6 +124,8 @@ export interface SessionControllerInit {
   initialMessageIds: (string | null)[];
   initialUsage: Usage;
   fileHistorySnapshots: FileHistorySnapshotRecord[];
+  /** Tool calls in `initialMessages` whose edits a files-only rewind restored. */
+  revertedToolUses: string[];
   /** Called after `/resume` switched the conversation to `newSessionId`. */
   onSessionReplaced(previousSessionId: string, newSessionId: string): void;
   onClosed(sessionId: string): void;
@@ -151,6 +154,8 @@ export class SessionController {
   #model: string;
   #modelSource: "default" | "session" = "default";
   #tasks: Task[] = [];
+  /** Tool calls whose edits a files-only rewind restored while the conversation kept them. */
+  #reverted: Set<string>;
   #busy = false;
   readonly #idleWaiters: Array<() => void> = [];
   #turnId: string | null = null;
@@ -164,6 +169,7 @@ export class SessionController {
     this.#sessionId = init.sessionId;
     this.#persist = init.options.persist !== false;
     this.#messages = [...init.initialMessages];
+    this.#reverted = new Set(init.revertedToolUses);
     this.#model = init.model;
     this.#usage = { total: { ...init.initialUsage }, turn: null, lastCall: null, context: null };
     this.hub = new EventHub(
@@ -248,6 +254,8 @@ export class SessionController {
         todos: getTodos(this.#sessionId),
         tasks: [...this.#tasks],
         backgroundAgents: this.#backgroundAgents(),
+        revertedToolUses:
+          this.#reverted.size > 0 ? toolUseIdsOf(this.#messages).filter((id) => this.#reverted.has(id)) : [],
       };
     });
   }
@@ -412,8 +420,11 @@ export class SessionController {
       this.#restoreTodos(kept);
       await this.#recorder?.rewound(kept);
       this.#usage = { ...this.#usage, context: this.#contextUsage(null) };
-    } else if (restored.length > 0) {
-      this.#engine.addContextNote(filesRestoredNote(restored));
+    } else {
+      const undone = this.#editsSince(messages, position?.start ?? 0);
+      for (const id of undone) this.#reverted.add(id);
+      await this.#recorder?.filesRewound(undone);
+      if (restored.length > 0) this.#engine.addContextNote(filesRestoredNote(restored));
     }
     this.#emit({
       type: "session_rewound",
@@ -444,14 +455,22 @@ export class SessionController {
     };
   }
 
+  /** Successful calls of the file-history tools from message `start` on. */
+  #editsSince(messages: readonly MessageParam[], start: number): string[] {
+    const tail = messages.slice(start);
+    const failed = failedToolUses(tail);
+    return tail.flatMap((message) =>
+      message.role === "assistant" && typeof message.content !== "string"
+        ? message.content.flatMap((block) =>
+            block.type === "tool_use" && FILE_HISTORY_TOOLS.has(block.name) && !failed.has(block.id) ? [block.id] : [],
+          )
+        : [],
+    );
+  }
+
   /** The todo list as the last successful TodoWrite left it in the remaining conversation. */
   #restoreTodos(messages: readonly MessageParam[]): void {
-    const failed = new Set<string>();
-    for (const message of messages) {
-      if (message.role !== "user" || typeof message.content === "string") continue;
-      for (const block of message.content)
-        if (block.type === "tool_result" && block.is_error) failed.add(block.tool_use_id);
-    }
+    const failed = failedToolUses(messages);
     for (let index = messages.length - 1; index >= 0; index -= 1) {
       const message = messages[index]!;
       if (message.role !== "assistant" || typeof message.content === "string") continue;
@@ -767,6 +786,7 @@ export class SessionController {
           event.messageIds,
           event.totalUsage,
           event.fileHistorySnapshots,
+          event.revertedToolUses,
         );
         return;
       case "token_warning":
@@ -801,12 +821,14 @@ export class SessionController {
     messageIds: (string | null)[],
     totalUsage: Usage,
     snapshots: FileHistorySnapshotRecord[],
+    reverted: string[],
   ): Promise<void> {
     const previous = this.#sessionId;
     this.#clearToolProgress();
     clearTodos(previous);
     this.#sessionId = sessionId;
     this.#messages = [...messages];
+    this.#reverted = new Set(reverted);
     this.#turns.seed(messages, messageIds);
     this.#usage = { total: { ...totalUsage }, turn: null, lastCall: null, context: null };
     // The restored messages are already in the target session's file.
@@ -1049,6 +1071,17 @@ function filesRestoredNote(files: readonly string[]): string {
     `The user restored these files to how they were before an earlier message, undoing the edits made since: ${named}${more}. ` +
     "Their contents may differ from what you read or wrote after that point; read a file again before editing it."
   );
+}
+
+/** Ids of the tool calls whose results in `messages` are errors. */
+function failedToolUses(messages: readonly MessageParam[]): Set<string> {
+  const failed = new Set<string>();
+  for (const message of messages) {
+    if (message.role !== "user" || typeof message.content === "string") continue;
+    for (const block of message.content)
+      if (block.type === "tool_result" && block.is_error) failed.add(block.tool_use_id);
+  }
+  return failed;
 }
 
 function serializeError(error: unknown): { name: string; message: string } {

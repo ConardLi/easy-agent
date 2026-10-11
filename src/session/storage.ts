@@ -105,7 +105,13 @@ export type TranscriptEntry =
       trigger: "auto" | "manual";
       reason?: "clear" | "rewind";
     }
-  | { type: "file_history_snapshot"; timestamp: string; snapshot: FileHistorySnapshotRecord };
+  | { type: "file_history_snapshot"; timestamp: string; snapshot: FileHistorySnapshotRecord }
+  /**
+   * A files-only rewind restored the edits of these tool calls; the
+   * conversation still holds them. Not a boundary: it holds across later
+   * segments for as long as the calls stay in the conversation.
+   */
+  | { type: "files_rewound"; timestamp: string; toolUseIds: string[] };
 
 export interface RestoredSession {
   summary: SessionSummary;
@@ -114,6 +120,8 @@ export interface RestoredSession {
   messageIds: (string | null)[];
   /** Reconstructed file-history snapshots (chronological), if any. */
   fileHistorySnapshots: FileHistorySnapshotRecord[];
+  /** Tool calls in `messages` whose file edits a files-only rewind restored. */
+  revertedToolUses: string[];
 }
 
 function createEmptyUsage(): Usage {
@@ -251,6 +259,17 @@ function parseJsonLine(line: string): TranscriptEntry | null {
           timestamp: parsed.timestamp,
           snapshot: snap as unknown as FileHistorySnapshotRecord,
         };
+      }
+      return null;
+    }
+
+    if (parsed.type === "files_rewound") {
+      if (
+        typeof parsed.timestamp === "string" &&
+        Array.isArray(parsed.toolUseIds) &&
+        parsed.toolUseIds.every((id) => typeof id === "string")
+      ) {
+        return { type: "files_rewound", timestamp: parsed.timestamp, toolUseIds: parsed.toolUseIds as string[] };
       }
       return null;
     }
@@ -516,7 +535,24 @@ export async function restoreSession(cwd: string, sessionId?: string): Promise<R
     messages,
     messageIds: messageEntries.map((entry) => entry.messageId ?? null),
     fileHistorySnapshots: [...fhMap.values()],
+    revertedToolUses: revertedToolUsesIn(entries, messages),
   };
+}
+
+/** Ids of the tool calls in `messages` that a recorded files rewind restored, in conversation order. */
+function revertedToolUsesIn(entries: readonly TranscriptEntry[], messages: readonly MessageParam[]): string[] {
+  const reverted = new Set(entries.flatMap((entry) => (entry.type === "files_rewound" ? entry.toolUseIds : [])));
+  if (reverted.size === 0) return [];
+  return toolUseIdsOf(messages).filter((id) => reverted.has(id));
+}
+
+/** Ids of the tool calls in `messages`, in order. */
+export function toolUseIdsOf(messages: readonly MessageParam[]): string[] {
+  return messages.flatMap((message) =>
+    message.role === "assistant" && Array.isArray(message.content)
+      ? message.content.flatMap((block) => (block.type === "tool_use" ? [block.id] : []))
+      : [],
+  );
 }
 
 /**

@@ -136,6 +136,7 @@ const SessionStateSchema = z
     permissionMode: PermissionMode,
     messages: z.array(z.object({ role: z.string(), content: z.unknown() }).loose()),
     pendingRequests: z.array(InteractionRequestSchema),
+    revertedToolUses: z.array(z.string()),
   })
   .loose();
 

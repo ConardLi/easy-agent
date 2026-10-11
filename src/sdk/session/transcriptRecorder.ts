@@ -68,6 +68,12 @@ export class TranscriptRecorder {
     await this.#rewrite("manual", messages, "rewind");
   }
 
+  /** A files-only rewind restored the edits of these tool calls; the conversation keeps them. */
+  async filesRewound(toolUseIds: readonly string[]): Promise<void> {
+    if (toolUseIds.length === 0) return;
+    await this.#append({ type: "files_rewound", timestamp: now(), toolUseIds: [...toolUseIds] });
+  }
+
   /**
    * Full compactions start a new segment with the compacted conversation;
    * micro-compactions only trim old tool output in memory, so the file keeps

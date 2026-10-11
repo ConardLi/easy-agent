@@ -106,7 +106,8 @@ export function viewFromState(workspaceId: string, state: SessionState, seq: num
     tasks: state.tasks ?? [],
     taskMode: state.taskMode,
     backgroundAgents: state.backgroundAgents ?? [],
-    reverted: previous?.reverted ?? [],
+    // The Agent reports the calls of the current conversation; archived ones are only known here.
+    reverted: [...new Set([...(previous?.reverted ?? []), ...(state.revertedToolUses ?? [])])],
     counter: previous?.counter ?? 0,
   });
 }
