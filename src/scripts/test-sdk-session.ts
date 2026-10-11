@@ -183,6 +183,35 @@ try {
     await session.close();
   });
 
+  await check("a tool call streams its input before the call is committed", async () => {
+    const session = await runtime.createSession({ model: FIXTURE_MODEL, interactions: [], persist: false });
+    const events = record(session);
+    const input = { pattern: "**/*.md", path: "." };
+    fixture.script([
+      { kind: "tool", name: "Glob", input, inputChunk: 7 },
+      { kind: "text", text: "Listed." },
+    ]);
+    await session.send("List the docs.");
+    const started = events.find((event) => event.type === "tool_started");
+    assert.ok(started?.type === "tool_started");
+    const deltas = events.flatMap((event) => (event.type === "tool_input_delta" ? [event] : []));
+    assert.ok(deltas.length > 1, "the input arrives in fragments");
+    assert.ok(deltas.every((delta) => delta.toolUseId === started.toolUseId));
+    assert.deepEqual(JSON.parse(deltas.map((delta) => delta.partialJson).join("")), input);
+    assert.deepEqual(
+      [...new Set(types(events, "tool_started", "tool_input_delta", "assistant_message", "tool_completed"))],
+      ["tool_started", "tool_input_delta", "assistant_message", "tool_completed"],
+    );
+    const first = events.indexOf(deltas[0]!);
+    const last = events.indexOf(deltas.at(-1)!);
+    assert.ok(events.indexOf(started) < first);
+    assert.ok(events.findIndex((event) => event.type === "assistant_message") > last);
+    const completed = events.find((event) => event.type === "tool_completed");
+    assert.ok(completed?.type === "tool_completed");
+    assert.deepEqual(completed.input, input);
+    await session.close();
+  });
+
   await check("empty input with nothing queued does nothing", async () => {
     const session = await runtime.createSession({ model: FIXTURE_MODEL });
     const before = fixture.requests.length;

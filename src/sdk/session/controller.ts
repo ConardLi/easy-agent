@@ -659,6 +659,11 @@ export class SessionController {
         await this.#recorder?.toolStarted(event.name);
         return;
       }
+      case "tool_use_input":
+        if (event.partial_json) {
+          this.#emit({ type: "tool_input_delta", toolUseId: event.id, partialJson: event.partial_json });
+        }
+        return;
       case "permission_request":
         // A record of a confirmation that already happened; the live request
         // went through `#onPermissionRequest`.
