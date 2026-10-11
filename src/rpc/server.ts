@@ -124,8 +124,11 @@ export class RpcServer {
       await this.#requireRuntime().deleteSession(sessionId);
       return {};
     },
-    "session/fork": async ({ sessionId, title }) => ({
-      session: await this.#requireRuntime().forkSession(sessionId, title !== undefined ? { title } : {}),
+    "session/fork": async ({ sessionId, title, fromMessage }) => ({
+      session: await this.#requireRuntime().forkSession(sessionId, {
+        ...(title !== undefined ? { title } : {}),
+        ...(fromMessage !== undefined ? { fromMessage } : {}),
+      }),
     }),
     "session/send": async ({ sessionId, input, queue, images }) => {
       const session = this.#session(sessionId);
@@ -168,6 +171,13 @@ export class RpcServer {
       stopped: this.#session(sessionId).stopBackgroundAgent(agentId),
     }),
     "session/context": async ({ sessionId }) => this.#session(sessionId).getContext(),
+    "session/checkpoints": async ({ sessionId }) => ({ checkpoints: this.#session(sessionId).listCheckpoints() }),
+    "session/rewind": async ({ sessionId, toMessage, scope, dryRun }) =>
+      this.#session(sessionId).rewind({
+        scope,
+        ...(toMessage !== undefined ? { to: toMessage } : {}),
+        ...(dryRun !== undefined ? { dryRun } : {}),
+      }),
     "session/close": async ({ sessionId }) => {
       await this.#session(sessionId).close();
       this.#forgetClosedSessions();

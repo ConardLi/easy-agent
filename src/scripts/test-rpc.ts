@@ -671,6 +671,81 @@ try {
     await rejects(rpc.call("session/context", { sessionId: "nope" }), protocol.RpcErrorCode.SessionNotFound);
   });
 
+  await check("checkpoints, rewinds, and forks from a message", async () => {
+    const { sessionId: id } = await rpc.call<{ sessionId: string }>("session/create", { model: FIXTURE_MODEL });
+    fixture.script([
+      { kind: "tool", name: "Write", input: { file_path: "rpc-rewind.txt", content: "v1\n" } },
+      { kind: "text", text: "Written." },
+    ]);
+    const done = rpc.call("session/send", { sessionId: id, input: "Create the file." });
+    await until("permission request", () => opened(rpc, id).length === 1);
+    await rpc.call("session/respond", {
+      sessionId: id,
+      requestId: opened(rpc, id)[0]!.id,
+      response: { decision: "allow_once" },
+    });
+    await done;
+    fixture.script([{ kind: "text", text: "Fine." }]);
+    await rpc.call("session/send", { sessionId: id, input: "Anything else?" });
+
+    const { checkpoints } = await rpc.call<{ checkpoints: Json[] }>("session/checkpoints", { sessionId: id });
+    assert.deepEqual(
+      checkpoints.map((checkpoint) => [checkpoint.prompt, checkpoint.files]),
+      [
+        ["Create the file.", true],
+        ["Anything else?", true],
+      ],
+    );
+    const [first, second] = checkpoints as [Json, Json];
+
+    const fork = await rpc.call<{ session: Json }>("session/fork", { sessionId: id, fromMessage: second.id });
+    const forkMessages = (
+      await rpc.call<{ messages: unknown[] }>("session/read", {
+        sessionId: fork.session.sessionId,
+      })
+    ).messages;
+    assert.ok(forkMessages.length > 0 && forkMessages.length <= (second.messageIndex as number));
+    await rpc.call("session/delete", { sessionId: fork.session.sessionId });
+
+    const preview = await rpc.call<Json>("session/rewind", {
+      sessionId: id,
+      toMessage: first.id,
+      scope: "both",
+      dryRun: true,
+    });
+    assert.deepEqual((preview.files as Json).paths, ["rpc-rewind.txt"]);
+    assert.equal(await readFile(path.join(cwd, "rpc-rewind.txt"), "utf8"), "v1\n");
+
+    const before = rpc.events.length;
+    const result = await rpc.call<Json>("session/rewind", { sessionId: id, toMessage: first.id, scope: "both" });
+    assert.equal(result.dryRun, false);
+    await assert.rejects(readFile(path.join(cwd, "rpc-rewind.txt")), "the created file is gone");
+    const after = rpc.events.slice(before).filter((event) => event.sessionId === id);
+    assert.deepEqual(
+      after.filter((event) => event.type === "session_rewound" || event.type === "messages_changed").map((e) => e.type),
+      ["session_rewound", "messages_changed"],
+    );
+    const state = await rpc.call<Json>("session/state", { sessionId: id });
+    assert.equal((state.messages as unknown[]).length, 0);
+
+    await rejects(
+      rpc.call("session/rewind", { sessionId: id, toMessage: second.id, scope: "both" }),
+      protocol.RpcErrorCode.AgentError,
+      "not_found",
+    );
+    await rejects(
+      rpc.call("session/rewind", { sessionId: id, scope: "conversation" }),
+      protocol.RpcErrorCode.AgentError,
+      "invalid_argument",
+    );
+    await rejects(
+      rpc.call("session/rewind", { sessionId: id, scope: "everything" }, { valid: false }),
+      protocol.RpcErrorCode.InvalidParams,
+    );
+    await rpc.call("session/close", { sessionId: id });
+    await rpc.call("session/delete", { sessionId: id });
+  });
+
   await check("list, rename, read, fork, and delete saved sessions", async () => {
     await rpc.call("session/close", { sessionId });
     await rejects(rpc.call("session/state", { sessionId }), protocol.RpcErrorCode.SessionNotFound);

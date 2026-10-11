@@ -587,6 +587,50 @@ export interface SessionState {
   backgroundAgents: BackgroundAgentInfo[];
 }
 
+// ─── Checkpoints ──────────────────────────────────────────────────────────
+
+/** A prompt the conversation can go back to. */
+export interface SessionCheckpoint {
+  /** Pass to `rewind()` or `forkSession({ fromMessage })`. */
+  id: string;
+  /** Index of the prompt in `SessionState.messages`. */
+  messageIndex: number;
+  /** The prompt as typed; a skill or command reads `/name args`. */
+  prompt: string;
+  /** Whether the files can be restored to how they were before this prompt. */
+  files: boolean;
+}
+
+/** What a rewind restores: the files, the conversation, or both. */
+export type RewindScope = "files" | "conversation" | "both";
+
+export interface RewindOptions {
+  /**
+   * Checkpoint id to go back to: the state just before that prompt. Without
+   * it, a `files` rewind restores the files to before the first edit the
+   * session tracked; the other scopes need it.
+   */
+  to?: string;
+  scope: RewindScope;
+  /** Report what would change without changing anything. */
+  dryRun?: boolean;
+}
+
+export interface RewindResult {
+  scope: RewindScope;
+  dryRun: boolean;
+  /** The checkpoint gone back to; null for a `files` rewind to the start. */
+  checkpoint: SessionCheckpoint | null;
+  /** Messages removed from the conversation; 0 when the conversation stays. */
+  messagesRemoved: number;
+  /**
+   * Files restored, or that would be restored, relative to the workspace when
+   * inside it, with the lines added and removed by restoring them. Only edits
+   * made by the Write, Edit, and MultiEdit tools of this session are tracked.
+   */
+  files: { paths: string[]; insertions: number; deletions: number };
+}
+
 // ─── Turns ────────────────────────────────────────────────────────────────
 
 /** An image sent with a turn. */
@@ -664,6 +708,20 @@ export type SessionEventBody =
   | { type: "background_agents_changed"; agents: BackgroundAgentInfo[] }
   | { type: "session_cleared" }
   | { type: "session_replaced"; sessionId: string; messages: MessageParam[]; totalUsage: Usage }
+  /**
+   * `rewind()` restored the files, the conversation, or both. `messages` is the
+   * conversation afterwards; `messageIndex` is where the checkpoint's prompt
+   * was, null for a files rewind to the start; `files` are the restored paths.
+   * A conversation rewind is followed by `messages_changed`.
+   */
+  | {
+      type: "session_rewound";
+      scope: RewindScope;
+      checkpointId: string | null;
+      messageIndex: number | null;
+      messages: MessageParam[];
+      files: string[];
+    }
   | { type: "notice"; tone: "info" | "error"; title: string; body: string }
   // Turns
   | { type: "turn_started"; turnId: string; input: string; source: TurnSource; runsModel: boolean }
@@ -713,6 +771,7 @@ export const SESSION_EVENT_TYPES = [
   "background_agents_changed",
   "session_cleared",
   "session_replaced",
+  "session_rewound",
   "notice",
   "turn_started",
   "turn_completed",

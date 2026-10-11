@@ -96,19 +96,22 @@ export type TranscriptEntry =
        * A boundary: resume starts from the messages written after the last
        * one. Compaction writes the compacted conversation after it; clearing
        * the context (`/clear`, a plan approved with a context clear) writes
-       * none and marks `reason: "clear"`. Readers that predate `reason` treat
-       * a clear as a manual compaction to an empty conversation.
+       * none and marks `reason: "clear"`; rewinding to an earlier message
+       * writes the messages before it and marks `reason: "rewind"`. Readers
+       * that predate `reason` treat both as a manual compaction.
        */
       type: "compaction";
       timestamp: string;
       trigger: "auto" | "manual";
-      reason?: "clear";
+      reason?: "clear" | "rewind";
     }
   | { type: "file_history_snapshot"; timestamp: string; snapshot: FileHistorySnapshotRecord };
 
 export interface RestoredSession {
   summary: SessionSummary;
   messages: MessageParam[];
+  /** Id of the user turn that added each message, aligned with `messages`; null when unknown. */
+  messageIds: (string | null)[];
   /** Reconstructed file-history snapshots (chronological), if any. */
   fileHistorySnapshots: FileHistorySnapshotRecord[];
 }
@@ -226,7 +229,7 @@ function parseJsonLine(line: string): TranscriptEntry | null {
           type: "compaction",
           timestamp: parsed.timestamp,
           trigger: parsed.trigger,
-          ...(parsed.reason === "clear" ? { reason: "clear" as const } : {}),
+          ...(parsed.reason === "clear" || parsed.reason === "rewind" ? { reason: parsed.reason } : {}),
         };
       }
       return null;
@@ -299,11 +302,36 @@ function messageText(message: MessageParam): string {
     .join(" ");
 }
 
+function isHiddenPromptText(text: string): boolean {
+  return !text || HIDDEN_PROMPT_PREFIXES.some((prefix) => text.startsWith(prefix));
+}
+
+/**
+ * The prompt a person typed in a user message, as they typed it: a skill or
+ * command invocation reads `/name args`, and context a UserPromptSubmit hook
+ * added is left out. Null for tool results and for context the engine added.
+ */
+export function visiblePromptText(message: MessageParam): string | null {
+  if (message.role !== "user") return null;
+  const content = message.content;
+  if (Array.isArray(content) && content.some((block) => (block as { type?: string }).type === "tool_result")) {
+    return null;
+  }
+  const text = messageText(message).trimStart();
+  if (isHiddenPromptText(text)) return null;
+  const name = /<command-name>([^<]*)<\/command-name>/.exec(text)?.[1];
+  if (name) {
+    const args = /<command-args>([\s\S]*?)<\/command-args>/.exec(text)?.[1]?.trim();
+    return args ? `${name} ${args}` : name;
+  }
+  return text.replace(/^\[user-context\][\s\S]*?\n\n/, "").trim() || null;
+}
+
 function extractFirstPrompt(messages: MessageParam[]): string {
   for (const message of messages) {
     if (message.role !== "user") continue;
     const text = messageText(message).trimStart();
-    if (!text || HIDDEN_PROMPT_PREFIXES.some((prefix) => text.startsWith(prefix))) continue;
+    if (isHiddenPromptText(text)) continue;
     return text
       .replace(/^\[user-context\]\s*/, "")
       .replace(/<[^>]+>/g, " ")
@@ -453,10 +481,10 @@ export async function restoreSession(cwd: string, sessionId?: string): Promise<R
       break;
     }
   }
-  const messages = entries
+  const messageEntries = entries
     .slice(startIndex)
-    .filter((entry): entry is Extract<TranscriptEntry, { type: "message" }> => entry.type === "message")
-    .map((entry) => entry.message);
+    .filter((entry): entry is Extract<TranscriptEntry, { type: "message" }> => entry.type === "message");
+  const messages = messageEntries.map((entry) => entry.message);
 
   const latestUsage = [...entries]
     .reverse()
@@ -486,16 +514,22 @@ export async function restoreSession(cwd: string, sessionId?: string): Promise<R
       ...(await readTitleAt(transcriptPath.replace(/\.jsonl$/, TITLE_SUFFIX))),
     },
     messages,
+    messageIds: messageEntries.map((entry) => entry.messageId ?? null),
     fileHistorySnapshots: [...fhMap.values()],
   };
 }
 
+/**
+ * Start a new segment holding `messages`. `messageIds`, aligned with
+ * `messages`, keeps the turn each message belongs to, so checkpoints of the
+ * kept turns survive resume.
+ */
 export async function appendCompactionSnapshot(
   cwd: string,
   sessionId: string,
   trigger: "auto" | "manual",
   messages: MessageParam[],
-  options: { reason?: "clear" } = {},
+  options: { reason?: "clear" | "rewind"; messageIds?: readonly (string | null)[] } = {},
 ): Promise<void> {
   if (!persistenceEnabled) return;
   const paths = await getSessionPaths(cwd, sessionId);
@@ -509,16 +543,18 @@ export async function appendCompactionSnapshot(
       ...(options.reason ? { reason: options.reason } : {}),
     }),
   );
-  for (const msg of messages) {
+  messages.forEach((msg, index) => {
+    const messageId = options.messageIds?.[index];
     lines.push(
       JSON.stringify({
         type: "message",
         timestamp: new Date().toISOString(),
         role: msg.role,
         message: msg,
+        ...(messageId ? { messageId } : {}),
       }),
     );
-  }
+  });
   await withFileLock(paths.transcriptPath, () => appendPrivateFile(paths.transcriptPath, lines.join("\n") + "\n"));
 }
 

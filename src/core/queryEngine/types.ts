@@ -200,6 +200,8 @@ export type QueryEngineEvent =
       type: "session_switched";
       sessionId: string;
       messages: MessageParam[];
+      /** Turn id of each message, aligned with `messages`. */
+      messageIds: (string | null)[];
       totalUsage: Usage;
       fileHistorySnapshots: FileHistorySnapshotRecord[];
     };

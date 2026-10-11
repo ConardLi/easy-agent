@@ -12,13 +12,15 @@
  * Messages are written by following the engine's message list: anything
  * appended since the last write is appended to the file. When the list is
  * rewritten instead (compaction, `/clear`, a plan approved with a context
- * clear), a boundary entry is written followed by the new list, and resume
- * starts after the last boundary.
+ * clear, a rewind to an earlier message), a boundary entry is written followed
+ * by the new list, and resume starts after the last boundary. Every message
+ * is written with the id of the turn that added it, when it has one.
  */
 
 import type { MessageParam } from "@anthropic-ai/sdk/resources/messages.js";
 import { appendCompactionSnapshot, appendTranscriptEntry, type TranscriptEntry } from "../../session/storage.js";
 import type { Usage } from "../../types/message.js";
+import type { TurnIndex } from "./turnIndex.js";
 
 export class TranscriptRecorder {
   /** The engine messages already in the file, by identity. */
@@ -29,6 +31,7 @@ export class TranscriptRecorder {
   constructor(
     private readonly cwd: string,
     private readonly sessionId: () => string,
+    private readonly turns: TurnIndex,
     recorded: readonly MessageParam[] = [],
   ) {
     this.#recorded = [...recorded];
@@ -40,7 +43,7 @@ export class TranscriptRecorder {
    * rewrite is explained by `compacted()` / `cleared()`, or flushed at the end
    * of the turn.
    */
-  async sync(messages: readonly MessageParam[], messageId: string | null): Promise<void> {
+  async sync(messages: readonly MessageParam[]): Promise<void> {
     if (!startsWith(messages, this.#recorded)) {
       this.#pendingRewrite = [...messages];
       return;
@@ -49,6 +52,7 @@ export class TranscriptRecorder {
     this.#recorded = [...messages];
     this.#pendingRewrite = null;
     for (const message of appended) {
+      const messageId = this.turns.idOf(message);
       await this.#append({
         type: "message",
         timestamp: now(),
@@ -57,6 +61,11 @@ export class TranscriptRecorder {
         ...(messageId ? { messageId } : {}),
       });
     }
+  }
+
+  /** The conversation went back to an earlier message; `messages` is what is left. */
+  async rewound(messages: readonly MessageParam[]): Promise<void> {
+    await this.#rewrite("manual", messages, "rewind");
   }
 
   /**
@@ -110,9 +119,16 @@ export class TranscriptRecorder {
     return this.#append({ type: "system", timestamp: now(), level, message });
   }
 
-  async #rewrite(trigger: "auto" | "manual", messages: readonly MessageParam[], reason?: "clear"): Promise<void> {
+  async #rewrite(
+    trigger: "auto" | "manual",
+    messages: readonly MessageParam[],
+    reason?: "clear" | "rewind",
+  ): Promise<void> {
     this.#rebase(messages);
-    await appendCompactionSnapshot(this.cwd, this.sessionId(), trigger, [...messages], reason ? { reason } : {});
+    await appendCompactionSnapshot(this.cwd, this.sessionId(), trigger, [...messages], {
+      ...(reason ? { reason } : {}),
+      messageIds: this.turns.idsOf(messages),
+    });
   }
 
   #rebase(messages: readonly MessageParam[]): void {

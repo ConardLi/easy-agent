@@ -1183,6 +1183,10 @@
                 },
                 "title": {
                   "type": "string"
+                },
+                "fromMessage": {
+                  "type": "string",
+                  "minLength": 1
                 }
               },
               "required": [
@@ -1910,6 +1914,100 @@
             },
             "method": {
               "type": "string",
+              "const": "session/checkpoints"
+            },
+            "params": {
+              "type": "object",
+              "properties": {
+                "sessionId": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "sessionId"
+              ]
+            }
+          },
+          "required": [
+            "jsonrpc",
+            "method"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "jsonrpc": {
+              "type": "string",
+              "const": "2.0"
+            },
+            "id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "method": {
+              "type": "string",
+              "const": "session/rewind"
+            },
+            "params": {
+              "type": "object",
+              "properties": {
+                "sessionId": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "toMessage": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "scope": {
+                  "type": "string",
+                  "enum": [
+                    "files",
+                    "conversation",
+                    "both"
+                  ]
+                },
+                "dryRun": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "sessionId",
+                "scope"
+              ]
+            }
+          },
+          "required": [
+            "jsonrpc",
+            "method"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "jsonrpc": {
+              "type": "string",
+              "const": "2.0"
+            },
+            "id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "method": {
+              "type": "string",
               "const": "shutdown"
             },
             "params": {
@@ -2029,6 +2127,7 @@
                     "background_agents_changed",
                     "session_cleared",
                     "session_replaced",
+                    "session_rewound",
                     "notice",
                     "turn_started",
                     "turn_completed",
@@ -7179,6 +7278,130 @@
           ],
           "additionalProperties": {}
         },
+        "session/checkpoints": {
+          "type": "object",
+          "properties": {
+            "checkpoints": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "messageIndex": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "prompt": {
+                    "type": "string"
+                  },
+                  "files": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "id",
+                  "messageIndex",
+                  "prompt",
+                  "files"
+                ],
+                "additionalProperties": {}
+              }
+            }
+          },
+          "required": [
+            "checkpoints"
+          ]
+        },
+        "session/rewind": {
+          "type": "object",
+          "properties": {
+            "scope": {
+              "type": "string",
+              "enum": [
+                "files",
+                "conversation",
+                "both"
+              ]
+            },
+            "dryRun": {
+              "type": "boolean"
+            },
+            "checkpoint": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "messageIndex": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "prompt": {
+                      "type": "string"
+                    },
+                    "files": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "messageIndex",
+                    "prompt",
+                    "files"
+                  ],
+                  "additionalProperties": {}
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "messagesRemoved": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "files": {
+              "type": "object",
+              "properties": {
+                "paths": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "insertions": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "deletions": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "paths",
+                "insertions",
+                "deletions"
+              ]
+            }
+          },
+          "required": [
+            "scope",
+            "dryRun",
+            "checkpoint",
+            "messagesRemoved",
+            "files"
+          ]
+        },
         "shutdown": {
           "type": "object",
           "properties": {}
@@ -7226,6 +7449,8 @@
         "session/setEffort",
         "session/stopBackgroundAgent",
         "session/context",
+        "session/checkpoints",
+        "session/rewind",
         "shutdown"
       ]
     }
