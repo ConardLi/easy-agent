@@ -62,7 +62,8 @@ export interface Attachment {
 export type NoticeIcon = "compact" | "mode" | "interrupt" | "clear" | "command" | "error" | "model";
 
 export type Block =
-  | { kind: "user"; id: string; text: string; attachments?: Attachment[]; at?: number }
+  /** `messageIndex` is the prompt's place in the conversation the Agent holds; absent once cleared or compacted away. */
+  | { kind: "user"; id: string; text: string; attachments?: Attachment[]; at?: number; messageIndex?: number }
   | { kind: "assistant"; id: string; text: string; streaming?: boolean }
   | { kind: "thinking"; id: string; text: string; streaming?: boolean; durationMs?: number }
   | { kind: "tool"; id: string; tool: ToolCall }

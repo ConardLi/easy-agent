@@ -19,7 +19,10 @@ import type {
   InterruptOutcome,
   PermissionMode,
   RespondOutcome,
+  RewindOptions,
+  RewindResult,
   SendOptions,
+  SessionCheckpoint,
   SessionContext,
   SessionEvent,
   SessionEventListener,
@@ -141,6 +144,20 @@ export class AgentSession {
   /** Names of the tools the model is offered in the current mode. */
   getToolNames(): string[] {
     return this.#active().getToolNames();
+  }
+
+  /** Prompts the conversation can go back to, oldest first, and whether their files can be restored. */
+  listCheckpoints(): SessionCheckpoint[] {
+    return this.#active().listCheckpoints();
+  }
+
+  /**
+   * Restore the files, the conversation, or both to how they were just before
+   * a checkpoint's prompt. Rejects with `busy` while a turn runs; pass
+   * `dryRun` to see what would change first.
+   */
+  rewind(options: RewindOptions): Promise<RewindResult> {
+    return this.#active().rewind(options);
   }
 
   /**

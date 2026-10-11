@@ -23,6 +23,8 @@ import { getDefaultModel } from "../services/api/client.js";
 import { resolveProfile } from "../services/api/providers/profile.js";
 import { bootstrapMcp, connectAdditionalMcpServers } from "../services/mcp/bootstrap.js";
 import { getAllUserInvocableSkills } from "../services/skills/registry.js";
+import { findCheckpoints } from "../session/checkpoints.js";
+import { copyFileHistory } from "../session/fileHistory.js";
 import {
   appendTranscriptEntry,
   createSessionId,
@@ -228,15 +230,31 @@ export class AgentRuntime {
 
   /**
    * Copy a saved session's conversation into a new session and return the
-   * copy. The copy starts without file checkpoints, so `/rewind` cannot go
-   * back past the fork.
+   * copy. With `fromMessage`, a checkpoint id, the copy ends just before that
+   * prompt. The copy keeps the file checkpoints of the turns it holds, so it
+   * can restore files to them; the files themselves are not touched.
    */
-  async forkSession(sessionId: string, options: { title?: string } = {}): Promise<StoredSessionSummary> {
+  async forkSession(
+    sessionId: string,
+    options: { title?: string; fromMessage?: string } = {},
+  ): Promise<StoredSessionSummary> {
     this.#assertActive();
     const source = await this.#restore(sessionId);
     if (!isSessionPersistenceEnabled()) {
       throw new AgentSdkError("session_storage", "Session persistence is disabled (cleanupPeriodDays is 0).");
     }
+    let end = source.messages.length;
+    if (options.fromMessage !== undefined) {
+      const position = findCheckpoints(source.messages, source.messageIds).find(
+        (candidate) => candidate.id === options.fromMessage,
+      );
+      if (!position) {
+        throw new AgentSdkError("not_found", `No checkpoint ${options.fromMessage} in session ${sessionId}.`);
+      }
+      end = position.start;
+    }
+    const messageIds = source.messageIds.slice(0, end);
+    const turns = new Set(messageIds.filter((id): id is string => id !== null));
     const forkId = createSessionId();
     const startedAt = new Date().toISOString();
     try {
@@ -247,14 +265,22 @@ export class AgentRuntime {
         updatedAt: startedAt,
         model: source.summary.model,
       });
-      for (const message of source.messages) {
+      for (const [index, message] of source.messages.slice(0, end).entries()) {
+        const messageId = messageIds[index];
         await appendTranscriptEntry(this.cwd, forkId, {
           type: "message",
           timestamp: new Date().toISOString(),
           role: message.role === "assistant" ? "assistant" : "user",
           message,
+          ...(messageId ? { messageId } : {}),
         });
       }
+      await copyFileHistory(
+        this.cwd,
+        source.summary.sessionId,
+        forkId,
+        source.fileHistorySnapshots.filter((snapshot) => turns.has(snapshot.messageId)),
+      );
       if (options.title?.trim()) await writeSessionTitle(this.cwd, forkId, options.title);
     } catch (error) {
       throw new AgentSdkError("session_storage", (error as Error).message, { cause: error });
@@ -449,6 +475,7 @@ export class AgentRuntime {
       options: params.options,
       permissionSettings: params.permissionSettings,
       initialMessages: params.restored?.messages ?? [],
+      initialMessageIds: params.restored?.messageIds ?? [],
       initialUsage: params.restored?.summary.totalUsage ?? { input_tokens: 0, output_tokens: 0 },
       fileHistorySnapshots: params.restored?.fileHistorySnapshots ?? [],
       onSessionReplaced: (previousId, nextId) => {

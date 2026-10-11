@@ -64,7 +64,7 @@ const runtime = await createAgentRuntime({
 | `resumeSession(sessionId?, options?)` | Reopen a saved conversation; without an id, the most recent one |
 | `listSessions(limit?)` / `readSession(id)` | Saved conversations of the workspace, without opening them. Summaries carry the first prompt the user typed and the title, if set |
 | `renameSession(id, title)` | Set a saved session's title; an empty title clears it |
-| `forkSession(id, { title? })` | Copy a saved conversation into a new session. The copy has no file checkpoints, so `/rewind` cannot go back past the fork |
+| `forkSession(id, { title?, fromMessage? })` | Copy a saved conversation into a new session. With `fromMessage`, a checkpoint id from `listCheckpoints()`, the copy ends just before that prompt. The copy keeps the file checkpoints of the turns it holds; the files on disk are not touched |
 | `deleteSession(id)` | Delete a saved session's transcript, title, file checkpoints, and task list; close it first |
 | `getSession(id)` / `listOpenSessions()` | Sessions currently open |
 | `getCapabilities()` | Built-in commands, invocable skills, user commands, sub-agent types, output style |
@@ -127,6 +127,8 @@ const session = await runtime.createSession({
 | `stopBackgroundAgent(agentId)` | Stop a background agent this session started |
 | `getState()` | Snapshot: messages, usage and context size, model, modes, thinking, pending requests, todos, tasks, background agents |
 | `getContext()` | How the next request fills the context window, see [Context breakdown](#context-breakdown) |
+| `listCheckpoints()` | Prompts the conversation can go back to, see [Checkpoints and rewind](#checkpoints-and-rewind) |
+| `rewind({ to?, scope, dryRun? })` | Restore the files, the conversation, or both to just before a checkpoint's prompt. Rejects with `busy` while a turn runs |
 | `subscribe(listener)` / `events(signal?)` | Event stream, as a callback or an async iterator |
 | `close()` | Abort the running turn, settle pending requests, release the session |
 
@@ -146,6 +148,24 @@ const session = await runtime.createSession({
 
 Each category's items add up to the category, and the categories add up to `used`. `totals` holds the four figures `/context` prints, so the two always agree. All figures are estimates from character counts (`estimated: true`).
 
+### Checkpoints and rewind
+
+Every prompt a person typed is a checkpoint. `listCheckpoints()` returns them oldest first, each with an `id`, the `messageIndex` of the prompt in `getState().messages`, the `prompt` as typed (a skill or command reads `/name args`), and `files`: whether a file checkpoint was taken before it. Prompts removed by `/clear` or summarized by compaction are no longer checkpoints.
+
+`rewind({ to, scope })` goes back to just before the prompt of checkpoint `to`:
+
+| `scope` | Effect |
+| --- | --- |
+| `files` | Files edited since then return to their content at that point; files created since then are deleted. The conversation stays, and the next prompt tells the model which files were restored |
+| `conversation` | The prompt and everything after it leave the conversation, including hidden context the turn added before the prompt. The files stay |
+| `both` | Both of the above |
+
+Without `to`, a `files` rewind restores the files to before the first edit the session tracked. `dryRun: true` returns the same result without changing anything: the checkpoint, `messagesRemoved`, and `files` with the paths (relative to the workspace when inside it) and the lines added and removed by restoring them. Show it to the user before rewinding.
+
+Only edits made by the Write, Edit, and MultiEdit tools of the session are tracked. Changes made by shell commands, by sub-agents, or outside the agent are not restored, and a files rewind overwrites later manual edits to the tracked files. The conversation cannot be restored once rewound; `forkSession(id, { fromMessage })` keeps the original and starts a copy instead.
+
+A rewind emits `session_rewound` with the scope, the checkpoint id and `messageIndex`, the remaining `messages`, and the restored `files`; a conversation rewind is followed by `messages_changed` and `usage_changed`. Todos return to the last list in the remaining conversation. A persisted session writes a new transcript segment, so resume continues from the rewound conversation and its checkpoints.
+
 ### Events
 
 Every event carries `sessionId` and `seq`, a per-session sequence number. A new subscriber first receives `state_snapshot` with the current state, so it never has to replay history.
@@ -157,7 +177,7 @@ Every event carries `sessionId` and `seq`, a per-session sequence number. A new 
 | Tools | `tool_started`, `tool_progress` (execution status, Bash output, MCP progress, sub-agent progress), `tool_completed`, `tool_results` |
 | Interaction | `request_opened`, `request_resolved` |
 | Conversation | `messages_changed`, `usage_changed`, `compacted`, `token_warning`, `api_retry`, `stream_restart`, `error`, `notice` |
-| Session settings | `mode_changed`, `model_changed`, `thinking_changed`, `task_mode_changed`, `todos_changed`, `tasks_changed`, `background_agents_changed`, `session_cleared`, `session_replaced` |
+| Session settings | `mode_changed`, `model_changed`, `thinking_changed`, `task_mode_changed`, `todos_changed`, `tasks_changed`, `background_agents_changed`, `session_cleared`, `session_replaced`, `session_rewound` |
 | Local commands | `command_progress`, `command_output`, `command_view` (session picker, diff, memory files, permission rules, plugins), `editor_requested` |
 
 Stop reasons are `completed`, `aborted`, `model_error`, `max_turns`, and `blocking_limit`.
@@ -184,7 +204,7 @@ Approving a plan with `clearContext` stops the planning turn and starts a fresh 
 
 ### Transcripts
 
-A persisted session's transcript holds the conversation exactly as the model sees it, including hidden context such as plan-mode reminders and background-agent notifications, so `resumeSession()` continues from the same context. `/clear`, compaction, and a plan implemented in a fresh context start a new segment; resume reads from the last one.
+A persisted session's transcript holds the conversation exactly as the model sees it, including hidden context such as plan-mode reminders and background-agent notifications, so `resumeSession()` continues from the same context. Each message records the turn that added it, which is how checkpoints survive resume. `/clear`, compaction, a conversation rewind, and a plan implemented in a fresh context start a new segment; resume reads from the last one.
 
 ### `/resume`
 

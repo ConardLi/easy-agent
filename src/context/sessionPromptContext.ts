@@ -166,6 +166,11 @@ export function createSessionPromptContext(options: SessionPromptContextOptions)
   };
 }
 
+/** A hidden context message telling the model about a change it did not make itself. */
+export function formatContextNote(notes: readonly string[]): string {
+  return `${CONTEXT_UPDATE_MARKER}\n<system-reminder>\n${notes.join("\n\n")}\n</system-reminder>`;
+}
+
 function sameParts(a: string[], b: string[]): boolean {
   return a.length === b.length && a.every((part, index) => part === b[index]);
 }

@@ -672,6 +672,149 @@ try {
     );
   });
 
+  await check("checkpoints, file and conversation rewinds, and forks from a message", async () => {
+    const allow = { permission: () => ({ decision: "allow_once" as const }) };
+    const file = (name: string) => path.join(cwd, name);
+    const read = (name: string) => readFile(file(name), "utf8").catch(() => null);
+    await writeFile(file("rewind-a.txt"), "zero\n");
+    const session = await runtime.createSession({ model: FIXTURE_MODEL, handlers: allow });
+    const events = record(session);
+    fixture.script([
+      { kind: "tool", name: "Write", input: { file_path: "rewind-a.txt", content: "one\n" } },
+      { kind: "text", text: "Wrote one." },
+    ]);
+    await session.send("First change.");
+    fixture.script([
+      { kind: "tool", name: "Write", input: { file_path: "rewind-a.txt", content: "two\n" } },
+      { kind: "tool", name: "Write", input: { file_path: "rewind-b.txt", content: "new\n" } },
+      { kind: "text", text: "Wrote two." },
+    ]);
+    await session.send("Second change.");
+    fixture.script([{ kind: "text", text: "Nothing to do." }]);
+    await session.send("Third, no edits.");
+
+    const checkpoints = session.listCheckpoints();
+    assert.deepEqual(
+      checkpoints.map((checkpoint) => [checkpoint.prompt, checkpoint.files]),
+      [
+        ["First change.", true],
+        ["Second change.", true],
+        ["Third, no edits.", true],
+      ],
+    );
+    const messages = session.getState().messages;
+    for (const checkpoint of checkpoints) {
+      assert.equal(messages[checkpoint.messageIndex]?.content, checkpoint.prompt, "messageIndex points at the prompt");
+    }
+    const [first, second, third] = checkpoints as [
+      (typeof checkpoints)[0],
+      (typeof checkpoints)[0],
+      (typeof checkpoints)[0],
+    ];
+
+    const preview = await session.rewind({ to: second.id, scope: "both", dryRun: true });
+    assert.equal(preview.dryRun, true);
+    assert.deepEqual(preview.files.paths.sort(), ["rewind-a.txt", "rewind-b.txt"]);
+    assert.ok(preview.messagesRemoved >= messages.length - second.messageIndex);
+    assert.equal(await read("rewind-a.txt"), "two\n", "a dry run changes nothing");
+    assert.equal(session.getState().messages.length, messages.length);
+
+    const filesOnly = await session.rewind({ to: second.id, scope: "files" });
+    assert.deepEqual(filesOnly.files.paths.sort(), ["rewind-a.txt", "rewind-b.txt"]);
+    assert.equal(filesOnly.messagesRemoved, 0);
+    assert.equal(await read("rewind-a.txt"), "one\n");
+    assert.equal(await read("rewind-b.txt"), null, "a file created after the checkpoint is removed");
+    assert.equal(session.getState().messages.length, messages.length, "the conversation stays");
+    const rewound = events.filter((event) => event.type === "session_rewound");
+    assert.equal(rewound.length, 1);
+    assert.ok(rewound[0]?.type === "session_rewound" && rewound[0].scope === "files");
+
+    fixture.script([{ kind: "text", text: "Noted." }]);
+    await session.send("What changed?");
+    const lastRequest = JSON.stringify(fixture.requests.at(-1)?.messages ?? []);
+    assert.match(lastRequest, /restored these files[^"]*rewind-a\.txt/, "the model hears about the restored files");
+
+    const before = session.getState().messages.length;
+    const both = await session.rewind({ to: second.id, scope: "both" });
+    assert.equal(session.getState().messages.length, before - both.messagesRemoved);
+    assert.ok(session.getState().messages.length <= second.messageIndex);
+    assert.deepEqual(
+      session.listCheckpoints().map((checkpoint) => checkpoint.id),
+      [first.id],
+    );
+    const lastEvents = events.slice(-3).map((event) => event.type);
+    assert.deepEqual(lastEvents, ["session_rewound", "messages_changed", "usage_changed"]);
+
+    await assert.rejects(session.rewind({ to: third.id, scope: "both" }), (error: unknown) =>
+      sdk.isAgentSdkError(error, "not_found"),
+    );
+    await assert.rejects(session.rewind({ scope: "conversation" }), (error: unknown) =>
+      sdk.isAgentSdkError(error, "invalid_argument"),
+    );
+    fixture.script([{ kind: "text", text: "Slow." }]);
+    const running = session.send("Keep going.");
+    await assert.rejects(session.rewind({ to: first.id, scope: "conversation" }), (error: unknown) =>
+      sdk.isAgentSdkError(error, "busy"),
+    );
+    await running;
+
+    const id = session.id;
+    await session.close();
+    const resumed = await runtime.resumeSession(id, { model: FIXTURE_MODEL, handlers: allow });
+    assert.deepEqual(
+      resumed.listCheckpoints().map((checkpoint) => [checkpoint.prompt, checkpoint.files]),
+      [
+        ["First change.", true],
+        ["Keep going.", true],
+      ],
+      "checkpoints survive a rewind and resume",
+    );
+    const conversationOnly = await resumed.rewind({ to: resumed.listCheckpoints()[1]!.id, scope: "conversation" });
+    assert.deepEqual(conversationOnly.files.paths, []);
+    assert.deepEqual(
+      resumed.listCheckpoints().map((checkpoint) => checkpoint.prompt),
+      ["First change."],
+    );
+
+    const start = await resumed.rewind({ scope: "files" });
+    assert.equal(start.checkpoint, null);
+    assert.equal(await read("rewind-a.txt"), "zero\n", "a files rewind to the start undoes every tracked edit");
+    await resumed.close();
+
+    const fork = await runtime.forkSession(id, { fromMessage: first.id });
+    assert.equal((await runtime.readSession(fork.sessionId)).messages.length, 0, "the fork ends before the prompt");
+    await assert.rejects(runtime.forkSession(id, { fromMessage: "missing" }), (error: unknown) =>
+      sdk.isAgentSdkError(error, "not_found"),
+    );
+    const whole = await runtime.forkSession(id);
+    const copy = await runtime.resumeSession(whole.sessionId, { model: FIXTURE_MODEL, handlers: allow });
+    assert.deepEqual(
+      copy.listCheckpoints().map((checkpoint) => [checkpoint.prompt, checkpoint.files]),
+      [["First change.", true]],
+      "a fork keeps the file checkpoints of its turns",
+    );
+    await copy.rewind({ to: copy.listCheckpoints()[0]!.id, scope: "files", dryRun: true });
+    await copy.close();
+    await Promise.all(["rewind-a.txt", "rewind-b.txt"].map((name) => rm(file(name), { force: true })));
+  });
+
+  await check("a conversation rewind also drops the hidden context its turn added", async () => {
+    const session = await runtime.createSession({ model: FIXTURE_MODEL, permissionMode: "plan" });
+    fixture.script([{ kind: "text", text: "Plan one." }]);
+    await session.send("Plan step one.");
+    fixture.script([{ kind: "text", text: "Plan two." }]);
+    await session.send("Plan step two.");
+    const first = session.listCheckpoints()[0]!;
+    assert.ok(first.messageIndex > 0);
+    const hidden = session.getState().messages[first.messageIndex - 1];
+    assert.match(JSON.stringify(hidden?.content), /plan_mode/, "the plan-mode reminder precedes the prompt");
+    const result = await session.rewind({ to: first.id, scope: "conversation" });
+    assert.equal(session.getState().messages.length, 0);
+    assert.equal(result.messagesRemoved, first.messageIndex + 4);
+    assert.ok((await transcriptTypes(session.id)).includes("compaction"), "the rewind starts a new transcript segment");
+    await session.close();
+  });
+
   await check("session ids from callers never reach a path unchecked", async () => {
     for (const bad of ["../escape", "a/b", "", ".hidden"]) {
       await assert.rejects(runtime.readSession(bad), (error: unknown) =>

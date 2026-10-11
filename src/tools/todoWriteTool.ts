@@ -35,7 +35,7 @@ function isTodoItem(value: unknown): value is TodoItem {
   );
 }
 
-function parseTodos(input: Record<string, unknown>): TodoItem[] | { error: string } {
+export function parseTodos(input: Record<string, unknown>): TodoItem[] | { error: string } {
   const raw = input.todos;
   if (!Array.isArray(raw)) {
     return { error: "`todos` must be an array of TodoItem objects." };

@@ -70,7 +70,7 @@ Requests sent while `initialize` is running wait for it to finish, so a client m
 | `session/list` | `limit?` | `sessions`: saved sessions, most recent first |
 | `session/read` | `sessionId` | `summary`, `messages` of a saved session, without opening it |
 | `session/rename` | `sessionId`, `title` (empty clears it) | `session`: the updated summary |
-| `session/fork` | `sessionId`, `title?` | `session`: summary of the copy |
+| `session/fork` | `sessionId`, `title?`, `fromMessage?` (a checkpoint id: the copy ends just before that prompt) | `session`: summary of the copy, which keeps the file checkpoints of its turns |
 | `session/delete` | `sessionId` | `{}`; the session must not be open |
 | `session/send` | `sessionId`, `input`, `queue?`, `images?` | `TurnResult`, once the turn and its follow-up turns end |
 | `session/command` | `sessionId`, `name`, `args?` | `TurnResult` of a local command such as `mode` or `compact` |
@@ -84,6 +84,8 @@ Requests sent while `initialize` is running wait for it to finish, so a client m
 | `session/setEffort` | `sessionId`, `effort`: `low`, `medium`, `high`, `max`, or `null` for the model default | `{}`; emits `thinking_changed` |
 | `session/stopBackgroundAgent` | `sessionId`, `agentId` | `stopped`: false when the session did not start that agent |
 | `session/context` | `sessionId` | context window, `used`, `free`, and `categories` (system, tools, mcp, skills, plugins, rules, messages) with items; the totals match `/context`, see the [SDK context breakdown](./sdk.md#context-breakdown) |
+| `session/checkpoints` | `sessionId` | `checkpoints`: the prompts the conversation can go back to, oldest first, each with `id`, `messageIndex` in `SessionState.messages`, `prompt`, and `files` (whether the files can be restored) |
+| `session/rewind` | `sessionId`, `toMessage?` (checkpoint id), `scope` (`files`, `conversation`, `both`), `dryRun?` | `scope`, `dryRun`, `checkpoint`, `messagesRemoved`, `files` (`paths`, `insertions`, `deletions`); restores to just before the checkpoint's prompt and emits `session_rewound`. Without `toMessage`, a `files` rewind undoes every edit the session tracked. Fails with data code `busy` while a turn runs, `not_found` for an unknown checkpoint or one without file checkpoints. See the [SDK rewind](./sdk.md#checkpoints-and-rewind) |
 | `session/close` | `sessionId` | `{}` |
 | `shutdown` | | `{}`, then the process exits |
 

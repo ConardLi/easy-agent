@@ -19,8 +19,11 @@ import type {
   PluginViewData,
   ReloadResult,
   RespondOutcome,
+  RewindResult,
+  RewindScope,
   RuntimeCapabilities,
   RuntimeInventory,
+  SessionCheckpoint,
   SessionContext,
   SessionEvent,
   SessionState,
@@ -50,8 +53,11 @@ export type {
   PluginMarketplaceRow,
   PluginViewData,
   ReloadResult,
+  RewindResult,
+  RewindScope,
   RuleInventoryItem,
   RuntimeInventory,
+  SessionCheckpoint,
   SessionContext,
   SkillInventoryItem,
   TokenCount,
@@ -122,7 +128,9 @@ export interface AgentMethods {
   "session/list": { params: { limit?: number }; result: { sessions: StoredSessionSummary[] } };
   "session/read": { params: { sessionId: string }; result: StoredSession };
   "session/rename": { params: { sessionId: string; title: string }; result: { session: StoredSessionSummary } };
-  "session/fork": { params: { sessionId: string; title?: string }; result: { session: StoredSessionSummary } };
+  "session/fork": { params: { sessionId: string; title?: string; fromMessage?: string }; result: { session: StoredSessionSummary } };
+  "session/checkpoints": { params: { sessionId: string }; result: { checkpoints: SessionCheckpoint[] } };
+  "session/rewind": { params: { sessionId: string; toMessage?: string; scope: RewindScope; dryRun?: boolean }; result: RewindResult };
   "session/delete": { params: { sessionId: string }; result: Record<string, never> };
   "session/send": { params: { sessionId: string; input: string; queue?: boolean; images?: ImageInput[] }; result: TurnResult };
   "session/command": { params: { sessionId: string; name: string; args?: string[] }; result: TurnResult };
@@ -169,6 +177,8 @@ export const AGENT_METHODS = [
   "session/read",
   "session/rename",
   "session/fork",
+  "session/checkpoints",
+  "session/rewind",
   "session/delete",
   "session/send",
   "session/command",

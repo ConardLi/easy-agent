@@ -323,6 +323,12 @@ const SessionContextSchema = z
   })
   .loose();
 
+const RewindScopeSchema = z.enum(["files", "conversation", "both"]);
+
+const SessionCheckpointSchema = z
+  .object({ id: z.string(), messageIndex: z.number().int().nonnegative(), prompt: z.string(), files: z.boolean() })
+  .loose();
+
 // ─── Client → server ──────────────────────────────────────────────────────
 
 const OpenSessionOptions = {
@@ -392,7 +398,12 @@ export const MethodParams = {
   "session/read": z.object({ sessionId: SessionId }),
   "session/rename": z.object({ sessionId: SessionId, title: z.string() }),
   "session/delete": z.object({ sessionId: SessionId }),
-  "session/fork": z.object({ sessionId: SessionId, title: z.string().optional() }),
+  /** With `fromMessage`, a checkpoint id from `session/checkpoints`, the copy ends just before that prompt. */
+  "session/fork": z.object({
+    sessionId: SessionId,
+    title: z.string().optional(),
+    fromMessage: z.string().min(1).optional(),
+  }),
   "session/send": z.object({
     sessionId: SessionId,
     input: z.string(),
@@ -419,6 +430,18 @@ export const MethodParams = {
   "session/setEffort": z.object({ sessionId: SessionId, effort: z.enum(["low", "medium", "high", "max"]).nullable() }),
   "session/stopBackgroundAgent": z.object({ sessionId: SessionId, agentId: z.string().min(1) }),
   "session/context": z.object({ sessionId: SessionId }),
+  "session/checkpoints": z.object({ sessionId: SessionId }),
+  /**
+   * Restores to just before the prompt of checkpoint `toMessage`. Without
+   * `toMessage`, a `files` rewind goes back to before the session's first
+   * tracked edit. `dryRun` reports the result without changing anything.
+   */
+  "session/rewind": z.object({
+    sessionId: SessionId,
+    toMessage: z.string().min(1).optional(),
+    scope: RewindScopeSchema,
+    dryRun: z.boolean().optional(),
+  }),
   shutdown: z.object({}),
 } as const;
 
@@ -537,6 +560,18 @@ export const MethodResults = {
   "session/setEffort": z.object({}),
   "session/stopBackgroundAgent": z.object({ stopped: z.boolean() }),
   "session/context": SessionContextSchema,
+  "session/checkpoints": z.object({ checkpoints: z.array(SessionCheckpointSchema) }),
+  "session/rewind": z.object({
+    scope: RewindScopeSchema,
+    dryRun: z.boolean(),
+    checkpoint: SessionCheckpointSchema.nullable(),
+    messagesRemoved: z.number().int().nonnegative(),
+    files: z.object({
+      paths: z.array(z.string()),
+      insertions: z.number().int().nonnegative(),
+      deletions: z.number().int().nonnegative(),
+    }),
+  }),
   shutdown: z.object({}),
 } as const satisfies Record<MethodName, z.ZodType>;
 

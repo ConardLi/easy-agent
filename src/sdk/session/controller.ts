@@ -10,6 +10,7 @@
  */
 
 import { randomUUID } from "node:crypto";
+import * as path from "node:path";
 import type { MessageParam } from "@anthropic-ai/sdk/resources/messages.js";
 import { classifyUserInput } from "../../commands/inputClassification.js";
 import { getPlanFilePath, readPlan } from "../../context/plans.js";
@@ -22,7 +23,16 @@ import type {
   PermissionRuleSet,
   PermissionSettings,
 } from "../../permissions/permissions.js";
-import { configureFileHistory, restoreFileHistorySnapshots } from "../../session/fileHistory.js";
+import { type CheckpointPosition, findCheckpoints } from "../../session/checkpoints.js";
+import {
+  configureFileHistory,
+  fileHistoryEnabled,
+  fileHistoryGetDiffStats,
+  fileHistoryRewind,
+  getFirstSnapshot,
+  getSnapshotById,
+  restoreFileHistorySnapshots,
+} from "../../session/fileHistory.js";
 import type { FileHistorySnapshotRecord } from "../../session/storage.js";
 import { getAsyncAgentsForScope, killAsyncAgent, subscribeAsyncAgents } from "../../state/asyncAgentStore.js";
 import { clearAllBashProgress, subscribeBashProgress } from "../../state/bashProgressStore.js";
@@ -37,11 +47,12 @@ import {
 import { getTaskMode, subscribeTaskMode } from "../../state/taskModeStore.js";
 import { getTaskListId, getTeamTaskListId, listTasks, subscribeTasks } from "../../state/taskStore.js";
 import { getActiveTeam, subscribeActiveTeam } from "../../state/teamContext.js";
-import { clearTodos, getTodos, subscribeTodos } from "../../state/todoStore.js";
+import { clearTodos, getTodos, setTodos, subscribeTodos } from "../../state/todoStore.js";
 import { clearAllToolStatus, subscribeToolStatus } from "../../state/toolStatusStore.js";
 import { bashTool } from "../../tools/bashTool.js";
 import { base64ImageAsBlock } from "../../tools/imageUtils.js";
 import { getToolsApiParams } from "../../tools/index.js";
+import { parseTodos, todoWriteTool } from "../../tools/todoWriteTool.js";
 import {
   toolResultText,
   type ToolContext,
@@ -71,7 +82,11 @@ import type {
   InterruptOutcome,
   PermissionResponse,
   PlanApprovalResponse,
+  RewindOptions,
+  RewindResult,
+  RewindScope,
   SendOptions,
+  SessionCheckpoint,
   SessionEventBody,
   SessionState,
   SessionUsage,
@@ -85,12 +100,16 @@ import { BackgroundWake } from "./backgroundWake.js";
 import { EventHub } from "./eventHub.js";
 import { InteractionBroker } from "./interactions.js";
 import { TranscriptRecorder } from "./transcriptRecorder.js";
+import { TurnIndex } from "./turnIndex.js";
 
 /** Rules a plan approval with "accept edits" adds for the rest of the session. */
 export const PLAN_ACCEPT_EDITS_RULES = ["Write", "Edit", "Bash(npm *)", "Bash(npx *)"] as const;
 
 const ALL_INTERACTIONS: readonly InteractionKind[] = ["permission", "plan_approval", "question"];
 const PERMISSION_KINDS: readonly InteractionKind[] = ["permission", "plan_approval"];
+const REWIND_SCOPES: readonly RewindScope[] = ["files", "conversation", "both"];
+/** Restored files named in the note to the model; the rest are counted. */
+const NOTE_FILE_LIMIT = 20;
 
 export interface SessionControllerInit {
   scope: SessionScope;
@@ -100,6 +119,8 @@ export interface SessionControllerInit {
   options: AgentSessionOptions;
   permissionSettings: PermissionSettings;
   initialMessages: MessageParam[];
+  /** Turn id of each initial message, aligned with `initialMessages`. */
+  initialMessageIds: (string | null)[];
   initialUsage: Usage;
   fileHistorySnapshots: FileHistorySnapshotRecord[];
   /** Called after `/resume` switched the conversation to `newSessionId`. */
@@ -118,6 +139,7 @@ export class SessionController {
   readonly #engine: QueryEngine;
   readonly #broker: InteractionBroker;
   readonly #recorder: TranscriptRecorder | null;
+  readonly #turns: TurnIndex;
   readonly #wake: BackgroundWake | null;
   readonly #sessionRules: PermissionRuleSet = { allow: [], deny: [] };
   readonly #toolContext: ToolContext;
@@ -148,8 +170,9 @@ export class SessionController {
       () => this.#sessionId,
       () => this.getState(),
     );
+    this.#turns = new TurnIndex(init.initialMessages, init.initialMessageIds);
     this.#recorder = this.#persist
-      ? new TranscriptRecorder(this.cwd, () => this.#sessionId, init.initialMessages)
+      ? new TranscriptRecorder(this.cwd, () => this.#sessionId, this.#turns, init.initialMessages)
       : null;
     this.#broker = new InteractionBroker(
       new Set(init.options.interactions ?? ALL_INTERACTIONS),
@@ -307,11 +330,146 @@ export class SessionController {
     try {
       return await this.#inScope(() => this.#runTurn(text, text ? "user" : "background"));
     } finally {
-      this.#busy = false;
-      this.#engine.clearPendingInterrupt();
-      for (const resolve of this.#idleWaiters.splice(0)) resolve();
-      this.#wake?.poke();
+      this.#release();
     }
+  }
+
+  #release(): void {
+    this.#busy = false;
+    this.#engine.clearPendingInterrupt();
+    for (const resolve of this.#idleWaiters.splice(0)) resolve();
+    this.#wake?.poke();
+  }
+
+  // ─── Checkpoints ────────────────────────────────────────────────────────
+
+  /** Prompts the conversation can go back to, oldest first. */
+  listCheckpoints(): SessionCheckpoint[] {
+    this.#assertOpen();
+    return this.#inScope(() => this.#positions().map((position) => this.#checkpoint(position)));
+  }
+
+  /**
+   * Restore the files, the conversation, or both to how they were just before
+   * a checkpoint's prompt. Runs only while no turn is running; a dry run
+   * reports the same result without changing anything.
+   */
+  async rewind(options: RewindOptions): Promise<RewindResult> {
+    this.#assertOpen();
+    if (!REWIND_SCOPES.includes(options.scope)) {
+      throw new AgentSdkError("invalid_argument", 'The rewind scope must be "files", "conversation", or "both".');
+    }
+    if (this.#busy) throw new AgentSdkError("busy", "Wait for the running turn to end before rewinding.");
+    if (options.dryRun) return this.#inScope(() => this.#rewind(options));
+    this.#busy = true;
+    try {
+      return await this.#inScope(() => this.#rewind(options));
+    } finally {
+      this.#release();
+    }
+  }
+
+  async #rewind({ to, scope, dryRun = false }: RewindOptions): Promise<RewindResult> {
+    const position = to === undefined ? null : this.#positions().find((candidate) => candidate.id === to);
+    if (position === undefined) throw new AgentSdkError("not_found", `No checkpoint ${to} in this conversation.`);
+    const withFiles = scope !== "conversation";
+    const withConversation = scope !== "files";
+    if (withConversation && !position) {
+      throw new AgentSdkError("invalid_argument", "Rewinding the conversation needs a checkpoint id.");
+    }
+    const snapshotId = position ? position.id : getFirstSnapshot()?.messageId;
+    if (withFiles && !(fileHistoryEnabled() && snapshotId && getSnapshotById(snapshotId))) {
+      throw new AgentSdkError(
+        "not_found",
+        position ? "No file checkpoint was taken before this message." : "This session has no file checkpoints.",
+      );
+    }
+
+    const stats = withFiles
+      ? await fileHistoryGetDiffStats(snapshotId!)
+      : { filesChanged: [], insertions: 0, deletions: 0 };
+    const messages = this.#engine.getState().messages;
+    const result: RewindResult = {
+      scope,
+      dryRun,
+      checkpoint: position ? this.#checkpoint(position) : null,
+      messagesRemoved: withConversation && position ? messages.length - position.start : 0,
+      files: {
+        paths: stats.filesChanged.map((file) => this.#relative(file)),
+        insertions: stats.insertions,
+        deletions: stats.deletions,
+      },
+    };
+    if (dryRun) return result;
+
+    const restored = withFiles ? (await fileHistoryRewind(snapshotId!)).map((file) => this.#relative(file)) : [];
+    let kept = messages;
+    if (withConversation && position) {
+      kept = this.#engine.rewindConversation(position.start);
+      this.#turns.rebase(kept);
+      this.#messages = kept;
+      this.#clearToolProgress();
+      this.#restoreTodos(kept);
+      await this.#recorder?.rewound(kept);
+      this.#usage = { ...this.#usage, context: this.#contextUsage(null) };
+    } else if (restored.length > 0) {
+      this.#engine.addContextNote(filesRestoredNote(restored));
+    }
+    this.#emit({
+      type: "session_rewound",
+      scope,
+      checkpointId: position?.id ?? null,
+      messageIndex: position?.index ?? null,
+      messages: [...kept],
+      files: restored,
+    });
+    if (withConversation) {
+      this.#emit({ type: "messages_changed", messages: [...kept] });
+      this.#emit({ type: "usage_changed", usage: structuredClone(this.#usage) });
+    }
+    return { ...result, files: { ...result.files, paths: restored } };
+  }
+
+  #positions(): CheckpointPosition[] {
+    const messages = this.#engine.getState().messages;
+    return findCheckpoints(messages, this.#turns.idsOf(messages));
+  }
+
+  #checkpoint(position: CheckpointPosition): SessionCheckpoint {
+    return {
+      id: position.id,
+      messageIndex: position.index,
+      prompt: position.prompt,
+      files: fileHistoryEnabled() && getSnapshotById(position.id) !== undefined,
+    };
+  }
+
+  /** The todo list as the last successful TodoWrite left it in the remaining conversation. */
+  #restoreTodos(messages: readonly MessageParam[]): void {
+    const failed = new Set<string>();
+    for (const message of messages) {
+      if (message.role !== "user" || typeof message.content === "string") continue;
+      for (const block of message.content)
+        if (block.type === "tool_result" && block.is_error) failed.add(block.tool_use_id);
+    }
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const message = messages[index]!;
+      if (message.role !== "assistant" || typeof message.content === "string") continue;
+      for (const block of [...message.content].reverse()) {
+        if (block.type !== "tool_use" || block.name !== todoWriteTool.name || failed.has(block.id)) continue;
+        const todos = parseTodos(block.input as Record<string, unknown>);
+        if (Array.isArray(todos)) {
+          setTodos(this.#sessionId, todos);
+          return;
+        }
+      }
+    }
+    clearTodos(this.#sessionId);
+  }
+
+  #relative(file: string): string {
+    const relative = path.relative(this.cwd, file);
+    return relative && !relative.startsWith("..") && !path.isAbsolute(relative) ? relative : file;
   }
 
   /** Resolves once no turn is running. */
@@ -450,6 +608,7 @@ export class SessionController {
       if (!planContent) return null;
       const prompt = this.#engine.clearContextAndImplement(planContent);
       this.#messages = [];
+      this.#turns.rebase([]);
       await this.#recorder?.cleared();
       clearTodos(this.#sessionId);
       this.#emit({ type: "messages_changed", messages: [] });
@@ -528,8 +687,9 @@ export class SessionController {
         return;
       case "messages_updated":
         this.#messages = event.messages;
+        this.#turns.observe(event.messages, this.#engine.getCurrentMessageId());
         this.#emit({ type: "messages_changed", messages: event.messages });
-        await this.#recorder?.sync(event.messages, this.#engine.getCurrentMessageId());
+        await this.#recorder?.sync(event.messages);
         return;
       case "usage_updated":
         this.#usage = {
@@ -580,6 +740,7 @@ export class SessionController {
           trigger: event.trigger,
           ...(event.summary !== undefined ? { summary: event.summary } : {}),
         });
+        this.#turns.rebase(this.#engine.getState().messages);
         await this.#recorder?.compacted(event.trigger, this.#engine.getState().messages);
         return;
       case "model_changed":
@@ -595,11 +756,18 @@ export class SessionController {
       case "session_cleared":
         this.#clearToolProgress();
         clearTodos(this.#sessionId);
+        this.#turns.rebase(this.#engine.getState().messages);
         await this.#recorder?.cleared();
         this.#emit({ type: "session_cleared" });
         return;
       case "session_switched":
-        await this.#switchSession(event.sessionId, event.messages, event.totalUsage, event.fileHistorySnapshots);
+        await this.#switchSession(
+          event.sessionId,
+          event.messages,
+          event.messageIds,
+          event.totalUsage,
+          event.fileHistorySnapshots,
+        );
         return;
       case "token_warning":
         this.#emit({ type: "token_warning", warning: event.warning });
@@ -630,6 +798,7 @@ export class SessionController {
   async #switchSession(
     sessionId: string,
     messages: MessageParam[],
+    messageIds: (string | null)[],
     totalUsage: Usage,
     snapshots: FileHistorySnapshotRecord[],
   ): Promise<void> {
@@ -638,6 +807,7 @@ export class SessionController {
     clearTodos(previous);
     this.#sessionId = sessionId;
     this.#messages = [...messages];
+    this.#turns.seed(messages, messageIds);
     this.#usage = { total: { ...totalUsage }, turn: null, lastCall: null, context: null };
     // The restored messages are already in the target session's file.
     this.#recorder?.rebase(this.#engine.getState().messages);
@@ -844,11 +1014,12 @@ export class SessionController {
     clearAllToolStatus();
   }
 
-  #contextUsage(lastCallUsage: Usage): SessionUsage["context"] {
+  /** Context size from the last request's usage, or estimated from the messages alone when it is null. */
+  #contextUsage(lastCallUsage: Usage | null): SessionUsage["context"] {
     const messages = this.#engine.getState().messages;
     const snapshot = buildTokenBudgetSnapshot(messages, {
-      usage: lastCallUsage,
-      usageAnchorIndex: messages.length > 0 ? messages.length - 1 : -1,
+      usage: lastCallUsage ?? { input_tokens: 0, output_tokens: 0 },
+      usageAnchorIndex: lastCallUsage && messages.length > 0 ? messages.length - 1 : -1,
     });
     return {
       tokens: snapshot.estimatedConversationTokens,
@@ -868,6 +1039,16 @@ export class SessionController {
   #assertOpen(): void {
     if (this.#closed) throw new AgentSdkError("closed", "The session is closed.");
   }
+}
+
+/** What the model is told after the user restored files under it. */
+function filesRestoredNote(files: readonly string[]): string {
+  const named = files.slice(0, NOTE_FILE_LIMIT).join(", ");
+  const more = files.length > NOTE_FILE_LIMIT ? ` and ${files.length - NOTE_FILE_LIMIT} more` : "";
+  return (
+    `The user restored these files to how they were before an earlier message, undoing the edits made since: ${named}${more}. ` +
+    "Their contents may differ from what you read or wrote after that point; read a file again before editing it."
+  );
 }
 
 function serializeError(error: unknown): { name: string; message: string } {

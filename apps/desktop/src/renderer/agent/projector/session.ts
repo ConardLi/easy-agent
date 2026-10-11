@@ -56,6 +56,8 @@ export interface SessionView {
   tasks: Task[];
   taskMode: SessionState["taskMode"];
   backgroundAgents: BackgroundAgentInfo[];
+  /** Write and Edit calls whose changes a files rewind undid; the Changes panel leaves them out. */
+  reverted: string[];
   /** Increments for every notice, so notice ids stay unique. */
   counter: number;
 }
@@ -104,6 +106,7 @@ export function viewFromState(workspaceId: string, state: SessionState, seq: num
     tasks: state.tasks ?? [],
     taskMode: state.taskMode,
     backgroundAgents: state.backgroundAgents ?? [],
+    reverted: previous?.reverted ?? [],
     counter: previous?.counter ?? 0,
   });
 }
@@ -131,6 +134,48 @@ function committedBlocks(view: SessionView): Block[] {
   }
   while (next < extras.length) out.push(extras[next++]!.block);
   return out;
+}
+
+/** Blocks kept on screen after the conversation was cleared or compacted; their prompts can no longer be rewound to. */
+function archive(view: SessionView): Block[] {
+  return committedBlocks(view).map((block) => {
+    if (block.kind !== "user" || block.messageIndex === undefined) return block;
+    const { messageIndex: _, ...rest } = block;
+    return rest;
+  });
+}
+
+/** Tool calls in the conversation that changed files, from message `from` on. */
+function editsSince(view: SessionView, from: number): string[] {
+  return projectMessages(view.messages, { tools: view.tools, busy: false })
+    .filter(({ at, block }) => at >= from && block.kind === "tool" && (block.tool.name === "Write" || block.tool.name === "Edit"))
+    .map(({ block }) => block.id);
+}
+
+function rewound(view: SessionView, event: Extract<SessionEvent, { type: "session_rewound" }>): SessionView {
+  let next = view;
+  if (event.scope !== "files") {
+    // Notices and request cards of the removed turns go with them.
+    next = { ...next, messages: event.messages, extras: next.extras.filter((e) => e.anchor <= event.messages.length), stream: EMPTY_STREAM };
+  }
+  if (event.scope === "conversation") return next;
+  const undone =
+    event.messageIndex === null
+      ? [...next.archived.filter((b) => b.kind === "tool").map((b) => b.id), ...editsSince(view, 0)]
+      : editsSince(view, event.messageIndex);
+  next = { ...next, reverted: [...new Set([...next.reverted, ...undone])] };
+  if (event.scope === "both") return next;
+  const count = event.files.length;
+  if (event.messageIndex === null) {
+    return notice(next, "info", "clear", count ? `已回退本会话的全部文件改动，恢复了 ${count} 个文件` : "没有需要回退的文件改动");
+  }
+  return notice(
+    next,
+    "info",
+    "clear",
+    count ? `已把 ${count} 个文件恢复到这条消息之前` : "这条消息之后没有文件改动",
+    count ? "对话保留不变，Agent 会知道文件被回退了" : undefined,
+  );
 }
 
 /** Everything the conversation shows, top to bottom. */
@@ -194,7 +239,7 @@ export function applyEvent(view: SessionView, event: SessionEvent, now = Date.no
     case "messages_changed": {
       let out = next;
       // A shorter conversation means it was cleared or compacted; keep showing what came before.
-      if (event.messages.length < view.messages.length) out = { ...out, archived: [...out.archived, ...committedBlocks(view)], extras: [] };
+      if (event.messages.length < view.messages.length) out = { ...out, archived: [...out.archived, ...archive(view)], extras: [] };
       const last = event.messages[event.messages.length - 1];
       if (last?.role === "assistant") out = { ...out, stream: EMPTY_STREAM };
       return { ...out, messages: event.messages };
@@ -213,7 +258,9 @@ export function applyEvent(view: SessionView, event: SessionEvent, now = Date.no
     case "session_cleared":
       return notice(next, "info", "clear", "上下文已清空");
     case "session_replaced":
-      return { ...next, id: event.sessionId, messages: event.messages, archived: [], extras: [], stream: EMPTY_STREAM };
+      return { ...next, id: event.sessionId, messages: event.messages, archived: [], extras: [], reverted: [], stream: EMPTY_STREAM };
+    case "session_rewound":
+      return rewound(next, event);
     case "notice":
       return notice(next, event.tone === "error" ? "danger" : "info", event.tone === "error" ? "error" : "command", event.title, event.body);
     case "turn_started":

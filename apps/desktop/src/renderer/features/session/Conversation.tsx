@@ -149,9 +149,9 @@ export function Conversation({ view, workspaceName, startedAt }: { view: Session
                 {item.kind === "explore" ? (
                   <ExploreGroup tools={item.tools} />
                 ) : item.block.kind === "user" ? (
-                  <UserMessage block={item.block} />
+                  <UserMessage block={item.block} sessionId={view.id} busy={view.busy} />
                 ) : item.block.kind === "assistant" ? (
-                  <AssistantMessage block={item.block} last={item.block.id === lastAssistant} />
+                  <AssistantMessage block={item.block} last={item.block.id === lastAssistant} sessionId={view.id} busy={view.busy} />
                 ) : item.block.kind === "thinking" ? (
                   <ThinkingBlock block={item.block} showThinking={showThinking} />
                 ) : item.block.kind === "tool" ? (

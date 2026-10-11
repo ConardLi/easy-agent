@@ -4,16 +4,17 @@
  * requests and keep the workspace list and saved-session list current.
  */
 
-import type { ImageInput, InteractionResponse, SessionEvent } from "../../shared/agent";
+import type { ImageInput, InteractionResponse, RewindResult, RewindScope, SessionCheckpoint, SessionEvent } from "../../shared/agent";
 import { agent, describeError } from "../agent/client";
 import { exportMarkdown } from "../agent/projector/derive";
+import { promptOf } from "../agent/projector/messages";
 import { blocksOf, viewFromState } from "../agent/projector/session";
 import { titleOf } from "../features/workspace/sessionList";
 import type { UiAction } from "../lib/slash";
 import type { Effort, PermissionMode } from "../agent/viewModel";
 import { desktop } from "../lib/desktop";
 import { useSessions } from "./sessions";
-import { useUi } from "./ui";
+import { type RewindRequest, useUi } from "./ui";
 import { useWorkspaces } from "./workspaces";
 
 const toast = (text: string, tone: "default" | "success" | "danger" = "default") => useUi.getState().toast(text, tone);
@@ -285,6 +286,121 @@ export async function forkSession(workspaceId: string, sessionId: string, title?
     await refreshSessions(workspaceId);
     await openSession(workspaceId, session.sessionId);
     toast("已分叉为新会话", "success");
+  } catch (error) {
+    fail(error);
+  }
+}
+
+// ─── Rewind ───────────────────────────────────────────────────────────────
+
+/** Prompts the session can go back to, or null when the Agent could not say. */
+export async function loadCheckpoints(sessionId: string): Promise<SessionCheckpoint[] | null> {
+  const view = useSessions.getState().views[sessionId];
+  if (!view) return null;
+  try {
+    return (await agent.call(view.workspaceId, "session/checkpoints", { sessionId })).checkpoints;
+  } catch (error) {
+    fail(error);
+    return null;
+  }
+}
+
+/** Ask to rewind; the confirmation dialog shows what would change and runs it. Without a checkpoint, every file change of the session is undone. */
+export function requestRewind(sessionId: string, checkpoint: SessionCheckpoint | null, scope: RewindScope, followUp?: "edit" | "regenerate"): void {
+  const view = useSessions.getState().views[sessionId];
+  if (!view) return;
+  if (view.busy) {
+    toast("这一轮结束后再操作");
+    return;
+  }
+  const prompt = checkpoint ? promptOf(view.messages[checkpoint.messageIndex]) : null;
+  useUi.getState().setRewind({
+    workspaceId: view.workspaceId,
+    sessionId,
+    scope,
+    ...(checkpoint ? { to: checkpoint.id } : {}),
+    ...(followUp && prompt ? { followUp: { kind: followUp, ...prompt } } : {}),
+  });
+}
+
+const rewindParams = (request: RewindRequest) => ({
+  sessionId: request.sessionId,
+  scope: request.scope,
+  ...(request.to ? { toMessage: request.to } : {}),
+});
+
+/** What the rewind would change, without changing anything. */
+export async function previewRewind(request: RewindRequest): Promise<RewindResult | null> {
+  try {
+    return await agent.call(request.workspaceId, "session/rewind", { ...rewindParams(request), dryRun: true });
+  } catch (error) {
+    fail(error);
+    return null;
+  }
+}
+
+export async function applyRewind(request: RewindRequest): Promise<boolean> {
+  try {
+    await agent.call(request.workspaceId, "session/rewind", rewindParams(request));
+  } catch (error) {
+    fail(error);
+    return false;
+  }
+  const { followUp } = request;
+  if (followUp?.kind === "regenerate") {
+    void agent
+      .call(request.workspaceId, "session/send", {
+        sessionId: request.sessionId,
+        input: followUp.text,
+        ...(followUp.images.length ? { images: followUp.images } : {}),
+      })
+      .catch(fail);
+    return true;
+  }
+  if (followUp?.kind === "edit") useUi.getState().injectComposer(followUp.text, followUp.images);
+  if (request.scope === "both") toast("已回退到这条消息之前，文件改动一并撤销", "success");
+  else if (request.scope === "conversation") toast("已回退到这条消息之前", "success");
+  return true;
+}
+
+/** Run the last prompt again from where it started; asks first when that restores files. */
+export async function regenerate(sessionId: string): Promise<void> {
+  const view = useSessions.getState().views[sessionId];
+  if (!view) return;
+  if (view.busy) return toast("这一轮结束后再操作");
+  const checkpoints = await loadCheckpoints(sessionId);
+  if (!checkpoints) return;
+  const last = checkpoints[checkpoints.length - 1];
+  if (!last) return toast("上下文清空或压缩后，之前的消息不能重新生成");
+  const prompt = promptOf(view.messages[last.messageIndex]);
+  const request: RewindRequest = {
+    workspaceId: view.workspaceId,
+    sessionId,
+    to: last.id,
+    scope: last.files ? "both" : "conversation",
+    followUp: { kind: "regenerate", ...prompt },
+  };
+  const preview = await previewRewind(request);
+  if (!preview) return;
+  if (preview.files.paths.length > 0) useUi.getState().setRewind(request);
+  else await applyRewind(request);
+}
+
+/** A new session holding the conversation before this prompt; the prompt waits in the composer. The files stay. */
+export async function forkFrom(sessionId: string, checkpoint: SessionCheckpoint): Promise<void> {
+  const view = useSessions.getState().views[sessionId];
+  if (!view) return;
+  const prompt = promptOf(view.messages[checkpoint.messageIndex]);
+  try {
+    const { session } = await agent.call(view.workspaceId, "session/fork", {
+      sessionId,
+      fromMessage: checkpoint.id,
+      title: `${titleOf(sessionId)}（分叉）`,
+    });
+    await refreshSessions(view.workspaceId);
+    await openSession(view.workspaceId, session.sessionId);
+    useUi.getState().injectComposer(prompt.text, prompt.images);
+    toast("已从这条消息分叉为新会话", "success");
   } catch (error) {
     fail(error);
   }

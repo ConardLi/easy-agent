@@ -271,6 +271,7 @@ export async function* handleResumeCommand(
     type: "session_switched",
     sessionId: targetId,
     messages: [...restored.messages],
+    messageIds: [...restored.messageIds],
     totalUsage: { ...restored.summary.totalUsage },
     fileHistorySnapshots: restored.fileHistorySnapshots,
   };

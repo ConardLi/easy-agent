@@ -25,7 +25,7 @@
 
 import { createHash } from "node:crypto";
 import { constants, type Stats } from "node:fs";
-import { type FileHandle, open, readdir, readFile, rm, stat } from "node:fs/promises";
+import { copyFile, type FileHandle, link, open, readdir, readFile, rm, stat } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative } from "node:path";
 import { diffLines } from "diff";
 import { getEasyAgentHome } from "../utils/paths.js";
@@ -358,6 +358,51 @@ export function getSnapshotById(messageId: string): FileHistorySnapshot | undefi
 
 export function snapshotCount(): number {
   return binding().state.snapshots.length;
+}
+
+/** The oldest snapshot still kept: the files before the first tracked edit, as far back as history goes. */
+export function getFirstSnapshot(): FileHistorySnapshot | undefined {
+  return binding().state.snapshots[0];
+}
+
+const BACKUP_NAME = /^[0-9a-f]{16}@v\d+$/;
+
+/**
+ * Give another session the snapshots in `records` and the backups they refer
+ * to, so a forked conversation can still restore files to its earlier turns.
+ * Backups are hard-linked where possible and copied otherwise; the snapshot
+ * records go into the target session's transcript.
+ */
+export async function copyFileHistory(
+  cwd: string,
+  fromSessionId: string,
+  toSessionId: string,
+  records: readonly FileHistorySnapshotRecord[],
+): Promise<void> {
+  if (records.length === 0) return;
+  const root = join(getEasyAgentHome(), "file-history");
+  const names = new Set<string>();
+  for (const record of records) {
+    for (const backup of Object.values(record.trackedFileBackups)) {
+      if (backup.backupFileName && BACKUP_NAME.test(backup.backupFileName)) names.add(backup.backupFileName);
+    }
+  }
+  if (names.size > 0) {
+    await ensurePrivateDirectory(join(root, toSessionId));
+    for (const name of names) {
+      const source = join(root, fromSessionId, name);
+      const target = join(root, toSessionId, name);
+      try {
+        await link(source, target);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException)?.code === "EEXIST") continue;
+        await copyFile(source, target).catch(() => {});
+      }
+    }
+  }
+  for (const record of records) {
+    await recordFileHistorySnapshot(cwd, toSessionId, record);
+  }
 }
 
 /**

@@ -1,4 +1,6 @@
 import { expect, test } from "@playwright/test";
+import { changesOf } from "../../src/renderer/agent/projector/derive";
+import { promptOf } from "../../src/renderer/agent/projector/messages";
 import { applyEvent, blocksOf, type SessionView, viewFromState } from "../../src/renderer/agent/projector/session";
 import type { SessionEvent, SessionState } from "../../src/shared/agent";
 
@@ -138,6 +140,69 @@ test("notices sit where they happened, and clearing keeps the old conversation v
   view = run(view, [{ type: "session_cleared" }, { type: "messages_changed", messages: [] }, { type: "messages_changed", messages: [user("three")] }]);
   const texts = blocksOf(view).map((b) => (b.kind === "notice" ? b.text : b.kind === "user" ? b.text : b.kind));
   expect(texts).toEqual(["one", "assistant", "已切换到计划模式", "two", "上下文已清空", "three"]);
+});
+
+test("a conversation rewind drops the later turns instead of keeping them as history", () => {
+  const two = [user("one"), { role: "assistant", content: "first" }, user("two"), { role: "assistant", content: "second" }];
+  let view = run(start(), [
+    { type: "messages_changed", messages: two.slice(0, 2) },
+    { type: "mode_changed", mode: "plan", previousMode: "default" },
+    { type: "messages_changed", messages: two },
+    { type: "error", message: "boom" },
+  ]);
+  expect(blocksOf(view).find((b) => b.kind === "user" && b.text === "two")).toMatchObject({ messageIndex: 2 });
+
+  const kept = two.slice(0, 2);
+  view = run(view, [
+    { type: "session_rewound", scope: "both", checkpointId: "t2", messageIndex: 2, messages: kept, files: [] },
+    { type: "messages_changed", messages: kept },
+  ]);
+  const texts = blocksOf(view).map((b) => (b.kind === "notice" ? b.text : b.kind === "user" ? b.text : b.kind));
+  expect(texts).toEqual(["one", "assistant", "已切换到计划模式"]);
+  expect(view.archived).toEqual([]);
+});
+
+test("archived prompts lose their message index, so they cannot be rewound to", () => {
+  const view = run(start(), [
+    { type: "messages_changed", messages: [user("one"), { role: "assistant", content: "first" }] },
+    { type: "session_cleared" },
+    { type: "messages_changed", messages: [] },
+  ]);
+  const archived = view.archived.find((b) => b.kind === "user");
+  expect(archived).toBeDefined();
+  expect(archived).not.toHaveProperty("messageIndex");
+});
+
+test("a files rewind keeps the conversation, says what it restored, and leaves the undone edits out of the changes", () => {
+  const write = (id: string, file: string) => ({
+    role: "assistant",
+    content: [{ type: "tool_use", id, name: "Write", input: { file_path: `/work/demo/${file}`, content: "x\n" } }],
+  });
+  const done = (id: string) => ({ role: "user", content: [{ type: "tool_result", tool_use_id: id, content: "ok" }] });
+  const messages = [user("first"), write("w1", "a.ts"), done("w1"), user("second"), write("w2", "b.ts"), done("w2")];
+  let view = run(start(), [{ type: "messages_changed", messages }]);
+  expect(changesOf(view).map((c) => c.path)).toEqual(["a.ts", "b.ts"]);
+
+  view = run(view, [{ type: "session_rewound", scope: "files", checkpointId: "t2", messageIndex: 3, messages, files: ["b.ts"] }]);
+  expect(view.messages).toHaveLength(messages.length);
+  expect(changesOf(view).map((c) => c.path)).toEqual(["a.ts"]);
+  expect(blocksOf(view).at(-1)).toMatchObject({ kind: "notice", text: "已把 1 个文件恢复到这条消息之前" });
+
+  view = run(view, [{ type: "session_rewound", scope: "files", checkpointId: null, messageIndex: null, messages, files: ["a.ts"] }]);
+  expect(changesOf(view)).toEqual([]);
+  expect(blocksOf(view).at(-1)).toMatchObject({ kind: "notice", text: "已回退本会话的全部文件改动，恢复了 1 个文件" });
+});
+
+test("a prompt is sent again without the image markers, with its images", () => {
+  const message = {
+    role: "user",
+    content: [
+      { type: "text", text: "what is this?\n[Image #1]" },
+      { type: "image", source: { type: "base64", media_type: "image/png", data: "AAAA" } },
+    ],
+  } as SessionState["messages"][number];
+  expect(promptOf(message)).toEqual({ text: "what is this?", images: [{ data: "AAAA", mimeType: "image/png" }] });
+  expect(promptOf(undefined)).toEqual({ text: "", images: [] });
 });
 
 test("output of the picker commands is replaced by a notice of the change", () => {

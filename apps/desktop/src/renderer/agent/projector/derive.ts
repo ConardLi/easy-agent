@@ -9,12 +9,13 @@ import { blocksOf, type SessionView } from "./session";
 /**
  * Files this session changed, from its successful Write, Edit, and MultiEdit
  * calls, in the order they were first touched. Changes made by shell
- * commands are not visible here.
+ * commands are not visible here, and changes a files rewind undid are left out.
  */
 export function changesOf(view: SessionView): FileChange[] {
   const byPath = new Map<string, FileChange>();
+  const reverted = new Set(view.reverted);
   for (const block of blocksOf(view)) {
-    if (block.kind !== "tool" || block.tool.status !== "success") continue;
+    if (block.kind !== "tool" || block.tool.status !== "success" || reverted.has(block.id)) continue;
     const { tool } = block;
     if (tool.name !== "Write" && tool.name !== "Edit") continue;
     const path = tool.target;

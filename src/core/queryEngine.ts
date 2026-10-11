@@ -10,7 +10,12 @@ import {
   type PermissionSettings,
 } from "../permissions/permissions.js";
 import { renderSystemPrompt } from "../context/systemPrompt.js";
-import { createSessionPromptContext, type SessionPromptContext } from "../context/sessionPromptContext.js";
+import {
+  CONTEXT_UPDATE_MARKER,
+  createSessionPromptContext,
+  formatContextNote,
+  type SessionPromptContext,
+} from "../context/sessionPromptContext.js";
 import { loadMaxTurnsSetting } from "../config/features.js";
 import { compactMessages } from "../context/compaction.js";
 import { autoCompactIfNeeded, calculateTokenWarningState } from "../context/autoCompact.js";
@@ -175,6 +180,9 @@ export class QueryEngine {
    */
   private currentMessageId: string | null = null;
 
+  /** Changes the model did not make itself, reported before the next prompt. */
+  private pendingContextNotes: string[] = [];
+
   constructor(options: QueryEngineOptions) {
     this.messages = [...(options.initialMessages ?? [])];
     this.totalUsage = { ...(options.initialUsage ?? createEmptyUsage()) };
@@ -281,6 +289,25 @@ export class QueryEngine {
   /** Id of the active user turn (null before the first turn). */
   getCurrentMessageId(): string | null {
     return this.currentMessageId;
+  }
+
+  /**
+   * Drop the conversation from `index` on, as if those turns never ran. The
+   * system prompt is rebuilt when a dropped message carried a context update,
+   * so the model is told about that context again.
+   */
+  rewindConversation(index: number): MessageParam[] {
+    const removed = this.messages.slice(index);
+    this.messages = this.messages.slice(0, index);
+    if (removed.some((message) => messageStartsWith(message, CONTEXT_UPDATE_MARKER))) this.promptContext.reset();
+    this.invalidateUsageAnchor();
+    this.pendingContextNotes = [];
+    return [...this.messages];
+  }
+
+  /** Report a change to the model in a hidden context message before the next prompt. */
+  addContextNote(note: string): void {
+    this.pendingContextNotes.push(note);
   }
 
   /**
@@ -740,6 +767,10 @@ export class QueryEngine {
     // the conversation so the cached prompt prefix stays byte-identical.
     if (turnContext.update) {
       this.messages = [...this.messages, { role: "user", content: turnContext.update }];
+    }
+    if (this.pendingContextNotes.length > 0) {
+      this.messages = [...this.messages, { role: "user", content: formatContextNote(this.pendingContextNotes) }];
+      this.pendingContextNotes = [];
     }
 
     // ─── Ultrathink keyword ────────────────────────────────────────
@@ -1348,4 +1379,11 @@ export class QueryEngine {
   async refreshPluginView(): Promise<PluginViewData> {
     return buildPluginView(this.commandContext().cwd);
   }
+}
+
+function messageStartsWith(message: MessageParam, prefix: string): boolean {
+  const content = message.content;
+  const text =
+    typeof content === "string" ? content : content.map((block) => (block.type === "text" ? block.text : "")).join("");
+  return text.trimStart().startsWith(prefix);
 }
