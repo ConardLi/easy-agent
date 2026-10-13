@@ -86,6 +86,8 @@ Providers reuse a cached request prefix only while it stays byte-identical. Easy
 
 `"promptCacheKey": false` turns it off for an `api.openai.com` profile.
 
+For a gateway that supports both protocols, the URL rules differ: an `openai-chat` profile keeps `/v1` in its `baseURL`, while an Anthropic profile may use the host root or a `/v1` URL. Easy Agent removes a trailing `/v1` from Anthropic `baseURL` before the SDK appends `/v1/messages`, avoiding a doubled `/v1/v1/messages` path. Use the provider's documented API root rather than a full `/chat/completions` or `/messages` endpoint.
+
 **Gemini** applies implicit caching on its own; nothing extra is sent.
 
 `/cost` and `/status` show cache read and write tokens and the cached share of input once the provider reports cache activity. OpenAI `cached_tokens` and Gemini `cachedContentTokenCount` are reported as cache reads, and input tokens then count only the uncached part, the same as on Anthropic. Headless JSON `usage` follows the same rule.
