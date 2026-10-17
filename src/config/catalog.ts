@@ -65,8 +65,9 @@ export type ConfigCategory = "environment" | "resource" | "agent";
  * - `any`: every layer, also in an untrusted workspace. Only keys that can
  *   only remove capabilities use this.
  * - `user`: user, flag, and policy; project and local values are ignored.
+ * - `user-file`: the user settings file only; every other layer is ignored with a warning.
  */
-export type SettingScope = "trusted" | "any" | "user";
+export type SettingScope = "trusted" | "any" | "user" | "user-file";
 
 export interface SettingCatalogEntry {
   category: ConfigCategory;
@@ -244,6 +245,12 @@ export const SETTING_CATALOG: Record<string, SettingCatalogEntry> = {
     security: true,
     scope: "trusted",
     summary: "Shell sandbox: filesystem and network limits.",
+  },
+  harnesses: {
+    category: "agent",
+    security: true,
+    scope: "user-file",
+    summary: "User-defined Agents: name to Harness spec. Not selectable yet.",
   },
 };
 

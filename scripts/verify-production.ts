@@ -27,6 +27,7 @@ const TESTS: TestDefinition[] = [
   { id: "config-trust", group: "core", file: "src/scripts/test-config-trust-boundary.ts" },
   { id: "config-trust-cli", group: "core", file: "src/scripts/test-config-trust-cli.ts" },
   { id: "feature-config", group: "core", file: "src/scripts/test-feature-config.ts" },
+  { id: "harness-resolve", group: "core", file: "src/scripts/test-harness-resolve.ts" },
   { id: "query-engine", group: "core", file: "src/scripts/test-queryengine-characterization.ts" },
   { id: "interactive-session", group: "core", file: "src/scripts/test-interactive-session-characterization.tsx" },
   { id: "session-sdk", group: "core", file: "src/scripts/test-sdk-session.ts" },

@@ -18,7 +18,7 @@ import type { Skill } from "../../types/types.js";
 
 export const MAX_LISTING_DESC_CHARS = 250;
 const MIN_DESC_CHARS_PER_SKILL = 20;
-const DEFAULT_BUDGET_CHARS = 8000;
+export const DEFAULT_BUDGET_CHARS = 8000;
 
 /**
  * Compute the character budget. Honours the `EASY_AGENT_SKILL_CHAR_BUDGET`

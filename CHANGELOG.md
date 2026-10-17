@@ -6,6 +6,7 @@ All notable changes to Easy Agent are documented in this file.
 
 ### Added
 
+- Agent specs: a `harnesses` key in the user settings file defines Agents by name, each a Harness spec with `extends` and `file` references, and a resolver computes the value of every Agent setting with the layer it came from. The built-in `default` reproduces the current settings and environment. No option selects an Agent yet, so specs do not change behavior; see `docs/configuration.md`. The SDK and RPC refuse to write `harnesses` to a project or local settings file.
 - `dist/THIRD_PARTY_LICENSES.txt` with the license text of every third-party package inlined into the bundle. The build fails on a license outside the allowlist.
 - The release gate scans the bundled application code with the source hygiene rules, scans the packed tarball for credentials and stray files, and starts the installed CLI in Headless and interactive mode.
 - README sections on use cases, supported platforms, the security model, configuration precedence, and data locations.
