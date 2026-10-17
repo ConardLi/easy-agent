@@ -71,6 +71,10 @@ The checked-in characterization fixtures are:
 - `interactive-session-characterization.golden.txt` for interactive turns: provider requests, permission and question prompts, interrupt, plan approval, background wake-ups, the session transcript, and resume.
 - `providerstream-characterization.golden.txt` for provider request translation and stream events.
 - `config-session-characterization.golden.txt` for configuration precedence, session JSONL, and restored session data.
+- `request-content-characterization.golden.txt` for what the default configuration sends to the model: every system prompt block, tool definitions in order, cache markers, request parameters, beta headers, and messages, across an empty workspace, project memory, Plan Mode, project skills and sub-agents, an MCP server with and without ToolSearch, the turn after compaction, and the openai-chat and gemini protocols. Each scenario runs in its own process; system text and tool definitions are listed once in a content section at the end. Temp paths, the project memory key, the date, the operating system line, and the Windows-only PowerShell tool are normalized.
+- `permission-decisions-characterization.golden.txt` for `checkPermission`: every registered tool plus a read-only and a writing MCP tool, in default, plan, and auto mode, with no rule, an allow rule, or a deny rule; targeted Bash, WebFetch, and session rules; Auto Mode classifier verdicts from the fixture, repeated blocks, and the failure circuit breaker; and project rules with and without workspace trust. Sandbox auto-allow depends on the host, so those cases are asserted against the detected sandbox capability instead.
+
+Both use the scripted Anthropic fixture (`src/scripts/fixtures/anthropicFixture.ts`), which records the whole request body and also answers non-streaming requests such as compaction summaries and classifier calls.
 
 ## Execution groups
 

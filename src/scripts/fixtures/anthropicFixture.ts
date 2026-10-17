@@ -1,7 +1,8 @@
 /**
  * Scripted Anthropic Messages API for offline tests.
  *
- * Each request is answered with the next scripted step, streamed as SSE:
+ * Each request is answered with the next scripted step, streamed as SSE
+ * (or as one JSON message when the request does not ask for a stream):
  * either a text reply or a single tool call. Requests are recorded so tests
  * can assert what reached the provider. `GET /v1/models` lists the fixture
  * model and consumes no step. `start()` points ANTHROPIC_BASE_URL
@@ -28,6 +29,11 @@ export type ScriptStep = (
 export interface RecordedRequest {
   messages: unknown[];
   system?: unknown;
+  /** The whole parsed request body. */
+  body: Record<string, unknown>;
+  /** Request path, e.g. `/v1/messages`. */
+  path: string;
+  headers: Record<string, string | string[] | undefined>;
 }
 
 export interface AnthropicFixture {
@@ -112,6 +118,21 @@ export function createAnthropicFixture(): AnthropicFixture {
     ].join("");
   };
 
+  /** The reply to a non-streaming request, such as a compaction summary. */
+  const messageFor = (step: ScriptStep, seq: number) => ({
+    id: `msg_${seq}`,
+    type: "message",
+    role: "assistant",
+    model: FIXTURE_MODEL,
+    content:
+      step.kind === "text"
+        ? [{ type: "text", text: step.text }]
+        : [{ type: "tool_use", id: `toolu_${++toolSeq}`, name: step.name, input: step.input }],
+    stop_reason: step.kind === "text" ? "end_turn" : "tool_use",
+    stop_sequence: null,
+    usage: { input_tokens: 10, output_tokens: 5 },
+  });
+
   const server: Server = createServer((request, response) => {
     if (request.method === "GET" && request.url?.startsWith("/v1/models")) {
       response.writeHead(200, { "content-type": "application/json" });
@@ -128,9 +149,23 @@ export function createAnthropicFixture(): AnthropicFixture {
     const chunks: Buffer[] = [];
     request.on("data", (chunk: Buffer) => chunks.push(chunk));
     request.on("end", () => {
-      const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as { messages?: unknown[]; system?: unknown };
-      requests.push({ messages: body.messages ?? [], system: body.system });
+      const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown> & {
+        messages?: unknown[];
+        system?: unknown;
+      };
+      requests.push({
+        messages: body.messages ?? [],
+        system: body.system,
+        body,
+        path: request.url ?? "",
+        headers: { ...request.headers },
+      });
       const step = queue.shift() ?? { kind: "text", text: "(fixture script exhausted)" };
+      if (body.stream !== true) {
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(JSON.stringify(messageFor(step, requests.length)));
+        return;
+      }
       response.writeHead(200, { "content-type": "text/event-stream" });
       const stream = streamFor(step, requests.length);
       if (step.delayMs) setTimeout(() => response.end(stream), step.delayMs).unref();

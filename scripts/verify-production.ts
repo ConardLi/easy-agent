@@ -34,6 +34,12 @@ const TESTS: TestDefinition[] = [
   { id: "rpc", group: "core", file: "src/scripts/test-rpc.ts" },
   { id: "acp", group: "core", file: "src/scripts/test-acp.ts" },
   { id: "provider-stream", group: "core", file: "src/scripts/test-providerstream-characterization.ts" },
+  { id: "request-content", group: "core", file: "src/scripts/test-request-content-characterization.ts" },
+  {
+    id: "permission-decisions",
+    group: "core",
+    file: "src/scripts/test-permission-decisions-characterization.ts",
+  },
   { id: "prompt-caching", group: "core", file: "src/scripts/test-prompt-caching.ts" },
   { id: "session-prompt-context", group: "core", file: "src/scripts/test-session-prompt-context.ts" },
   { id: "project-memory-files", group: "core", file: "src/scripts/test-project-memory-files.ts" },

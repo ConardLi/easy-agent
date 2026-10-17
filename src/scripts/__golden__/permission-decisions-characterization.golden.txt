@@ -1,0 +1,540 @@
+## Tools × modes × settings rules
+
+Rules are settings rules naming the tool alone (`"Write"`). In auto mode the classifier, when called, answers "allow".
+
+### Read
+
+| input | mode | rules | behavior | reason | classifier |
+| --- | --- | --- | --- | --- | --- |
+| workspace file | default | none | allow | read-only tool |  |
+| workspace file | default | allow | allow | read-only tool |  |
+| workspace file | default | deny | allow | read-only tool |  |
+| workspace file | plan | none | allow | read-only tool allowed in plan mode |  |
+| workspace file | plan | allow | allow | read-only tool allowed in plan mode |  |
+| workspace file | plan | deny | allow | read-only tool allowed in plan mode |  |
+| workspace file | auto | none | allow | read-only tool |  |
+| workspace file | auto | allow | allow | read-only tool |  |
+| workspace file | auto | deny | deny | matched deny rule |  |
+
+### Write
+
+| input | mode | rules | behavior | reason | classifier |
+| --- | --- | --- | --- | --- | --- |
+| workspace file | default | none | ask | operation requires confirmation |  |
+| workspace file | default | allow | allow | matched allow rule |  |
+| workspace file | default | deny | deny | matched deny rule |  |
+| workspace file | plan | none | deny | plan mode blocks Write |  |
+| workspace file | plan | allow | deny | plan mode blocks Write |  |
+| workspace file | plan | deny | deny | plan mode blocks Write |  |
+| workspace file | auto | none | allow | auto-approved: fixture verdict: allow | yes |
+| workspace file | auto | allow | allow | matched allow rule |  |
+| workspace file | auto | deny | deny | matched deny rule |  |
+| plan file | default | none | ask | operation requires confirmation |  |
+| plan file | default | allow | allow | matched allow rule |  |
+| plan file | default | deny | deny | matched deny rule |  |
+| plan file | plan | none | allow | writing to plan file is allowed in plan mode |  |
+| plan file | plan | allow | allow | writing to plan file is allowed in plan mode |  |
+| plan file | plan | deny | allow | writing to plan file is allowed in plan mode |  |
+| plan file | auto | none | allow | auto-approved: fixture verdict: allow | yes |
+| plan file | auto | allow | allow | matched allow rule |  |
+| plan file | auto | deny | deny | matched deny rule |  |
+
+### Edit
+
+| input | mode | rules | behavior | reason | classifier |
+| --- | --- | --- | --- | --- | --- |
+| workspace file | default | none | ask | operation requires confirmation |  |
+| workspace file | default | allow | allow | matched allow rule |  |
+| workspace file | default | deny | deny | matched deny rule |  |
+| workspace file | plan | none | deny | plan mode blocks Edit |  |
+| workspace file | plan | allow | deny | plan mode blocks Edit |  |
+| workspace file | plan | deny | deny | plan mode blocks Edit |  |
+| workspace file | auto | none | allow | auto-approved: fixture verdict: allow | yes |
+| workspace file | auto | allow | allow | matched allow rule |  |
+| workspace file | auto | deny | deny | matched deny rule |  |
+
+### MultiEdit
+
+| input | mode | rules | behavior | reason | classifier |
+| --- | --- | --- | --- | --- | --- |
+| workspace file | default | none | ask | operation requires confirmation |  |
+| workspace file | default | allow | allow | matched allow rule |  |
+| workspace file | default | deny | deny | matched deny rule |  |
+| workspace file | plan | none | deny | plan mode blocks MultiEdit |  |
+| workspace file | plan | allow | deny | plan mode blocks MultiEdit |  |
+| workspace file | plan | deny | deny | plan mode blocks MultiEdit |  |
+| workspace file | auto | none | allow | auto-approved: fixture verdict: allow | yes |
+| workspace file | auto | allow | allow | matched allow rule |  |
+| workspace file | auto | deny | deny | matched deny rule |  |
+
+### Glob
+
+| input | mode | rules | behavior | reason | classifier |
+| --- | --- | --- | --- | --- | --- |
+| pattern | default | none | allow | read-only tool |  |
+| pattern | default | allow | allow | read-only tool |  |
+| pattern | default | deny | allow | read-only tool |  |
+| pattern | plan | none | allow | read-only tool allowed in plan mode |  |
+| pattern | plan | allow | allow | read-only tool allowed in plan mode |  |
+| pattern | plan | deny | allow | read-only tool allowed in plan mode |  |
+| pattern | auto | none | allow | read-only tool |  |
+| pattern | auto | allow | allow | read-only tool |  |
+| pattern | auto | deny | deny | matched deny rule |  |
+
+### Grep
+
+| input | mode | rules | behavior | reason | classifier |
+| --- | --- | --- | --- | --- | --- |
+| pattern | default | none | allow | read-only tool |  |
+| pattern | default | allow | allow | read-only tool |  |
+| pattern | default | deny | allow | read-only tool |  |
+| pattern | plan | none | allow | read-only tool allowed in plan mode |  |
+| pattern | plan | allow | allow | read-only tool allowed in plan mode |  |
+| pattern | plan | deny | allow | read-only tool allowed in plan mode |  |
+| pattern | auto | none | allow | read-only tool |  |
+| pattern | auto | allow | allow | read-only tool |  |
+| pattern | auto | deny | deny | matched deny rule |  |
+
+### Bash
+
+| input | mode | rules | behavior | reason | classifier |
+| --- | --- | --- | --- | --- | --- |
+| read-only: git status | default | none | allow | read-only shell command |  |
+| read-only: git status | default | allow | allow | read-only shell command |  |
+| read-only: git status | default | deny | deny | matched deny rule |  |
+| read-only: git status | plan | none | allow | read-only shell command allowed in plan mode |  |
+| read-only: git status | plan | allow | allow | read-only shell command allowed in plan mode |  |
+| read-only: git status | plan | deny | deny | matched deny rule |  |
+| read-only: git status | auto | none | allow | read-only shell command |  |
+| read-only: git status | auto | allow | allow | read-only shell command |  |
+| read-only: git status | auto | deny | deny | matched deny rule |  |
+| writes: npm install left-pad | default | none | ask | operation requires confirmation |  |
+| writes: npm install left-pad | default | allow | allow | matched allow rule |  |
+| writes: npm install left-pad | default | deny | deny | matched deny rule |  |
+| writes: npm install left-pad | plan | none | deny | plan mode blocks non-read-only Bash commands |  |
+| writes: npm install left-pad | plan | allow | deny | plan mode blocks non-read-only Bash commands |  |
+| writes: npm install left-pad | plan | deny | deny | matched deny rule |  |
+| writes: npm install left-pad | auto | none | allow | auto-approved: fixture verdict: allow | yes |
+| writes: npm install left-pad | auto | allow | allow | auto-approved: fixture verdict: allow | yes |
+| writes: npm install left-pad | auto | deny | deny | matched deny rule |  |
+| dangerous: rm -rf build | default | none | ask | dangerous shell command requires confirmation |  |
+| dangerous: rm -rf build | default | allow | allow | matched allow rule |  |
+| dangerous: rm -rf build | default | deny | deny | matched deny rule |  |
+| dangerous: rm -rf build | plan | none | deny | plan mode blocks non-read-only Bash commands |  |
+| dangerous: rm -rf build | plan | allow | deny | plan mode blocks non-read-only Bash commands |  |
+| dangerous: rm -rf build | plan | deny | deny | matched deny rule |  |
+| dangerous: rm -rf build | auto | none | deny | high-risk shell command blocked in auto mode |  |
+| dangerous: rm -rf build | auto | allow | deny | high-risk shell command blocked in auto mode |  |
+| dangerous: rm -rf build | auto | deny | deny | matched deny rule |  |
+| hard-denied in auto: sudo ls | default | none | ask | dangerous shell command requires confirmation |  |
+| hard-denied in auto: sudo ls | default | allow | allow | matched allow rule |  |
+| hard-denied in auto: sudo ls | default | deny | deny | matched deny rule |  |
+| hard-denied in auto: sudo ls | plan | none | deny | plan mode blocks non-read-only Bash commands |  |
+| hard-denied in auto: sudo ls | plan | allow | deny | plan mode blocks non-read-only Bash commands |  |
+| hard-denied in auto: sudo ls | plan | deny | deny | matched deny rule |  |
+| hard-denied in auto: sudo ls | auto | none | deny | high-risk shell command blocked in auto mode |  |
+| hard-denied in auto: sudo ls | auto | allow | deny | high-risk shell command blocked in auto mode |  |
+| hard-denied in auto: sudo ls | auto | deny | deny | matched deny rule |  |
+| compound: git status && touch x | default | none | ask | operation requires confirmation |  |
+| compound: git status && touch x | default | allow | allow | matched allow rule |  |
+| compound: git status && touch x | default | deny | deny | matched deny rule |  |
+| compound: git status && touch x | plan | none | deny | plan mode blocks non-read-only Bash commands |  |
+| compound: git status && touch x | plan | allow | deny | plan mode blocks non-read-only Bash commands |  |
+| compound: git status && touch x | plan | deny | deny | matched deny rule |  |
+| compound: git status && touch x | auto | none | allow | auto-approved: fixture verdict: allow | yes |
+| compound: git status && touch x | auto | allow | allow | auto-approved: fixture verdict: allow | yes |
+| compound: git status && touch x | auto | deny | deny | matched deny rule |  |
+
+### PowerShell
+
+| input | mode | rules | behavior | reason | classifier |
+| --- | --- | --- | --- | --- | --- |
+| Get-ChildItem | default | none | ask | operation requires confirmation |  |
+| Get-ChildItem | default | allow | allow | matched allow rule |  |
+| Get-ChildItem | default | deny | deny | matched deny rule |  |
+| Get-ChildItem | plan | none | deny | plan mode blocks PowerShell |  |
+| Get-ChildItem | plan | allow | deny | plan mode blocks PowerShell |  |
+| Get-ChildItem | plan | deny | deny | plan mode blocks PowerShell |  |
+| Get-ChildItem | auto | none | allow | auto-approved: fixture verdict: allow | yes |
+| Get-ChildItem | auto | allow | allow | matched allow rule |  |
+| Get-ChildItem | auto | deny | deny | matched deny rule |  |
+
+### WebFetch
+
+| input | mode | rules | behavior | reason | classifier |
+| --- | --- | --- | --- | --- | --- |
+| preapproved: docs.python.org | default | none | allow | preapproved documentation host |  |
+| preapproved: docs.python.org | default | allow | allow | preapproved documentation host |  |
+| preapproved: docs.python.org | default | deny | allow | preapproved documentation host |  |
+| preapproved: docs.python.org | plan | none | allow | preapproved documentation host |  |
+| preapproved: docs.python.org | plan | allow | allow | preapproved documentation host |  |
+| preapproved: docs.python.org | plan | deny | allow | preapproved documentation host |  |
+| preapproved: docs.python.org | auto | none | allow | preapproved documentation host |  |
+| preapproved: docs.python.org | auto | allow | allow | preapproved documentation host |  |
+| preapproved: docs.python.org | auto | deny | allow | preapproved documentation host |  |
+| other: example.com | default | none | ask | first fetch from this domain requires confirmation |  |
+| other: example.com | default | allow | allow | matched WebFetch allow rule |  |
+| other: example.com | default | deny | deny | matched WebFetch deny rule |  |
+| other: example.com | plan | none | ask | first fetch from this domain requires confirmation |  |
+| other: example.com | plan | allow | allow | matched WebFetch allow rule |  |
+| other: example.com | plan | deny | deny | matched WebFetch deny rule |  |
+| other: example.com | auto | none | ask | first fetch from this domain requires confirmation |  |
+| other: example.com | auto | allow | allow | matched WebFetch allow rule |  |
+| other: example.com | auto | deny | deny | matched WebFetch deny rule |  |
+
+### WebSearch
+
+| input | mode | rules | behavior | reason | classifier |
+| --- | --- | --- | --- | --- | --- |
+| query | default | none | allow | read-only tool |  |
+| query | default | allow | allow | read-only tool |  |
+| query | default | deny | allow | read-only tool |  |
+| query | plan | none | allow | read-only tool allowed in plan mode |  |
+| query | plan | allow | allow | read-only tool allowed in plan mode |  |
+| query | plan | deny | allow | read-only tool allowed in plan mode |  |
+| query | auto | none | allow | read-only tool |  |
+| query | auto | allow | allow | read-only tool |  |
+| query | auto | deny | deny | matched deny rule |  |
+
+### ListMcpResources
+
+| input | mode | rules | behavior | reason | classifier |
+| --- | --- | --- | --- | --- | --- |
+| all servers | default | none | allow | read-only tool |  |
+| all servers | default | allow | allow | read-only tool |  |
+| all servers | default | deny | allow | read-only tool |  |
+| all servers | plan | none | allow | read-only tool allowed in plan mode |  |
+| all servers | plan | allow | allow | read-only tool allowed in plan mode |  |
+| all servers | plan | deny | allow | read-only tool allowed in plan mode |  |
+| all servers | auto | none | allow | read-only tool |  |
+| all servers | auto | allow | allow | read-only tool |  |
+| all servers | auto | deny | deny | matched deny rule |  |
+
+### ReadMcpResource
+
+| input | mode | rules | behavior | reason | classifier |
+| --- | --- | --- | --- | --- | --- |
+| resource | default | none | allow | read-only tool |  |
+| resource | default | allow | allow | read-only tool |  |
+| resource | default | deny | allow | read-only tool |  |
+| resource | plan | none | allow | read-only tool allowed in plan mode |  |
+| resource | plan | allow | allow | read-only tool allowed in plan mode |  |
+| resource | plan | deny | allow | read-only tool allowed in plan mode |  |
+| resource | auto | none | allow | read-only tool |  |
+| resource | auto | allow | allow | read-only tool |  |
+| resource | auto | deny | deny | matched deny rule |  |
+
+### MemoryWrite
+
+| input | mode | rules | behavior | reason | classifier |
+| --- | --- | --- | --- | --- | --- |
+| project memory | default | none | ask | operation requires confirmation |  |
+| project memory | default | allow | allow | matched allow rule |  |
+| project memory | default | deny | deny | matched deny rule |  |
+| project memory | plan | none | deny | plan mode blocks MemoryWrite |  |
+| project memory | plan | allow | deny | plan mode blocks MemoryWrite |  |
+| project memory | plan | deny | deny | plan mode blocks MemoryWrite |  |
+| project memory | auto | none | allow | auto-approved: fixture verdict: allow | yes |
+| project memory | auto | allow | allow | matched allow rule |  |
+| project memory | auto | deny | deny | matched deny rule |  |
+
+### TodoWrite
+
+| input | mode | rules | behavior | reason | classifier |
+| --- | --- | --- | --- | --- | --- |
+| todos | default | none | allow | TodoWrite writes coordination-only state |  |
+| todos | default | allow | allow | TodoWrite writes coordination-only state |  |
+| todos | default | deny | allow | TodoWrite writes coordination-only state |  |
+| todos | plan | none | allow | TodoWrite writes coordination-only state |  |
+| todos | plan | allow | allow | TodoWrite writes coordination-only state |  |
+| todos | plan | deny | allow | TodoWrite writes coordination-only state |  |
+| todos | auto | none | allow | TodoWrite writes coordination-only state |  |
+| todos | auto | allow | allow | TodoWrite writes coordination-only state |  |
+| todos | auto | deny | allow | TodoWrite writes coordination-only state |  |
+
+### TaskCreate
+
+| input | mode | rules | behavior | reason | classifier |
+| --- | --- | --- | --- | --- | --- |
+| task | default | none | allow | TaskCreate writes coordination-only state |  |
+| task | default | allow | allow | TaskCreate writes coordination-only state |  |
+| task | default | deny | allow | TaskCreate writes coordination-only state |  |
+| task | plan | none | allow | TaskCreate writes coordination-only state |  |
+| task | plan | allow | allow | TaskCreate writes coordination-only state |  |
+| task | plan | deny | allow | TaskCreate writes coordination-only state |  |
+| task | auto | none | allow | TaskCreate writes coordination-only state |  |
+| task | auto | allow | allow | TaskCreate writes coordination-only state |  |
+| task | auto | deny | allow | TaskCreate writes coordination-only state |  |
+
+### TaskUpdate
+
+| input | mode | rules | behavior | reason | classifier |
+| --- | --- | --- | --- | --- | --- |
+| task | default | none | allow | TaskUpdate writes coordination-only state |  |
+| task | default | allow | allow | TaskUpdate writes coordination-only state |  |
+| task | default | deny | allow | TaskUpdate writes coordination-only state |  |
+| task | plan | none | allow | TaskUpdate writes coordination-only state |  |
+| task | plan | allow | allow | TaskUpdate writes coordination-only state |  |
+| task | plan | deny | allow | TaskUpdate writes coordination-only state |  |
+| task | auto | none | allow | TaskUpdate writes coordination-only state |  |
+| task | auto | allow | allow | TaskUpdate writes coordination-only state |  |
+| task | auto | deny | allow | TaskUpdate writes coordination-only state |  |
+
+### TaskGet
+
+| input | mode | rules | behavior | reason | classifier |
+| --- | --- | --- | --- | --- | --- |
+| task | default | none | allow | TaskGet writes coordination-only state |  |
+| task | default | allow | allow | TaskGet writes coordination-only state |  |
+| task | default | deny | allow | TaskGet writes coordination-only state |  |
+| task | plan | none | allow | TaskGet writes coordination-only state |  |
+| task | plan | allow | allow | TaskGet writes coordination-only state |  |
+| task | plan | deny | allow | TaskGet writes coordination-only state |  |
+| task | auto | none | allow | TaskGet writes coordination-only state |  |
+| task | auto | allow | allow | TaskGet writes coordination-only state |  |
+| task | auto | deny | allow | TaskGet writes coordination-only state |  |
+
+### TaskList
+
+| input | mode | rules | behavior | reason | classifier |
+| --- | --- | --- | --- | --- | --- |
+| all | default | none | allow | TaskList writes coordination-only state |  |
+| all | default | allow | allow | TaskList writes coordination-only state |  |
+| all | default | deny | allow | TaskList writes coordination-only state |  |
+| all | plan | none | allow | TaskList writes coordination-only state |  |
+| all | plan | allow | allow | TaskList writes coordination-only state |  |
+| all | plan | deny | allow | TaskList writes coordination-only state |  |
+| all | auto | none | allow | TaskList writes coordination-only state |  |
+| all | auto | allow | allow | TaskList writes coordination-only state |  |
+| all | auto | deny | allow | TaskList writes coordination-only state |  |
+
+### EnterPlanMode
+
+| input | mode | rules | behavior | reason | classifier |
+| --- | --- | --- | --- | --- | --- |
+| reason | default | none | ask | entering plan mode requires confirmation |  |
+| reason | default | allow | ask | entering plan mode requires confirmation |  |
+| reason | default | deny | ask | entering plan mode requires confirmation |  |
+| reason | plan | none | ask | plan mode transition requires confirmation |  |
+| reason | plan | allow | ask | plan mode transition requires confirmation |  |
+| reason | plan | deny | ask | plan mode transition requires confirmation |  |
+| reason | auto | none | ask | entering plan mode requires confirmation |  |
+| reason | auto | allow | ask | entering plan mode requires confirmation |  |
+| reason | auto | deny | ask | entering plan mode requires confirmation |  |
+
+### ExitPlanMode
+
+| input | mode | rules | behavior | reason | classifier |
+| --- | --- | --- | --- | --- | --- |
+| plan | default | none | ask | operation requires confirmation |  |
+| plan | default | allow | allow | matched allow rule |  |
+| plan | default | deny | deny | matched deny rule |  |
+| plan | plan | none | ask | plan mode transition requires confirmation |  |
+| plan | plan | allow | ask | plan mode transition requires confirmation |  |
+| plan | plan | deny | ask | plan mode transition requires confirmation |  |
+| plan | auto | none | allow | auto-approved: fixture verdict: allow | yes |
+| plan | auto | allow | allow | matched allow rule |  |
+| plan | auto | deny | deny | matched deny rule |  |
+
+### Skill
+
+| input | mode | rules | behavior | reason | classifier |
+| --- | --- | --- | --- | --- | --- |
+| skill | default | none | ask | operation requires confirmation |  |
+| skill | default | allow | allow | matched allow rule |  |
+| skill | default | deny | deny | matched deny rule |  |
+| skill | plan | none | deny | plan mode blocks Skill |  |
+| skill | plan | allow | deny | plan mode blocks Skill |  |
+| skill | plan | deny | deny | plan mode blocks Skill |  |
+| skill | auto | none | allow | auto-approved: fixture verdict: allow | yes |
+| skill | auto | allow | allow | matched allow rule |  |
+| skill | auto | deny | deny | matched deny rule |  |
+
+### AskUserQuestion
+
+| input | mode | rules | behavior | reason | classifier |
+| --- | --- | --- | --- | --- | --- |
+| question | default | none | allow | read-only tool |  |
+| question | default | allow | allow | read-only tool |  |
+| question | default | deny | allow | read-only tool |  |
+| question | plan | none | deny | plan mode blocks AskUserQuestion |  |
+| question | plan | allow | deny | plan mode blocks AskUserQuestion |  |
+| question | plan | deny | deny | plan mode blocks AskUserQuestion |  |
+| question | auto | none | allow | read-only tool |  |
+| question | auto | allow | allow | read-only tool |  |
+| question | auto | deny | deny | matched deny rule |  |
+
+### Agent
+
+| input | mode | rules | behavior | reason | classifier |
+| --- | --- | --- | --- | --- | --- |
+| sub-agent | default | none | allow | read-only tool |  |
+| sub-agent | default | allow | allow | read-only tool |  |
+| sub-agent | default | deny | allow | read-only tool |  |
+| sub-agent | plan | none | deny | plan mode blocks Agent |  |
+| sub-agent | plan | allow | deny | plan mode blocks Agent |  |
+| sub-agent | plan | deny | deny | plan mode blocks Agent |  |
+| sub-agent | auto | none | allow | read-only tool |  |
+| sub-agent | auto | allow | allow | read-only tool |  |
+| sub-agent | auto | deny | deny | matched deny rule |  |
+
+### TeamCreate
+
+| input | mode | rules | behavior | reason | classifier |
+| --- | --- | --- | --- | --- | --- |
+| team | default | none | allow | TeamCreate writes coordination-only state |  |
+| team | default | allow | allow | TeamCreate writes coordination-only state |  |
+| team | default | deny | allow | TeamCreate writes coordination-only state |  |
+| team | plan | none | allow | TeamCreate writes coordination-only state |  |
+| team | plan | allow | allow | TeamCreate writes coordination-only state |  |
+| team | plan | deny | allow | TeamCreate writes coordination-only state |  |
+| team | auto | none | allow | TeamCreate writes coordination-only state |  |
+| team | auto | allow | allow | TeamCreate writes coordination-only state |  |
+| team | auto | deny | allow | TeamCreate writes coordination-only state |  |
+
+### TeamDelete
+
+| input | mode | rules | behavior | reason | classifier |
+| --- | --- | --- | --- | --- | --- |
+| team | default | none | allow | TeamDelete writes coordination-only state |  |
+| team | default | allow | allow | TeamDelete writes coordination-only state |  |
+| team | default | deny | allow | TeamDelete writes coordination-only state |  |
+| team | plan | none | allow | TeamDelete writes coordination-only state |  |
+| team | plan | allow | allow | TeamDelete writes coordination-only state |  |
+| team | plan | deny | allow | TeamDelete writes coordination-only state |  |
+| team | auto | none | allow | TeamDelete writes coordination-only state |  |
+| team | auto | allow | allow | TeamDelete writes coordination-only state |  |
+| team | auto | deny | allow | TeamDelete writes coordination-only state |  |
+
+### SendMessage
+
+| input | mode | rules | behavior | reason | classifier |
+| --- | --- | --- | --- | --- | --- |
+| message | default | none | allow | SendMessage writes coordination-only state |  |
+| message | default | allow | allow | SendMessage writes coordination-only state |  |
+| message | default | deny | allow | SendMessage writes coordination-only state |  |
+| message | plan | none | allow | SendMessage writes coordination-only state |  |
+| message | plan | allow | allow | SendMessage writes coordination-only state |  |
+| message | plan | deny | allow | SendMessage writes coordination-only state |  |
+| message | auto | none | allow | SendMessage writes coordination-only state |  |
+| message | auto | allow | allow | SendMessage writes coordination-only state |  |
+| message | auto | deny | allow | SendMessage writes coordination-only state |  |
+
+### ToolSearch
+
+| input | mode | rules | behavior | reason | classifier |
+| --- | --- | --- | --- | --- | --- |
+| query | default | none | allow | read-only tool |  |
+| query | default | allow | allow | read-only tool |  |
+| query | default | deny | allow | read-only tool |  |
+| query | plan | none | deny | plan mode blocks ToolSearch |  |
+| query | plan | allow | deny | plan mode blocks ToolSearch |  |
+| query | plan | deny | deny | plan mode blocks ToolSearch |  |
+| query | auto | none | allow | read-only tool |  |
+| query | auto | allow | allow | read-only tool |  |
+| query | auto | deny | deny | matched deny rule |  |
+
+### LSP
+
+| input | mode | rules | behavior | reason | classifier |
+| --- | --- | --- | --- | --- | --- |
+| definition | default | none | allow | read-only tool |  |
+| definition | default | allow | allow | read-only tool |  |
+| definition | default | deny | allow | read-only tool |  |
+| definition | plan | none | deny | plan mode blocks LSP |  |
+| definition | plan | allow | deny | plan mode blocks LSP |  |
+| definition | plan | deny | deny | plan mode blocks LSP |  |
+| definition | auto | none | allow | read-only tool |  |
+| definition | auto | allow | allow | read-only tool |  |
+| definition | auto | deny | deny | matched deny rule |  |
+
+### mcp__docs__search (MCP)
+
+| input | mode | rules | behavior | reason | classifier |
+| --- | --- | --- | --- | --- | --- |
+| read-only hint | default | none | allow | read-only tool |  |
+| read-only hint | default | allow | allow | read-only tool |  |
+| read-only hint | default | deny | allow | read-only tool |  |
+| read-only hint | plan | none | deny | plan mode blocks mcp__docs__search |  |
+| read-only hint | plan | allow | deny | plan mode blocks mcp__docs__search |  |
+| read-only hint | plan | deny | deny | plan mode blocks mcp__docs__search |  |
+| read-only hint | auto | none | allow | read-only tool |  |
+| read-only hint | auto | allow | allow | read-only tool |  |
+| read-only hint | auto | deny | deny | matched deny rule |  |
+
+### mcp__deploy__run (MCP)
+
+| input | mode | rules | behavior | reason | classifier |
+| --- | --- | --- | --- | --- | --- |
+| no read-only hint | default | none | ask | operation requires confirmation |  |
+| no read-only hint | default | allow | allow | matched allow rule |  |
+| no read-only hint | default | deny | deny | matched deny rule |  |
+| no read-only hint | plan | none | deny | plan mode blocks mcp__deploy__run |  |
+| no read-only hint | plan | allow | deny | plan mode blocks mcp__deploy__run |  |
+| no read-only hint | plan | deny | deny | plan mode blocks mcp__deploy__run |  |
+| no read-only hint | auto | none | allow | auto-approved: fixture verdict: allow | yes |
+| no read-only hint | auto | allow | allow | matched allow rule |  |
+| no read-only hint | auto | deny | deny | matched deny rule |  |
+
+## Targeted rules
+
+| case | mode | behavior | reason | classifier |
+| --- | --- | --- | --- | --- |
+| Bash(npm install*) allow, npm install left-pad | default | allow | matched allow rule |  |
+| Bash(npm install*) allow, npm install left-pad | plan | deny | plan mode blocks non-read-only Bash commands |  |
+| Bash(npm install*) allow, npm install left-pad | auto | allow | matched allow rule |  |
+| Bash(npm install*) allow, npm install x && rm -rf build | default | allow | matched allow rule |  |
+| Bash(npm install*) allow, npm install x && rm -rf build | plan | deny | plan mode blocks non-read-only Bash commands |  |
+| Bash(npm install*) allow, npm install x && rm -rf build | auto | deny | high-risk shell command blocked in auto mode |  |
+| Bash(git push*) deny, git push origin main | default | deny | matched deny rule |  |
+| Bash(git push*) deny, git push origin main | plan | deny | matched deny rule |  |
+| Bash(git push*) deny, git push origin main | auto | deny | matched deny rule |  |
+| Bash(git status*) deny, git status (read-only) | default | deny | matched deny rule |  |
+| Bash(git status*) deny, git status (read-only) | plan | deny | matched deny rule |  |
+| Bash(git status*) deny, git status (read-only) | auto | deny | matched deny rule |  |
+| Bash(python*) allow (interpreter), python script.py | default | allow | matched allow rule |  |
+| Bash(python*) allow (interpreter), python script.py | plan | deny | plan mode blocks non-read-only Bash commands |  |
+| Bash(python*) allow (interpreter), python script.py | auto | allow | auto-approved: fixture verdict: allow | yes |
+| WebFetch(domain:example.com) allow | default | allow | matched WebFetch allow rule |  |
+| WebFetch(domain:example.com) allow | plan | allow | matched WebFetch allow rule |  |
+| WebFetch(domain:example.com) allow | auto | allow | matched WebFetch allow rule |  |
+| WebFetch(domain:docs.python.org) deny, preapproved host | default | allow | preapproved documentation host |  |
+| WebFetch(domain:docs.python.org) deny, preapproved host | plan | allow | preapproved documentation host |  |
+| WebFetch(domain:docs.python.org) deny, preapproved host | auto | allow | preapproved documentation host |  |
+| Read(src/**) deny, read-only tool | default | allow | read-only tool |  |
+| Read(src/**) deny, read-only tool | plan | allow | read-only tool allowed in plan mode |  |
+| Read(src/**) deny, read-only tool | auto | allow | read-only tool |  |
+| session allow Write | default | allow | matched allow rule |  |
+| session allow Write | plan | deny | plan mode blocks Write |  |
+| session allow Write | auto | allow | matched allow rule |  |
+| session deny Bash, git status | default | deny | matched deny rule |  |
+| session deny Bash, git status | plan | deny | matched deny rule |  |
+| session deny Bash, git status | auto | deny | matched deny rule |  |
+| settings allow Write, session deny Write | default | deny | matched deny rule |  |
+| settings allow Write, session deny Write | plan | deny | plan mode blocks Write |  |
+| settings allow Write, session deny Write | auto | deny | matched deny rule |  |
+
+## Auto Mode classifier outcomes (Write to a workspace file, no rules)
+
+| case | behavior | reason | classifier |
+| --- | --- | --- | --- |
+| verdict allow | allow | auto-approved: fixture verdict: allow | yes |
+| verdict block | deny | fixture verdict: block | yes |
+| no structured verdict | ask | classifier unavailable — manual review (Classifier returned no structured verdict.) | yes |
+| block #1 in a row | deny | fixture verdict: block | yes |
+| block #2 in a row | deny | fixture verdict: block | yes |
+| block #3 in a row | ask | classifier blocked repeatedly — please review: fixture verdict: block | yes |
+| block #4 in a row | ask | classifier blocked repeatedly — please review: fixture verdict: block | yes |
+| after 3 classifier failures | ask | operation requires confirmation |  |
+
+## Rules loaded from settings files
+
+User settings are empty; project settings are `{"allow": ["Write"], "deny": ["Edit"], "mode": "auto"}`. The mode argument is omitted, so the mode comes from settings.
+
+| workspace | tool | behavior | reason | classifier |
+| --- | --- | --- | --- | --- |
+| untrusted | Write | ask | operation requires confirmation |  |
+| untrusted | Edit | deny | matched deny rule |  |
+| trusted | Write | allow | matched allow rule |  |
+| trusted | Edit | deny | matched deny rule |  |
+
