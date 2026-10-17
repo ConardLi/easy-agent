@@ -47,6 +47,7 @@ All notable changes to Easy Agent are documented in this file.
 - `verify:release` also runs the host sandbox tests. The release workflow runs the gate on macOS and Ubuntu and the core tests on Windows before publishing, and publishes the verified artifact without rebuilding it.
 - Conversation state that was process-wide (file checkpoints, the plan file, background notifications, `/think` and `/effort`, task mode, compaction and Auto Mode counters, live tool progress) now belongs to each session. Background agents and an Agent Team belong to the session that started them.
 - `verify:production` checks that the terminal UI and the entry points reach session internals only through the SDK (`npm run check:frontend-boundaries`).
+- `verify:production` checks that every settings key, environment variable, and `process.argv` check outside the CLI parser is in the configuration inventory (`npm run check:config-inventory`). `docs/configuration-inventory.md` lists them with their category (environment, resource, or agent), the layers each key is read from, when each variable takes effect, and the fixed values that have no setting yet.
 - The interactive footer shows the permission mode from settings at startup; it showed `default` until the first mode change.
 
 ### Fixed

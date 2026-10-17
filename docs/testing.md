@@ -135,6 +135,17 @@ npm run test:config-trust
 
 A legitimate match, such as the Explanatory output style's teaching wording, goes into `ALLOWED_MATCHES` in `scripts/check-source-hygiene.ts` with a reason. An allowance that no longer matches any line fails the check, so the list cannot go stale.
 
+## Configuration inventory
+
+`npm run check:config-inventory` parses production code under `src/` (without `src/scripts/`) and fails when it reads something the inventory does not list:
+
+- an environment variable missing from `ENVIRONMENT_VARIABLES` in `src/config/catalog.ts`, read as `process.env.NAME`, `process.env["NAME"]`, or `env.NAME`;
+- an environment variable read by a computed name outside the files in `DYNAMIC_ENV_READS`;
+- a `process.argv` check outside the CLI parser (`src/entrypoint/`) missing from `ARGV_CHECKS`;
+- a settings key missing from `SETTING_CATALOG`, read through the settings helpers or a source's `raw` object.
+
+It also fails when an entry no longer matches the code: a listed variable nobody reads, a `SettingsSchema` key without a catalog entry or the reverse, or a behavior constant whose declaration changed. `docs/configuration-inventory.md` is generated from the same data; run `npm run config:inventory` after changing it. A self-test runs first, so the check cannot pass because the detector stopped finding reads.
+
 The bundle is not minified, so comments from application modules ship in `dist/eagent.js`. The release gate runs `node --import tsx scripts/check-source-hygiene.ts --bundle dist/eagent.js`, which applies the same rules and allowances to every `src/` module in the bundle and fails if a module from an excluded directory was bundled or no module markers were found.
 
 ## Platform and external checks

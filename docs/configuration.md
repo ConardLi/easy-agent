@@ -11,6 +11,8 @@ Easy Agent resolves settings from these sources, from lowest to highest priority
 
 Project and local settings that can execute code, redirect providers, or widen resource access are ignored until the workspace is trusted. `/config list` and `/doctor` show effective values, their source, and reload behavior. Secrets, environment values, headers, hooks, MCP definitions, and endpoint credentials are redacted.
 
+[configuration-inventory.md](./configuration-inventory.md) lists every settings key, environment variable, and fixed behavior value, with the layers each key is read from and when each variable takes effect.
+
 ## ToolSearch
 
 ```json
