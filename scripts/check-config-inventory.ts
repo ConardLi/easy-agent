@@ -60,6 +60,11 @@ const ARGV_CHECKS: ArgvCheck[] = [
     file: "src/utils/agentTeamsEnabled.ts",
     summary: "Turns on Agent Teams for the process, like EASY_AGENT_TEAMS.",
   },
+  {
+    flag: "--agent-teams",
+    file: "src/harness/resolve.ts",
+    summary: "The Harness resolver records it as the flag-layer value of features.agentTeams.",
+  },
 ];
 
 /** Reads whose variable name comes from configuration or from a listed name. */
@@ -499,6 +504,7 @@ const SCOPE_LABEL: Record<SettingScope, string> = {
   trusted: "all; project and local need trust",
   any: "all, also untrusted",
   user: "user, flag, policy",
+  "user-file": "user file only",
 };
 
 const cell = (value: string) => value.replace(/\|/g, "\\|");

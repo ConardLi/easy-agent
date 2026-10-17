@@ -107,6 +107,9 @@ export const SettingsSchema = z.looseObject({
   // this scope (later scope wins). Install lives globally in
   // ~/.easy-agent/plugins; only ENABLE is scoped here.
   enabledPlugins: z.record(z.string(), z.boolean()).optional(),
+  // User-defined Agents: name → Harness spec. Read only from the user
+  // settings file; each spec is validated when it is resolved (src/harness/).
+  harnesses: z.record(z.string(), z.unknown()).optional(),
 });
 
 const RULE_ARRAY_KEYS = ["allow", "deny", "ask"] as const;

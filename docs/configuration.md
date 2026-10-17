@@ -135,6 +135,33 @@ One request stops after a fixed number of model calls that end in tool use. The 
 
 When the REPL reaches the limit, the conversation so far is kept. Send another message, for example `continue`, to resume. Headless runs end with `error_max_turns` and exit code 1, as before.
 
+## Agent specs (`harnesses`)
+
+> Not selectable yet. Specs are parsed and validated, but no option picks one, so they do not change behavior in this version.
+
+An Agent is a Harness spec: the model, tools, prompt, context sources, compaction, permissions, skills, sub-agents, commands, output style, MCP servers, plugins, and feature switches it uses. User-defined Agents live only in the user settings file; `harnesses` in project, local, flag, or policy settings is ignored with a warning, and the SDK and RPC refuse to write it to a project or local file.
+
+```json
+{
+  "harnesses": {
+    "default": { "outputStyle": "Explanatory" },
+    "reviewer": {
+      "extends": "default",
+      "model": { "main": "sonnet" },
+      "prompt": { "identity": { "file": "prompts/reviewer.md" } },
+      "permissions": { "deny": ["Write", "Edit", "Bash"] }
+    }
+  }
+}
+```
+
+- `extends` names a built-in Agent (`default`) or another one in `harnesses`; it defaults to `default`. Objects merge with their parent, and lists and plain values replace it. Cycles and unknown names are errors.
+- `harnesses.default` overrides the built-in default and extends nothing else, so it only records what you changed.
+- Text fields accept a string, `{ "text": "…" }`, or `{ "file": "…" }`. Relative paths resolve against `~/.easy-agent/`, and `~/` against the home directory.
+- Unknown keys are errors, so a typo is reported instead of ignored.
+
+A value resolves through these layers, lowest first: the built-in default, top-level keys in user settings, the Agent's spec, project settings, local settings, environment variables, CLI flags, and managed policy. Project and local settings follow the same trust rules as today: in an untrusted workspace they can only add deny rules and other restrictions, and permission `mode` comes only from user settings, flags, and policy. Some environment variables keep their existing precedence: `ANTHROPIC_MODEL` acts as the default model, and `MAX_THINKING_TOKENS`, `EASY_AGENT_DISABLE_CHECKPOINTING`, and the thinking, caching, and beta switches override every settings layer. The resolved snapshot records, for each value, the layer it came from and any values a layer set but could not apply. Spec keys that no code reads yet, such as `tools.exclude` or `prompt.identity`, are reported when set.
+
 ## Reload behavior
 
 ToolSearch, model roles, hooks, and most request-time settings refresh on the next relevant operation. Settings files publish one complete source snapshot at a time. If a previously valid file becomes unreadable or invalid during a live update, Easy Agent reports the problem and retains that source's last valid snapshot until the file is corrected.

@@ -36,7 +36,7 @@ import type {
 } from "./types.js";
 
 /** Keys only a user-level (or flag/policy) source may set; project files cannot escalate them. */
-const USER_ONLY_KEYS = new Set(["mode", "autoMode"]);
+const USER_ONLY_KEYS = new Set(["mode", "autoMode", "harnesses"]);
 /** Keys whose values merge across sources instead of the last one winning. */
 const ARRAY_KEYS = new Set([
   "allow",

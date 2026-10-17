@@ -26,7 +26,7 @@ export async function* handleConfigCommand(
   ctx: CommandContext,
   args: string[],
 ): AsyncGenerator<QueryEngineEvent, { handled: boolean }> {
-  const ALWAYS_RESTRICTED_KEYS = new Set(["mode", "autoMode"]);
+  const ALWAYS_RESTRICTED_KEYS = new Set(["mode", "autoMode", "harnesses"]);
   const cwd = ctx.cwd;
   const sub = (args[0] ?? "list").toLowerCase();
   const workspaceTrusted = await isProjectTrusted(cwd);

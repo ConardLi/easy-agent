@@ -14,7 +14,7 @@ import { USER_AGENT } from "../../version.js";
 
 // ─── Default Configuration ─────────────────────────────────────────
 
-const FALLBACK_MODEL = "claude-sonnet-4-20250514";
+export const FALLBACK_MODEL = "claude-sonnet-4-20250514";
 
 /**
  * The model used when nothing selects one. Read at call time so an
