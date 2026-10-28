@@ -280,8 +280,30 @@ export const TEMPLATES: ProviderTemplate[] = [
     protocol: "anthropic",
     baseURL: "https://api.minimaxi.com/anthropic",
     envKey: "MINIMAX_API_KEY",
-    description: "MiniMax-M2，推荐走 Anthropic 兼容接口",
-    catalog: [m("minimax-m2", "MiniMax-M2", "MiniMax M2", 204_800, 131_072, caps(true, false, true, true), { input: 0.3, output: 1.2 })],
+    description: "MiniMax M3 series with OpenAI- and Anthropic-compatible endpoints",
+    endpoints: [
+      { label: "Global Anthropic", protocol: "anthropic", baseURL: "https://api.minimax.io/anthropic" },
+      { label: "Global OpenAI", protocol: "openai-chat", baseURL: "https://api.minimax.io/v1" },
+      { label: "China OpenAI", protocol: "openai-chat", baseURL: "https://api.minimaxi.com/v1" },
+    ],
+    catalog: [
+      m("minimax-m3.1-flash", "MiniMax-M3.1-Flash", "MiniMax M3.1 Flash", 1_000_000, 131_072, caps(true, true, true, true), {
+        input: 0.15,
+        output: 0.6,
+        cacheRead: 0.015,
+      }),
+      m(
+        "minimax-m3",
+        "MiniMax-M3",
+        "MiniMax M3",
+        1_000_000,
+        131_072,
+        caps(true, true, true, true),
+        { input: 0.3, output: 1.2, cacheRead: 0.06 },
+        "Standard pricing doubles above 512K input tokens; Priority pricing is 1.5x Standard",
+      ),
+      m("minimax-m2", "MiniMax-M2", "MiniMax M2", 204_800, 131_072, caps(true, false, true, true), { input: 0.3, output: 1.2 }),
+    ],
   },
   {
     id: "volcengine",

@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { agentFromConfig, writesFor } from "../../src/renderer/features/settings/agentSettings";
 import { modelsMapFor, providersFromConfig, reconcileProviders } from "../../src/renderer/features/settings/providers";
+import { TEMPLATES } from "../../src/renderer/lib/models";
 import type { ConfigSnapshot } from "../../src/shared/agent";
 
 function config(user: Record<string, unknown>, project: Record<string, unknown> = {}, trusted = true): ConfigSnapshot {
@@ -74,4 +75,33 @@ test("profiles group into providers and write back unchanged", () => {
   const moved = providersFromConfig(config({ models: { ...models, "deepseek-v3.2": { ...models["deepseek-v3.2"], baseURL: "http://localhost:9/v1" } } }), {});
   const kept = reconcileProviders(providers, moved);
   expect(kept.find((p) => p.models.some((m) => m.handle === "deepseek-v3.2"))?.id).toBe("deepseek");
+});
+
+test("MiniMax template includes current models and regional endpoints", () => {
+  const template = TEMPLATES.find((item) => item.id === "minimax");
+  expect(template).toBeDefined();
+  expect(template?.catalog.filter((model) => ["MiniMax-M3.1-Flash", "MiniMax-M3"].includes(model.model))).toEqual([
+    expect.objectContaining({
+      model: "MiniMax-M3.1-Flash",
+      contextWindow: 1_000_000,
+      maxOutput: 131_072,
+      capabilities: { tools: true, vision: true, reasoning: true, cache: true },
+      price: { input: 0.15, output: 0.6, cacheRead: 0.015 },
+    }),
+    expect.objectContaining({
+      model: "MiniMax-M3",
+      contextWindow: 1_000_000,
+      maxOutput: 131_072,
+      capabilities: { tools: true, vision: true, reasoning: true, cache: true },
+      price: { input: 0.3, output: 1.2, cacheRead: 0.06 },
+    }),
+  ]);
+  expect([template?.baseURL, ...(template?.endpoints ?? []).map((endpoint) => endpoint.baseURL)]).toEqual(
+    expect.arrayContaining([
+      "https://api.minimax.io/v1",
+      "https://api.minimax.io/anthropic",
+      "https://api.minimaxi.com/v1",
+      "https://api.minimaxi.com/anthropic",
+    ]),
+  );
 });
