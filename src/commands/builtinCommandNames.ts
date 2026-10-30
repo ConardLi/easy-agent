@@ -32,6 +32,7 @@ export const BUILTIN_COMMAND_NAMES = new Set<string>([
   "checkpoint",
   "status",
   "context",
+  "harness",
   "doctor",
   "copy",
   "export",

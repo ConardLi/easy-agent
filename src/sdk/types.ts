@@ -124,6 +124,12 @@ export interface AgentRuntimeOptions {
   logger?: RuntimeLogger;
 }
 
+/** Experimental. An Agent by name (default `default`), or a spec object resolved over its `extends`. */
+export interface HarnessTarget {
+  name?: string;
+  spec?: unknown;
+}
+
 /** One saved session of the workspace. */
 // ─── Settings ─────────────────────────────────────────────────────────────
 

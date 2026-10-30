@@ -36,6 +36,7 @@ import { getActiveOutputStyleName, getAllOutputStyles } from "../styles/registry
 import { getRegisteredTools, getToolsForMode } from "../tools/index.js";
 import { type Tool, toolToApiParam } from "../tools/Tool.js";
 import type { ScopedMcpServerConfig } from "../types/mcp.js";
+import { componentId } from "../harness/components.js";
 import { estimateJsonTokens, estimateTextTokens } from "../utils/tokens.js";
 import { prepareToolSearchRequest } from "../utils/toolSearch.js";
 import type { WorkspaceReport } from "./bootstrap.js";
@@ -135,7 +136,7 @@ function listSkills(): SkillInventoryItem[] {
           : undefined;
     return {
       kind: "skill",
-      id: `skill:${skill.source}:${skill.name}`,
+      id: componentId.skill(skill.source, skill.name),
       name: skill.name,
       source: skill.source,
       ...(skill.pluginId ? { pluginId: skill.pluginId } : {}),
@@ -162,7 +163,7 @@ function listCommands(): CommandInventoryItem[] {
   const builtins = [...BUILTIN_COMMAND_NAMES].sort().map(
     (name): CommandInventoryItem => ({
       kind: "command",
-      id: `command:built-in:${name}`,
+      id: componentId.command("built-in", name),
       name,
       source: "built-in",
       enabled: true,
@@ -172,7 +173,7 @@ function listCommands(): CommandInventoryItem[] {
   const custom = getAllUserCommands().map(
     (command): CommandInventoryItem => ({
       kind: "command",
-      id: `command:${command.source}:${command.name}`,
+      id: componentId.command(command.source, command.name),
       name: command.name,
       source: command.source,
       ...(command.pluginId ? { pluginId: command.pluginId } : {}),
@@ -188,7 +189,7 @@ function listCommands(): CommandInventoryItem[] {
 function listAgents(): AgentInventoryItem[] {
   return getAllAgents().map((agent) => ({
     kind: "agent",
-    id: `agent:${agent.source}:${agent.agentType}`,
+    id: componentId.agent(agent.source, agent.agentType),
     name: agent.agentType,
     source: agent.source,
     ...(agent.pluginId ? { pluginId: agent.pluginId } : {}),
@@ -205,7 +206,7 @@ function listOutputStyles(): OutputStyleInventoryItem[] {
   const active = getActiveOutputStyleName();
   return getAllOutputStyles().map((style) => ({
     kind: "output_style",
-    id: `output_style:${style.source}:${style.name}`,
+    id: componentId.outputStyle(style.source, style.name),
     name: style.name,
     source: style.source,
     ...(style.pluginId ? { pluginId: style.pluginId } : {}),
@@ -254,7 +255,7 @@ async function listMcpServers(cwd: string, deferred: Set<string>): Promise<McpSe
     const source: InventorySource = pluginId ? "plugin" : connection.config.scope;
     return {
       kind: "mcp_server",
-      id: `mcp_server:${connection.name}`,
+      id: componentId.mcpServer(connection.name),
       name: connection.name,
       source,
       ...(pluginId ? { pluginId } : {}),
@@ -282,7 +283,7 @@ async function listMcpServers(cwd: string, deferred: Set<string>): Promise<McpSe
           : UNTRUSTED;
     items.push({
       kind: "mcp_server",
-      id: `mcp_server:${server.name}`,
+      id: componentId.mcpServer(server.name),
       name: server.name,
       source: "project",
       path: projectFile,
@@ -303,7 +304,7 @@ function listPlugins(view: PluginView): PluginInventoryItem[] {
     const limited = row.enabled && row.hasExecutableComponents && !row.executablesTrusted;
     return {
       kind: "plugin",
-      id: `plugin:${row.pluginId}`,
+      id: componentId.plugin(row.pluginId),
       name: row.name,
       source: row.scope ?? "user",
       pluginId: row.pluginId,
@@ -352,7 +353,7 @@ async function listHooks(
     const reason = globallyDisabled ? off : applies ? undefined : UNTRUSTED;
     items.push({
       kind: "hook",
-      id: nextId(`hook:${entry.source}:${entry.event}`),
+      id: nextId(componentId.hookPrefix(entry.source, entry.event)),
       name: entry.matcher ? `${entry.event} ${entry.matcher}` : entry.event,
       source: entry.source,
       ...(entry.path ? { path: entry.path } : {}),
@@ -373,7 +374,7 @@ async function listHooks(
       for (const hook of entry.hooks) {
         items.push({
           kind: "hook",
-          id: nextId(`hook:plugin:${plugin.pluginId}:${entry.event}`),
+          id: nextId(componentId.pluginHookPrefix(plugin.pluginId, entry.event)),
           name: entry.matcher ? `${entry.event} ${entry.matcher}` : entry.event,
           source: "plugin",
           pluginId: plugin.pluginId,
@@ -396,7 +397,7 @@ const lineCount = (text: string): number => (text ? text.split("\n").length : 0)
 async function listRules(cwd: string): Promise<RuleInventoryItem[]> {
   const items: RuleInventoryItem[] = (await listAgentMdFiles(cwd)).map((file) => ({
     kind: "rule",
-    id: `rule:${file.filePath}`,
+    id: componentId.rule(file.filePath),
     name: path.basename(file.filePath),
     source: file.scope === "global" ? "user" : "project",
     path: file.filePath,
@@ -411,7 +412,7 @@ async function listRules(cwd: string): Promise<RuleInventoryItem[]> {
   if (memory) {
     items.push({
       kind: "rule",
-      id: "rule:memory",
+      id: componentId.memoryRule(),
       name: MEMORY_ENTRYPOINT,
       source: "project",
       path: path.join(await getProjectMemoryDir(cwd), MEMORY_ENTRYPOINT),
@@ -443,7 +444,7 @@ function listTools(deferred: Set<string>): ToolInventoryItem[] {
     const enabled = tool.isEnabled();
     return {
       kind: "tool",
-      id: `tool:${tool.name}`,
+      id: componentId.tool(tool.name),
       name: tool.name,
       source: server?.source ?? "built-in",
       ...(server?.pluginId ? { pluginId: server.pluginId } : {}),

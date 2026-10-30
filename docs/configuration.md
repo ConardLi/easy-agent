@@ -139,6 +139,8 @@ When the REPL reaches the limit, the conversation so far is kept. Send another m
 
 > Not selectable yet. Specs are parsed and validated, but no option picks one, so they do not change behavior in this version.
 
+`eagent harness show [name|file]` prints every setting an Agent resolves to, where each value comes from, values a layer set but could not apply, and the built-in tools, prompt sections, and context sources with their ids; `--json` prints the same data. `eagent harness diff <a> <b>` compares two Agents key by key. An argument with a path separator or a `.json` suffix is read as a spec file. In a session, `/harness` and `/harness diff <a> <b>` show the same views.
+
 An Agent is a Harness spec: the model, tools, prompt, context sources, compaction, permissions, skills, sub-agents, commands, output style, MCP servers, plugins, and feature switches it uses. User-defined Agents live only in the user settings file; `harnesses` in project, local, flag, or policy settings is ignored with a warning, and the SDK and RPC refuse to write it to a project or local file.
 
 ```json
