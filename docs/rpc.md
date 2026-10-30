@@ -49,6 +49,7 @@ Requests sent while `initialize` is running wait for it to finish, so a client m
 | `initialize` | `protocolVersion`, `clientInfo?`, `trust?`, `interactions?`, `services?` | `protocolVersion`, `sessionProtocolVersion`, `serverInfo`, `workspace`, `capabilities` |
 | `runtime/capabilities` | | built-in commands, skills, user commands, sub-agent types, output style |
 | `runtime/inventory` | | skills, commands, sub-agents, output styles, MCP servers, plugins, hooks, rule files, and tools, each with its source, path, whether it is in effect and why not, and token estimates; see the [SDK inventory](./sdk.md#inventory) |
+| `runtime/harness` | `name?`, `spec?` | an Agent resolved like `getHarness()`: every setting with its value and source, ignored values and reasons, issues, and a hash; see the [SDK](./sdk.md#agents). Experimental |
 | `runtime/reload` | | registry sizes after reloading skills, commands, sub-agents, output styles, and plugins from disk, plugin MCP servers started and stopped, plugin errors; open sessions use the new set from their next turn |
 | `mcp/approve` | `name`, `approved`, `scope?` (`user`, `project`, `local`; default `local`) | `name`, `approved`, `scope`, `status` (null when not running), `error?`; saves the decision for a `.mcp.json` server and connects or stops it. Fails with data code `untrusted` in an untrusted workspace |
 | `mcp/reconnect` | `name` | `name`, `status`, `error?`, `toolCount` |

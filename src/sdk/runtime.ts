@@ -50,11 +50,14 @@ import { checkModel, listModels, readConfig, setWorkspaceTrust, writeConfig } fr
 import { AgentSdkError } from "./errors.js";
 import { approveMcpServer, reconnectMcpServer, reloadExtensions } from "./extensions.js";
 import { buildRuntimeInventory } from "./inventory.js";
+import { diffHarnesses, type HarnessDiff } from "../harness/diff.js";
+import { type ResolvedHarness, resolveHarness } from "../harness/resolve.js";
 import { listPlugins, mutatePlugins, previewPlugin } from "./plugins.js";
 import { AgentSession, reloadSettingsOf } from "./session.js";
 import { SessionController } from "./session/controller.js";
 import type {
   AgentRuntimeOptions,
+  HarnessTarget,
   AgentSessionOptions,
   ConfigScope,
   ConfigSnapshot,
@@ -385,6 +388,26 @@ export class AgentRuntime {
   async getInventory(): Promise<RuntimeInventory> {
     this.#assertActive();
     return buildRuntimeInventory(this.cwd, this.report, await this.resolveModel());
+  }
+
+  /**
+   * Experimental. Resolve an Agent for this workspace: every Harness setting,
+   * the layer it came from, and values a layer set but could not apply.
+   * `spec` resolves a spec object over its `extends` instead of a named Agent.
+   * No session uses the result yet.
+   */
+  async getHarness(target: HarnessTarget = {}): Promise<ResolvedHarness> {
+    this.#assertActive();
+    return resolveHarness({
+      cwd: this.cwd,
+      ...(target.spec !== undefined ? { spec: target.spec } : target.name !== undefined ? { name: target.name } : {}),
+    });
+  }
+
+  /** Experimental. Compare the resolved settings of two Agents, key by key. */
+  async diffHarness(a: HarnessTarget, b: HarnessTarget): Promise<HarnessDiff> {
+    const [left, right] = await Promise.all([this.getHarness(a), this.getHarness(b)]);
+    return diffHarnesses(left, right);
   }
 
   /** Reload skills, commands, sub-agents, output styles, and plugins; open sessions use them from their next turn. */

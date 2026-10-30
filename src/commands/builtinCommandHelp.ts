@@ -37,6 +37,7 @@ export const BUILTIN_COMMAND_HELP: readonly BuiltinCommandHelp[] = [
   { usage: "/rewind [n]", description: "Restore files to a previous turn (alias: /checkpoint)" },
   { usage: "/status", description: "Snapshot of the current session config" },
   { usage: "/context", description: "Visualize context window usage by category" },
+  { usage: "/harness [name|diff a b]", description: "Show an Agent's resolved settings, or compare two" },
   { usage: "/doctor", description: "Run an environment health check" },
   { usage: "/copy [n]", description: "Copy an assistant reply to the clipboard" },
   { usage: "/export [file]", description: "Export the conversation to Markdown" },

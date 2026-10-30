@@ -583,6 +583,29 @@ try {
     await rm(path.join(cwd, ".easy-agent", "skills"), { recursive: true, force: true });
   });
 
+  await check("runtime/harness resolves the default, an inline spec, and reports unknown Agents", async () => {
+    const base = await rpc.call<Json>("runtime/harness");
+    assert.equal(base.name, "default");
+    assert.deepEqual(base.chain, []);
+    assert.match(String(base.hash), /^[0-9a-f]{16}$/);
+    const mode = (base.values as Record<string, Json>)["permissions.mode"];
+    assert.equal(mode?.value, "default");
+    assert.equal(mode?.source, "built-in");
+
+    const inline = await rpc.call<Json>("runtime/harness", { spec: { features: { maxTurns: 4 } } });
+    assert.equal(inline.name, "(inline)");
+    assert.equal((inline.values as Record<string, Json>)["features.maxTurns"]?.value, 4);
+
+    const ghost = await rpc.call<Json>("runtime/harness", { name: "ghost" });
+    assert.ok(
+      (ghost.issues as Json[]).some((issue) => issue.level === "error" && /"ghost"/.test(String(issue.message))),
+    );
+    const badParent = await rpc.call<Json>("runtime/harness", { spec: { extends: "missing" } });
+    assert.ok((badParent.issues as Json[]).some((issue) => /no Agent named "missing"/.test(String(issue.message))));
+
+    await rejects(rpc.call("runtime/harness", { name: "" }, { valid: false }), protocol.RpcErrorCode.InvalidParams);
+  });
+
   await check("plugins and marketplaces: preview, confirmed install, enable, disable, uninstall", async () => {
     const market = path.join(root, "rpc-market");
     const kit = path.join(market, "plugins", "kit");

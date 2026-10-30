@@ -330,6 +330,45 @@ const SessionCheckpointSchema = z
   .object({ id: z.string(), messageIndex: z.number().int().nonnegative(), prompt: z.string(), files: z.boolean() })
   .loose();
 
+const HarnessLayerSchema = z.enum(["built-in", "user", "harness", "project", "local", "environment", "flag", "policy"]);
+const HarnessContributionSchema = z
+  .object({ source: HarnessLayerSchema, detail: z.string().optional(), value: z.unknown().optional() })
+  .loose();
+
+/** Experimental: every Harness setting of an Agent and the layer it came from. */
+const ResolvedHarnessSchema = z
+  .object({
+    name: z.string(),
+    chain: z.array(z.string()),
+    values: z.record(
+      z.string(),
+      z
+        .object({
+          /** Absent when the setting is unset. */
+          value: z.unknown().optional(),
+          source: HarnessLayerSchema,
+          detail: z.string().optional(),
+          applied: z.boolean(),
+          contributions: z.array(HarnessContributionSchema),
+          ignored: z.array(HarnessContributionSchema.extend({ reason: z.string() })),
+          overridesHarness: z.object({ harness: z.string(), value: z.unknown().optional() }).optional(),
+        })
+        .loose(),
+    ),
+    issues: z.array(
+      z
+        .object({
+          level: z.enum(["error", "warning"]),
+          message: z.string(),
+          harness: z.string().optional(),
+          path: z.string().optional(),
+        })
+        .loose(),
+    ),
+    hash: z.string(),
+  })
+  .loose();
+
 // ─── Client → server ──────────────────────────────────────────────────────
 
 const OpenSessionOptions = {
@@ -352,6 +391,11 @@ export const MethodParams = {
   }),
   "runtime/capabilities": z.object({}),
   "runtime/inventory": z.object({}),
+  /** Experimental. Resolves an Agent by name (default `default`), or `spec` over its `extends`. */
+  "runtime/harness": z.object({
+    name: z.string().min(1).optional(),
+    spec: z.record(z.string(), z.unknown()).optional(),
+  }),
   /** Reloads skills, commands, sub-agents, output styles, and plugins; open sessions use them from their next turn. */
   "runtime/reload": z.object({}),
   /** Approve or reject a `.mcp.json` server; the decision goes to `scope` (default `local`). Needs a trusted workspace. */
@@ -474,6 +518,7 @@ export const MethodResults = {
   }),
   "runtime/capabilities": z.object({ builtinCommands: z.array(z.string()) }).loose(),
   "runtime/inventory": RuntimeInventorySchema,
+  "runtime/harness": ResolvedHarnessSchema,
   "runtime/reload": z
     .object({
       plugins: z.object({ enabled: z.number().int(), disabled: z.number().int() }),

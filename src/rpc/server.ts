@@ -65,6 +65,8 @@ export class RpcServer {
     initialize: (params) => this.#initialize(params),
     "runtime/capabilities": async () => this.#requireRuntime().getCapabilities(),
     "runtime/inventory": async () => this.#requireRuntime().getInventory(),
+    "runtime/harness": async ({ name, spec }) =>
+      this.#requireRuntime().getHarness(spec !== undefined ? { spec } : name !== undefined ? { name } : {}),
     "runtime/reload": async () => this.#requireRuntime().reload(),
     "mcp/approve": async ({ name, approved, scope }) =>
       this.#requireRuntime().approveMcpServer(name, approved, scope ?? "local"),

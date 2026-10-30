@@ -14,3 +14,12 @@ export { AgentSession } from "./session.js";
 export { AgentSdkError, isAgentSdkError, type AgentSdkErrorCode } from "./errors.js";
 export type { WorkspaceReport } from "./bootstrap.js";
 export * from "./types.js";
+export type {
+  HarnessContribution,
+  HarnessIgnoredValue,
+  HarnessIssue,
+  HarnessLayerSource,
+  ResolvedHarness,
+  ResolvedHarnessValue,
+} from "../harness/index.js";
+export type { HarnessDiff, HarnessDifference, HarnessDiffSide } from "../harness/diff.js";

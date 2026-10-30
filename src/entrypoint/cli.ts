@@ -71,6 +71,13 @@ Options:
                               to setting EASY_AGENT_TEAMS=1.
   --dump-system-prompt        Print the assembled system prompt and exit
 
+Agents:
+  eagent harness show [name|file] [--json]
+                              Show every setting an Agent resolves to and where
+                              each comes from (no option selects an Agent yet)
+  eagent harness diff <a> <b> [--json]
+                              Compare the resolved settings of two Agents
+
 Commands (in REPL):
 ${formatBuiltinCommandHelpColumns()}
 
@@ -129,6 +136,11 @@ Settings keys (in ~/.easy-agent/settings.json or <cwd>/.easy-agent/settings.json
   sandbox.network: {...}             Optional domain policy and local IPC settings
 `);
     process.exit(0);
+  }
+
+  if (process.argv[2] === "harness") {
+    const { runHarnessCommand } = await import("./harnessCommand.js");
+    process.exit(await runHarnessCommand(process.argv.slice(3)));
   }
 
   const { hardenPrivateDataStorage } = await import("../utils/privateData.js");

@@ -166,6 +166,49 @@
             },
             "method": {
               "type": "string",
+              "const": "runtime/harness"
+            },
+            "params": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "spec": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "required": [
+            "jsonrpc",
+            "method"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "jsonrpc": {
+              "type": "string",
+              "const": "2.0"
+            },
+            "id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "method": {
+              "type": "string",
               "const": "runtime/reload"
             },
             "params": {
@@ -3325,6 +3368,172 @@
             "hooks",
             "rules",
             "tools"
+          ],
+          "additionalProperties": {}
+        },
+        "runtime/harness": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "chain": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "values": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {
+                "type": "object",
+                "properties": {
+                  "value": {},
+                  "source": {
+                    "type": "string",
+                    "enum": [
+                      "built-in",
+                      "user",
+                      "harness",
+                      "project",
+                      "local",
+                      "environment",
+                      "flag",
+                      "policy"
+                    ]
+                  },
+                  "detail": {
+                    "type": "string"
+                  },
+                  "applied": {
+                    "type": "boolean"
+                  },
+                  "contributions": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "built-in",
+                            "user",
+                            "harness",
+                            "project",
+                            "local",
+                            "environment",
+                            "flag",
+                            "policy"
+                          ]
+                        },
+                        "detail": {
+                          "type": "string"
+                        },
+                        "value": {}
+                      },
+                      "required": [
+                        "source"
+                      ],
+                      "additionalProperties": {}
+                    }
+                  },
+                  "ignored": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "built-in",
+                            "user",
+                            "harness",
+                            "project",
+                            "local",
+                            "environment",
+                            "flag",
+                            "policy"
+                          ]
+                        },
+                        "detail": {
+                          "type": "string"
+                        },
+                        "value": {},
+                        "reason": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "source",
+                        "reason"
+                      ],
+                      "additionalProperties": {}
+                    }
+                  },
+                  "overridesHarness": {
+                    "type": "object",
+                    "properties": {
+                      "harness": {
+                        "type": "string"
+                      },
+                      "value": {}
+                    },
+                    "required": [
+                      "harness"
+                    ]
+                  }
+                },
+                "required": [
+                  "source",
+                  "applied",
+                  "contributions",
+                  "ignored"
+                ],
+                "additionalProperties": {}
+              }
+            },
+            "issues": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "level": {
+                    "type": "string",
+                    "enum": [
+                      "error",
+                      "warning"
+                    ]
+                  },
+                  "message": {
+                    "type": "string"
+                  },
+                  "harness": {
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "level",
+                  "message"
+                ],
+                "additionalProperties": {}
+              }
+            },
+            "hash": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "chain",
+            "values",
+            "issues",
+            "hash"
           ],
           "additionalProperties": {}
         },
@@ -7433,6 +7642,7 @@
         "initialize",
         "runtime/capabilities",
         "runtime/inventory",
+        "runtime/harness",
         "runtime/reload",
         "mcp/approve",
         "mcp/reconnect",

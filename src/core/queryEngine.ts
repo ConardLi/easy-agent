@@ -104,6 +104,7 @@ import { createEmptyUsage } from "./queryEngine/helpers.js";
 // Extracted slash-command handlers + the context seam they run against.
 import type { CommandContext } from "./queryEngine/commands/context.js";
 import { handleStatusCommand, handleContextCommand, handleDoctorCommand } from "./queryEngine/commands/diagnostics.js";
+import { handleHarnessCommand } from "./queryEngine/commands/harness.js";
 import { computeContextBreakdown, type ContextBreakdown } from "./queryEngine/contextBreakdown.js";
 import { handleDiffCommand } from "./queryEngine/commands/diff.js";
 import { handleCopyCommand, handleExportCommand, handleResumeCommand } from "./queryEngine/commands/sessionExport.js";
@@ -1223,6 +1224,8 @@ export class QueryEngine {
         return yield* handleStatusCommand(this.commandContext());
       case "context":
         return yield* handleContextCommand(this.commandContext());
+      case "harness":
+        return yield* handleHarnessCommand(this.commandContext(), args);
       case "doctor":
         return yield* handleDoctorCommand(this.commandContext());
       case "copy":

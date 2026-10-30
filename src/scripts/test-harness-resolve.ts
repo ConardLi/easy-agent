@@ -642,6 +642,151 @@ await check("settings files with harnesses stay valid; project files cannot be g
   await assert.rejects(writeConfig(cwd, "project", "harnesses", { a: {} }), /only read from user settings/);
 });
 
+// ─── Component ids, comparison, views, and the CLI ─────────────────────
+
+const { componentId, listBuiltInComponents, PROMPT_SECTIONS, CONTEXT_SOURCES } = await import(
+  "../harness/components.js"
+);
+const { diffHarnesses } = await import("../harness/diff.js");
+const { formatHarness, formatHarnessDiff } = await import("../harness/format.js");
+const { harnessTarget } = await import("../harness/target.js");
+const { execFile } = await import("node:child_process");
+
+console.log("Components, comparison, and views");
+
+await check("built-in components have unique, stable ids in the inventory's format", () => {
+  const first = listBuiltInComponents();
+  const ids = first.map((component) => component.id);
+  assert.equal(new Set(ids).size, ids.length, "ids are unique");
+  assert.deepEqual(
+    listBuiltInComponents().map((component) => component.id),
+    ids,
+    "ids are the same on every call",
+  );
+  for (const expected of ["tool:Read", "tool:Bash", "prompt_section:identity", "prompt_section:instructions"]) {
+    assert.ok(ids.includes(expected), expected);
+  }
+  for (const section of PROMPT_SECTIONS) assert.ok(ids.includes(`prompt_section:${section.name}`));
+  for (const source of CONTEXT_SOURCES) assert.ok(ids.includes(`context_source:${source.name}`));
+  assert.ok(first.every((component) => component.source === "built-in"));
+  for (const source of CONTEXT_SOURCES) {
+    assert.ok(
+      HARNESS_KEYS.some((key) => key.path === source.specKey),
+      `${source.specKey} is a harness key`,
+    );
+  }
+  assert.equal(componentId.skill("project", "review"), "skill:project:review");
+  assert.equal(componentId.mcpServer("echo"), "mcp_server:echo");
+  assert.equal(componentId.hookPrefix("user", "PreToolUse"), "hook:user:PreToolUse");
+  assert.equal(componentId.memoryRule(), "rule:memory");
+});
+
+await check("diffHarnesses lists changed values only, in key order", () => {
+  const a = resolve({ user: { model: "m1", harnesses: { b: { model: { main: "m2" }, outputStyle: "Learning" } } } });
+  const b = resolve({
+    name: "b",
+    user: { model: "m1", harnesses: { b: { model: { main: "m2" }, outputStyle: "Learning" } } },
+  });
+  const diff = diffHarnesses(a, b);
+  assert.deepEqual(
+    diff.differences.map((difference) => difference.path),
+    ["model.main", "outputStyle"],
+  );
+  assert.deepEqual(diff.differences[0]?.a, { value: "m1", source: "user", detail: "model" });
+  assert.deepEqual(diff.differences[0]?.b, { value: "m2", source: "harness", detail: "b" });
+  assert.deepEqual(diffHarnesses(a, a).differences, []);
+  assert.match(formatHarnessDiff(diff), /^default → b\n {2}model\.main\n {4}- "m1" \(user settings: model\)/);
+  assert.match(formatHarnessDiff(diffHarnesses(a, a)), /No differences\./);
+});
+
+await check("the text view marks overrides, ignored values, and keys not applied yet", () => {
+  const resolved = resolve({
+    name: "reviewer",
+    workspaceTrusted: false,
+    user: { harnesses: { reviewer: { outputStyle: "Learning", tools: { exclude: ["WebFetch"] } } } },
+    layers: [{ source: "project", path: "/p", raw: { allow: ["Write"] } }],
+  });
+  const text = formatHarness(resolved, listBuiltInComponents());
+  assert.match(text, /^Agent: reviewer \(built-in default → reviewer\)\nHash: [0-9a-f]{16}\n/);
+  assert.match(text, /exclude +\["WebFetch"\] {2}← Agent "reviewer" {2}\[not applied yet\]/);
+  assert.match(text, /ignored project settings: allow \["Write"\]: workspace is not trusted/);
+  assert.match(text, /\nBuilt-in components\n {2}tool +tool:Read, /);
+  assert.match(text, /\n {2}context_source +context_source:agent_md, /);
+
+  const trusted = resolve({
+    name: "reviewer",
+    workspaceTrusted: true,
+    user: { harnesses: { reviewer: { outputStyle: "Learning" } } },
+    layers: [{ source: "project", path: "/p", raw: { outputStyle: "Concise" } }],
+  });
+  assert.match(
+    formatHarness(trusted),
+    /outputStyle +"Concise" {2}← project settings: outputStyle {2}\[overrides Agent "reviewer": "Learning"\]/,
+  );
+});
+
+await check("an argument is a name, or a spec file when it looks like a path", async () => {
+  assert.deepEqual(await harnessTarget("reviewer", cwd), { name: "reviewer" });
+  await writeFile(path.join(cwd, "ops.json"), JSON.stringify({ features: { maxTurns: 3 } }));
+  assert.deepEqual(await harnessTarget("ops.json", cwd), {
+    spec: { features: { maxTurns: 3 } },
+    file: path.join(cwd, "ops.json"),
+  });
+  await writeFile(path.join(cwd, "broken.json"), "{ nope");
+  await assert.rejects(harnessTarget("./broken.json", cwd), /is not valid JSON/);
+  await assert.rejects(harnessTarget("./missing.json", cwd), /cannot read/);
+});
+
+const CLI = path.join(import.meta.dirname, "..", "entrypoint", "cli.ts");
+function runCli(...args: string[]): Promise<{ code: number; stdout: string; stderr: string }> {
+  return new Promise((resolvePromise) => {
+    execFile(
+      process.execPath,
+      ["--import", import.meta.resolve("tsx"), CLI, "harness", ...args],
+      { cwd, env: { ...process.env, HOME: home, USERPROFILE: home, NO_COLOR: "1" }, timeout: 60_000 },
+      (error, stdout, stderr) => {
+        const code = error ? (typeof error.code === "number" ? error.code : 1) : 0;
+        resolvePromise({ code, stdout, stderr });
+      },
+    );
+  });
+}
+
+await check("eagent harness show and diff print the views and exit non-zero on errors", async () => {
+  await writeJson(path.join(home, ".easy-agent", "settings.json"), {
+    harnesses: { reviewer: { model: { main: "review-model" } } },
+  });
+  await writeJson(path.join(cwd, ".easy-agent", "settings.json"), {});
+  await writeJson(path.join(cwd, ".easy-agent", "settings.local.json"), {});
+
+  const shown = await runCli("show", "--json");
+  assert.equal(shown.code, 0, shown.stderr);
+  const parsed = JSON.parse(shown.stdout) as { harness: ResolvedHarness; components: Array<{ id: string }> };
+  assert.equal(parsed.harness.name, "default");
+  assert.equal(parsed.harness.values["permissions.mode"]?.value, "default");
+  assert.ok(parsed.components.some((component) => component.id === "tool:Read"));
+
+  const text = await runCli("show", "reviewer");
+  assert.equal(text.code, 0, text.stderr);
+  assert.match(text.stdout, /^Agent: reviewer/);
+  assert.match(text.stdout, /main +"review-model" {2}← Agent "reviewer"/);
+
+  const ghost = await runCli("show", "ghost");
+  assert.equal(ghost.code, 1);
+  assert.match(ghost.stdout, /Errors:\n {2}Agent "ghost": no Agent named "ghost"/);
+
+  const diff = await runCli("diff", "default", "./ops.json");
+  assert.equal(diff.code, 0, diff.stderr);
+  assert.match(
+    diff.stdout,
+    /^default → \(inline\)\n {2}features\.maxTurns\n {4}- unset \(built-in\)\n {4}\+ 3 \(Agent "\(inline\)"\)/,
+  );
+
+  const usage = await runCli("bogus");
+  assert.equal(usage.code, 1);
+  assert.match(usage.stderr, /Usage:\n {2}eagent harness show/);
+});
+
 console.log(`\nHarness resolver: ${passed} passed, 0 failed.`);
 setFlagSettings(null);
 await rm(root, { recursive: true, force: true }).catch(() => {});

@@ -77,6 +77,7 @@ const runtime = await createAgentRuntime({
 | `setWorkspaceTrust(trusted)` | Save or revoke trust for the workspace; it applies to the next runtime |
 | `checkModel(model)`, `listModels(model)` | Send a one-token request through a model handle; list the models its provider offers |
 | `getInventory()` | Everything the runtime has loaded, see [Inventory](#inventory) |
+| `getHarness({ name?, spec? })` / `diffHarness(a, b)` | Resolve an Agent and compare two; see [Agents](#agents). Their shape may still change while Agent selection is built |
 | `reload()` | Reload skills, commands, sub-agents, output styles, and plugins from disk. Open sessions use the new set from their next turn; returns the registry sizes, plugin MCP servers started and stopped, and plugin errors |
 | `approveMcpServer(name, approved, scope?)` | Approve or reject a server from the project's `.mcp.json`. The decision is saved in `enabledMcpjsonServers` or `disabledMcpjsonServers` of `scope` (default `local`); an approved server connects right away, a rejected one stops. Rejects with `untrusted` in an untrusted workspace |
 | `reconnectMcpServer(name)` | Drop a registered MCP server's connection and connect again; returns the status, the error if it failed, and the tool count |
@@ -99,6 +100,12 @@ const runtime = await createAgentRuntime({
 | `reason` | Why it is off or limited, such as an untrusted workspace, `claudeMdExcludes`, or hooks turned off |
 
 Items that occupy context carry token counts as `{ value, estimated }`: a skill's line in the skill list and its body, a sub-agent's line, an output style's prompt, a rule file, a tool's schema. Counts come from character lengths, so `estimated` is `true`. MCP servers report `status` (`connected`, `pending`, `failed`, `disabled`, `awaiting_approval`, `rejected`, or `ignored` in an untrusted workspace), their tools, and the error when connecting failed. Tools report whether ToolSearch defers them for the runtime's model. Project configuration an untrusted workspace ignores still appears, disabled, with the reason.
+
+### Agents
+
+`getHarness()` resolves the workspace's built-in `default` Agent; `{ name }` resolves an Agent from the `harnesses` key of the user settings file, and `{ spec }` resolves a spec object over its `extends` (see [Agent specs](./configuration.md#agent-specs-harnesses)). The result has the Agent `name`, the `chain` of specs applied over the built-in default, a `hash` of all values, `issues` (unknown names, `extends` cycles, invalid specs, keys this version does not apply yet), and `values`: for each key such as `model.main` or `permissions.deny`, the `value`, the layer it came from (`source`: `built-in`, `user`, `harness`, `project`, `local`, `environment`, `flag`, `policy`) with a `detail` such as the settings key, whether this version `applied` it, every accepted `contribution`, the `ignored` values with a `reason`, and `overridesHarness` when a project or local setting replaced the Agent's value. `diffHarness(a, b)` lists the keys whose values differ.
+
+No session uses an Agent other than the default yet, so these calls describe configuration; they do not change what a session does.
 
 ## Sessions
 

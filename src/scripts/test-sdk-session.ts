@@ -981,6 +981,78 @@ try {
       assert.equal(new Set(ids).size, ids.length, "ids are unique");
     });
 
+    await check("getHarness and diffHarness resolve Agents; /harness shows the same view", async () => {
+      const userFile = path.join(home, ".easy-agent", "settings.json");
+      const before = await readFile(userFile, "utf8").catch(() => null);
+      await writeFile(
+        userFile,
+        JSON.stringify({
+          ...(before ? JSON.parse(before) : {}),
+          harnesses: {
+            reviewer: { model: { main: "review-model" }, permissions: { deny: ["Write"] } },
+            broken: { extends: "missing" },
+          },
+        }),
+      );
+      try {
+        const base = await runtime.getHarness();
+        assert.equal(base.name, "default");
+        assert.deepEqual(base.chain, []);
+        assert.deepEqual(
+          base.issues.filter((issue) => issue.level === "error"),
+          [],
+        );
+        assert.equal(base.values["permissions.mode"]?.source, "built-in");
+
+        const reviewer = await runtime.getHarness({ name: "reviewer" });
+        assert.equal(reviewer.values["model.main"]?.value, "review-model");
+        assert.deepEqual(reviewer.chain, ["reviewer"]);
+        assert.notEqual(reviewer.hash, base.hash);
+
+        const inline = await runtime.getHarness({ spec: { extends: "reviewer", features: { maxTurns: 9 } } });
+        assert.equal(inline.name, "(inline)");
+        assert.equal(inline.values["features.maxTurns"]?.value, 9);
+        assert.equal(inline.values["model.main"]?.value, "review-model");
+
+        const ghost = await runtime.getHarness({ name: "ghost" });
+        assert.match(ghost.issues.find((issue) => issue.level === "error")?.message ?? "", /no Agent named "ghost"/);
+        const broken = await runtime.getHarness({ name: "broken" });
+        assert.match(broken.issues.find((issue) => issue.level === "error")?.message ?? "", /no Agent named "missing"/);
+
+        const diff = await runtime.diffHarness({}, { name: "reviewer" });
+        assert.deepEqual(
+          diff.differences.map((difference) => difference.path),
+          ["model.main", "permissions.deny"],
+        );
+        assert.equal(diff.differences[0]?.b.source, "harness");
+
+        const { listBuiltInComponents } = await import("../harness/components.js");
+        const inventory = await runtime.getInventory();
+        for (const tool of listBuiltInComponents().filter((component) => component.kind === "tool")) {
+          assert.ok(
+            inventory.tools.some((item) => item.id === tool.id && item.source === "built-in"),
+            `${tool.id} has the inventory's id`,
+          );
+        }
+
+        const session = await runtime.createSession({ model: FIXTURE_MODEL, persist: false });
+        const events = record(session);
+        await session.runCommand("harness", ["reviewer"]);
+        const shown = events.find((event) => event.type === "command_output");
+        assert.ok(shown?.type === "command_output" && shown.kind === "info");
+        assert.match(shown.message, /^Agent: reviewer \(built-in default → reviewer\)/);
+        assert.match(shown.message, /main +"review-model" {2}← Agent "reviewer"/);
+        await session.runCommand("harness", ["diff", "default", "reviewer"]);
+        const compared = events.filter((event) => event.type === "command_output").at(-1);
+        assert.ok(compared?.type === "command_output");
+        assert.match(compared.message, /^default → reviewer\n {2}model\.main/);
+        await session.close();
+      } finally {
+        if (before === null) await rm(userFile, { force: true });
+        else await writeFile(userFile, before);
+      }
+    });
+
     await check("a .mcp.json server waits for approval, connects when approved, and stops when rejected", async () => {
       let echo = (await runtime.getInventory()).mcpServers.find((server) => server.name === "echo");
       assert.equal(echo?.status, "awaiting_approval");
