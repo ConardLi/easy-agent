@@ -10,13 +10,14 @@
  * scrapes public search HTML.
  *
  * Selection:
- *   - env WEB_SEARCH_ADAPTER=api|bing forces a backend
+ *   - the Agent's tools.webSearchBackend (WEB_SEARCH_ADAPTER=api|bing) forces a backend
  *   - first-party Anthropic endpoint → API server-side search
  *   - otherwise                      → Bing scrape fallback
  */
 
 import type Anthropic from "@anthropic-ai/sdk";
 import he from "he";
+import { harnessSetting } from "../../harness/active.js";
 import { getAnthropicClientForProfile } from "../../services/api/client.js";
 import { resolveProfile } from "../../services/api/providers/profile.js";
 
@@ -211,7 +212,7 @@ function isFirstPartyAnthropic(baseURL: string | undefined): boolean {
  * usable adapter — no external key required.
  */
 export async function createAdapter(modelHandle?: string): Promise<WebSearchAdapter> {
-  const override = process.env.WEB_SEARCH_ADAPTER;
+  const override = harnessSetting<"bing" | "api" | undefined>("tools.webSearchBackend");
   if (override === "bing") return new BingSearchAdapter();
   if (override === "api") return new AnthropicApiSearchAdapter(modelHandle);
 

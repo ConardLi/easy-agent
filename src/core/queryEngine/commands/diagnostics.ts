@@ -14,6 +14,7 @@ import {
   type LoadedProfiles,
 } from "../../../services/api/providers/profile.js";
 import { loadTrustedSettingSources } from "../../../config/sources.js";
+import { activeHarness } from "../../../harness/active.js";
 import { MIN_NODE_MAJOR } from "../../../version.js";
 import { getMcpRegistry } from "../../../services/mcp/registry.js";
 import { getTaskMode } from "../../../state/taskModeStore.js";
@@ -204,13 +205,16 @@ export async function* handleDoctorCommand(
   const defaultSource = effectiveSources.find((source) => typeof source.raw?.defaultModel === "string");
   const selected = modelSource ?? defaultSource;
   const selectedValue = modelSource?.raw?.model ?? defaultSource?.raw?.defaultModel;
+  const environmentModel = activeHarness().values["model.main"]?.contributions.find(
+    (contribution) => contribution.source === "environment",
+  );
   const selectionSource =
     ctx.getModelSource() === "session"
       ? "session override"
       : selectedValue === activeHandle
         ? selected!.source
-        : process.env.ANTHROPIC_MODEL === activeHandle
-          ? "ANTHROPIC_MODEL"
+        : environmentModel?.value === activeHandle
+          ? environmentModel.detail
           : "runtime default";
   lines.push(
     `${ICON.ok} Active model: ${activeHandle}${profile.model !== activeHandle ? ` → ${profile.model}` : ""}`,

@@ -23,7 +23,7 @@ import { isProjectTrusted, trustProjectForSession } from "../config/globalState.
 import { setFlagSettings } from "../config/sources.js";
 import { detectWorkspaceRisks } from "../config/workspaceRisks.js";
 import { installHarness } from "../harness/active.js";
-import { resolveHarness } from "../harness/resolve.js";
+import { harnessEnvironment, resolveHarness } from "../harness/resolve.js";
 import { refreshHookDisableFromSettings } from "../hooks/settings.js";
 import { refreshActivePlugins } from "../plugins/runtime.js";
 import { getSandboxCapability, getSandboxUnavailableReason, loadSandboxSettings } from "../sandbox/index.js";
@@ -77,9 +77,14 @@ export async function loadWorkspace(options: AgentRuntimeOptions): Promise<Works
 
   // The Agent's settings, resolved once the environment is loaded; the
   // runtime and everything after it read them from the installed snapshot.
+  // Environment variables are taken now; settings files are read again on
+  // each refresh.
+  const env = harnessEnvironment();
+  const resolveAgent = () => resolveHarness({ cwd, env });
   try {
-    installHarness(await resolveHarness({ cwd }));
+    installHarness(await resolveAgent(), resolveAgent);
   } catch (error) {
+    installHarness(null, resolveAgent);
     logger.warn(
       `[easy-agent] ⚠ Could not resolve Agent settings: ${errorMessage(error)}. Using environment variables and built-in defaults.`,
     );

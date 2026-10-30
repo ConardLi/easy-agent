@@ -10,19 +10,20 @@
  */
 
 import Anthropic from "@anthropic-ai/sdk";
+import { harnessSetting } from "../../harness/active.js";
 import { USER_AGENT } from "../../version.js";
 
 // ─── Default Configuration ─────────────────────────────────────────
 
-export const FALLBACK_MODEL = "claude-sonnet-4-20250514";
+export { FALLBACK_MODEL } from "../../harness/keys.js";
 
 /**
- * The model used when nothing selects one. Read at call time so an
- * `ANTHROPIC_MODEL` loaded from the workspace `.env` at startup applies even
- * when this module was imported earlier.
+ * The model used when a request names none: the Agent's main model
+ * (`model.main`). Without a runtime, `ANTHROPIC_MODEL` or the built-in
+ * default.
  */
 export function getDefaultModel(): string {
-  return process.env.ANTHROPIC_MODEL || FALLBACK_MODEL;
+  return harnessSetting<string>("model.main");
 }
 export const CAPPED_DEFAULT_MAX_TOKENS = 8_000;
 export const ESCALATED_MAX_TOKENS = 64_000;

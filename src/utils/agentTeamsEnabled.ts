@@ -19,31 +19,21 @@
  *      added without touching every call site that asks "is this
  *      feature on?".
  *
- * Resolution order (any single signal flips the flag on):
+ * The gate is the Agent's `features.agentTeams`. Either signal turns it on:
  *
- *   --agent-teams (CLI flag, checked via process.argv)
+ *   --agent-teams (CLI flag)
  *   EASY_AGENT_TEAMS=1 (env var; accepts 1/true/yes/on, anything else off)
  *
- * There is no remote killswitch: Easy Agent has no analytics or
- * feature-flag service.
+ * An Agent spec can turn it on as well. There is no remote killswitch: Easy
+ * Agent has no analytics or feature-flag service.
  */
 
-const TRUTHY_VALUES = new Set(["1", "true", "yes", "on"]);
-
-function isEnvTruthy(value: string | undefined): boolean {
-  if (!value) return false;
-  return TRUTHY_VALUES.has(value.trim().toLowerCase());
-}
+import { harnessSetting } from "../harness/active.js";
 
 /**
- * True when the user opted into Agent Teams for this process.
- *
- * Read on every Tool.isEnabled() call (cheap — pure string/array checks)
- * so a settings reload that sets the env var mid-session is picked up
- * without a process restart. CLI-flag opt-in is locked at startup.
+ * True when the Agent has Agent Teams on. Read on every Tool.isEnabled()
+ * call; the flag and the variable are taken when the runtime starts.
  */
 export function isAgentTeamsEnabled(): boolean {
-  if (process.argv.includes("--agent-teams")) return true;
-  if (isEnvTruthy(process.env["EASY_AGENT_TEAMS"])) return true;
-  return false;
+  return harnessSetting<boolean>("features.agentTeams");
 }

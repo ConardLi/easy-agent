@@ -19,7 +19,6 @@ import { getAllUserCommands } from "../commands/userCommands/registry.js";
 import { INTERACTIVE_MAX_TOOL_TURNS } from "../core/agenticLoop.js";
 import { loadPermissionSettings, type PermissionSettings } from "../permissions/permissions.js";
 import { refreshActivePlugins } from "../plugins/runtime.js";
-import { getDefaultModel } from "../services/api/client.js";
 import { resolveProfile } from "../services/api/providers/profile.js";
 import { bootstrapMcp, connectAdditionalMcpServers } from "../services/mcp/bootstrap.js";
 import { getAllUserInvocableSkills } from "../services/skills/registry.js";
@@ -43,16 +42,15 @@ import { getEasyAgentHome } from "../utils/paths.js";
 import { createSessionScope } from "../state/sessionScope.js";
 import { getActiveOutputStyleName } from "../styles/registry.js";
 import { logWarn } from "../utils/log.js";
-import { readMergedStringSetting } from "../utils/settings.js";
 import type { McpServerConfig } from "../types/mcp.js";
 import { activateWorkspace, consoleLogger, loadWorkspace, type WorkspaceReport } from "./bootstrap.js";
 import { checkModel, listModels, readConfig, setWorkspaceTrust, writeConfig } from "./config.js";
 import { AgentSdkError } from "./errors.js";
 import { approveMcpServer, reconnectMcpServer, reloadExtensions } from "./extensions.js";
 import { buildRuntimeInventory } from "./inventory.js";
-import { installHarness } from "../harness/active.js";
+import { refreshHarness, uninstallHarness } from "../harness/active.js";
 import { diffHarnesses, type HarnessDiff } from "../harness/diff.js";
-import { type ResolvedHarness, resolveHarness } from "../harness/resolve.js";
+import { harnessValue, type ResolvedHarness, resolveHarness } from "../harness/resolve.js";
 import { listPlugins, mutatePlugins, previewPlugin } from "./plugins.js";
 import { AgentSession, reloadSettingsOf } from "./session.js";
 import { SessionController } from "./session/controller.js";
@@ -131,13 +129,13 @@ export class AgentRuntime {
     });
   }
 
-  /** The model handle sessions use when none is given: `model`, then `defaultModel`, then the built-in default. */
+  /**
+   * The model handle sessions use when none is given: the Agent's main model
+   * as of the current settings files (`model`, then `defaultModel`, then
+   * `ANTHROPIC_MODEL`, then the built-in default).
+   */
   async resolveModel(): Promise<string> {
-    return (
-      (await readMergedStringSetting(this.cwd, "model").catch(() => undefined)) ??
-      (await readMergedStringSetting(this.cwd, "defaultModel").catch(() => undefined)) ??
-      getDefaultModel()
-    );
+    return harnessValue<string>(await refreshHarness(), "model.main");
   }
 
   async createSession(options: AgentSessionOptions = {}): Promise<AgentSession> {
@@ -394,11 +392,13 @@ export class AgentRuntime {
   /**
    * Experimental. Resolve an Agent for this workspace: every Harness setting,
    * the layer it came from, and values a layer set but could not apply.
-   * `spec` resolves a spec object over its `extends` instead of a named Agent.
-   * No session uses the result yet.
+   * Without a target, the Agent this runtime's sessions use, as of the
+   * current settings files. `name` resolves another Agent and `spec` a spec
+   * object over its `extends`; sessions do not use those.
    */
   async getHarness(target: HarnessTarget = {}): Promise<ResolvedHarness> {
     this.#assertActive();
+    if (target.spec === undefined && target.name === undefined) return refreshHarness();
     return resolveHarness({
       cwd: this.cwd,
       ...(target.spec !== undefined ? { spec: target.spec } : target.name !== undefined ? { name: target.name } : {}),
@@ -471,7 +471,7 @@ export class AgentRuntime {
     this.#disposed = true;
     if (activeRuntime === this) {
       activeRuntime = null;
-      installHarness(null);
+      uninstallHarness();
     }
   }
 
@@ -553,7 +553,7 @@ export async function createAgentRuntime(options: AgentRuntimeOptions): Promise<
     runtime = new AgentRuntime(options, report);
     activeRuntime = runtime;
   } catch (error) {
-    installHarness(null);
+    uninstallHarness();
     throw error;
   } finally {
     bootstrapping = false;

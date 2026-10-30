@@ -14,14 +14,16 @@
  * exist. Defaults of such modules are declared here and re-exported there.
  */
 
-import { FALLBACK_MODEL } from "../services/api/client.js";
-import { DEFAULT_BUDGET_CHARS } from "../services/skills/budget.js";
 import { parseLegacyToolSearch } from "../config/features.js";
 import type { SettingScope } from "../config/catalog.js";
 import type { HarnessComponent } from "./spec.js";
 
 /** Retries for a failed model request when nothing sets `features.maxRetries`. */
 export const DEFAULT_MAX_RETRIES = 10;
+/** Model when no setting, flag, Agent, or ANTHROPIC_MODEL selects one. */
+export const FALLBACK_MODEL = "claude-sonnet-4-20250514";
+/** Characters for the skill listing when nothing sets `skills.listingBudgetChars`. */
+export const DEFAULT_BUDGET_CHARS = 8000;
 
 export type HarnessLayerSource =
   | "built-in"
@@ -193,7 +195,21 @@ export const HARNESS_KEYS: readonly HarnessKey[] = [
       applied: true,
     }),
   ),
-  specOnly("model.roles.classifier", "model", "Model for the Auto Mode classifier."),
+  {
+    path: "model.roles.classifier",
+    component: "model",
+    summary: "Model for the Auto Mode classifier; unset uses the session's model.",
+    merge: "replace",
+    env: {
+      names: ["EASY_AGENT_AUTO_MODE_MODEL"],
+      read: (env) =>
+        env.EASY_AGENT_AUTO_MODE_MODEL
+          ? { value: env.EASY_AGENT_AUTO_MODE_MODEL, name: "EASY_AGENT_AUTO_MODE_MODEL" }
+          : undefined,
+      position: "override",
+    },
+    applied: true,
+  },
   specOnly("model.roles.compaction", "model", "Model for compaction summaries."),
   specOnly("model.roles.webFetch", "model", "Model for WebFetch summaries."),
 

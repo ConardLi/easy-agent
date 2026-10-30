@@ -22,26 +22,26 @@ export async function runLogin(): Promise<number> {
     process.stderr.write(`Cannot update ${settingsPath}: ${parseError}\n`);
     return 1;
   }
-  const env = { ...((raw?.env ?? {}) as Record<string, string>) };
+  const savedEnv = { ...((raw?.env ?? {}) as Record<string, string>) };
 
   process.stdout.write(
     "Easy Agent setup\n\n" +
       "Enter an Anthropic API key, or the key of an Anthropic-compatible endpoint.\n" +
       `It is saved to ${settingsPath}, readable only by you. Press Enter to keep a current value.\n\n`,
   );
-  const hasKey = Boolean(env.ANTHROPIC_AUTH_TOKEN);
+  const hasKey = Boolean(savedEnv.ANTHROPIC_AUTH_TOKEN);
   const key = (await askHidden(`API key${hasKey ? " (configured)" : ""}: `)).trim();
   if (!key && !hasKey) {
     process.stderr.write("No API key entered; nothing was saved.\n");
     return 1;
   }
-  const baseUrl = (await ask(`Base URL [${env.ANTHROPIC_BASE_URL ?? "https://api.anthropic.com"}]: `)).trim();
-  const model = (await ask(`Model [${env.ANTHROPIC_MODEL ?? "default"}]: `)).trim();
+  const baseUrl = (await ask(`Base URL [${savedEnv.ANTHROPIC_BASE_URL ?? "https://api.anthropic.com"}]: `)).trim();
+  const model = (await ask(`Model [${savedEnv.ANTHROPIC_MODEL ?? "default"}]: `)).trim();
 
-  if (key) env.ANTHROPIC_AUTH_TOKEN = key;
-  if (baseUrl) env.ANTHROPIC_BASE_URL = baseUrl;
-  if (model) env.ANTHROPIC_MODEL = model;
-  await updateUserSettings({ env });
+  if (key) savedEnv.ANTHROPIC_AUTH_TOKEN = key;
+  if (baseUrl) savedEnv.ANTHROPIC_BASE_URL = baseUrl;
+  if (model) savedEnv.ANTHROPIC_MODEL = model;
+  await updateUserSettings({ env: savedEnv });
   process.stdout.write(
     `\nSaved. OpenAI, Gemini, and other providers are set up as model profiles in ${settingsPath}; see https://github.com/ConardLi/easy-agent/blob/main/docs/configuration.md\n`,
   );

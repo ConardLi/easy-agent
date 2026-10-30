@@ -14,6 +14,7 @@ import {
 import { streamMessage } from "../services/api/streaming.js";
 import { loadFeatureSettings } from "../config/features.js";
 import { getFlagSettings } from "../config/sources.js";
+import { refreshHarness } from "../harness/active.js";
 import { ESCALATED_MAX_TOKENS, MAX_OUTPUT_TOKENS_RECOVERY_LIMIT } from "../services/api/client.js";
 import type { QuerySource } from "../services/api/withRetry.js";
 import { compactMessages } from "../context/compaction.js";
@@ -717,6 +718,10 @@ export async function* query(params: QueryParams): AsyncGenerator<AgenticLoopEve
         for (const message of incoming) yield { type: "tool_result_message", message };
       }
     }
+
+    // Pick up edited settings files; everything this request reads comes
+    // from one snapshot of the Agent's settings.
+    await refreshHarness();
 
     const nextTurnCount = state.turnCount + 1;
 

@@ -1,4 +1,5 @@
 import type { MessageParam } from "@anthropic-ai/sdk/resources/messages.js";
+import { harnessSetting } from "../harness/active.js";
 import type { Usage } from "../types/message.js";
 
 export const MODEL_CONTEXT_WINDOW_DEFAULT = 200_000;
@@ -22,14 +23,10 @@ const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
   "claude-3-opus-20240229": 200_000,
 };
 
+/** The Agent's `compaction.contextWindow` when set (EASY_AGENT_MAX_CONTEXT_TOKENS), else the model's window. */
 export function getContextWindowForModel(model: string): number {
-  // EASY_AGENT_MAX_CONTEXT_TOKENS is the project name; CLAUDE_CODE_MAX_CONTEXT_TOKENS
-  // is honored too for parity with source (matches getMaxRetries' alias pattern).
-  const envOverride = process.env.EASY_AGENT_MAX_CONTEXT_TOKENS ?? process.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS;
-  if (envOverride) {
-    const parsed = parseInt(envOverride, 10);
-    if (!Number.isNaN(parsed) && parsed > 0) return parsed;
-  }
+  const configured = harnessSetting<number | undefined>("compaction.contextWindow");
+  if (configured !== undefined) return configured;
 
   if (MODEL_CONTEXT_WINDOWS[model]) {
     return MODEL_CONTEXT_WINDOWS[model];
@@ -180,7 +177,7 @@ export function buildTokenBudgetSnapshot(
   options?: { usage?: Usage; usageAnchorIndex?: number; systemPrompt?: string; model?: string },
 ): TokenBudgetSnapshot {
   const estimatedConversationTokens = tokenCountWithEstimation(messages, options);
-  const model = options?.model ?? process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-20250514";
+  const model = options?.model ?? harnessSetting<string>("model.main");
   const contextWindow = getContextWindowForModel(model);
   const effectiveContextWindow = getEffectiveContextWindowSize(model);
   return {

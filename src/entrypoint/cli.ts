@@ -344,20 +344,11 @@ Settings keys (in ~/.easy-agent/settings.json or <cwd>/.easy-agent/settings.json
   const React = await import("react");
   const { render } = await import("ink");
   const { App } = await import("../ui/App.js");
-  const { getDefaultModel } = await import("../services/api/client.js");
-  const { readMergedStringSetting } = await import("../utils/settings.js");
-
-  // Resolve the model through the unified settings chain: flag (--model) →
-  // local → project → user → built-in default. `--model` lives in the flag
-  // source installed above, so it naturally wins.
-  //
-  // The resolved value is a model *handle* — either a declared
-  // `models` profile id or a raw model name. When no explicit `model` is set,
-  // fall back to `defaultModel` (the multi-profile default) before the built-in.
-  const resolvedModel =
-    (await readMergedStringSetting(cwd, "model")) ??
-    (await readMergedStringSetting(cwd, "defaultModel")) ??
-    getDefaultModel();
+  // The Agent's main model: `--model` (the flag layer installed above), then
+  // `model` and `defaultModel` in the settings files, then ANTHROPIC_MODEL and
+  // the built-in default. The value is a model *handle*: a declared `models`
+  // profile id or a raw model name.
+  const resolvedModel = await runtime.resolveModel();
 
   // MCP servers and plugin services connect in the background: a slow `npx`
   // cold start would otherwise leave the terminal black. If the user submits
