@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { Tool, ToolContext, ToolResult } from "./Tool.js";
 import { withValidatedWorkspacePath, WorkspacePathError } from "./pathUtils.js";
-import { readMergedBooleanSetting } from "../utils/settings.js";
+import { harnessSettingFor } from "../harness/active.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -41,7 +41,7 @@ export const grepTool: Tool = {
     }
 
     const respectGitignore =
-      (await readMergedBooleanSetting(context.cwd, "respectGitignore").catch(() => undefined)) !== false;
+      (await harnessSettingFor<boolean>(context.cwd, "tools.respectGitignore").catch(() => true)) !== false;
 
     try {
       return await withValidatedWorkspacePath(input.path ?? ".", context.cwd, async (targetPath, stats) => {

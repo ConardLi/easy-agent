@@ -22,7 +22,7 @@ Layers are user (`~/.easy-agent/settings.json`), project (`.easy-agent/settings.
 | `apiKeyHelper` | environment | yes | all; project and local need trust | restart |  | Command that prints an API token when none is set. |
 | `ask` | agent | yes | all; project and local need trust | config command | `[]` | Accepted and listed by /config; permission checks do not apply these rules. |
 | `autoMode` | agent | yes | user, flag, policy | config command | `false` | Same as `mode: "auto"` when true. |
-| `checkpointingEnabled` | agent |  | all; project and local need trust | next checkpoint | `true` | File checkpoints before Write, Edit, and MultiEdit. |
+| `checkpointingEnabled` | agent |  | all; project and local need trust | next session | `true` | File checkpoints before Write, Edit, and MultiEdit. |
 | `claudeMdExcludes` | resource |  | all, also untrusted | restart |  | Globs of AGENTS.md and AGENT.md files not to load. |
 | `cleanupPeriodDays` | environment |  | all; project and local need trust | restart |  | Days to keep session transcripts; 0 stops writing them. |
 | `defaultModel` | agent |  | all; project and local need trust | next session |  | Profile or model used when nothing else selects one. |
@@ -41,11 +41,11 @@ Layers are user (`~/.easy-agent/settings.json`), project (`.easy-agent/settings.
 | `mcpServers` | resource | yes | all; project and local need trust | MCP reconnect |  | MCP server definitions. |
 | `mode` | agent | yes | user, flag, policy | config command | `"default"` | Permission mode at startup: default, plan, or auto. |
 | `model` | agent |  | all; project and local need trust | next session |  | Main model or model profile. |
-| `modelRoles` | agent |  | all; project and local need trust | next invocation/request | `{}` | Models for the background, think, and longContext roles. |
+| `modelRoles` | agent |  | all; project and local need trust | next request | `{}` | Models for the background, think, and longContext roles. |
 | `models` | environment | yes | all; project and local need trust | next request |  | Model profiles: protocol, model, endpoint, credentials, headers. |
 | `outputStyle` | agent |  | all; project and local need trust | output-style command or restart |  | Active output style. |
 | `prefersReducedMotion` | environment |  | all; project and local need trust | restart | `false` | Terminal UI turns off animations. |
-| `respectGitignore` | agent |  | all; project and local need trust | next search | `true` | Glob and Grep skip files ignored by git. |
+| `respectGitignore` | agent |  | all; project and local need trust | next request | `true` | Glob and Grep skip files ignored by git. |
 | `sandbox` | environment | yes | all; project and local need trust | next shell execution |  | Shell sandbox: filesystem and network limits. |
 | `statusLine` | environment | yes | all; project and local need trust | restart |  | Command whose output the terminal UI shows as its status line. |
 | `syntaxHighlightingDisabled` | environment |  | all; project and local need trust | restart | `false` | Terminal UI renders code without highlighting. |
@@ -69,11 +69,11 @@ Layers are user (`~/.easy-agent/settings.json`), project (`.easy-agent/settings.
 | `EASY_AGENT_AUTO_MODE_MODEL` | agent |  | runtime | the session's model |  | Model for the Auto Mode classifier. | `src/harness/keys.ts` |
 | `EASY_AGENT_DEBUG` | environment |  | use |  |  | Any value writes debug logs to stderr. | `src/utils/log.ts` |
 | `EASY_AGENT_DEBUG_STREAM` | environment |  | use |  |  | 1 writes raw model stream events to a private log file. | `src/utils/streamDebug.ts` |
-| `EASY_AGENT_DISABLE_CHECKPOINTING` | agent |  | session |  | `checkpointingEnabled` | 1, true, yes, or on turns off file checkpoints. | `src/harness/keys.ts`, `src/session/fileHistory.ts` |
+| `EASY_AGENT_DISABLE_CHECKPOINTING` | agent |  | runtime |  | `checkpointingEnabled` | 1, true, yes, or on turns off file checkpoints. | `src/harness/keys.ts` |
 | `EASY_AGENT_DISABLE_EXPERIMENTAL_BETAS`, `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS` | agent |  | runtime |  |  | 1, true, yes, or on leaves out experimental beta request fields. | `src/harness/keys.ts` |
 | `EASY_AGENT_DISABLE_HOOKS` | resource | yes | use |  | `disableAllHooks` | 1, true, or yes turns off hooks. | `src/hooks/settings.ts` |
 | `EASY_AGENT_DISABLE_PROMPT_CACHING` | agent |  | runtime |  |  | 1, true, yes, or on removes prompt-cache markers and keys from requests. | `src/harness/keys.ts` |
-| `EASY_AGENT_ENABLE_TOOL_SEARCH`, `ENABLE_TOOL_SEARCH` | agent |  | use |  | `toolSearch`, `toolSearchAutoThreshold`, `--tool-search` | Deprecated ToolSearch switch: true, false, auto, or auto:N. | `src/config/features.ts`, `src/harness/keys.ts`, `src/utils/toolSearch.ts` |
+| `EASY_AGENT_ENABLE_TOOL_SEARCH`, `ENABLE_TOOL_SEARCH` | agent |  | runtime |  | `toolSearch`, `toolSearchAutoThreshold`, `--tool-search` | Deprecated ToolSearch switch: true, false, auto, or auto:N. | `src/harness/keys.ts` |
 | `EASY_AGENT_MAX_CONTEXT_TOKENS`, `CLAUDE_CODE_MAX_CONTEXT_TOKENS` | agent |  | runtime | the model's context window (200000 when unknown) |  | Context window size used for warnings and auto-compaction. | `src/harness/keys.ts` |
 | `EASY_AGENT_MAX_RETRIES`, `CLAUDE_CODE_MAX_RETRIES` | agent |  | runtime | 10 |  | Retries for a failed model request. | `src/harness/keys.ts` |
 | `EASY_AGENT_POWERSHELL` | environment | yes | use | powershell.exe |  | PowerShell executable for the PowerShell tool. | `src/tools/powerShellTool.ts` |
@@ -93,7 +93,6 @@ Variables named by configuration are read too:
 - `src/services/mcp/remoteHeaders.ts`: `headersEnv` of a remote MCP server names the variables to send as headers.
 - `src/services/mcp/oauth.ts`: `clientSecretEnv` of an MCP OAuth config names the variable holding the client secret.
 - `src/utils/loadEnv.ts`: Writes `env` settings and the workspace `.env` into the process environment.
-- `src/config/features.ts`: Picks EASY_AGENT_ENABLE_TOOL_SEARCH or ENABLE_TOOL_SEARCH, both listed.
 - `src/harness/resolve.ts`: Notices a change in any variable a Harness key reads, all listed.
 
 ## `process.argv` checks outside the CLI parser

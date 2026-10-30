@@ -20,7 +20,8 @@ import { toolToApiParam, type ApiToolParam, type Tool } from "../tools/Tool.js";
 import type { ContentBlock, ToolReferenceBlock } from "../types/message.js";
 import { redactUrlForDisplay } from "../config/redaction.js";
 import { debugLog } from "./log.js";
-import type { FeatureSettings } from "../config/features.js";
+import { featureSettingsOf, type FeatureSettings } from "../config/features.js";
+import { activeHarness } from "../harness/active.js";
 import { getContextWindowForModel } from "./tokens.js";
 import { areExperimentalBetasDisabled } from "./experimentalBetas.js";
 export { areExperimentalBetasDisabled } from "./experimentalBetas.js";
@@ -53,26 +54,6 @@ const TOOL_REFERENCES_REMOVED_UNAVAILABLE = "[Tool references removed - tools no
 /** Marker written into the compact boundary so discovered tools survive compaction. */
 export const COMPACT_DISCOVERED_TOOLS_KEY = "discovered_tools";
 
-// ─── Env helpers ─────────────────────────────────────────────────────────
-
-function isEnvTruthy(value: string | undefined): boolean {
-  if (!value) return false;
-  const v = value.trim().toLowerCase();
-  return v === "1" || v === "true" || v === "yes" || v === "on";
-}
-
-function isEnvDefinedFalsy(value: string | undefined): boolean {
-  if (value === undefined) return false;
-  const v = value.trim().toLowerCase();
-  return v === "0" || v === "false" || v === "no" || v === "off";
-}
-
-function getToolSearchEnvValue(): string | undefined {
-  // Project-prefixed name is canonical; the unprefixed name is honored for
-  // compatibility with existing shell setups.
-  return process.env.EASY_AGENT_ENABLE_TOOL_SEARCH ?? process.env.ENABLE_TOOL_SEARCH;
-}
-
 // ─── Mode ────────────────────────────────────────────────────────────────
 
 /**
@@ -85,60 +66,32 @@ function getToolSearchEnvValue(): string | undefined {
  */
 export type ToolSearchMode = "tst" | "tst-auto" | "standard";
 
-/** Default percentage of the context window at which tst-auto kicks in. */
-const DEFAULT_AUTO_TOOL_SEARCH_PERCENTAGE = 10;
-
 /** Chars-per-token approximation for tool definitions (name + description + schema). */
 const CHARS_PER_TOKEN = 2.5;
 
 /**
- * Parse `auto:N`. Returns N clamped to 0–100, or null when the value is not
- * in `auto:N` form or N is not a number.
+ * The feature settings a caller passed, or those of the active harness
+ * (`features.toolSearch`, `features.toolSearchAutoThreshold`, the legacy
+ * `EASY_AGENT_ENABLE_TOOL_SEARCH` variables included).
  */
-function parseAutoPercentage(value: string): number | null {
-  if (!value.startsWith("auto:")) return null;
-  const percent = parseInt(value.slice(5), 10);
-  if (Number.isNaN(percent)) {
-    debugLog("toolsearch", `Invalid tool search value "${value}": expected auto:N where N is a number.`);
-    return null;
-  }
-  return Math.max(0, Math.min(100, percent));
-}
-
-function isAutoToolSearchMode(value: string | undefined): boolean {
-  if (!value) return false;
-  return value === "auto" || value.startsWith("auto:");
-}
-
-function getAutoToolSearchPercentage(settings?: FeatureSettings): number {
-  if (settings) return settings.toolSearchAutoThreshold;
-  const value = getToolSearchEnvValue();
-  if (!value || value === "auto") return DEFAULT_AUTO_TOOL_SEARCH_PERCENTAGE;
-  return parseAutoPercentage(value) ?? DEFAULT_AUTO_TOOL_SEARCH_PERCENTAGE;
+function effectiveSettings(settings?: FeatureSettings): FeatureSettings {
+  return settings ?? featureSettingsOf(activeHarness());
 }
 
 /**
- * Determine the tool search mode from the environment.
+ * Determine the tool search mode:
  *
- *   value                 mode
- *   auto / auto:1-99      tst-auto
- *   true / auto:0         tst
- *   false / auto:100      standard
- *   (unset)               tst   (default: always defer MCP and shouldDefer tools)
+ *   toolSearch            mode
+ *   auto                  tst-auto
+ *   on (default)          tst   (always defer MCP and shouldDefer tools)
+ *   off                   standard
+ *
+ * Turning experimental betas off forces standard.
  */
 export function getToolSearchMode(settings?: FeatureSettings): ToolSearchMode {
   if (areExperimentalBetasDisabled()) return "standard";
-  if (settings) return settings.toolSearch === "off" ? "standard" : settings.toolSearch === "auto" ? "tst-auto" : "tst";
-
-  const value = getToolSearchEnvValue();
-  const autoPercent = value ? parseAutoPercentage(value) : null;
-  if (autoPercent === 0) return "tst";
-  if (autoPercent === 100) return "standard";
-  if (isAutoToolSearchMode(value)) return "tst-auto";
-
-  if (isEnvTruthy(value)) return "tst";
-  if (isEnvDefinedFalsy(value)) return "standard";
-  return "tst";
+  const { toolSearch } = effectiveSettings(settings);
+  return toolSearch === "off" ? "standard" : toolSearch === "auto" ? "tst-auto" : "tst";
 }
 
 // ─── Deferral ────────────────────────────────────────────────────────────
@@ -203,7 +156,7 @@ export function isToolSearchEnabledOptimistic(): boolean {
   const result = mode !== "standard";
   if (!loggedOptimistic) {
     loggedOptimistic = true;
-    debugLog("toolsearch", "optimistic", { mode, value: getToolSearchEnvValue() ?? null, result });
+    debugLog("toolsearch", "optimistic", { mode, result });
   }
   return result;
 }
@@ -241,7 +194,8 @@ function checkAutoThreshold(
   chars: number;
   charThreshold: number;
 } {
-  const tokenThreshold = Math.floor(getContextWindowForModel(model) * (getAutoToolSearchPercentage(settings) / 100));
+  const percentage = effectiveSettings(settings).toolSearchAutoThreshold;
+  const tokenThreshold = Math.floor(getContextWindowForModel(model) * (percentage / 100));
   const charThreshold = Math.floor(tokenThreshold * CHARS_PER_TOKEN);
   const chars = calculateDeferredToolDefinitionChars(tools);
   return { enabled: chars >= charThreshold, chars, charThreshold };
@@ -252,8 +206,8 @@ function checkAutoThreshold(
  *   1. model support for tool_reference (Haiku family is excluded)
  *   2. ToolSearch present in the tool list (it may be disallowed)
  *   3. gateway heuristic — for the Anthropic protocol pointed at a non
- *      first-party host, tool search is off unless the user explicitly set
- *      the env var (any non-empty value asserts "my proxy forwards betas")
+ *      first-party host, tool search is off unless `toolSearch` is set
+ *      explicitly (setting it asserts "my proxy forwards betas")
  *   4. mode: tst → on; standard → off; tst-auto → threshold
  *
  * `source` only decorates the debug log (query / compact / subagent).
@@ -284,7 +238,7 @@ export function isToolSearchEnabled(
 
   if (
     env.protocol === "anthropic" &&
-    !(env.settings ? env.settings.toolSearchExplicit : getToolSearchEnvValue()) &&
+    !effectiveSettings(env.settings).toolSearchExplicit &&
     !isFirstPartyAnthropicBaseUrl(env.baseURL)
   ) {
     log(false, "non_first_party_base_url", {
@@ -302,7 +256,7 @@ export function isToolSearchEnabled(
   log(enabled, enabled ? "auto_above_threshold" : "auto_below_threshold", {
     chars,
     charThreshold,
-    percentage: getAutoToolSearchPercentage(env.settings),
+    percentage: effectiveSettings(env.settings).toolSearchAutoThreshold,
   });
   return enabled;
 }

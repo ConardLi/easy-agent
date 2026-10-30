@@ -14,7 +14,6 @@
  * exist. Defaults of such modules are declared here and re-exported there.
  */
 
-import { parseLegacyToolSearch } from "../config/features.js";
 import type { SettingScope } from "../config/catalog.js";
 import type { HarnessComponent } from "./spec.js";
 
@@ -132,6 +131,25 @@ function positiveIntegerFrom(value: string | undefined): number | undefined {
   if (!value) return undefined;
   const parsed = Number.parseInt(value, 10);
   return !Number.isNaN(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+/** The deprecated `EASY_AGENT_ENABLE_TOOL_SEARCH` spellings: on/off words, `auto`, and `auto:N`. */
+export function parseLegacyToolSearch(
+  value: string,
+): { toolSearch: "off" | "auto" | "on"; toolSearchAutoThreshold: number } | null {
+  const normalized = value.trim().toLowerCase();
+  if (["true", "1", "yes", "on"].includes(normalized)) return { toolSearch: "on", toolSearchAutoThreshold: 10 };
+  if (["false", "0", "no", "off"].includes(normalized)) return { toolSearch: "off", toolSearchAutoThreshold: 10 };
+  if (normalized === "auto") return { toolSearch: "auto", toolSearchAutoThreshold: 10 };
+  if (normalized.startsWith("auto:")) {
+    const n = Number.parseInt(normalized.slice(5), 10);
+    const threshold = Number.isFinite(n) ? Math.max(0, Math.min(100, n)) : 10;
+    return {
+      toolSearch: threshold === 0 ? "on" : threshold === 100 ? "off" : "auto",
+      toolSearchAutoThreshold: threshold,
+    };
+  }
+  return null;
 }
 
 function legacyToolSearch(env: NodeJS.ProcessEnv): { raw: string; name: string } | undefined {

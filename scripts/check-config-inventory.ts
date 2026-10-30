@@ -83,10 +83,6 @@ const DYNAMIC_ENV_READS: DynamicEnvRead[] = [
     reason: "Writes `env` settings and the workspace `.env` into the process environment.",
   },
   {
-    file: "src/config/features.ts",
-    reason: "Picks EASY_AGENT_ENABLE_TOOL_SEARCH or ENABLE_TOOL_SEARCH, both listed.",
-  },
-  {
     file: "src/harness/resolve.ts",
     reason: "Notices a change in any variable a Harness key reads, all listed.",
   },
@@ -94,17 +90,6 @@ const DYNAMIC_ENV_READS: DynamicEnvRead[] = [
 
 /** The resolver reads the environment; everything else reads the resolved harness. */
 const HARNESS_DIRECTORY = "src/harness";
-
-/**
- * Files that still read an environment variable a Harness key resolves,
- * instead of the Agent's value from the resolved harness. Entries go away as
- * code moves to the harness; a new direct read fails the check.
- */
-const DIRECT_HARNESS_ENV_READS: { file: string; names: string[] }[] = [
-  { file: "src/config/features.ts", names: ["EASY_AGENT_ENABLE_TOOL_SEARCH"] },
-  { file: "src/session/fileHistory.ts", names: ["EASY_AGENT_DISABLE_CHECKPOINTING"] },
-  { file: "src/utils/toolSearch.ts", names: ["EASY_AGENT_ENABLE_TOOL_SEARCH", "ENABLE_TOOL_SEARCH"] },
-];
 
 const BEHAVIOR_CONSTANTS: BehaviorConstant[] = [
   {
@@ -452,23 +437,13 @@ export function findProblems(scan: ScanResult, texts: ReadonlyMap<string, string
     }
   }
   const harnessKeys = harnessKeysByVariable();
-  const directReads = directHarnessEnvReads(scan);
-  for (const read of directReads) {
-    if (!DIRECT_HARNESS_ENV_READS.some((entry) => entry.file === read.file && entry.names.includes(read.name))) {
-      problems.push(
-        `${loc(read)} reads ${read.name} directly; read ${harnessKeys.get(read.name)!.join(" or ")} with harnessSetting() instead`,
-      );
-    }
+  for (const read of directHarnessEnvReads(scan)) {
+    problems.push(
+      `${loc(read)} reads ${read.name} directly; read ${harnessKeys.get(read.name)!.join(" or ")} with harnessSetting() or harnessFor() instead`,
+    );
   }
 
   if (!complete) return problems;
-
-  for (const entry of DIRECT_HARNESS_ENV_READS) {
-    for (const name of entry.names) {
-      if (!directReads.some((read) => read.file === entry.file && read.name === name))
-        problems.push(`DIRECT_HARNESS_ENV_READS lists ${name} in ${entry.file}, which no longer reads it; remove it`);
-    }
-  }
 
   const supported = supportedSettingKeys();
   for (const key of supported) {
@@ -665,10 +640,8 @@ async function main(): Promise<void> {
     process.exitCode = 1;
     return;
   }
-  const directReads = directHarnessEnvReads(scan);
   process.stdout.write(
-    `Configuration inventory: ${Object.keys(SETTING_CATALOG).length} settings, ${ENVIRONMENT_VARIABLES.length} environment variables, ${ARGV_CHECKS.length} argv checks, ${BEHAVIOR_CONSTANTS.length} constants. ` +
-      `Agent variables still read outside the resolver: ${directReads.length} reads in ${new Set(directReads.map((read) => read.file)).size} files.\n`,
+    `Configuration inventory: ${Object.keys(SETTING_CATALOG).length} settings, ${ENVIRONMENT_VARIABLES.length} environment variables, ${ARGV_CHECKS.length} argv checks, ${BEHAVIOR_CONSTANTS.length} constants.\n`,
   );
 }
 

@@ -12,9 +12,9 @@ import {
   type PermissionSettings,
 } from "../permissions/permissions.js";
 import { streamMessage } from "../services/api/streaming.js";
-import { loadFeatureSettings } from "../config/features.js";
+import { featureSettingsOf } from "../config/features.js";
 import { getFlagSettings } from "../config/sources.js";
-import { refreshHarness } from "../harness/active.js";
+import { harnessFor, refreshHarness } from "../harness/active.js";
 import { ESCALATED_MAX_TOKENS, MAX_OUTPUT_TOKENS_RECOVERY_LIMIT } from "../services/api/client.js";
 import type { QuerySource } from "../services/api/withRetry.js";
 import { compactMessages } from "../context/compaction.js";
@@ -762,7 +762,7 @@ export async function* query(params: QueryParams): AsyncGenerator<AgenticLoopEve
     // <available-deferred-tools> block prepended to the API copy of the
     // history. `state.messages` itself is never mutated by this step.
     const currentTools = ((params.getTools ? params.getTools() : params.tools) ?? []).filter(hasValidToolInputSchema);
-    const featureSettings = await loadFeatureSettings(params.toolContext.cwd);
+    const featureSettings = featureSettingsOf(await harnessFor(params.toolContext.cwd));
     // Explicit per-invocation model selection remains authoritative for child
     // agents. Main requests can route thinking or oversized context by role.
     const { buildDefaultThinkingConfig } = await import("../utils/thinking.js");

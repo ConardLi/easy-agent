@@ -4,7 +4,7 @@ import * as path from "node:path";
 import { promisify } from "node:util";
 import type { Tool, ToolContext, ToolResult } from "./Tool.js";
 import { resolveSafePath, withValidatedWorkspacePath, WorkspacePathError } from "./pathUtils.js";
-import { readMergedBooleanSetting } from "../utils/settings.js";
+import { harnessSettingFor } from "../harness/active.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -62,7 +62,7 @@ export const globTool: Tool = {
     }
 
     const respectGitignore =
-      (await readMergedBooleanSetting(context.cwd, "respectGitignore").catch(() => undefined)) !== false;
+      (await harnessSettingFor<boolean>(context.cwd, "tools.respectGitignore").catch(() => true)) !== false;
     const displayBasePath = resolveSafePath(input.path ?? ".", context.cwd);
 
     try {

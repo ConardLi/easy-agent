@@ -10,7 +10,7 @@
  * fire-and-forget every subsystem with the same idiom.
  */
 
-import { readMergedStringSetting } from "../utils/settings.js";
+import { harnessSettingFor } from "../harness/active.js";
 import { loadAllOutputStyles } from "./loadOutputStylesDir.js";
 import {
   getActiveOutputStyleName,
@@ -36,7 +36,9 @@ export async function bootstrapOutputStyles(cwd: string): Promise<OutputStylesBo
   // Apply the persisted default style, if any and if it resolves to a
   // known style. An unknown persisted value (e.g. a custom style whose
   // file was deleted) silently falls back to `default`.
-  const persisted = await readMergedStringSetting(cwd, "outputStyle").catch(() => undefined);
+  const persisted = await harnessSettingFor<string | undefined>(cwd, "outputStyle", { current: true }).catch(
+    () => undefined,
+  );
   if (persisted && resolveOutputStyle(persisted)) {
     setActiveOutputStyle(persisted);
   }

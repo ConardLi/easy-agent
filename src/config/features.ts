@@ -1,4 +1,11 @@
-/** Typed feature policy shared by runtime consumers and configuration diagnostics. */
+/**
+ * Feature settings of the resolved Agent, in the shape ToolSearch, model-role
+ * routing, and configuration diagnostics use. The values come from the
+ * Harness keys `features.toolSearch`, `features.toolSearchAutoThreshold`,
+ * `features.maxTurns`, and `model.roles.*`.
+ */
+import { harnessFor, harnessSettingFor } from "../harness/active.js";
+import { resolveHarnessFromInputs, type ResolvedHarness, type ResolvedHarnessValue } from "../harness/resolve.js";
 import { loadTrustedSettingSources, type LoadedSource } from "./sources.js";
 
 export type ToolSearchSetting = "off" | "auto" | "on";
@@ -6,107 +13,103 @@ export type ModelRole = "background" | "think" | "longContext";
 export interface FeatureSettings {
   toolSearch: ToolSearchSetting;
   toolSearchAutoThreshold: number;
+  /** A settings layer, the Agent, or the legacy variable set `toolSearch`. */
   toolSearchExplicit: boolean;
   modelRoles: Partial<Record<ModelRole, string>>;
   sources: Record<string, string>;
   warnings: string[];
 }
 
-/** Preserve the legacy boolean and auto:N spellings during the migration window. */
-export function parseLegacyToolSearch(
-  value: string,
-): Pick<FeatureSettings, "toolSearch" | "toolSearchAutoThreshold"> | null {
-  const normalized = value.trim().toLowerCase();
-  if (["true", "1", "yes", "on"].includes(normalized)) return { toolSearch: "on", toolSearchAutoThreshold: 10 };
-  if (["false", "0", "no", "off"].includes(normalized)) return { toolSearch: "off", toolSearchAutoThreshold: 10 };
-  if (normalized === "auto") return { toolSearch: "auto", toolSearchAutoThreshold: 10 };
-  if (normalized.startsWith("auto:")) {
-    const n = Number.parseInt(normalized.slice(5), 10);
-    const threshold = Number.isFinite(n) ? Math.max(0, Math.min(100, n)) : 10;
-    return {
-      toolSearch: threshold === 0 ? "on" : threshold === 100 ? "off" : "auto",
-      toolSearchAutoThreshold: threshold,
-    };
-  }
-  return null;
+const MODEL_ROLES: readonly ModelRole[] = ["background", "think", "longContext"];
+const LAYER_ORDER = ["built-in", "user", "harness", "project", "local", "environment", "flag", "policy"];
+
+function sourceLabel(entry: Pick<ResolvedHarnessValue, "source" | "detail">): string {
+  if (entry.source === "built-in") return "default";
+  if (entry.source === "environment" || entry.source === "harness") return `${entry.source}:${entry.detail}`;
+  return entry.source;
 }
 
-export function resolveFeatureSettings(
-  sources: readonly LoadedSource[],
-  env: NodeJS.ProcessEnv = process.env,
-): FeatureSettings {
-  const result: FeatureSettings = {
-    toolSearch: "on",
-    toolSearchAutoThreshold: 10,
-    toolSearchExplicit: false,
-    modelRoles: {},
-    sources: { toolSearch: "default", toolSearchAutoThreshold: "default", modelRoles: "default" },
-    warnings: [],
+function sourceDiagnostics(sources: readonly LoadedSource[]): string[] {
+  return sources.flatMap((source) => [
+    ...(source.parseError ? [source.parseError] : []),
+    ...(source.validationErrors ?? []),
+  ]);
+}
+
+/** The feature settings of a resolved harness; `diagnostics` are appended to the warnings. */
+export function featureSettingsOf(resolved: ResolvedHarness, diagnostics: readonly string[] = []): FeatureSettings {
+  const toolSearch = resolved.values["features.toolSearch"]!;
+  const threshold = resolved.values["features.toolSearchAutoThreshold"]!;
+  const sources: Record<string, string> = {
+    toolSearch: sourceLabel(toolSearch),
+    toolSearchAutoThreshold: sourceLabel(threshold),
+    modelRoles: "default",
   };
-  const apply = (source: LoadedSource) => {
-    const raw = source.raw;
-    if (!raw) return;
-    if (raw.toolSearch !== undefined) {
-      result.toolSearch = raw.toolSearch as ToolSearchSetting;
-      result.toolSearchExplicit = true;
-      result.sources.toolSearch = source.source;
+  const modelRoles: FeatureSettings["modelRoles"] = {};
+  let rolesLayer = 0;
+  for (const role of MODEL_ROLES) {
+    const entry = resolved.values[`model.roles.${role}`]!;
+    if (typeof entry.value !== "string") continue;
+    modelRoles[role] = entry.value;
+    sources[`modelRoles.${role}`] = sourceLabel(entry);
+    const layer = LAYER_ORDER.indexOf(entry.source);
+    if (layer >= rolesLayer) {
+      rolesLayer = layer;
+      sources.modelRoles = sourceLabel(entry);
     }
-    if (raw.toolSearchAutoThreshold !== undefined) {
-      result.toolSearchAutoThreshold = raw.toolSearchAutoThreshold as number;
-      result.sources.toolSearchAutoThreshold = source.source;
-    }
-    if (raw.modelRoles && typeof raw.modelRoles === "object") {
-      for (const [role, model] of Object.entries(raw.modelRoles)) {
-        result.modelRoles[role as ModelRole] = model as string;
-        result.sources[`modelRoles.${role}`] = source.source;
-      }
-      result.sources.modelRoles = source.source;
-    }
+  }
+
+  const warnings: string[] = [];
+  const legacy = toolSearch.contributions.find((contribution) => contribution.source === "environment");
+  if (legacy) {
+    warnings.push(
+      `${legacy.detail} is deprecated; use toolSearch/toolSearchAutoThreshold in settings or --tool-search. Supported throughout 0.x; removal no earlier than 1.0 with a migration notice.`,
+    );
+  }
+  const invalid = toolSearch.ignored.find((ignored) => ignored.source === "environment");
+  if (invalid) warnings.push(`${invalid.detail}: invalid mode ignored; expected on, off, auto or auto:N.`);
+  warnings.push(...diagnostics);
+
+  return {
+    toolSearch: toolSearch.value as ToolSearchSetting,
+    toolSearchAutoThreshold: threshold.value as number,
+    toolSearchExplicit: toolSearch.contributions.some((contribution) => contribution.source !== "built-in"),
+    modelRoles,
+    sources,
+    warnings,
   };
-  // Managed policy remains the highest-priority authority. Parent environment
-  // overrides file preferences, while explicit CLI flags override environment.
-  for (const source of sources) if (source.source !== "flag" && source.source !== "policy") apply(source);
-  const legacyKey =
-    env.EASY_AGENT_ENABLE_TOOL_SEARCH !== undefined ? "EASY_AGENT_ENABLE_TOOL_SEARCH" : "ENABLE_TOOL_SEARCH";
-  const legacyValue = env[legacyKey];
-  if (legacyValue !== undefined) {
-    const legacy = parseLegacyToolSearch(legacyValue);
-    if (legacy) {
-      Object.assign(result, legacy);
-      result.toolSearchExplicit = true;
-      result.sources.toolSearch = `environment:${legacyKey}`;
-      result.sources.toolSearchAutoThreshold = `environment:${legacyKey}`;
-      result.warnings.push(
-        `${legacyKey} is deprecated; use toolSearch/toolSearchAutoThreshold in settings or --tool-search. Supported throughout 0.x; removal no earlier than 1.0 with a migration notice.`,
-      );
-    } else result.warnings.push(`${legacyKey}: invalid mode ignored; expected on, off, auto or auto:N.`);
-  }
-  for (const source of sources) if (source.source === "flag" || source.source === "policy") apply(source);
-  for (const source of sources) {
-    if (source.parseError) result.warnings.push(source.parseError);
-    result.warnings.push(...(source.validationErrors ?? []));
-  }
-  return result;
+}
+
+/** Feature settings for already-loaded trusted settings sources and an environment. */
+export function resolveFeatureSettings(sources: readonly LoadedSource[], env: NodeJS.ProcessEnv): FeatureSettings {
+  const resolved = resolveHarnessFromInputs({
+    layers: sources.map(({ source, path, raw }) => ({ source, path, raw })),
+    workspaceTrusted: true,
+    env,
+  });
+  return featureSettingsOf(resolved, sourceDiagnostics(sources));
 }
 
 /**
- * Effective `maxTurns` from trusted sources (the `--max-turns` flag and
- * managed policy included; later sources win). Values that are not positive
- * integers are ignored, so a bad file falls back to the caller's default.
+ * Feature settings for code working in `cwd`, from the settings files as they
+ * are now, with their parse and validation warnings. For display; a model
+ * request reads `featureSettingsOf(await harnessFor(cwd))`.
+ */
+export async function loadFeatureSettings(cwd: string): Promise<FeatureSettings> {
+  const [resolved, sources] = await Promise.all([harnessFor(cwd, { current: true }), loadTrustedSettingSources(cwd)]);
+  return featureSettingsOf(resolved, sourceDiagnostics(sources));
+}
+
+/**
+ * Effective `maxTurns` (`--max-turns` and managed policy included) from the
+ * settings files as they are now. Values that are not positive integers are
+ * ignored, so a bad file falls back to the caller's default.
  */
 export async function loadMaxTurnsSetting(cwd: string): Promise<number | undefined> {
-  let result: number | undefined;
-  for (const source of await loadTrustedSettingSources(cwd)) {
-    const value = source.raw?.maxTurns;
-    if (typeof value === "number" && Number.isSafeInteger(value) && value >= 1) result = value;
-  }
-  return result;
+  return harnessSettingFor<number | undefined>(cwd, "features.maxTurns", { current: true });
 }
 
-export async function loadFeatureSettings(cwd: string): Promise<FeatureSettings> {
-  return resolveFeatureSettings(await loadTrustedSettingSources(cwd));
-}
-
+/** The model for `role` in the request being run in `cwd`, or `fallback`. */
 export async function resolveRoleModel(cwd: string, role: ModelRole, fallback: string): Promise<string> {
-  return (await loadFeatureSettings(cwd)).modelRoles[role] ?? fallback;
+  return (await harnessSettingFor<string | undefined>(cwd, `model.roles.${role}`)) ?? fallback;
 }

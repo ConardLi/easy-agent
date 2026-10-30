@@ -15,7 +15,17 @@ export {
   type HarnessKey,
   type HarnessLayerSource,
 } from "./keys.js";
-export { activeHarness, harnessSetting, installHarness, refreshHarness, uninstallHarness } from "./active.js";
+export {
+  activeHarness,
+  harnessFor,
+  harnessSetting,
+  harnessSettingFor,
+  installHarness,
+  refreshHarness,
+  uninstallHarness,
+  type HarnessForOptions,
+  type HarnessResolver,
+} from "./active.js";
 export {
   harnessEnvironment,
   harnessValue,
