@@ -50,6 +50,7 @@ import { checkModel, listModels, readConfig, setWorkspaceTrust, writeConfig } fr
 import { AgentSdkError } from "./errors.js";
 import { approveMcpServer, reconnectMcpServer, reloadExtensions } from "./extensions.js";
 import { buildRuntimeInventory } from "./inventory.js";
+import { installHarness } from "../harness/active.js";
 import { diffHarnesses, type HarnessDiff } from "../harness/diff.js";
 import { type ResolvedHarness, resolveHarness } from "../harness/resolve.js";
 import { listPlugins, mutatePlugins, previewPlugin } from "./plugins.js";
@@ -468,7 +469,10 @@ export class AgentRuntime {
     if (this.#disposed) return;
     await Promise.all([...this.#sessions.values()].map((session) => session.close()));
     this.#disposed = true;
-    if (activeRuntime === this) activeRuntime = null;
+    if (activeRuntime === this) {
+      activeRuntime = null;
+      installHarness(null);
+    }
   }
 
   async #restore(sessionId?: string): Promise<RestoredSession> {
@@ -548,6 +552,9 @@ export async function createAgentRuntime(options: AgentRuntimeOptions): Promise<
     await activateWorkspace(options);
     runtime = new AgentRuntime(options, report);
     activeRuntime = runtime;
+  } catch (error) {
+    installHarness(null);
+    throw error;
   } finally {
     bootstrapping = false;
   }

@@ -24,6 +24,7 @@ import {
   type SettingScope,
 } from "../src/config/catalog.js";
 import { SettingsSchema } from "../src/config/schema.js";
+import { HARNESS_KEYS } from "../src/harness/keys.js";
 
 interface ArgvCheck {
   flag: string;
@@ -89,6 +90,36 @@ const DYNAMIC_ENV_READS: DynamicEnvRead[] = [
     file: "src/config/features.ts",
     reason: "Picks EASY_AGENT_ENABLE_TOOL_SEARCH or ENABLE_TOOL_SEARCH, both listed.",
   },
+  {
+    file: "src/harness/resolve.ts",
+    reason: "Notices a change in any variable a Harness key reads, all listed.",
+  },
+];
+
+/** The resolver reads the environment; everything else reads the resolved harness. */
+const HARNESS_DIRECTORY = "src/harness";
+
+/**
+ * Files that still read an environment variable a Harness key resolves,
+ * instead of the Agent's value from the resolved harness. Entries go away as
+ * code moves to the harness; a new direct read fails the check.
+ */
+const DIRECT_HARNESS_ENV_READS: { file: string; names: string[] }[] = [
+  { file: "src/config/features.ts", names: ["EASY_AGENT_ENABLE_TOOL_SEARCH"] },
+  { file: "src/context/compaction.ts", names: ["ANTHROPIC_MODEL"] },
+  { file: "src/core/queryEngine/commands/diagnostics.ts", names: ["ANTHROPIC_MODEL"] },
+  { file: "src/entrypoint/login.ts", names: ["ANTHROPIC_MODEL"] },
+  { file: "src/permissions/autoClassifier.ts", names: ["ANTHROPIC_MODEL"] },
+  { file: "src/services/api/client.ts", names: ["ANTHROPIC_MODEL"] },
+  { file: "src/services/skills/budget.ts", names: ["EASY_AGENT_SKILL_CHAR_BUDGET"] },
+  { file: "src/session/fileHistory.ts", names: ["EASY_AGENT_DISABLE_CHECKPOINTING"] },
+  { file: "src/tools/webSearch/adapters.ts", names: ["WEB_SEARCH_ADAPTER"] },
+  { file: "src/utils/agentTeamsEnabled.ts", names: ["EASY_AGENT_TEAMS"] },
+  {
+    file: "src/utils/tokens.ts",
+    names: ["EASY_AGENT_MAX_CONTEXT_TOKENS", "CLAUDE_CODE_MAX_CONTEXT_TOKENS", "ANTHROPIC_MODEL"],
+  },
+  { file: "src/utils/toolSearch.ts", names: ["EASY_AGENT_ENABLE_TOOL_SEARCH", "ENABLE_TOOL_SEARCH"] },
 ];
 
 const BEHAVIOR_CONSTANTS: BehaviorConstant[] = [
@@ -118,7 +149,7 @@ const BEHAVIOR_CONSTANTS: BehaviorConstant[] = [
   },
   {
     component: "model",
-    file: "src/services/api/withRetry.ts",
+    file: "src/harness/keys.ts",
     declaration: "export const DEFAULT_MAX_RETRIES = 10;",
     summary: "Retries for a failed model request (EASY_AGENT_MAX_RETRIES).",
   },
@@ -397,6 +428,20 @@ function supportedSettingKeys(): Set<string> {
   return new Set([...Object.keys(SettingsSchema.shape), "sandbox"]);
 }
 
+/** Variable name → the Harness keys it sets. */
+function harnessKeysByVariable(): Map<string, string[]> {
+  const byName = new Map<string, string[]>();
+  for (const key of HARNESS_KEYS)
+    for (const name of key.env?.names ?? []) byName.set(name, [...(byName.get(name) ?? []), key.path]);
+  return byName;
+}
+
+/** Reads of a Harness-resolved variable outside the resolver. */
+function directHarnessEnvReads(scan: ScanResult): EnvRead[] {
+  const resolved = harnessKeysByVariable();
+  return scan.envReads.filter((read) => resolved.has(read.name) && !read.file.startsWith(`${HARNESS_DIRECTORY}/`));
+}
+
 export function findProblems(scan: ScanResult, texts: ReadonlyMap<string, string>, complete: boolean): string[] {
   const problems: string[] = [];
   const listedEnv = listedEnvironmentNames();
@@ -428,8 +473,24 @@ export function findProblems(scan: ScanResult, texts: ReadonlyMap<string, string
       problems.push(`${loc(use)} reads setting "${use.key}", which SETTING_CATALOG does not list`);
     }
   }
+  const harnessKeys = harnessKeysByVariable();
+  const directReads = directHarnessEnvReads(scan);
+  for (const read of directReads) {
+    if (!DIRECT_HARNESS_ENV_READS.some((entry) => entry.file === read.file && entry.names.includes(read.name))) {
+      problems.push(
+        `${loc(read)} reads ${read.name} directly; read ${harnessKeys.get(read.name)!.join(" or ")} with harnessSetting() instead`,
+      );
+    }
+  }
 
   if (!complete) return problems;
+
+  for (const entry of DIRECT_HARNESS_ENV_READS) {
+    for (const name of entry.names) {
+      if (!directReads.some((read) => read.file === entry.file && read.name === name))
+        problems.push(`DIRECT_HARNESS_ENV_READS lists ${name} in ${entry.file}, which no longer reads it; remove it`);
+    }
+  }
 
   const supported = supportedSettingKeys();
   for (const key of supported) {
@@ -477,7 +538,8 @@ function selfTest(): void {
     'const e = await readMergedStringSetting(cwd, "sampleUnlistedKey");',
     'const g = source.raw?.["anotherUnlistedKey"];',
     "// process.env.IN_A_COMMENT is not a read",
-    "const h = process.env.ANTHROPIC_MODEL;",
+    "const h = process.env.ANTHROPIC_BASE_URL;",
+    "const i = process.env.EASY_AGENT_MAX_RETRIES;",
   ].join("\n");
   const problems = findProblems(scanSource("src/sample.ts", sample), new Map(), false);
   const expected = [
@@ -488,9 +550,16 @@ function selfTest(): void {
     "--sample-flag",
     '"sampleUnlistedKey"',
     '"anotherUnlistedKey"',
+    "reads EASY_AGENT_MAX_RETRIES directly; read features.maxRetries",
   ];
   const missing = expected.filter((fragment) => !problems.some((problem) => problem.includes(fragment)));
-  const unexpected = problems.filter((problem) => /IN_A_COMMENT|ANTHROPIC_MODEL/.test(problem));
+  const unexpected = problems.filter((problem) => /IN_A_COMMENT|ANTHROPIC_BASE_URL/.test(problem));
+  const resolverRead = findProblems(
+    scanSource(`${HARNESS_DIRECTORY}/sample.ts`, "const r = env.EASY_AGENT_MAX_RETRIES;"),
+    new Map(),
+    false,
+  );
+  if (resolverRead.length) unexpected.push(...resolverRead);
   if (missing.length || unexpected.length || problems.length !== expected.length) {
     throw new Error(
       `config inventory self-test failed\n  missing: ${missing.join(", ") || "-"}\n  problems:\n${problems.map((p) => `    ${p}`).join("\n")}`,
@@ -548,7 +617,7 @@ export function renderDocument(scan: ScanResult): string {
     "",
     "## Environment variables",
     "",
-    "`use` means the value is read each time the code path runs; `session` means it is read when a session starts. `env` settings and the workspace `.env` are written into the process environment when the workspace starts, so changing them takes a restart. Category `system` marks variables set by the operating system or the shell.",
+    "`use` means the value is read each time the code path runs; `session` means it is read when a session starts; `runtime` means it is resolved into the Agent's settings when the runtime starts (`eagent harness show` lists the result). `env` settings and the workspace `.env` are written into the process environment when the workspace starts, so changing them takes a restart. Category `system` marks variables set by the operating system or the shell.",
     "",
     "| Variable | Category | Security | Read | Default | Settings or flag | Summary | Read in |",
     "|---|---|---|---|---|---|---|---|",
@@ -618,8 +687,10 @@ async function main(): Promise<void> {
     process.exitCode = 1;
     return;
   }
+  const directReads = directHarnessEnvReads(scan);
   process.stdout.write(
-    `Configuration inventory: ${Object.keys(SETTING_CATALOG).length} settings, ${ENVIRONMENT_VARIABLES.length} environment variables, ${ARGV_CHECKS.length} argv checks, ${BEHAVIOR_CONSTANTS.length} constants.\n`,
+    `Configuration inventory: ${Object.keys(SETTING_CATALOG).length} settings, ${ENVIRONMENT_VARIABLES.length} environment variables, ${ARGV_CHECKS.length} argv checks, ${BEHAVIOR_CONSTANTS.length} constants. ` +
+      `Agent variables still read outside the resolver: ${directReads.length} reads in ${new Set(directReads.map((read) => read.file)).size} files.\n`,
   );
 }
 

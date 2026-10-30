@@ -40,6 +40,7 @@ import type {
   Usage,
 } from "../../../types/message.js";
 import { writeStreamDebug } from "../../../utils/streamDebug.js";
+import { harnessSetting } from "../../../harness/active.js";
 import { buildDefaultThinkingConfig, getSessionEffortLevel, type EffortLevel } from "../../../utils/thinking.js";
 import { applyCachedPromptTokens, normalizeStopReason, observeOpenAIChatCachedTokens } from "./translateShared.js";
 import { renderToolReferencesAsText, stripDeferLoading } from "../../../utils/toolSearch.js";
@@ -178,7 +179,7 @@ export function prepareRequest(profile: ModelProfile, params: StreamRequestParam
     // (and never alongside thinkingLevel, which 400s per doc §3).
     // Source: doc/CURL_EXAMPLES.md §3.
     const thinkingCfg = params.thinking ?? buildDefaultThinkingConfig();
-    if (thinkingCfg.type !== "disabled" && !process.env.CLAUDE_CODE_DISABLE_THINKING) {
+    if (thinkingCfg.type !== "disabled" && harnessSetting<boolean>("features.thinkingInRequests")) {
       const genConfig = (translated.generationConfig as Record<string, unknown>) ?? {};
       const thinkingConfig: Record<string, unknown> = { includeThoughts: true };
       const effort = params.effortLevel ?? getSessionEffortLevel();

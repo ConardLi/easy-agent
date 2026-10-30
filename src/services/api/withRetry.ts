@@ -17,6 +17,8 @@
  * immediately, so we don't amplify load 3-10× through the gateway.
  */
 
+import { harnessSetting } from "../../harness/active.js";
+import { DEFAULT_MAX_RETRIES } from "../../harness/keys.js";
 import { classifyAPIError, getRetryAfterMs, is529Error, isRetryableError } from "./errors.js";
 
 /**
@@ -25,23 +27,17 @@ import { classifyAPIError, getRetryAfterMs, is529Error, isRetryableError } from 
  */
 export type QuerySource = "foreground" | "background";
 
-export const DEFAULT_MAX_RETRIES = 10;
+export { DEFAULT_MAX_RETRIES };
 export const BASE_DELAY_MS = 500;
 export const MAX_DELAY_MS = 32_000;
 export const MAX_529_RETRIES = 3;
 
 /**
- * Max retry attempts, overridable via env for tests / unusual environments.
- * EASY_AGENT_MAX_RETRIES is the project name; CLAUDE_CODE_MAX_RETRIES is
- * honored too for parity with source.
+ * Max retry attempts: the Agent's `features.maxRetries`, which
+ * EASY_AGENT_MAX_RETRIES (or CLAUDE_CODE_MAX_RETRIES) sets.
  */
 export function getMaxRetries(): number {
-  const raw = process.env.EASY_AGENT_MAX_RETRIES ?? process.env.CLAUDE_CODE_MAX_RETRIES;
-  if (raw) {
-    const parsed = parseInt(raw, 10);
-    if (Number.isFinite(parsed) && parsed >= 0) return parsed;
-  }
-  return DEFAULT_MAX_RETRIES;
+  return harnessSetting<number>("features.maxRetries");
 }
 
 /**

@@ -69,12 +69,7 @@ const { loadPermissionSettings } = await import("../permissions/permissions.js")
 const { loadFeatureSettings, loadMaxTurnsSetting } = await import("../config/features.js");
 const { readMergedStringSetting, readMergedBooleanSetting } = await import("../utils/settings.js");
 const { getDefaultModel } = await import("../services/api/client.js");
-const { configureThinkingDefaults, shouldEnableThinkingByDefault, buildDefaultThinkingConfig, modelSupportsEffort } =
-  await import("../utils/thinking.js");
 const { isAgentTeamsEnabled } = await import("../utils/agentTeamsEnabled.js");
-const { isPromptCachingDisabled } = await import("../services/api/promptCache.js");
-const { areExperimentalBetasDisabled } = await import("../utils/experimentalBetas.js");
-const { getMaxRetries } = await import("../services/api/withRetry.js");
 const { getSkillCharBudget } = await import("../services/skills/budget.js");
 const { getContextWindowForModel } = await import("../utils/tokens.js");
 const { validateSettings } = await import("../config/schema.js");
@@ -117,6 +112,30 @@ async function apply(testCase: Case): Promise<void> {
   resetSettingsCache();
 }
 
+// Keys the code already reads from the resolved harness cannot be compared
+// with that code. These readers are what it did before, kept as the
+// specification the resolver has to match. One deliberate change: a
+// MAX_THINKING_TOKENS that is not a number is ignored, like other invalid
+// environment values; it used to turn thinking on with no budget.
+const truthySwitch = (value: string | undefined) => /^(1|true|yes|on)$/i.test(value?.trim() ?? "");
+
+function referenceMaxRetries(env: NodeJS.ProcessEnv): number {
+  const raw = env.EASY_AGENT_MAX_RETRIES ?? env.CLAUDE_CODE_MAX_RETRIES;
+  const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 10;
+}
+
+function referenceThinking(env: NodeJS.ProcessEnv, alwaysThinkingEnabled: boolean | undefined): boolean {
+  const parsed = env.MAX_THINKING_TOKENS === undefined ? Number.NaN : Number.parseInt(env.MAX_THINKING_TOKENS, 10);
+  if (!Number.isNaN(parsed)) return parsed > 0;
+  return alwaysThinkingEnabled !== false;
+}
+
+function referenceThinkingBudget(env: NodeJS.ProcessEnv): number | undefined {
+  const parsed = Number.parseInt(env.MAX_THINKING_TOKENS ?? "", 10);
+  return parsed > 0 ? parsed : undefined;
+}
+
 /** What the current code reads, key by key. */
 async function currentValues(): Promise<Record<string, unknown>> {
   const permissions = await loadPermissionSettings(cwd);
@@ -128,11 +147,9 @@ async function currentValues(): Promise<Record<string, unknown>> {
   const effortLevel = getScalarSetting<string>(trustedSources, "effortLevel", {
     predicate: (v) => v === "low" || v === "medium" || v === "high" || v === "max",
   });
-  // Bootstrap only sets defined values; reset to the default first so cases stay independent.
-  configureThinkingDefaults({ alwaysThinkingEnabled: alwaysThinkingEnabled ?? true });
-  const thinkingConfig = buildDefaultThinkingConfig();
-  const checkpointsEnv = process.env.EASY_AGENT_DISABLE_CHECKPOINTING?.trim().toLowerCase();
-  const webSearch = process.env.WEB_SEARCH_ADAPTER;
+  const env = process.env;
+  const checkpointsEnv = env.EASY_AGENT_DISABLE_CHECKPOINTING?.trim().toLowerCase();
+  const webSearch = env.WEB_SEARCH_ADAPTER;
   return {
     "permissions.mode": permissions.mode,
     "permissions.allow": permissions.allow,
@@ -153,17 +170,20 @@ async function currentValues(): Promise<Record<string, unknown>> {
     "session.checkpoints":
       (await readMergedBooleanSetting(cwd, "checkpointingEnabled")) !== false &&
       !["1", "true", "yes", "on"].includes(checkpointsEnv ?? ""),
-    "features.thinking": shouldEnableThinkingByDefault(),
-    "features.thinkingBudget": thinkingConfig.type === "enabled" ? thinkingConfig.budgetTokens : undefined,
+    "features.thinking": referenceThinking(env, alwaysThinkingEnabled),
+    "features.thinkingBudget": referenceThinkingBudget(env),
     "features.effort": effortLevel,
-    "features.effortForAllModels": modelSupportsEffort("claude-3-haiku-20240307"),
-    "features.thinkingInRequests": !process.env.CLAUDE_CODE_DISABLE_THINKING,
-    "features.adaptiveThinking": !process.env.CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING,
-    "features.interleavedThinking": !process.env.DISABLE_INTERLEAVED_THINKING,
+    "features.effortForAllModels": Boolean(env.CLAUDE_CODE_ALWAYS_ENABLE_EFFORT),
+    "features.thinkingInRequests": !env.CLAUDE_CODE_DISABLE_THINKING,
+    "features.adaptiveThinking": !env.CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING,
+    "features.interleavedThinking": !env.DISABLE_INTERLEAVED_THINKING,
     "features.agentTeams": isAgentTeamsEnabled(),
-    "features.promptCaching": !isPromptCachingDisabled(),
-    "features.experimentalBetas": !areExperimentalBetasDisabled(),
-    "features.maxRetries": getMaxRetries(),
+    "features.promptCaching": !truthySwitch(env.EASY_AGENT_DISABLE_PROMPT_CACHING),
+    "features.experimentalBetas": ![
+      env.EASY_AGENT_DISABLE_EXPERIMENTAL_BETAS,
+      env.CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS,
+    ].some(truthySwitch),
+    "features.maxRetries": referenceMaxRetries(env),
     "skills.listingBudgetChars": getSkillCharBudget(),
     "compaction.contextWindow": getContextWindowForModel("parity-unknown-model"),
     "tools.webSearchBackend": webSearch === "bing" || webSearch === "api" ? webSearch : undefined,
@@ -284,6 +304,13 @@ const CASES: Case[] = [
     env: { MAX_THINKING_TOKENS: "4096" },
   },
   { name: "MAX_THINKING_TOKENS=0 turns thinking off", env: { MAX_THINKING_TOKENS: "0" } },
+  {
+    name: "a MAX_THINKING_TOKENS that is not a number is ignored",
+    user: { alwaysThinkingEnabled: false },
+    env: { MAX_THINKING_TOKENS: "lots" },
+    expect: { "features.thinking": false, "features.thinkingBudget": undefined },
+  },
+  { name: "an empty MAX_THINKING_TOKENS is ignored", env: { MAX_THINKING_TOKENS: "" } },
   {
     name: "checkpoint kill switch beats settings",
     trusted: true,
@@ -640,6 +667,158 @@ await check("settings files with harnesses stay valid; project files cannot be g
   const { errors: validationErrors } = validateSettings({ harnesses: { reviewer: { model: { main: "x" } } } }, "user");
   assert.deepEqual(validationErrors, []);
   await assert.rejects(writeConfig(cwd, "project", "harnesses", { a: {} }), /only read from user settings/);
+});
+
+// ─── Code reads the active harness ─────────────────────────────────────
+
+const { activeHarness, installHarness } = await import("../harness/index.js");
+const thinking = await import("../utils/thinking.js");
+const { getMaxRetries } = await import("../services/api/withRetry.js");
+const { isPromptCachingDisabled } = await import("../services/api/promptCache.js");
+const { areExperimentalBetasDisabled } = await import("../utils/experimentalBetas.js");
+const OLD_HAIKU = "claude-3-haiku-20240307";
+
+function withEnvironment(values: Partial<Record<(typeof ENV_NAMES)[number], string>>, fn: () => void): void {
+  for (const name of ENV_NAMES) delete process.env[name];
+  Object.assign(process.env, values);
+  try {
+    fn();
+  } finally {
+    for (const name of ENV_NAMES) delete process.env[name];
+  }
+}
+
+console.log("Code reads the active harness");
+
+await check("without a runtime, values follow the process environment at each read", () => {
+  withEnvironment({}, () => {
+    assert.equal(getMaxRetries(), 10);
+    assert.equal(isPromptCachingDisabled(), false);
+    assert.equal(areExperimentalBetasDisabled(), false);
+    assert.equal(thinking.modelSupportsEffort(OLD_HAIKU), false);
+    assert.deepEqual(thinking.buildDefaultThinkingConfig(), { type: "adaptive" });
+    assert.equal(thinking.getSessionEffortLevel(), undefined);
+    assert.equal(activeHarness(), activeHarness(), "reused while the environment is unchanged");
+
+    process.env.EASY_AGENT_MAX_RETRIES = "4";
+    process.env.EASY_AGENT_DISABLE_PROMPT_CACHING = "yes";
+    process.env.CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS = "1";
+    process.env.CLAUDE_CODE_ALWAYS_ENABLE_EFFORT = "1";
+    process.env.MAX_THINKING_TOKENS = "2048";
+    assert.equal(getMaxRetries(), 4);
+    assert.equal(isPromptCachingDisabled(), true);
+    assert.equal(areExperimentalBetasDisabled(), true);
+    assert.equal(thinking.modelSupportsEffort(OLD_HAIKU), true);
+    assert.deepEqual(thinking.buildDefaultThinkingConfig(), { type: "enabled", budgetTokens: 2048 });
+    process.env.MAX_THINKING_TOKENS = "0";
+    assert.deepEqual(thinking.buildDefaultThinkingConfig(), { type: "disabled" });
+    process.env.MAX_THINKING_TOKENS = "lots";
+    assert.deepEqual(thinking.buildDefaultThinkingConfig(), { type: "adaptive" }, "not a number: ignored");
+    assert.deepEqual(activeHarness().values["features.thinking"]!.ignored, [
+      { source: "environment", detail: "MAX_THINKING_TOKENS", value: "lots", reason: "expected 0 or a token budget" },
+    ]);
+  });
+});
+
+await check("an installed harness is the only source; the environment no longer changes it", () => {
+  withEnvironment({}, () => {
+    installHarness(
+      resolve({
+        user: { alwaysThinkingEnabled: false, effortLevel: "high" },
+        env: {
+          EASY_AGENT_MAX_RETRIES: "2",
+          EASY_AGENT_DISABLE_PROMPT_CACHING: "1",
+          EASY_AGENT_DISABLE_EXPERIMENTAL_BETAS: "on",
+          CLAUDE_CODE_ALWAYS_ENABLE_EFFORT: "1",
+        },
+      }),
+    );
+    try {
+      process.env.EASY_AGENT_MAX_RETRIES = "9";
+      process.env.MAX_THINKING_TOKENS = "4096";
+      assert.equal(getMaxRetries(), 2);
+      assert.equal(isPromptCachingDisabled(), true);
+      assert.equal(areExperimentalBetasDisabled(), true);
+      assert.equal(thinking.modelSupportsEffort(OLD_HAIKU), true);
+      assert.equal(thinking.shouldEnableThinkingByDefault(), false);
+      assert.deepEqual(thinking.buildDefaultThinkingConfig(), { type: "disabled" }, "alwaysThinkingEnabled: false");
+      assert.equal(thinking.getSessionEffortLevel(), "high");
+    } finally {
+      installHarness(null);
+    }
+    assert.equal(getMaxRetries(), 9, "removing it goes back to the process environment");
+  });
+});
+
+await check("/think overrides the settings default but not MAX_THINKING_TOKENS; an Agent can set a budget", () => {
+  withEnvironment({}, () => {
+    try {
+      thinking.setSessionThinkingConfig({ type: "adaptive" });
+      installHarness(resolve({ user: { alwaysThinkingEnabled: false } }));
+      assert.deepEqual(thinking.buildDefaultThinkingConfig(), { type: "adaptive" });
+      installHarness(resolve({ env: { MAX_THINKING_TOKENS: "0" } }));
+      assert.deepEqual(thinking.buildDefaultThinkingConfig(), { type: "disabled" });
+      thinking.setSessionThinkingConfig(undefined);
+
+      installHarness(
+        resolve({ name: "budgeted", user: { harnesses: { budgeted: { features: { thinkingBudget: 3000 } } } } }),
+      );
+      assert.deepEqual(thinking.buildDefaultThinkingConfig(), { type: "enabled", budgetTokens: 3000 });
+    } finally {
+      thinking.setSessionThinkingConfig(undefined);
+      installHarness(null);
+    }
+  });
+});
+
+await check("a runtime resolves its Agent when it starts and removes it when disposed", async () => {
+  const { createAgentRuntime } = await import("../sdk/index.js");
+  await writeJson(path.join(home, ".easy-agent", "settings.json"), {
+    alwaysThinkingEnabled: false,
+    effortLevel: "medium",
+  });
+  await writeJson(path.join(cwd, ".easy-agent", "settings.json"), {});
+  await writeJson(path.join(cwd, ".easy-agent", "settings.local.json"), {});
+  resetSettingsCache();
+  for (const name of ENV_NAMES) delete process.env[name];
+  process.env.EASY_AGENT_MAX_RETRIES = "3";
+
+  // A bootstrap that fails after the Agent was resolved leaves nothing installed.
+  await untrustProject(cwd);
+  await writeJson(path.join(cwd, ".easy-agent", "settings.json"), { apiKeyHelper: "echo token" });
+  resetSettingsCache();
+  const failing = {
+    warn() {
+      throw new Error("logger failed");
+    },
+    error() {},
+  };
+  await assert.rejects(createAgentRuntime({ cwd, services: false, logger: failing }), /logger failed/);
+  process.env.EASY_AGENT_MAX_RETRIES = "5";
+  assert.equal(getMaxRetries(), 5, "no harness installed after a failed bootstrap");
+  process.env.EASY_AGENT_MAX_RETRIES = "3";
+  await writeJson(path.join(cwd, ".easy-agent", "settings.json"), {});
+  resetSettingsCache();
+
+  const runtime = await createAgentRuntime({ cwd, services: false, logger: { warn() {}, error() {} } });
+  try {
+    assert.equal(activeHarness().values["features.maxRetries"]!.source, "environment");
+    process.env.EASY_AGENT_MAX_RETRIES = "7";
+    process.env.MAX_THINKING_TOKENS = "1024";
+    assert.equal(getMaxRetries(), 3, "read when the runtime started");
+    assert.deepEqual(thinking.buildDefaultThinkingConfig(), { type: "disabled" });
+    assert.equal(thinking.getSessionEffortLevel(), "medium");
+    const session = await runtime.createSession({ model: "fixture-model", persist: false });
+    const state = session.getState();
+    assert.deepEqual([state.thinking, state.effort], [{ type: "disabled" }, "medium"]);
+    await session.close();
+  } finally {
+    await runtime.dispose();
+  }
+  assert.equal(getMaxRetries(), 7, "after dispose, the process environment again");
+  for (const name of ENV_NAMES) delete process.env[name];
+  await writeJson(path.join(home, ".easy-agent", "settings.json"), {});
+  resetSettingsCache();
 });
 
 // ─── Component ids, comparison, views, and the CLI ─────────────────────

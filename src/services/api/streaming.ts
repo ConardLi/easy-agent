@@ -32,6 +32,7 @@ import {
   getSessionEffortLevel,
 } from "../../utils/thinking.js";
 import { writeStreamDebug } from "../../utils/streamDebug.js";
+import { harnessSetting } from "../../harness/active.js";
 import type { ApiToolParam } from "../../tools/Tool.js";
 import { normalizeToolReferencesForAPI } from "../../utils/toolSearch.js";
 import { classifyAPIError, getUserFacingErrorMessage, toFriendlyError } from "./errors.js";
@@ -133,11 +134,13 @@ async function* streamOnce(params: StreamRequestParams): AsyncGenerator<StreamEv
   // ─── Thinking + interleaved beta + effort ─────────────────────────
   const thinkingCfg: ThinkingConfig = params.thinking ?? buildDefaultThinkingConfig();
   const hasThinking =
-    thinkingCfg.type !== "disabled" && !process.env.CLAUDE_CODE_DISABLE_THINKING && modelSupportsThinking(model);
+    thinkingCfg.type !== "disabled" &&
+    harnessSetting<boolean>("features.thinkingInRequests") &&
+    modelSupportsThinking(model);
 
   let thinkingParam: Record<string, unknown> | undefined;
   if (hasThinking) {
-    if (!process.env.CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING && modelSupportsAdaptiveThinking(model)) {
+    if (harnessSetting<boolean>("features.adaptiveThinking") && modelSupportsAdaptiveThinking(model)) {
       thinkingParam = { type: "adaptive" };
     } else {
       let budget =
@@ -148,7 +151,11 @@ async function* streamOnce(params: StreamRequestParams): AsyncGenerator<StreamEv
   }
 
   const betaHeaders: string[] = [...(params.betaHeaders ?? [])];
-  if (hasThinking && modelSupportsInterleavedThinking(model) && !process.env.DISABLE_INTERLEAVED_THINKING) {
+  if (
+    hasThinking &&
+    modelSupportsInterleavedThinking(model) &&
+    harnessSetting<boolean>("features.interleavedThinking")
+  ) {
     betaHeaders.push("interleaved-thinking-2025-05-14");
   }
 
