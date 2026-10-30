@@ -137,7 +137,7 @@ When the REPL reaches the limit, the conversation so far is kept. Send another m
 
 ## Agent specs (`harnesses`)
 
-> Not selectable yet. Specs are parsed and validated, but no option picks one, so they do not change behavior in this version.
+> Not selectable yet. Specs are parsed and validated, but no option picks one, so they do not change behavior in this version. Every runtime uses the built-in `default`.
 
 `eagent harness show [name|file]` prints every setting an Agent resolves to, where each value comes from, values a layer set but could not apply, and the built-in tools, prompt sections, and context sources with their ids; `--json` prints the same data. `eagent harness diff <a> <b>` compares two Agents key by key. An argument with a path separator or a `.json` suffix is read as a spec file. In a session, `/harness` and `/harness diff <a> <b>` show the same views.
 
@@ -163,6 +163,8 @@ An Agent is a Harness spec: the model, tools, prompt, context sources, compactio
 - Unknown keys are errors, so a typo is reported instead of ignored.
 
 A value resolves through these layers, lowest first: the built-in default, top-level keys in user settings, the Agent's spec, project settings, local settings, environment variables, CLI flags, and managed policy. Project and local settings follow the same trust rules as today: in an untrusted workspace they can only add deny rules and other restrictions, and permission `mode` comes only from user settings, flags, and policy. Some environment variables keep their existing precedence: `ANTHROPIC_MODEL` acts as the default model, and `MAX_THINKING_TOKENS`, `EASY_AGENT_DISABLE_CHECKPOINTING`, and the thinking, caching, and beta switches override every settings layer. The resolved snapshot records, for each value, the layer it came from and any values a layer set but could not apply. Spec keys that no code reads yet, such as `tools.exclude` or `prompt.identity`, are reported when set.
+
+A runtime resolves the built-in `default` when it starts, after the workspace environment is loaded, and the code reads part of its settings from that snapshot: thinking, adaptive and interleaved thinking, effort, retries, prompt caching, and experimental betas. Change those environment variables or `alwaysThinkingEnabled`/`effortLevel` and restart to apply them; [configuration-inventory.md](./configuration-inventory.md) marks each environment variable read this way as `runtime`. Other settings keep the timing listed under [Reload behavior](#reload-behavior).
 
 ## Reload behavior
 

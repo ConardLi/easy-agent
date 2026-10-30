@@ -54,7 +54,7 @@ Layers are user (`~/.easy-agent/settings.json`), project (`.easy-agent/settings.
 
 ## Environment variables
 
-`use` means the value is read each time the code path runs; `session` means it is read when a session starts. `env` settings and the workspace `.env` are written into the process environment when the workspace starts, so changing them takes a restart. Category `system` marks variables set by the operating system or the shell.
+`use` means the value is read each time the code path runs; `session` means it is read when a session starts; `runtime` means it is resolved into the Agent's settings when the runtime starts (`eagent harness show` lists the result). `env` settings and the workspace `.env` are written into the process environment when the workspace starts, so changing them takes a restart. Category `system` marks variables set by the operating system or the shell.
 
 | Variable | Category | Security | Read | Default | Settings or flag | Summary | Read in |
 |---|---|---|---|---|---|---|---|
@@ -62,25 +62,25 @@ Layers are user (`~/.easy-agent/settings.json`), project (`.easy-agent/settings.
 | `ANTHROPIC_AUTH_TOKEN` | environment | yes | use |  |  | API token for Anthropic-protocol requests; the shared default client keeps the value it started with. | `src/core/queryEngine/commands/diagnostics.ts`, `src/entrypoint/login.ts`, `src/sdk/bootstrap.ts`, `src/sdk/runtime.ts`, `src/services/api/client.ts`, `src/services/api/streaming.ts` |
 | `ANTHROPIC_BASE_URL` | environment | yes | use | https://api.anthropic.com |  | Endpoint for Anthropic-protocol requests and server-side web search. | `src/core/agenticLoop.ts`, `src/core/queryEngine/commands/diagnostics.ts`, `src/core/queryEngine/contextBreakdown.ts`, `src/entrypoint/login.ts`, `src/sdk/inventory.ts`, `src/sdk/runtime.ts`, `src/services/api/client.ts`, `src/services/api/errors.ts`, `src/services/api/providers/profile.ts`, `src/tools/webSearch/adapters.ts` |
 | `ANTHROPIC_MODEL` | agent |  | use | claude-sonnet-4-20250514 | `model` | Model used when no setting or flag selects one. | `src/context/compaction.ts`, `src/core/queryEngine/commands/diagnostics.ts`, `src/entrypoint/login.ts`, `src/harness/keys.ts`, `src/permissions/autoClassifier.ts`, `src/services/api/client.ts`, `src/utils/tokens.ts` |
-| `CLAUDE_CODE_ALWAYS_ENABLE_EFFORT` | agent |  | use |  |  | Any value treats every model as supporting the effort parameter. | `src/harness/keys.ts`, `src/utils/thinking.ts` |
-| `CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING` | agent |  | use |  |  | Any value sends a thinking budget instead of adaptive thinking. | `src/harness/keys.ts`, `src/services/api/streaming.ts` |
-| `CLAUDE_CODE_DISABLE_THINKING` | agent |  | use |  |  | Any value removes thinking from requests. | `src/harness/keys.ts`, `src/services/api/providers/providerStream.ts`, `src/services/api/streaming.ts` |
-| `DISABLE_INTERLEAVED_THINKING` | agent |  | use |  |  | Any value leaves out the interleaved-thinking beta header. | `src/harness/keys.ts`, `src/services/api/streaming.ts` |
+| `CLAUDE_CODE_ALWAYS_ENABLE_EFFORT` | agent |  | runtime |  |  | Any value treats every model as supporting the effort parameter. | `src/harness/keys.ts` |
+| `CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING` | agent |  | runtime |  |  | Any value sends a thinking budget instead of adaptive thinking. | `src/harness/keys.ts` |
+| `CLAUDE_CODE_DISABLE_THINKING` | agent |  | runtime |  |  | Any value removes thinking from requests. | `src/harness/keys.ts` |
+| `DISABLE_INTERLEAVED_THINKING` | agent |  | runtime |  |  | Any value leaves out the interleaved-thinking beta header. | `src/harness/keys.ts` |
 | `EASY_AGENT_AUTO_MODE_MODEL` | agent |  | use | ANTHROPIC_MODEL, then claude-3-5-haiku-latest |  | Model for the Auto Mode classifier. | `src/permissions/autoClassifier.ts` |
 | `EASY_AGENT_DEBUG` | environment |  | use |  |  | Any value writes debug logs to stderr. | `src/utils/log.ts` |
 | `EASY_AGENT_DEBUG_STREAM` | environment |  | use |  |  | 1 writes raw model stream events to a private log file. | `src/utils/streamDebug.ts` |
 | `EASY_AGENT_DISABLE_CHECKPOINTING` | agent |  | session |  | `checkpointingEnabled` | 1, true, yes, or on turns off file checkpoints. | `src/harness/keys.ts`, `src/session/fileHistory.ts` |
-| `EASY_AGENT_DISABLE_EXPERIMENTAL_BETAS`, `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS` | agent |  | use |  |  | 1, true, yes, or on leaves out experimental beta request fields. | `src/harness/keys.ts`, `src/utils/experimentalBetas.ts` |
+| `EASY_AGENT_DISABLE_EXPERIMENTAL_BETAS`, `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS` | agent |  | runtime |  |  | 1, true, yes, or on leaves out experimental beta request fields. | `src/harness/keys.ts` |
 | `EASY_AGENT_DISABLE_HOOKS` | resource | yes | use |  | `disableAllHooks` | 1, true, or yes turns off hooks. | `src/hooks/settings.ts` |
-| `EASY_AGENT_DISABLE_PROMPT_CACHING` | agent |  | use |  |  | 1, true, yes, or on removes prompt-cache markers and keys from requests. | `src/harness/keys.ts`, `src/services/api/promptCache.ts` |
+| `EASY_AGENT_DISABLE_PROMPT_CACHING` | agent |  | runtime |  |  | 1, true, yes, or on removes prompt-cache markers and keys from requests. | `src/harness/keys.ts` |
 | `EASY_AGENT_ENABLE_TOOL_SEARCH`, `ENABLE_TOOL_SEARCH` | agent |  | use |  | `toolSearch`, `toolSearchAutoThreshold`, `--tool-search` | Deprecated ToolSearch switch: true, false, auto, or auto:N. | `src/config/features.ts`, `src/harness/keys.ts`, `src/utils/toolSearch.ts` |
 | `EASY_AGENT_MAX_CONTEXT_TOKENS`, `CLAUDE_CODE_MAX_CONTEXT_TOKENS` | agent |  | use | the model's context window (200000 when unknown) |  | Context window size used for warnings and auto-compaction. | `src/harness/keys.ts`, `src/utils/tokens.ts` |
-| `EASY_AGENT_MAX_RETRIES`, `CLAUDE_CODE_MAX_RETRIES` | agent |  | use | 10 |  | Retries for a failed model request. | `src/harness/keys.ts`, `src/services/api/withRetry.ts` |
+| `EASY_AGENT_MAX_RETRIES`, `CLAUDE_CODE_MAX_RETRIES` | agent |  | runtime | 10 |  | Retries for a failed model request. | `src/harness/keys.ts` |
 | `EASY_AGENT_POWERSHELL` | environment | yes | use | powershell.exe |  | PowerShell executable for the PowerShell tool. | `src/tools/powerShellTool.ts` |
 | `EASY_AGENT_SKILL_CHAR_BUDGET` | agent |  | use | 8000 |  | Character budget for the skill listing in the system prompt. | `src/harness/keys.ts`, `src/services/skills/budget.ts` |
 | `EASY_AGENT_TEAMS` | agent |  | use |  | `--agent-teams` | 1, true, yes, or on turns on Agent Teams. | `src/harness/keys.ts`, `src/utils/agentTeamsEnabled.ts` |
 | `HOME` | system |  | use |  |  | Shortens paths in the memory picker. | `src/ui/components/MemoryPicker.tsx` |
-| `MAX_THINKING_TOKENS` | agent |  | use |  | `alwaysThinkingEnabled` | 0 turns extended thinking off; N > 0 turns it on with a budget of N tokens. | `src/harness/keys.ts`, `src/utils/thinking.ts` |
+| `MAX_THINKING_TOKENS` | agent |  | runtime |  | `alwaysThinkingEnabled` | 0 turns extended thinking off; N > 0 turns it on with a budget of N tokens; a value that is not a number is ignored. | `src/harness/keys.ts` |
 | `MCP_CONNECT_TIMEOUT` | resource |  | use | 30000 |  | MCP connection timeout in milliseconds. | `src/services/mcp/client.ts` |
 | `PROGRAMDATA` | system |  | use | C:\ProgramData |  | Location of the managed settings file on Windows. | `src/config/managedPath.ts` |
 | `SHELL` | system | yes | use |  |  | Shell for Bash, the status line command, and apiKeyHelper. | `src/sandbox/runtime.ts`, `src/services/api/apiKeyHelper.ts`, `src/tools/bashTool.ts`, `src/ui/hooks/useStatusLine.ts` |
@@ -94,6 +94,7 @@ Variables named by configuration are read too:
 - `src/services/mcp/oauth.ts`: `clientSecretEnv` of an MCP OAuth config names the variable holding the client secret.
 - `src/utils/loadEnv.ts`: Writes `env` settings and the workspace `.env` into the process environment.
 - `src/config/features.ts`: Picks EASY_AGENT_ENABLE_TOOL_SEARCH or ENABLE_TOOL_SEARCH, both listed.
+- `src/harness/resolve.ts`: Notices a change in any variable a Harness key reads, all listed.
 
 ## `process.argv` checks outside the CLI parser
 
@@ -114,7 +115,7 @@ Fixed values that change behavior and have no setting yet.
 | model | `?? "claude-3-5-haiku-latest"` | `src/permissions/autoClassifier.ts` | Auto Mode classifier model when EASY_AGENT_AUTO_MODE_MODEL and ANTHROPIC_MODEL are unset. |
 | model | `export const CAPPED_DEFAULT_MAX_TOKENS = 8_000;` | `src/services/api/client.ts` | Default max output tokens per request. |
 | model | `export const ESCALATED_MAX_TOKENS = 64_000;` | `src/services/api/client.ts` | Max output tokens after a response is cut off at the default limit. |
-| model | `export const DEFAULT_MAX_RETRIES = 10;` | `src/services/api/withRetry.ts` | Retries for a failed model request (EASY_AGENT_MAX_RETRIES). |
+| model | `export const DEFAULT_MAX_RETRIES = 10;` | `src/harness/keys.ts` | Retries for a failed model request (EASY_AGENT_MAX_RETRIES). |
 | loop | `export const MAX_TOOL_TURNS = 50;` | `src/core/agenticLoop.ts` | Tool-turn limit per request when --max-turns, the maxTurns setting, and the SDK defaultMaxTurns are unset; Headless runs use it. |
 | loop | `export const INTERACTIVE_MAX_TOOL_TURNS = 200;` | `src/core/agenticLoop.ts` | Tool-turn limit per request in the terminal UI, RPC, and ACP. |
 | loop | `const MAX_TOOL_USE_CONCURRENCY = 10;` | `src/core/agenticLoop.ts` | Concurrency-safe tool calls run at the same time. |

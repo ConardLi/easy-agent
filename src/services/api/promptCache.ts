@@ -26,6 +26,7 @@
  */
 
 import type { MessageParam, TextBlockParam } from "@anthropic-ai/sdk/resources/messages.js";
+import { harnessSetting } from "../../harness/active.js";
 import type { ApiToolParam } from "../../tools/Tool.js";
 import { SYSTEM_PROMPT_STATIC_END } from "../../constants/systemPromptMarkers.js";
 
@@ -34,9 +35,13 @@ const EPHEMERAL = { type: "ephemeral" } as const;
 /** Content block types that accept a `cache_control` marker. */
 const MARKABLE_BLOCK_TYPES = new Set(["text", "image", "document", "search_result", "tool_use", "tool_result"]);
 
-/** Compatibility switch for endpoints that reject `cache_control` or `prompt_cache_key`. */
-export function isPromptCachingDisabled(env: NodeJS.ProcessEnv = process.env): boolean {
-  return /^(1|true|yes|on)$/i.test(env.EASY_AGENT_DISABLE_PROMPT_CACHING?.trim() ?? "");
+/**
+ * Compatibility switch for endpoints that reject `cache_control` or
+ * `prompt_cache_key`: the Agent's `features.promptCaching`, which
+ * EASY_AGENT_DISABLE_PROMPT_CACHING turns off.
+ */
+export function isPromptCachingDisabled(): boolean {
+  return !harnessSetting<boolean>("features.promptCaching");
 }
 
 /**

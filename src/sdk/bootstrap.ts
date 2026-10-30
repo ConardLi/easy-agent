@@ -3,13 +3,14 @@
  * of a workspace runs.
  *
  * It runs in two steps so a caller can stop after the first one:
- *   - `loadWorkspace` settles trust, loads the environment, and fills the
- *     registries the system prompt is built from (skills, agents, output
- *     styles, commands, plugins), then reports sandbox availability. This is
- *     all `--dump-system-prompt` needs, and it executes no workspace code.
+ *   - `loadWorkspace` settles trust, loads the environment, resolves and
+ *     installs the Agent's settings, and fills the registries the system
+ *     prompt is built from (skills, agents, output styles, commands,
+ *     plugins), then reports sandbox availability. This is all
+ *     `--dump-system-prompt` needs, and it executes no workspace code.
  *   - `activateWorkspace` applies the execution-affecting settings: the API
  *     key helper (which runs a configured command), extra file roots, session
- *     retention, the hook kill switch, and thinking defaults.
+ *     retention, and the hook kill switch.
  *
  * Warnings and bootstrap failures go to the logger in the order they occur.
  */
@@ -19,8 +20,10 @@ import * as nodePath from "node:path";
 import { bootstrapAgents } from "../agents/bootstrap.js";
 import { bootstrapUserCommands } from "../commands/userCommands/bootstrap.js";
 import { isProjectTrusted, trustProjectForSession } from "../config/globalState.js";
-import { getScalarSetting, loadTrustedSettingSources, setFlagSettings } from "../config/sources.js";
+import { setFlagSettings } from "../config/sources.js";
 import { detectWorkspaceRisks } from "../config/workspaceRisks.js";
+import { installHarness } from "../harness/active.js";
+import { resolveHarness } from "../harness/resolve.js";
 import { refreshHookDisableFromSettings } from "../hooks/settings.js";
 import { refreshActivePlugins } from "../plugins/runtime.js";
 import { getSandboxCapability, getSandboxUnavailableReason, loadSandboxSettings } from "../sandbox/index.js";
@@ -33,7 +36,6 @@ import { setAdditionalAllowedRoots } from "../tools/pathUtils.js";
 import { loadEnv } from "../utils/loadEnv.js";
 import { hardenPrivateDataStorage } from "../utils/privateData.js";
 import { readTrustedStringArraySetting } from "../utils/settings.js";
-import { configureThinkingDefaults, type EffortLevel } from "../utils/thinking.js";
 import type { AgentRuntimeOptions, RuntimeLogger } from "./types.js";
 
 export interface WorkspaceReport {
@@ -72,6 +74,16 @@ export async function loadWorkspace(options: AgentRuntimeOptions): Promise<Works
   // Trust is settled before anything project-controlled is read.
   const projectTrusted = await isProjectTrusted(cwd);
   const environmentReport = await loadEnv(cwd);
+
+  // The Agent's settings, resolved once the environment is loaded; the
+  // runtime and everything after it read them from the installed snapshot.
+  try {
+    installHarness(await resolveHarness({ cwd }));
+  } catch (error) {
+    logger.warn(
+      `[easy-agent] ⚠ Could not resolve Agent settings: ${errorMessage(error)}. Using environment variables and built-in defaults.`,
+    );
+  }
 
   let ignoredProjectConfig: string[] = [];
   if (!projectTrusted) {
@@ -167,21 +179,4 @@ export async function activateWorkspace(options: AgentRuntimeOptions): Promise<v
 
   // The hook kill switch is read on hot paths, so it is snapshotted here.
   await refreshHookDisableFromSettings(cwd).catch(() => {});
-
-  // Thinking defaults: alwaysThinkingEnabled and effortLevel from settings.
-  try {
-    const sources = await loadTrustedSettingSources(cwd);
-    const alwaysThinkingEnabled = getScalarSetting<boolean>(sources, "alwaysThinkingEnabled", {
-      predicate: (v) => typeof v === "boolean",
-    });
-    const effortLevel = getScalarSetting<string>(sources, "effortLevel", {
-      predicate: (v) => v === "low" || v === "medium" || v === "high" || v === "max",
-    });
-    configureThinkingDefaults({
-      ...(alwaysThinkingEnabled !== undefined ? { alwaysThinkingEnabled } : {}),
-      ...(effortLevel !== undefined ? { effortLevel: effortLevel as EffortLevel } : {}),
-    });
-  } catch {
-    // Non-fatal: thinking falls back to its adaptive default.
-  }
 }

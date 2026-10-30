@@ -258,11 +258,13 @@ export const SETTING_CATALOG: Record<string, SettingCatalogEntry> = {
  * When a read takes effect:
  * - `use`: read every time the code path runs.
  * - `session`: read when a session starts.
+ * - `runtime`: resolved into the Agent's settings when the runtime starts;
+ *   code without a runtime reads it at each use.
  *
  * `env` settings and the workspace `.env` are written into the process
  * environment when the workspace starts, so their values change only on restart.
  */
-export type EnvironmentReadTiming = "use" | "session";
+export type EnvironmentReadTiming = "use" | "session" | "runtime";
 
 export interface EnvironmentVariableEntry {
   name: string;
@@ -324,36 +326,37 @@ export const ENVIRONMENT_VARIABLES: readonly EnvironmentVariableEntry[] = [
     name: "MAX_THINKING_TOKENS",
     category: "agent",
     security: false,
-    readAt: "use",
+    readAt: "runtime",
     replacement: "alwaysThinkingEnabled",
-    summary: "0 turns extended thinking off; N > 0 turns it on with a budget of N tokens.",
+    summary:
+      "0 turns extended thinking off; N > 0 turns it on with a budget of N tokens; a value that is not a number is ignored.",
   },
   {
     name: "CLAUDE_CODE_DISABLE_THINKING",
     category: "agent",
     security: false,
-    readAt: "use",
+    readAt: "runtime",
     summary: "Any value removes thinking from requests.",
   },
   {
     name: "CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING",
     category: "agent",
     security: false,
-    readAt: "use",
+    readAt: "runtime",
     summary: "Any value sends a thinking budget instead of adaptive thinking.",
   },
   {
     name: "DISABLE_INTERLEAVED_THINKING",
     category: "agent",
     security: false,
-    readAt: "use",
+    readAt: "runtime",
     summary: "Any value leaves out the interleaved-thinking beta header.",
   },
   {
     name: "CLAUDE_CODE_ALWAYS_ENABLE_EFFORT",
     category: "agent",
     security: false,
-    readAt: "use",
+    readAt: "runtime",
     summary: "Any value treats every model as supporting the effort parameter.",
   },
   {
@@ -370,7 +373,7 @@ export const ENVIRONMENT_VARIABLES: readonly EnvironmentVariableEntry[] = [
     aliases: ["CLAUDE_CODE_MAX_RETRIES"],
     category: "agent",
     security: false,
-    readAt: "use",
+    readAt: "runtime",
     default: "10",
     summary: "Retries for a failed model request.",
   },
@@ -387,7 +390,7 @@ export const ENVIRONMENT_VARIABLES: readonly EnvironmentVariableEntry[] = [
     name: "EASY_AGENT_DISABLE_PROMPT_CACHING",
     category: "agent",
     security: false,
-    readAt: "use",
+    readAt: "runtime",
     summary: "1, true, yes, or on removes prompt-cache markers and keys from requests.",
   },
   {
@@ -395,7 +398,7 @@ export const ENVIRONMENT_VARIABLES: readonly EnvironmentVariableEntry[] = [
     aliases: ["CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS"],
     category: "agent",
     security: false,
-    readAt: "use",
+    readAt: "runtime",
     summary: "1, true, yes, or on leaves out experimental beta request fields.",
   },
   {

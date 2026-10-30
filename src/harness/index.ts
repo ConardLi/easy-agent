@@ -8,11 +8,19 @@ export {
   type HarnessSpec,
   type TextSource,
 } from "./spec.js";
-export { HARNESS_KEYS, HARNESS_KEY_BY_PATH, type HarnessKey, type HarnessLayerSource } from "./keys.js";
+export {
+  DEFAULT_MAX_RETRIES,
+  HARNESS_KEYS,
+  HARNESS_KEY_BY_PATH,
+  type HarnessKey,
+  type HarnessLayerSource,
+} from "./keys.js";
+export { activeHarness, harnessSetting, installHarness } from "./active.js";
 export {
   harnessValue,
   resolveHarness,
   resolveHarnessFromInputs,
+  resolveProcessHarness,
   type HarnessContribution,
   type HarnessIgnoredValue,
   type HarnessInputs,

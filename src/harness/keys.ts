@@ -8,14 +8,20 @@
  *
  * `applied: false` marks keys that a spec may already carry but that no code
  * reads yet; the resolver reports them when a spec sets one.
+ *
+ * This module must not import a module that reads the active harness: the
+ * import cycle would evaluate the key table before that module's defaults
+ * exist. Defaults of such modules are declared here and re-exported there.
  */
 
-import { DEFAULT_MAX_RETRIES } from "../services/api/withRetry.js";
 import { FALLBACK_MODEL } from "../services/api/client.js";
 import { DEFAULT_BUDGET_CHARS } from "../services/skills/budget.js";
 import { parseLegacyToolSearch } from "../config/features.js";
 import type { SettingScope } from "../config/catalog.js";
 import type { HarnessComponent } from "./spec.js";
+
+/** Retries for a failed model request when nothing sets `features.maxRetries`. */
+export const DEFAULT_MAX_RETRIES = 10;
 
 export type HarnessLayerSource =
   | "built-in"
@@ -385,10 +391,14 @@ export const HARNESS_KEYS: readonly HarnessKey[] = [
     settings: { key: "alwaysThinkingEnabled", read: boolean("alwaysThinkingEnabled"), scope: "trusted" },
     env: {
       names: ["MAX_THINKING_TOKENS"],
-      read: (env) =>
-        env.MAX_THINKING_TOKENS === undefined
-          ? undefined
-          : { value: Number.parseInt(env.MAX_THINKING_TOKENS, 10) > 0, name: "MAX_THINKING_TOKENS" },
+      read: (env) => {
+        const raw = env.MAX_THINKING_TOKENS;
+        if (raw === undefined) return undefined;
+        const parsed = Number.parseInt(raw, 10);
+        return Number.isNaN(parsed)
+          ? { invalid: "expected 0 or a token budget", name: "MAX_THINKING_TOKENS", raw }
+          : { value: parsed > 0, name: "MAX_THINKING_TOKENS" };
+      },
       position: "top",
     },
     applied: true,

@@ -168,10 +168,19 @@ await check("string content becomes a marked text block and thinking blocks are 
 });
 
 await check("the compatibility switch accepts the usual truthy spellings", () => {
-  for (const value of ["1", "true", "YES", " on "])
-    assert.equal(isPromptCachingDisabled({ EASY_AGENT_DISABLE_PROMPT_CACHING: value }), true);
-  for (const value of [undefined, "", "0", "false"])
-    assert.equal(isPromptCachingDisabled({ EASY_AGENT_DISABLE_PROMPT_CACHING: value }), false);
+  try {
+    for (const value of ["1", "true", "YES", " on "]) {
+      process.env.EASY_AGENT_DISABLE_PROMPT_CACHING = value;
+      assert.equal(isPromptCachingDisabled(), true, JSON.stringify(value));
+    }
+    for (const value of [undefined, "", "0", "false"]) {
+      if (value === undefined) delete process.env.EASY_AGENT_DISABLE_PROMPT_CACHING;
+      else process.env.EASY_AGENT_DISABLE_PROMPT_CACHING = value;
+      assert.equal(isPromptCachingDisabled(), false, JSON.stringify(value));
+    }
+  } finally {
+    delete process.env.EASY_AGENT_DISABLE_PROMPT_CACHING;
+  }
 });
 
 console.log("\n[2] Anthropic request on the wire");

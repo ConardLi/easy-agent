@@ -13,9 +13,9 @@
  * remove capabilities, such as deny rules) are read everywhere. A value that
  * a layer sets but may not apply is kept in `ignored` with the reason.
  *
- * The result is a frozen snapshot. Nothing at runtime reads it yet; it is
- * the data the `--harness` option, `harness show`, and the desktop Agent
- * views build on.
+ * The result is a frozen snapshot. A runtime resolves one when it starts and
+ * installs it (see `active.ts`); `harness show` and the desktop Agent views
+ * read the same data.
  */
 
 import { createHash } from "node:crypto";
@@ -412,22 +412,43 @@ export interface ResolveHarnessOptions {
   env?: NodeJS.ProcessEnv;
 }
 
+const hasAgentTeamsFlag = () => process.argv.includes("--agent-teams");
+
 /** Resolve a harness for a workspace from its settings files, trust decision, environment, and flags. */
 export async function resolveHarness(options: ResolveHarnessOptions): Promise<ResolvedHarness> {
   const [sources, workspaceTrusted] = await Promise.all([
     loadSettingSources(options.cwd),
     isProjectTrusted(options.cwd),
   ]);
-  const agentTeamsFlag = process.argv.includes("--agent-teams");
   return resolveHarnessFromInputs({
     layers: sources.map(({ source, path: file, raw }: LoadedSource) => ({ source, path: file, raw })),
     workspaceTrusted,
     env: options.env ?? process.env,
-    agentTeamsFlag,
+    agentTeamsFlag: hasAgentTeamsFlag(),
     ...(options.name !== undefined ? { name: options.name } : {}),
     ...(options.spec !== undefined ? { spec: options.spec } : {}),
     configDir: path.dirname(getUserSettingsPath()),
   });
+}
+
+const ENVIRONMENT_NAMES = [...new Set(HARNESS_KEYS.flatMap((key) => key.env?.names ?? []))];
+let processHarness: { fingerprint: string; resolved: ResolvedHarness } | undefined;
+
+/**
+ * The built-in default over the process environment and flags, without
+ * settings files. Used when no runtime has installed a harness; the result is
+ * reused until one of the variables it reads changes.
+ */
+export function resolveProcessHarness(): ResolvedHarness {
+  const agentTeamsFlag = hasAgentTeamsFlag();
+  const fingerprint = JSON.stringify([agentTeamsFlag, ...ENVIRONMENT_NAMES.map((name) => process.env[name] ?? null)]);
+  if (processHarness?.fingerprint !== fingerprint) {
+    processHarness = {
+      fingerprint,
+      resolved: resolveHarnessFromInputs({ layers: [], workspaceTrusted: false, env: process.env, agentTeamsFlag }),
+    };
+  }
+  return processHarness.resolved;
 }
 
 /** The resolved value of one key. */

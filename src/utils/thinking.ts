@@ -7,16 +7,18 @@
  *   - hasUltrathinkKeyword (whole-word /\bultrathink\b/i)
  *
  * The ultrathink keyword is always active. Capability detection uses pure
- * model-name heuristics + env vars (there is no per-model override table),
- * so all functions here are synchronous and safe to call from the
- * streaming hot path.
+ * model-name heuristics plus the Agent's feature switches (there is no
+ * per-model override table), so all functions here are synchronous and safe
+ * to call from the streaming hot path.
  *
  * Session-level thinking state (the `/think` and `/effort` commands) lives in
- * the active session scope; the `alwaysThinkingEnabled` / `effortLevel`
- * workspace defaults are seeded once at startup from settings.json (see
- * configureThinkingDefaults).
+ * the active session scope. The defaults under it are the Agent's
+ * `features.thinking`, `features.thinkingBudget`, and `features.effort`
+ * (from `alwaysThinkingEnabled`, `effortLevel`, and `MAX_THINKING_TOKENS`),
+ * resolved when the runtime starts.
  */
 
+import { activeHarness, harnessSetting } from "../harness/active.js";
 import { defineSessionState } from "../state/sessionScope.js";
 
 // ─── ThinkingConfig three-state union ─────────────────────────────
@@ -133,7 +135,7 @@ export function modelSupportsInterleavedThinking(model: string): boolean {
  * Whether the model supports the `output_config.effort` parameter.
  */
 export function modelSupportsEffort(model: string): boolean {
-  if (process.env.CLAUDE_CODE_ALWAYS_ENABLE_EFFORT) return true;
+  if (harnessSetting<boolean>("features.effortForAllModels")) return true;
   const m = model.toLowerCase();
   if ((m.includes("opus") || m.includes("sonnet")) && isClaudeVersionAtLeast(model, 4, 6)) return true;
   if (m.includes("haiku") || m.includes("sonnet") || m.includes("opus")) return false;
@@ -145,7 +147,7 @@ export function modelSupportsEffort(model: string): boolean {
 
 /**
  * Whether extended thinking should be enabled by default for a new
- * session.
+ * session: the Agent's `features.thinking`.
  *
  * Rules:
  *   - `MAX_THINKING_TOKENS=0` → disable
@@ -154,25 +156,14 @@ export function modelSupportsEffort(model: string): boolean {
  *   - Otherwise → enable (default-on)
  */
 export function shouldEnableThinkingByDefault(): boolean {
-  const env = process.env.MAX_THINKING_TOKENS;
-  if (env !== undefined) {
-    return parseInt(env, 10) > 0;
-  }
-  if (defaultAlwaysThinkingEnabled === false) {
-    return false;
-  }
-  return true;
+  return harnessSetting<boolean>("features.thinking");
 }
 
 // ─── Thinking + effort state ───────────────────────────────────────
 //
-// Workspace defaults are seeded once at boot by configureThinkingDefaults()
-// from settings.json. The `/think` and `/effort` commands override them per
+// The `/think` and `/effort` commands override the Agent's defaults per
 // session scope (see state/sessionScope.ts), so one session's override never
 // leaks into another.
-
-let defaultAlwaysThinkingEnabled: boolean | undefined;
-let defaultEffortLevel: EffortLevel | undefined;
 
 const thinkingOverrides = defineSessionState("thinkingOverrides", () => ({
   thinking: undefined as ThinkingConfig | undefined,
@@ -181,24 +172,10 @@ const thinkingOverrides = defineSessionState("thinkingOverrides", () => ({
   effort: undefined as EffortLevel | undefined,
 }));
 
-/**
- * Seed the workspace thinking + effort defaults from settings.json at
- * startup. Env vars always take precedence over settings (handled inside
- * buildDefaultThinkingConfig).
- */
-export function configureThinkingDefaults(opts: { alwaysThinkingEnabled?: boolean; effortLevel?: EffortLevel }): void {
-  if (opts.alwaysThinkingEnabled !== undefined) {
-    defaultAlwaysThinkingEnabled = opts.alwaysThinkingEnabled;
-  }
-  if (opts.effortLevel !== undefined) {
-    defaultEffortLevel = opts.effortLevel;
-  }
-}
-
 /** The effort level to apply this session (undefined = model default). */
 export function getSessionEffortLevel(): EffortLevel | undefined {
   const overrides = thinkingOverrides();
-  return overrides.effortOverridden ? overrides.effort : defaultEffortLevel;
+  return overrides.effortOverridden ? overrides.effort : harnessSetting<EffortLevel | undefined>("features.effort");
 }
 
 /** Set the session effort level (from the `/effort` command). */
@@ -224,24 +201,26 @@ export function getSessionThinkingConfig(): ThinkingConfig | undefined {
  * Precedence (highest first):
  *   1. `MAX_THINKING_TOKENS` env var (N>0 → enabled+budget, 0 → disabled)
  *   2. Session override set by the `/think` command
- *   3. `alwaysThinkingEnabled === false` (settings) → disabled
- *   4. Default → adaptive (model decides)
+ *   3. The Agent's `features.thinking` off (`alwaysThinkingEnabled: false`) → disabled
+ *   4. The Agent's `features.thinkingBudget` → enabled with that budget
+ *   5. Default → adaptive (model decides)
  */
 export function buildDefaultThinkingConfig(): ThinkingConfig {
-  const env = process.env.MAX_THINKING_TOKENS;
-  if (env !== undefined) {
-    const n = parseInt(env, 10);
-    if (n <= 0) return { type: "disabled" };
-    return { type: "enabled", budgetTokens: n };
+  const { values } = activeHarness();
+  const thinking = values["features.thinking"]!;
+  const budget = values["features.thinkingBudget"]!.value as number | undefined;
+  // MAX_THINKING_TOKENS sets both keys and overrides every other layer, including /think.
+  if (thinking.source === "environment") {
+    return budget !== undefined ? { type: "enabled", budgetTokens: budget } : { type: "disabled" };
   }
   const override = thinkingOverrides().thinking;
   if (override) {
     return override;
   }
-  if (defaultAlwaysThinkingEnabled === false) {
+  if (thinking.value === false) {
     return { type: "disabled" };
   }
-  return { type: "adaptive" };
+  return budget !== undefined ? { type: "enabled", budgetTokens: budget } : { type: "adaptive" };
 }
 
 // ─── ultrathink meta-message ───────────────────────────────────────
