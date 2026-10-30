@@ -434,6 +434,13 @@ export async function resolveHarness(options: ResolveHarnessOptions): Promise<Re
 const ENVIRONMENT_NAMES = [...new Set(HARNESS_KEYS.flatMap((key) => key.env?.names ?? []))];
 let processHarness: { fingerprint: string; resolved: ResolvedHarness } | undefined;
 
+/** A copy of the variables Harness keys read, so later changes to the process environment do not apply. */
+export function harnessEnvironment(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  return Object.fromEntries(
+    ENVIRONMENT_NAMES.filter((name) => env[name] !== undefined).map((name) => [name, env[name]]),
+  );
+}
+
 /**
  * The built-in default over the process environment and flags, without
  * settings files. Used when no runtime has installed a harness; the result is

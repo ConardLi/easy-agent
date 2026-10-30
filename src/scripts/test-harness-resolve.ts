@@ -29,6 +29,7 @@ await Promise.all([
 ]);
 const ENV_NAMES = [
   "ANTHROPIC_MODEL",
+  "EASY_AGENT_AUTO_MODE_MODEL",
   "EASY_AGENT_ENABLE_TOOL_SEARCH",
   "ENABLE_TOOL_SEARCH",
   "MAX_THINKING_TOKENS",
@@ -68,10 +69,6 @@ const { trustProjectForSession, untrustProject } = await import("../config/globa
 const { loadPermissionSettings } = await import("../permissions/permissions.js");
 const { loadFeatureSettings, loadMaxTurnsSetting } = await import("../config/features.js");
 const { readMergedStringSetting, readMergedBooleanSetting } = await import("../utils/settings.js");
-const { getDefaultModel } = await import("../services/api/client.js");
-const { isAgentTeamsEnabled } = await import("../utils/agentTeamsEnabled.js");
-const { getSkillCharBudget } = await import("../services/skills/budget.js");
-const { getContextWindowForModel } = await import("../utils/tokens.js");
 const { validateSettings } = await import("../config/schema.js");
 const { writeConfig } = await import("../sdk/config.js");
 
@@ -114,10 +111,24 @@ async function apply(testCase: Case): Promise<void> {
 
 // Keys the code already reads from the resolved harness cannot be compared
 // with that code. These readers are what it did before, kept as the
-// specification the resolver has to match. One deliberate change: a
+// specification the resolver has to match. Deliberate changes: a
 // MAX_THINKING_TOKENS that is not a number is ignored, like other invalid
-// environment values; it used to turn thinking on with no budget.
+// environment values (it used to turn thinking on with no budget), and the
+// Auto Mode classifier role (EASY_AGENT_AUTO_MODE_MODEL) wins over the
+// session's model instead of applying only when a caller passed none.
 const truthySwitch = (value: string | undefined) => /^(1|true|yes|on)$/i.test(value?.trim() ?? "");
+const positiveInteger = (value: string | undefined) => {
+  const parsed = value ? Number.parseInt(value, 10) : Number.NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+};
+
+function referenceContextWindow(env: NodeJS.ProcessEnv): number {
+  return positiveInteger(env.EASY_AGENT_MAX_CONTEXT_TOKENS ?? env.CLAUDE_CODE_MAX_CONTEXT_TOKENS) ?? 200_000;
+}
+
+function referenceClassifierModel(env: NodeJS.ProcessEnv): string | undefined {
+  return env.EASY_AGENT_AUTO_MODE_MODEL || undefined;
+}
 
 function referenceMaxRetries(env: NodeJS.ProcessEnv): number {
   const raw = env.EASY_AGENT_MAX_RETRIES ?? env.CLAUDE_CODE_MAX_RETRIES;
@@ -163,7 +174,8 @@ async function currentValues(): Promise<Record<string, unknown>> {
     "model.main":
       (await readMergedStringSetting(cwd, "model")) ??
       (await readMergedStringSetting(cwd, "defaultModel")) ??
-      getDefaultModel(),
+      (env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514"),
+    "model.roles.classifier": referenceClassifierModel(env),
     outputStyle: await readMergedStringSetting(cwd, "outputStyle"),
     "prompt.language": await readMergedStringSetting(cwd, "language"),
     "tools.respectGitignore": (await readMergedBooleanSetting(cwd, "respectGitignore")) !== false,
@@ -177,15 +189,15 @@ async function currentValues(): Promise<Record<string, unknown>> {
     "features.thinkingInRequests": !env.CLAUDE_CODE_DISABLE_THINKING,
     "features.adaptiveThinking": !env.CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING,
     "features.interleavedThinking": !env.DISABLE_INTERLEAVED_THINKING,
-    "features.agentTeams": isAgentTeamsEnabled(),
+    "features.agentTeams": process.argv.includes("--agent-teams") || truthySwitch(env.EASY_AGENT_TEAMS),
     "features.promptCaching": !truthySwitch(env.EASY_AGENT_DISABLE_PROMPT_CACHING),
     "features.experimentalBetas": ![
       env.EASY_AGENT_DISABLE_EXPERIMENTAL_BETAS,
       env.CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS,
     ].some(truthySwitch),
     "features.maxRetries": referenceMaxRetries(env),
-    "skills.listingBudgetChars": getSkillCharBudget(),
-    "compaction.contextWindow": getContextWindowForModel("parity-unknown-model"),
+    "skills.listingBudgetChars": positiveInteger(env.EASY_AGENT_SKILL_CHAR_BUDGET) ?? 8000,
+    "compaction.contextWindow": referenceContextWindow(env),
     "tools.webSearchBackend": webSearch === "bing" || webSearch === "api" ? webSearch : undefined,
   };
 }
@@ -280,9 +292,20 @@ const CASES: Case[] = [
   {
     name: "ANTHROPIC_MODEL below settings",
     env: { ANTHROPIC_MODEL: "env-model" },
-    expect: { "model.main": "env-model" },
+    expect: { "model.main": "env-model", "model.roles.classifier": undefined },
   },
   { name: "ANTHROPIC_MODEL loses to a setting", env: { ANTHROPIC_MODEL: "env-model" }, user: { defaultModel: "d" } },
+  {
+    name: "EASY_AGENT_AUTO_MODE_MODEL names the classifier, not the main model",
+    env: { EASY_AGENT_AUTO_MODE_MODEL: "judge", ANTHROPIC_MODEL: "env-model" },
+    user: { model: "user-model" },
+    expect: { "model.roles.classifier": "judge", "model.main": "user-model" },
+  },
+  {
+    name: "an empty EASY_AGENT_AUTO_MODE_MODEL is unset",
+    env: { EASY_AGENT_AUTO_MODE_MODEL: "", ANTHROPIC_MODEL: "env-model" },
+    expect: { "model.roles.classifier": undefined },
+  },
   {
     name: "legacy ToolSearch environment between files and flags",
     trusted: true,
@@ -671,12 +694,29 @@ await check("settings files with harnesses stay valid; project files cannot be g
 
 // ─── Code reads the active harness ─────────────────────────────────────
 
-const { activeHarness, installHarness } = await import("../harness/index.js");
+const { activeHarness, installHarness, uninstallHarness, refreshHarness } = await import("../harness/index.js");
 const thinking = await import("../utils/thinking.js");
 const { getMaxRetries } = await import("../services/api/withRetry.js");
 const { isPromptCachingDisabled } = await import("../services/api/promptCache.js");
 const { areExperimentalBetasDisabled } = await import("../utils/experimentalBetas.js");
+const { getDefaultModel } = await import("../services/api/client.js");
+const { isAgentTeamsEnabled } = await import("../utils/agentTeamsEnabled.js");
+const { getSkillCharBudget } = await import("../services/skills/budget.js");
+const { buildTokenBudgetSnapshot, getContextWindowForModel } = await import("../utils/tokens.js");
+const { createAdapter } = await import("../tools/webSearch/adapters.js");
 const OLD_HAIKU = "claude-3-haiku-20240307";
+
+/** What the migrated readers return right now. */
+async function readers(): Promise<Record<string, unknown>> {
+  return {
+    model: getDefaultModel(),
+    teams: isAgentTeamsEnabled(),
+    skillBudget: getSkillCharBudget(),
+    window: getContextWindowForModel("parity-unknown-model"),
+    budgetWindow: buildTokenBudgetSnapshot([]).contextWindow,
+    webSearch: (await createAdapter()).name,
+  };
+}
 
 function withEnvironment(values: Partial<Record<(typeof ENV_NAMES)[number], string>>, fn: () => void): void {
   for (const name of ENV_NAMES) delete process.env[name];
@@ -744,9 +784,128 @@ await check("an installed harness is the only source; the environment no longer 
       assert.deepEqual(thinking.buildDefaultThinkingConfig(), { type: "disabled" }, "alwaysThinkingEnabled: false");
       assert.equal(thinking.getSessionEffortLevel(), "high");
     } finally {
-      installHarness(null);
+      uninstallHarness();
     }
     assert.equal(getMaxRetries(), 9, "removing it goes back to the process environment");
+  });
+});
+
+async function withEnvironmentAsync(
+  values: Partial<Record<(typeof ENV_NAMES)[number], string>>,
+  fn: () => Promise<void>,
+): Promise<void> {
+  for (const name of ENV_NAMES) delete process.env[name];
+  Object.assign(process.env, values);
+  try {
+    await fn();
+  } finally {
+    uninstallHarness();
+    for (const name of ENV_NAMES) delete process.env[name];
+  }
+}
+
+await check("model, Agent Teams, skill budget, context window, and WebSearch read the active harness", async () => {
+  await withEnvironmentAsync({}, async () => {
+    assert.deepEqual(await readers(), {
+      model: "claude-sonnet-4-20250514",
+      teams: false,
+      skillBudget: 8000,
+      window: 200_000,
+      budgetWindow: 200_000,
+      webSearch: "bing",
+    });
+    Object.assign(process.env, {
+      ANTHROPIC_MODEL: "env-model",
+      EASY_AGENT_TEAMS: "yes",
+      EASY_AGENT_SKILL_CHAR_BUDGET: "500",
+      EASY_AGENT_MAX_CONTEXT_TOKENS: "64000",
+      WEB_SEARCH_ADAPTER: "api",
+    });
+    assert.deepEqual(
+      await readers(),
+      {
+        model: "env-model",
+        teams: true,
+        skillBudget: 500,
+        window: 64_000,
+        budgetWindow: 64_000,
+        webSearch: "anthropic",
+      },
+      "without a runtime, the process environment at each read",
+    );
+
+    installHarness(
+      resolve({
+        name: "wide",
+        user: {
+          model: "user-model",
+          harnesses: {
+            wide: {
+              features: { agentTeams: true },
+              skills: { listingBudgetChars: 1200 },
+              compaction: { contextWindow: 50_000 },
+              tools: { webSearchBackend: "bing" },
+            },
+          },
+        },
+      }),
+    );
+    assert.deepEqual(
+      await readers(),
+      { model: "user-model", teams: true, skillBudget: 1200, window: 50_000, budgetWindow: 50_000, webSearch: "bing" },
+      "an installed harness, with the Agent's values and the settings files, replaces the environment",
+    );
+  });
+});
+
+await check("a refresh re-reads the settings files; the environment stays as it was at install", async () => {
+  await withEnvironmentAsync({}, async () => {
+    let user: Record<string, unknown> = { model: "first" };
+    const again = async () => resolve({ user, env: { EASY_AGENT_MAX_RETRIES: "2" } });
+    installHarness(await again(), again);
+    user = { model: "second", alwaysThinkingEnabled: false };
+    process.env.EASY_AGENT_MAX_RETRIES = "8";
+    assert.equal(getDefaultModel(), "first", "reads keep the snapshot until a refresh");
+    assert.equal(await refreshHarness(), activeHarness());
+    assert.equal(getDefaultModel(), "second");
+    assert.equal(thinking.shouldEnableThinkingByDefault(), false);
+    assert.equal(getMaxRetries(), 2);
+  });
+});
+
+await check("a refresh that loses a race, fails, or outlives its runtime installs nothing", async () => {
+  await withEnvironmentAsync({}, async () => {
+    const gates: (() => void)[] = [];
+    const gated = (model: string) => () =>
+      new Promise<ResolvedHarness>((done) => gates.push(() => done(resolve({ user: { model } }))));
+
+    let calls = 0;
+    installHarness(resolve({ user: { model: "m0" } }), () => gated(`m${++calls}`)());
+    const older = refreshHarness();
+    const newer = refreshHarness();
+    gates[1]!();
+    await newer;
+    assert.equal(getDefaultModel(), "m2");
+    gates[0]!();
+    await older;
+    assert.equal(getDefaultModel(), "m2", "an older refresh that finishes late is dropped");
+
+    installHarness(resolve({ user: { model: "kept" } }), async () => {
+      throw new Error("unreadable");
+    });
+    assert.equal(harnessValue(await refreshHarness(), "model.main"), "kept", "a failed refresh keeps the snapshot");
+
+    installHarness(resolve({ user: { model: "runtime" } }), gated("late"));
+    const late = refreshHarness();
+    uninstallHarness();
+    gates[2]!();
+    await late;
+    assert.equal(getDefaultModel(), "claude-sonnet-4-20250514", "the process default once the runtime is gone");
+
+    installHarness(null, async () => resolve({ user: { model: "retried" } }));
+    assert.equal(getDefaultModel(), "claude-sonnet-4-20250514", "a failed first resolution reads the process default");
+    await refreshHarness();
+    assert.equal(getDefaultModel(), "retried", "and the next refresh retries it");
   });
 });
 
@@ -766,7 +925,7 @@ await check("/think overrides the settings default but not MAX_THINKING_TOKENS; 
       assert.deepEqual(thinking.buildDefaultThinkingConfig(), { type: "enabled", budgetTokens: 3000 });
     } finally {
       thinking.setSessionThinkingConfig(undefined);
-      installHarness(null);
+      uninstallHarness();
     }
   });
 });
@@ -819,6 +978,91 @@ await check("a runtime resolves its Agent when it starts and removes it when dis
   for (const name of ENV_NAMES) delete process.env[name];
   await writeJson(path.join(home, ".easy-agent", "settings.json"), {});
   resetSettingsCache();
+});
+
+await check("a runtime applies edited settings files to new sessions and to the next request", async () => {
+  const { createAgentRuntime } = await import("../sdk/index.js");
+  const { createAnthropicFixture } = await import("./fixtures/anthropicFixture.js");
+  const fixture = createAnthropicFixture();
+  await fixture.start();
+  const userSettings = path.join(home, ".easy-agent", "settings.json");
+  const { FIXTURE_MODEL } = await import("./fixtures/anthropicFixture.js");
+  for (const name of ENV_NAMES) delete process.env[name];
+  process.env.ANTHROPIC_AUTH_TOKEN = "test-token";
+  process.env.EASY_AGENT_DISABLE_HOOKS = "1";
+  process.env.ANTHROPIC_MODEL = "env-model";
+  await writeJson(userSettings, { model: FIXTURE_MODEL, alwaysThinkingEnabled: false });
+  resetSettingsCache();
+
+  const runtime = await createAgentRuntime({ cwd, services: false, logger: { warn() {}, error() {} } });
+  const thinkingSent = () => (fixture.requests.at(-1)?.body.thinking as { type?: string } | undefined)?.type;
+  try {
+    assert.equal(await runtime.resolveModel(), FIXTURE_MODEL);
+    const session = await runtime.createSession({ persist: false });
+    fixture.script([
+      { kind: "text", text: "one" },
+      { kind: "text", text: "two" },
+    ]);
+    await session.send("first");
+    assert.equal(thinkingSent(), undefined, "alwaysThinkingEnabled: false");
+
+    await writeJson(userSettings, { model: "edited-model", alwaysThinkingEnabled: true });
+    process.env.ANTHROPIC_MODEL = "changed-after-start";
+    await session.send("second");
+    assert.equal(thinkingSent(), "adaptive", "the next request reads the edited file");
+    assert.equal(fixture.requests.at(-1)?.body.model, FIXTURE_MODEL, "an open session keeps its model");
+    assert.equal(harnessValue(await runtime.getHarness(), "features.thinking"), true);
+    await session.close();
+
+    const next = await runtime.createSession({ persist: false });
+    assert.equal(next.getState().model, "edited-model", "a new session uses the edited model");
+    await next.close();
+
+    await writeJson(userSettings, {});
+    assert.equal(await runtime.resolveModel(), "env-model", "ANTHROPIC_MODEL as it was when the runtime started");
+  } finally {
+    await runtime.dispose();
+    await fixture.close();
+    for (const name of [...ENV_NAMES, "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL", "EASY_AGENT_DISABLE_HOOKS"]) {
+      delete process.env[name];
+    }
+    await writeJson(userSettings, {});
+    resetSettingsCache();
+  }
+});
+
+await check("the Auto Mode classifier uses the Agent's classifier role over the session's model", async () => {
+  const { createAnthropicFixture } = await import("./fixtures/anthropicFixture.js");
+  const { resetClient } = await import("../services/api/client.js");
+  const { classifyAutoModeAction } = await import("../permissions/autoClassifier.js");
+  const fixture = createAnthropicFixture();
+  await fixture.start();
+  resetClient();
+  process.env.ANTHROPIC_AUTH_TOKEN = "test-token";
+  const action = { messages: [], toolName: "Bash", toolInput: { command: "ls" }, allowRules: [], denyRules: [] };
+  try {
+    fixture.script(Array.from({ length: 4 }, () => ({ kind: "text" as const, text: "{}" })));
+    await classifyAutoModeAction({ ...action, model: "session-model" });
+    installHarness(resolve({ env: { EASY_AGENT_AUTO_MODE_MODEL: "judge" } }));
+    await classifyAutoModeAction({ ...action, model: "session-model" });
+    installHarness(
+      resolve({ name: "strict", user: { harnesses: { strict: { model: { roles: { classifier: "spec-judge" } } } } } }),
+    );
+    await classifyAutoModeAction({ ...action, model: "session-model" });
+    uninstallHarness();
+    process.env.ANTHROPIC_MODEL = "main-model";
+    await classifyAutoModeAction(action);
+    assert.deepEqual(
+      fixture.requests.map((request) => request.body.model),
+      ["session-model", "judge", "spec-judge", "main-model"],
+      "without a role or a session model, the Agent's main model",
+    );
+  } finally {
+    uninstallHarness();
+    await fixture.close();
+    resetClient();
+    for (const name of ["ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL", "ANTHROPIC_MODEL"]) delete process.env[name];
+  }
 });
 
 // ─── Component ids, comparison, views, and the CLI ─────────────────────

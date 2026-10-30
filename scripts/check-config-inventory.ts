@@ -58,13 +58,9 @@ const ARGV_PARSER_DIRECTORY = "src/entrypoint";
 const ARGV_CHECKS: ArgvCheck[] = [
   {
     flag: "--agent-teams",
-    file: "src/utils/agentTeamsEnabled.ts",
-    summary: "Turns on Agent Teams for the process, like EASY_AGENT_TEAMS.",
-  },
-  {
-    flag: "--agent-teams",
     file: "src/harness/resolve.ts",
-    summary: "The Harness resolver records it as the flag-layer value of features.agentTeams.",
+    summary:
+      "Turns on Agent Teams for the process, like EASY_AGENT_TEAMS: the flag-layer value of features.agentTeams.",
   },
 ];
 
@@ -106,34 +102,16 @@ const HARNESS_DIRECTORY = "src/harness";
  */
 const DIRECT_HARNESS_ENV_READS: { file: string; names: string[] }[] = [
   { file: "src/config/features.ts", names: ["EASY_AGENT_ENABLE_TOOL_SEARCH"] },
-  { file: "src/context/compaction.ts", names: ["ANTHROPIC_MODEL"] },
-  { file: "src/core/queryEngine/commands/diagnostics.ts", names: ["ANTHROPIC_MODEL"] },
-  { file: "src/entrypoint/login.ts", names: ["ANTHROPIC_MODEL"] },
-  { file: "src/permissions/autoClassifier.ts", names: ["ANTHROPIC_MODEL"] },
-  { file: "src/services/api/client.ts", names: ["ANTHROPIC_MODEL"] },
-  { file: "src/services/skills/budget.ts", names: ["EASY_AGENT_SKILL_CHAR_BUDGET"] },
   { file: "src/session/fileHistory.ts", names: ["EASY_AGENT_DISABLE_CHECKPOINTING"] },
-  { file: "src/tools/webSearch/adapters.ts", names: ["WEB_SEARCH_ADAPTER"] },
-  { file: "src/utils/agentTeamsEnabled.ts", names: ["EASY_AGENT_TEAMS"] },
-  {
-    file: "src/utils/tokens.ts",
-    names: ["EASY_AGENT_MAX_CONTEXT_TOKENS", "CLAUDE_CODE_MAX_CONTEXT_TOKENS", "ANTHROPIC_MODEL"],
-  },
   { file: "src/utils/toolSearch.ts", names: ["EASY_AGENT_ENABLE_TOOL_SEARCH", "ENABLE_TOOL_SEARCH"] },
 ];
 
 const BEHAVIOR_CONSTANTS: BehaviorConstant[] = [
   {
     component: "model",
-    file: "src/services/api/client.ts",
-    declaration: 'const FALLBACK_MODEL = "claude-sonnet-4-20250514";',
-    summary: "Model when no setting, flag, or ANTHROPIC_MODEL selects one.",
-  },
-  {
-    component: "model",
-    file: "src/permissions/autoClassifier.ts",
-    declaration: '?? "claude-3-5-haiku-latest"',
-    summary: "Auto Mode classifier model when EASY_AGENT_AUTO_MODE_MODEL and ANTHROPIC_MODEL are unset.",
+    file: "src/harness/keys.ts",
+    declaration: 'export const FALLBACK_MODEL = "claude-sonnet-4-20250514";',
+    summary: "Model when no setting, flag, Agent, or ANTHROPIC_MODEL selects one (model.main).",
   },
   {
     component: "model",
@@ -246,9 +224,9 @@ const BEHAVIOR_CONSTANTS: BehaviorConstant[] = [
   },
   {
     component: "skills",
-    file: "src/services/skills/budget.ts",
-    declaration: "const DEFAULT_BUDGET_CHARS = 8000;",
-    summary: "Characters for the skill listing (EASY_AGENT_SKILL_CHAR_BUDGET).",
+    file: "src/harness/keys.ts",
+    declaration: "export const DEFAULT_BUDGET_CHARS = 8000;",
+    summary: "Characters for the skill listing (skills.listingBudgetChars, EASY_AGENT_SKILL_CHAR_BUDGET).",
   },
   {
     component: "permissions",

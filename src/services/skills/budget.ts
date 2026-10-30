@@ -14,24 +14,19 @@
  *     the default 8000 chars ≈ 2000 tokens, 1% of a 200K-token window.
  */
 
+import { harnessSetting } from "../../harness/active.js";
 import type { Skill } from "../../types/types.js";
 
 export const MAX_LISTING_DESC_CHARS = 250;
 const MIN_DESC_CHARS_PER_SKILL = 20;
-export const DEFAULT_BUDGET_CHARS = 8000;
+export { DEFAULT_BUDGET_CHARS } from "../../harness/keys.js";
 
 /**
- * Compute the character budget. Honours the `EASY_AGENT_SKILL_CHAR_BUDGET`
- * env var so power users can shrink it on smaller-context models without
- * editing source.
+ * The character budget: the Agent's `skills.listingBudgetChars`, which
+ * `EASY_AGENT_SKILL_CHAR_BUDGET` sets for smaller-context models.
  */
 export function getSkillCharBudget(): number {
-  const envValue = process.env["EASY_AGENT_SKILL_CHAR_BUDGET"];
-  if (envValue) {
-    const parsed = Number.parseInt(envValue, 10);
-    if (Number.isFinite(parsed) && parsed > 0) return parsed;
-  }
-  return DEFAULT_BUDGET_CHARS;
+  return harnessSetting<number>("skills.listingBudgetChars");
 }
 
 function truncateDesc(desc: string, max: number): string {

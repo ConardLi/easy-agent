@@ -16,6 +16,7 @@
 
 import type Anthropic from "@anthropic-ai/sdk";
 import type { MessageParam, ContentBlockParam } from "@anthropic-ai/sdk/resources/messages.js";
+import { harnessSetting } from "../harness/active.js";
 import { createMessage } from "../services/api/streaming.js";
 import { debugLog } from "../utils/log.js";
 import { buildAutoClassifierSystemPrompt, type AutoClassifierPromptOptions } from "./autoClassifierPrompt.js";
@@ -34,7 +35,7 @@ export interface AutoClassifierInput extends AutoClassifierPromptOptions {
   toolName: string;
   /** The proposed tool input. */
   toolInput: Record<string, unknown>;
-  /** Override classifier model; defaults to env / main model. */
+  /** The session's model; the Agent's classifier role wins over it. */
   model?: string;
 }
 
@@ -80,8 +81,11 @@ const CLASSIFY_RESULT_TOOL: Anthropic.Tool = {
   },
 };
 
-function resolveClassifierModel(override?: string): string {
-  return override ?? process.env.EASY_AGENT_AUTO_MODE_MODEL ?? process.env.ANTHROPIC_MODEL ?? "claude-3-5-haiku-latest";
+/** The Agent's classifier role (EASY_AGENT_AUTO_MODE_MODEL), else the session's model, else the Agent's main model. */
+function resolveClassifierModel(sessionModel?: string): string {
+  return (
+    harnessSetting<string | undefined>("model.roles.classifier") ?? sessionModel ?? harnessSetting<string>("model.main")
+  );
 }
 
 function truncate(text: string, max: number): string {
