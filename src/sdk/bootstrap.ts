@@ -80,11 +80,11 @@ export async function loadWorkspace(options: AgentRuntimeOptions): Promise<Works
   // Environment variables are taken now; settings files are read again on
   // each refresh.
   const env = harnessEnvironment();
-  const resolveAgent = () => resolveHarness({ cwd, env });
+  const resolver = { cwd, resolve: (dir: string) => resolveHarness({ cwd: dir, env }) };
   try {
-    installHarness(await resolveAgent(), resolveAgent);
+    installHarness(await resolver.resolve(cwd), resolver);
   } catch (error) {
-    installHarness(null, resolveAgent);
+    installHarness(null, resolver);
     logger.warn(
       `[easy-agent] ⚠ Could not resolve Agent settings: ${errorMessage(error)}. Using environment variables and built-in defaults.`,
     );

@@ -9,6 +9,7 @@
  * utils/toolSearch.ts `prepareToolSearchRequest`).
  */
 
+import { harnessSettingFor } from "../harness/active.js";
 import { getMcpRegistry } from "../services/mcp/registry.js";
 import { isDeferredTool, TOOL_SEARCH_TOOL_NAME } from "../utils/toolSearch.js";
 import { debugLog } from "../utils/log.js";
@@ -275,8 +276,7 @@ export const toolSearchTool: Tool = {
   maxResultSizeChars: 100_000,
 
   async call(input: Record<string, unknown>, context: ToolContext): Promise<ToolResult> {
-    const { loadFeatureSettings } = await import("../config/features.js");
-    if ((await loadFeatureSettings(context.cwd)).toolSearch === "off") {
+    if ((await harnessSettingFor<string>(context.cwd, "features.toolSearch")) === "off") {
       return { content: "ToolSearch is disabled by the effective configuration.", isError: true };
     }
     const query = typeof input.query === "string" ? input.query : "";

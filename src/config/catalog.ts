@@ -8,7 +8,7 @@ import { loadFeatureSettings } from "./features.js";
 export const SETTING_RELOAD: Record<string, string> = {
   toolSearch: "next request",
   toolSearchAutoThreshold: "next request",
-  modelRoles: "next invocation/request",
+  modelRoles: "next request",
   hooks: "next event",
   disableAllHooks: "next event",
   models: "next request",
@@ -18,8 +18,8 @@ export const SETTING_RELOAD: Record<string, string> = {
   effortLevel: "next request",
   language: "next turn",
   maxTurns: "next turn",
-  checkpointingEnabled: "next checkpoint",
-  respectGitignore: "next search",
+  checkpointingEnabled: "next session",
+  respectGitignore: "next request",
   allow: "config command",
   deny: "config command",
   ask: "config command",
@@ -259,14 +259,13 @@ export const SETTING_CATALOG: Record<string, SettingCatalogEntry> = {
 /**
  * When a read takes effect:
  * - `use`: read every time the code path runs.
- * - `session`: read when a session starts.
  * - `runtime`: resolved into the Agent's settings when the runtime starts;
  *   code without a runtime reads it at each use.
  *
  * `env` settings and the workspace `.env` are written into the process
  * environment when the workspace starts, so their values change only on restart.
  */
-export type EnvironmentReadTiming = "use" | "session" | "runtime";
+export type EnvironmentReadTiming = "use" | "runtime";
 
 export interface EnvironmentVariableEntry {
   name: string;
@@ -384,7 +383,7 @@ export const ENVIRONMENT_VARIABLES: readonly EnvironmentVariableEntry[] = [
     aliases: ["ENABLE_TOOL_SEARCH"],
     category: "agent",
     security: false,
-    readAt: "use",
+    readAt: "runtime",
     replacement: "toolSearch, toolSearchAutoThreshold, --tool-search",
     summary: "Deprecated ToolSearch switch: true, false, auto, or auto:N.",
   },
@@ -423,7 +422,7 @@ export const ENVIRONMENT_VARIABLES: readonly EnvironmentVariableEntry[] = [
     name: "EASY_AGENT_DISABLE_CHECKPOINTING",
     category: "agent",
     security: false,
-    readAt: "session",
+    readAt: "runtime",
     replacement: "checkpointingEnabled",
     summary: "1, true, yes, or on turns off file checkpoints.",
   },

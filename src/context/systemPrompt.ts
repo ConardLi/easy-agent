@@ -22,7 +22,7 @@ import { formatAgentsSystemReminder } from "../agents/promptInjection.js";
 import { formatTeamSystemReminder } from "../agents/teamPromptInjection.js";
 import { getAllAgents } from "../agents/registry.js";
 import { getActiveOutputStyleConfig } from "../styles/registry.js";
-import { readMergedStringSetting } from "../utils/settings.js";
+import { harnessSettingFor } from "../harness/active.js";
 import {
   SYSTEM_PROMPT_DYNAMIC_END,
   SYSTEM_PROMPT_DYNAMIC_START,
@@ -212,7 +212,7 @@ export async function collectDynamicSections(options: CollectDynamicSectionsOpti
   const [agentMdContext, memoryEntrypoint, language] = await Promise.all([
     loadAgentMdContext(options.cwd),
     ignoreMemory ? Promise.resolve(null) : readMemoryEntrypoint(options.cwd),
-    readMergedStringSetting(options.cwd, "language").catch(() => undefined),
+    harnessSettingFor<string | undefined>(options.cwd, "prompt.language", { current: true }).catch(() => undefined),
   ]);
   const activeStyle = getActiveOutputStyleConfig();
 

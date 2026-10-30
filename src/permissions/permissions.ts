@@ -3,8 +3,8 @@ import type { MessageParam } from "@anthropic-ai/sdk/resources/messages.js";
 import type { Tool } from "../tools/Tool.js";
 import { analyzeBashCommand, type BashReadOnlyAnalysis } from "../tools/bashReadOnlyAnalysis.js";
 import { getPlanFilePath } from "../context/plans.js";
-import { loadSettingSources, isTrustedScopeForSensitiveKeys } from "../config/sources.js";
-import { isProjectTrusted } from "../config/globalState.js";
+import { harnessFor } from "../harness/active.js";
+import { harnessValue } from "../harness/resolve.js";
 import { loadSandboxSettings, shouldUseSandbox, splitCommand } from "../sandbox/index.js";
 import { classifyAutoModeAction } from "./autoClassifier.js";
 import { stripDangerousAllowRules } from "./dangerousPatterns.js";
@@ -67,19 +67,6 @@ export interface PermissionCheckParams {
    */
   model?: string;
 }
-
-interface RawSettings {
-  allow?: unknown;
-  deny?: unknown;
-  mode?: unknown;
-  autoMode?: unknown;
-}
-
-const DEFAULT_PERMISSION_SETTINGS: PermissionSettings = {
-  allow: [],
-  deny: [],
-  mode: "default",
-};
 
 // Read-only tools that are safe to use while planning: the local inspection
 // trio plus the read-only web/MCP tools (WebSearch and the MCP resource
@@ -147,24 +134,13 @@ const DANGEROUS_BASH_PREFIXES = [
   "git clean -fd",
 ];
 
-function normalizeRuleList(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return value
-    .filter((item): item is string => typeof item === "string")
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
-function normalizeMode(value: unknown): PermissionMode | undefined {
-  return value === "default" || value === "plan" || value === "auto" ? value : undefined;
-}
-
 /**
- * Resolve permission settings by merging every settings source.
+ * The Agent's permission settings (`permissions.allow`, `permissions.deny`,
+ * `permissions.mode`) for `cwd`, from the settings files as they are now.
  *
- *   - `allow` / `deny`  → concatenated across all sources then de-duplicated
- *     (defaults first, so they always apply). De-duplication keeps the list
- *     small without changing matching behavior.
+ *   - `allow` / `deny`  → concatenated across the Agent's spec and every
+ *     settings source then de-duplicated. Project and local `allow` rules
+ *     apply only in a trusted workspace; `deny` rules apply everywhere.
  *   - `mode`            → SECURITY-SENSITIVE. `auto` mode disables every
  *     confirmation prompt, so it must NOT be settable from a committed/checked
  *     in project (or local) settings file — otherwise a hostile repo could
@@ -178,42 +154,12 @@ function normalizeMode(value: unknown): PermissionMode | undefined {
  * `loadSettingsDiagnostics` so the user still sees a notice.
  */
 export async function loadPermissionSettings(cwd: string): Promise<PermissionSettings> {
-  const sources = await loadSettingSources(cwd);
-  const workspaceTrusted = await isProjectTrusted(cwd);
-
-  const allow: string[] = [...DEFAULT_PERMISSION_SETTINGS.allow];
-  const deny: string[] = [...DEFAULT_PERMISSION_SETTINGS.deny];
-  let mode: PermissionMode | undefined;
-
-  for (const src of sources) {
-    if (!src.raw) continue;
-    const raw = src.raw as RawSettings;
-    const projectScoped = src.source === "project" || src.source === "local";
-    if (!projectScoped || workspaceTrusted) allow.push(...normalizeRuleList(raw.allow));
-    deny.push(...normalizeRuleList(raw.deny));
-    if (!isTrustedScopeForSensitiveKeys(src.source)) continue;
-    // Explicit `mode` wins within a source; `autoMode: true` is a convenience
-    // alias for `mode: "auto"`. Later trusted source wins overall.
-    const m = normalizeMode(raw.mode) ?? (raw.autoMode === true ? "auto" : undefined);
-    if (m) mode = m;
-  }
-
+  const resolved = await harnessFor(cwd, { current: true });
   return {
-    allow: dedupe(allow),
-    deny: dedupe(deny),
-    mode: mode ?? DEFAULT_PERMISSION_SETTINGS.mode,
+    allow: [...harnessValue<string[]>(resolved, "permissions.allow")],
+    deny: [...harnessValue<string[]>(resolved, "permissions.deny")],
+    mode: harnessValue<PermissionMode>(resolved, "permissions.mode"),
   };
-}
-
-function dedupe(list: string[]): string[] {
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const item of list) {
-    if (seen.has(item)) continue;
-    seen.add(item);
-    out.push(item);
-  }
-  return out;
 }
 
 function escapeRegExp(value: string): string {

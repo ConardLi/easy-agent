@@ -31,7 +31,8 @@ import { diffLines } from "diff";
 import { getEasyAgentHome } from "../utils/paths.js";
 import { ensurePrivateDirectory } from "../utils/privateData.js";
 import { atomicWriteFileFromHandle } from "../utils/atomicFile.js";
-import { readMergedBooleanSetting, readMergedNumberSetting } from "../utils/settings.js";
+import { harnessSetting, harnessSettingFor } from "../harness/active.js";
+import { readMergedNumberSetting } from "../utils/settings.js";
 import {
   readWorkspaceFile,
   removeWorkspaceFile,
@@ -97,16 +98,10 @@ function emptyState(): FileHistoryState {
   return { snapshots: [], trackedFiles: new Set(), snapshotSequence: 0 };
 }
 
-function isEnvTruthy(value: string | undefined): boolean {
-  if (!value) return false;
-  const v = value.trim().toLowerCase();
-  return v === "1" || v === "true" || v === "yes" || v === "on";
-}
-
 /**
- * Read the `checkpointingEnabled` setting (default on) and bind the session
- * id + cwd used for backup paths / path shortening. Called when a session
- * opens or switches. An explicit `checkpointingEnabled: false`, the
+ * Read the Agent's `session.checkpoints` setting (default on) and bind the
+ * session id + cwd used for backup paths / path shortening. Called when a
+ * session opens or switches. An explicit `checkpointingEnabled: false`, the
  * `EASY_AGENT_DISABLE_CHECKPOINTING` env var, or `enabled: false` disables
  * the whole feature for the session.
  */
@@ -125,13 +120,10 @@ export async function configureFileHistory(
     current.enabled = false;
     return;
   }
-  let setting: boolean | undefined;
-  try {
-    setting = await readMergedBooleanSetting(projectCwd, "checkpointingEnabled");
-  } catch {
-    setting = undefined;
-  }
-  current.enabled = setting !== false && !isEnvTruthy(process.env.EASY_AGENT_DISABLE_CHECKPOINTING);
+  // Unreadable settings leave the environment and the built-in default.
+  current.enabled = await harnessSettingFor<boolean>(projectCwd, "session.checkpoints", { current: true }).catch(() =>
+    harnessSetting<boolean>("session.checkpoints"),
+  );
 }
 
 export function fileHistoryEnabled(): boolean {

@@ -62,12 +62,15 @@ const { resolveHarness, resolveHarnessFromInputs, harnessValue, HARNESS_KEYS } =
 type ResolvedHarness = import("../harness/index.js").ResolvedHarness;
 type HarnessInputs = import("../harness/index.js").HarnessInputs;
 const { ENVIRONMENT_VARIABLES } = await import("../config/catalog.js");
-const { setFlagSettings, resetSettingsCache, loadTrustedSettingSources, getScalarSetting } = await import(
-  "../config/sources.js"
-);
-const { trustProjectForSession, untrustProject } = await import("../config/globalState.js");
-const { loadPermissionSettings } = await import("../permissions/permissions.js");
-const { loadFeatureSettings, loadMaxTurnsSetting } = await import("../config/features.js");
+const {
+  setFlagSettings,
+  resetSettingsCache,
+  loadSettingSources,
+  loadTrustedSettingSources,
+  getScalarSetting,
+  isTrustedScopeForSensitiveKeys,
+} = await import("../config/sources.js");
+const { trustProjectForSession, untrustProject, isProjectTrusted } = await import("../config/globalState.js");
 const { readMergedStringSetting, readMergedBooleanSetting } = await import("../utils/settings.js");
 const { validateSettings } = await import("../config/schema.js");
 const { writeConfig } = await import("../sdk/config.js");
@@ -147,11 +150,82 @@ function referenceThinkingBudget(env: NodeJS.ProcessEnv): number | undefined {
   return parsed > 0 ? parsed : undefined;
 }
 
-/** What the current code reads, key by key. */
+const ruleList = (value: unknown): string[] =>
+  Array.isArray(value)
+    ? value
+        .filter((item): item is string => typeof item === "string")
+        .map((item) => item.trim())
+        .filter(Boolean)
+    : [];
+
+/** Permission settings as `loadPermissionSettings` merged them from the settings files. */
+async function referencePermissions(): Promise<{ allow: string[]; deny: string[]; mode: string }> {
+  const sources = await loadSettingSources(cwd);
+  const workspaceTrusted = await isProjectTrusted(cwd);
+  const allow: string[] = [];
+  const deny: string[] = [];
+  let mode: string | undefined;
+  for (const source of sources) {
+    if (!source.raw) continue;
+    const projectScoped = source.source === "project" || source.source === "local";
+    if (!projectScoped || workspaceTrusted) allow.push(...ruleList(source.raw.allow));
+    deny.push(...ruleList(source.raw.deny));
+    if (!isTrustedScopeForSensitiveKeys(source.source)) continue;
+    const raw = source.raw.mode;
+    const m =
+      raw === "default" || raw === "plan" || raw === "auto" ? raw : source.raw.autoMode === true ? "auto" : undefined;
+    if (m) mode = m;
+  }
+  return { allow: [...new Set(allow)], deny: [...new Set(deny)], mode: mode ?? "default" };
+}
+
+/** ToolSearch and role settings as `resolveFeatureSettings` read them from trusted sources and the environment. */
+function referenceFeatures(
+  sources: readonly { source: string; raw: Record<string, unknown> | null }[],
+  env: NodeJS.ProcessEnv,
+): { toolSearch: unknown; toolSearchAutoThreshold: unknown; modelRoles: Record<string, unknown> } {
+  const result = {
+    toolSearch: "on" as unknown,
+    toolSearchAutoThreshold: 10 as unknown,
+    modelRoles: {} as Record<string, unknown>,
+  };
+  const applySource = (raw: Record<string, unknown> | null) => {
+    if (!raw) return;
+    if (raw.toolSearch !== undefined) result.toolSearch = raw.toolSearch;
+    if (raw.toolSearchAutoThreshold !== undefined) result.toolSearchAutoThreshold = raw.toolSearchAutoThreshold;
+    if (raw.modelRoles && typeof raw.modelRoles === "object") Object.assign(result.modelRoles, raw.modelRoles);
+  };
+  for (const source of sources) if (source.source !== "flag" && source.source !== "policy") applySource(source.raw);
+  const legacy = (env.EASY_AGENT_ENABLE_TOOL_SEARCH ?? env.ENABLE_TOOL_SEARCH)?.trim().toLowerCase();
+  if (legacy !== undefined) {
+    if (["true", "1", "yes", "on"].includes(legacy))
+      Object.assign(result, { toolSearch: "on", toolSearchAutoThreshold: 10 });
+    else if (["false", "0", "no", "off"].includes(legacy))
+      Object.assign(result, { toolSearch: "off", toolSearchAutoThreshold: 10 });
+    else if (legacy === "auto") Object.assign(result, { toolSearch: "auto", toolSearchAutoThreshold: 10 });
+    else if (legacy.startsWith("auto:")) {
+      const n = Number.parseInt(legacy.slice(5), 10);
+      const threshold = Number.isFinite(n) ? Math.max(0, Math.min(100, n)) : 10;
+      Object.assign(result, {
+        toolSearch: threshold === 0 ? "on" : threshold === 100 ? "off" : "auto",
+        toolSearchAutoThreshold: threshold,
+      });
+    }
+  }
+  for (const source of sources) if (source.source === "flag" || source.source === "policy") applySource(source.raw);
+  return result;
+}
+
+/** What the code read before it moved to the resolved harness, key by key. */
 async function currentValues(): Promise<Record<string, unknown>> {
-  const permissions = await loadPermissionSettings(cwd);
-  const features = await loadFeatureSettings(cwd);
+  const permissions = await referencePermissions();
   const trustedSources = await loadTrustedSettingSources(cwd);
+  const features = referenceFeatures(trustedSources, process.env);
+  let maxTurns: number | undefined;
+  for (const source of trustedSources) {
+    const value = source.raw?.maxTurns;
+    if (typeof value === "number" && Number.isSafeInteger(value) && value >= 1) maxTurns = value;
+  }
   const alwaysThinkingEnabled = getScalarSetting<boolean>(trustedSources, "alwaysThinkingEnabled", {
     predicate: (v) => typeof v === "boolean",
   });
@@ -170,7 +244,7 @@ async function currentValues(): Promise<Record<string, unknown>> {
     "model.roles.background": features.modelRoles.background,
     "model.roles.think": features.modelRoles.think,
     "model.roles.longContext": features.modelRoles.longContext,
-    "features.maxTurns": await loadMaxTurnsSetting(cwd),
+    "features.maxTurns": maxTurns,
     "model.main":
       (await readMergedStringSetting(cwd, "model")) ??
       (await readMergedStringSetting(cwd, "defaultModel")) ??
@@ -858,11 +932,14 @@ await check("model, Agent Teams, skill budget, context window, and WebSearch rea
   });
 });
 
+/** A resolver for the test workspace that ignores the directory it is asked for. */
+const via = (resolveAgain: () => Promise<ResolvedHarness>) => ({ cwd, resolve: resolveAgain });
+
 await check("a refresh re-reads the settings files; the environment stays as it was at install", async () => {
   await withEnvironmentAsync({}, async () => {
     let user: Record<string, unknown> = { model: "first" };
     const again = async () => resolve({ user, env: { EASY_AGENT_MAX_RETRIES: "2" } });
-    installHarness(await again(), again);
+    installHarness(await again(), via(again));
     user = { model: "second", alwaysThinkingEnabled: false };
     process.env.EASY_AGENT_MAX_RETRIES = "8";
     assert.equal(getDefaultModel(), "first", "reads keep the snapshot until a refresh");
@@ -880,7 +957,10 @@ await check("a refresh that loses a race, fails, or outlives its runtime install
       new Promise<ResolvedHarness>((done) => gates.push(() => done(resolve({ user: { model } }))));
 
     let calls = 0;
-    installHarness(resolve({ user: { model: "m0" } }), () => gated(`m${++calls}`)());
+    installHarness(
+      resolve({ user: { model: "m0" } }),
+      via(() => gated(`m${++calls}`)()),
+    );
     const older = refreshHarness();
     const newer = refreshHarness();
     gates[1]!();
@@ -890,19 +970,25 @@ await check("a refresh that loses a race, fails, or outlives its runtime install
     await older;
     assert.equal(getDefaultModel(), "m2", "an older refresh that finishes late is dropped");
 
-    installHarness(resolve({ user: { model: "kept" } }), async () => {
-      throw new Error("unreadable");
-    });
+    installHarness(
+      resolve({ user: { model: "kept" } }),
+      via(async () => {
+        throw new Error("unreadable");
+      }),
+    );
     assert.equal(harnessValue(await refreshHarness(), "model.main"), "kept", "a failed refresh keeps the snapshot");
 
-    installHarness(resolve({ user: { model: "runtime" } }), gated("late"));
+    installHarness(resolve({ user: { model: "runtime" } }), via(gated("late")));
     const late = refreshHarness();
     uninstallHarness();
     gates[2]!();
     await late;
     assert.equal(getDefaultModel(), "claude-sonnet-4-20250514", "the process default once the runtime is gone");
 
-    installHarness(null, async () => resolve({ user: { model: "retried" } }));
+    installHarness(
+      null,
+      via(async () => resolve({ user: { model: "retried" } })),
+    );
     assert.equal(getDefaultModel(), "claude-sonnet-4-20250514", "a failed first resolution reads the process default");
     await refreshHarness();
     assert.equal(getDefaultModel(), "retried", "and the next refresh retries it");
@@ -1006,16 +1092,24 @@ await check("a runtime applies edited settings files to new sessions and to the 
     await session.send("first");
     assert.equal(thinkingSent(), undefined, "alwaysThinkingEnabled: false");
 
-    await writeJson(userSettings, { model: "edited-model", alwaysThinkingEnabled: true });
+    await writeJson(userSettings, {
+      model: "edited-model",
+      alwaysThinkingEnabled: true,
+      language: "Klingon",
+      mode: "plan",
+    });
     process.env.ANTHROPIC_MODEL = "changed-after-start";
     await session.send("second");
     assert.equal(thinkingSent(), "adaptive", "the next request reads the edited file");
+    assert.match(JSON.stringify(fixture.requests.at(-1)?.body.messages), /Klingon/, "and the next turn's language");
+    assert.equal(session.getState().permissionMode, "default", "an open session keeps its permission mode");
     assert.equal(fixture.requests.at(-1)?.body.model, FIXTURE_MODEL, "an open session keeps its model");
     assert.equal(harnessValue(await runtime.getHarness(), "features.thinking"), true);
     await session.close();
 
     const next = await runtime.createSession({ persist: false });
     assert.equal(next.getState().model, "edited-model", "a new session uses the edited model");
+    assert.equal(next.getState().permissionMode, "plan", "and the edited permission mode");
     await next.close();
 
     await writeJson(userSettings, {});
@@ -1064,6 +1158,99 @@ await check("the Auto Mode classifier uses the Agent's classifier role over the 
     for (const name of ["ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL", "ANTHROPIC_MODEL"]) delete process.env[name];
   }
 });
+
+const { harnessFor, harnessSettingFor } = await import("../harness/index.js");
+const features = await import("../config/features.js");
+const { loadPermissionSettings } = await import("../permissions/permissions.js");
+const { getToolSearchMode } = await import("../utils/toolSearch.js");
+const fileHistory = await import("../session/fileHistory.js");
+
+await check(
+  "harnessFor: the runtime's snapshot in its workspace, current files on request, own files elsewhere",
+  async () => {
+    const userSettings = path.join(home, ".easy-agent", "settings.json");
+    const other = path.join(root, "other");
+    await mkdir(path.join(other, ".easy-agent"), { recursive: true });
+    for (const name of ENV_NAMES) delete process.env[name];
+    await writeJson(userSettings, { respectGitignore: false, maxTurns: 7, deny: ["Bash(rm*)"], toolSearch: "off" });
+    await writeJson(path.join(cwd, ".easy-agent", "settings.json"), {});
+    await writeJson(path.join(cwd, ".easy-agent", "settings.local.json"), {});
+    await writeJson(path.join(other, ".easy-agent", "settings.json"), { language: "French" });
+    await trustProjectForSession(other);
+    resetSettingsCache();
+    try {
+      process.env.EASY_AGENT_DISABLE_CHECKPOINTING = "1";
+      const plain = await harnessFor(cwd);
+      assert.equal(harnessValue(plain, "tools.respectGitignore"), false, "without a runtime, cwd's settings files");
+      assert.equal(harnessValue(plain, "session.checkpoints"), false, "and the process environment");
+      assert.equal(await features.loadMaxTurnsSetting(cwd), 7);
+      assert.deepEqual((await loadPermissionSettings(cwd)).deny, ["Bash(rm*)"]);
+      await fileHistory.configureFileHistory(cwd, "harness-plain");
+      assert.equal(fileHistory.fileHistoryEnabled(), false);
+      assert.equal(getToolSearchMode(), "tst", "harnessSetting() without a runtime leaves the settings files out");
+
+      const asked: string[] = [];
+      const resolver = {
+        cwd,
+        resolve: async (dir: string) => {
+          asked.push(dir);
+          return resolveHarness({ cwd: dir, env: { EASY_AGENT_DISABLE_CHECKPOINTING: "1" } });
+        },
+      };
+      const snapshot = await resolver.resolve(cwd);
+      installHarness(snapshot, resolver);
+      asked.length = 0;
+      delete process.env.EASY_AGENT_DISABLE_CHECKPOINTING;
+      assert.equal(await harnessFor(cwd), snapshot, "the runtime's snapshot");
+      assert.equal(getToolSearchMode(), "standard", "ToolSearch reads the installed Agent");
+      await fileHistory.configureFileHistory(cwd, "harness-runtime");
+      assert.equal(fileHistory.fileHistoryEnabled(), false, "the environment as the runtime took it");
+
+      await writeJson(userSettings, { respectGitignore: true, maxTurns: 9, modelRoles: { background: "bg" } });
+      resetSettingsCache();
+      asked.length = 0;
+      assert.equal(await harnessSettingFor(cwd, "tools.respectGitignore"), false, "in-request reads keep the snapshot");
+      assert.equal(await features.resolveRoleModel(cwd, "background", "fallback"), "fallback");
+      assert.equal(await features.loadMaxTurnsSetting(cwd), 9, "current reads see the edited file");
+      assert.deepEqual((await loadPermissionSettings(cwd)).deny, []);
+      assert.equal(activeHarness(), snapshot, "without installing what they read");
+      assert.equal(await harnessSettingFor(other, "prompt.language"), "French", "another directory resolves its files");
+      assert.deepEqual(asked, [cwd, cwd, other]);
+      await refreshHarness();
+      assert.equal(await features.resolveRoleModel(cwd, "background", "fallback"), "bg", "after the next refresh");
+
+      installHarness(snapshot, {
+        cwd,
+        resolve: async () => {
+          throw new Error("unreadable");
+        },
+      });
+      await assert.rejects(
+        loadPermissionSettings(cwd),
+        /unreadable/,
+        "permission settings never fall back to defaults",
+      );
+      assert.equal(await harnessFor(cwd), snapshot);
+      await fileHistory.configureFileHistory(cwd, "harness-unreadable");
+      assert.equal(fileHistory.fileHistoryEnabled(), false, "unreadable settings fall back to the installed Agent");
+
+      installHarness(null, resolver);
+      asked.length = 0;
+      assert.equal(
+        harnessValue(await harnessFor(cwd), "features.maxTurns"),
+        9,
+        "no snapshot: resolved, not the default",
+      );
+      assert.deepEqual(asked, [cwd]);
+    } finally {
+      uninstallHarness();
+      for (const name of ENV_NAMES) delete process.env[name];
+      await writeJson(userSettings, {});
+      await untrustProject(other);
+      resetSettingsCache();
+    }
+  },
+);
 
 // ─── Component ids, comparison, views, and the CLI ─────────────────────
 
