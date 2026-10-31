@@ -233,6 +233,14 @@ export const HARNESS_KEYS: readonly HarnessKey[] = [
 
   ...selection("tools", "tools", true),
   {
+    ...specOnly(
+      "tools.config",
+      "tools",
+      "Settings of single tools by name: timeoutMs, maxOutputBytes, maxResultChars.",
+    ),
+    applied: true,
+  },
+  {
     path: "tools.respectGitignore",
     component: "tools",
     summary: "Glob and Grep skip files ignored by git.",

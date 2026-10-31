@@ -162,13 +162,16 @@ An Agent is a Harness spec: the model, tools, prompt, context sources, compactio
 
 ### Tools and MCP servers
 
-`tools.include` and `tools.exclude` choose the built-in and MCP tools the Agent uses; `mcpServers.include` and `mcpServers.exclude` choose which configured MCP servers it starts.
+`tools.include` and `tools.exclude` choose the built-in and MCP tools the Agent uses, `tools.config` sets single tools, and `mcpServers.include` and `mcpServers.exclude` choose which configured MCP servers it starts.
 
 ```json
 {
   "harnesses": {
     "reviewer": {
-      "tools": { "exclude": ["Write", "Edit", "MultiEdit", "Bash", "PowerShell", "mcp__github__create_*"] },
+      "tools": {
+        "exclude": ["Write", "Edit", "MultiEdit", "PowerShell", "mcp__github__create_*"],
+        "config": { "Bash": { "timeoutMs": 300000, "maxOutputBytes": 60000 }, "Read": { "maxResultChars": 50000 } }
+      },
       "mcpServers": { "include": ["github", "plugin:docs:*"] }
     }
   }
@@ -182,7 +185,8 @@ An Agent is a Harness spec: the model, tools, prompt, context sources, compactio
 - A server the Agent leaves out is not started: servers from settings and `.mcp.json`, plugin servers, servers an editor passes over ACP, and ones added with `runtime.connectMcpServers()` (reported as skipped). `.mcp.json` approval still applies to the servers the Agent keeps.
 - The lists come only from the Agent's spec, so project and local settings cannot add a tool or server back. As with other lists, a child's list replaces its parent's along `extends`.
 - `/harness`, `eagent harness show`, and `runtime/inventory` show left-out tools as off and left-out servers with status `disabled`, each with the list and Agent that turned it off. Names in the tool lists that match no built-in tool are printed as a warning when the runtime starts (MCP tool names are not checked, since servers connect later).
-- Tool lists apply from the next model request after an edit; server lists apply when servers start, so restart after changing them.
+- `tools.config` is keyed by exact tool name. `timeoutMs` is the timeout of a Bash or PowerShell command whose call sets none (built-in 120000; the tool's description tells the model the value, and a timeout the call passes still wins), `maxOutputBytes` the command output kept for the model (built-in 30000), and `maxResultChars` the characters of any tool's result before it is truncated (built-in 100000 unless the tool sets its own). A name that matches no built-in tool, or `timeoutMs`/`maxOutputBytes` on another tool, is printed as a warning when the runtime starts; an invalid value is a spec error. A child's `tools.config` replaces its parent's as a whole.
+- Tool lists and tool settings apply from the next model request after an edit; server lists apply when servers start, so restart after changing them.
 
 `--harness <name|file>` selects the Agent for one run: a name from `harnesses`, or a spec file (an argument with a path separator or a `.json` suffix) that is used for that run only and never written to the settings. It works for the terminal UI, Headless (`-p`), `--dump-system-prompt`, RPC (as the default for `initialize`), and ACP. The SDK takes `createAgentRuntime({ harness: { name } })` or `{ spec }`, and RPC `initialize` takes the same `harness` parameter. Without a selection the runtime uses `default`, as before.
 

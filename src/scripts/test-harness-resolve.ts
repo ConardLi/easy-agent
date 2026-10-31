@@ -273,8 +273,9 @@ async function currentValues(): Promise<Record<string, unknown>> {
     "skills.listingBudgetChars": positiveInteger(env.EASY_AGENT_SKILL_CHAR_BUDGET) ?? 8000,
     "compaction.contextWindow": referenceContextWindow(env),
     "tools.webSearchBackend": webSearch === "bing" || webSearch === "api" ? webSearch : undefined,
-    // No setting or variable selected tools or MCP servers: every one was kept.
+    // No setting or variable selected tools or MCP servers or configured a single tool.
     "tools.include": undefined,
+    "tools.config": undefined,
     "tools.exclude": undefined,
     "mcpServers.include": undefined,
     "mcpServers.exclude": undefined,
@@ -688,7 +689,13 @@ await check("keys this build does not apply yet are reported when set", () => {
     name: "minimalish",
     user: {
       ask: ["Bash(git push*)"],
-      harnesses: { minimalish: { skills: { exclude: ["review"] }, tools: { exclude: ["WebFetch"] } } },
+      harnesses: {
+        minimalish: {
+          skills: { exclude: ["review"] },
+          tools: { exclude: ["WebFetch"], config: { Bash: { timeoutMs: 5000 } } },
+          mcpServers: { include: ["docs"] },
+        },
+      },
     },
   });
   const messages = warnings(resolved).map((issue) => issue.message);
@@ -696,10 +703,11 @@ await check("keys this build does not apply yet are reported when set", () => {
     messages.some((m) => /skills\.exclude is set by Agent "minimalish", but this build does not apply it yet/.test(m)),
   );
   assert.ok(messages.some((m) => /permissions\.ask is set by user, but this build does not apply it yet/.test(m)));
-  assert.ok(!messages.some((m) => /tools\.exclude/.test(m)), "tools.exclude is applied");
+  for (const applied of ["tools.exclude", "tools.config", "mcpServers.include"]) {
+    assert.ok(!messages.some((m) => m.startsWith(`${applied} `)), `${applied} is applied`);
+    assert.equal(resolved.values[applied]!.applied, true);
+  }
   assert.equal(resolved.values["skills.exclude"]!.applied, false);
-  assert.equal(resolved.values["tools.exclude"]!.applied, true);
-  assert.equal(resolved.values["mcpServers.include"]!.applied, true);
   assert.equal(resolved.values["model.main"]!.applied, true);
 });
 

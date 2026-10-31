@@ -24,7 +24,7 @@ import { setFlagSettings } from "../config/sources.js";
 import { detectWorkspaceRisks } from "../config/workspaceRisks.js";
 import { activeHarness, installHarness } from "../harness/active.js";
 import { type HarnessIssue, harnessEnvironment, type ResolvedHarness, resolveHarness } from "../harness/resolve.js";
-import { unmatchedSelectionEntries } from "../harness/selection.js";
+import { toolConfigProblems, unmatchedSelectionEntries } from "../harness/selection.js";
 import { refreshHookDisableFromSettings } from "../hooks/settings.js";
 import { refreshActivePlugins } from "../plugins/runtime.js";
 import { getSandboxCapability, getSandboxUnavailableReason, loadSandboxSettings } from "../sandbox/index.js";
@@ -141,14 +141,14 @@ export async function loadWorkspace(options: AgentRuntimeOptions): Promise<Works
   }
   running = true;
   // MCP tools are not known until their servers connect, so only built-in names are checked.
-  const unknownTools = unmatchedSelectionEntries(
-    activeHarness(),
-    "tools",
-    getRegisteredTools().map((tool) => tool.name),
-  ).filter((entry) => !entry.startsWith("mcp__"));
+  const builtInTools = getRegisteredTools().map((tool) => tool.name);
+  const unknownTools = unmatchedSelectionEntries(activeHarness(), "tools", builtInTools).filter(
+    (entry) => !entry.startsWith("mcp__"),
+  );
   if (unknownTools.length > 0) {
     logger.warn(`[easy-agent] ⚠ tools.include and tools.exclude name no built-in tool: ${unknownTools.join(", ")}`);
   }
+  for (const problem of toolConfigProblems(activeHarness(), builtInTools)) logger.warn(`[easy-agent] ⚠ ${problem}`);
 
   let ignoredProjectConfig: string[] = [];
   if (!projectTrusted) {

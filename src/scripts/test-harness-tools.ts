@@ -1,10 +1,16 @@
 /**
  * Tool and MCP server selection by an Agent (`tools.include`/`exclude`,
- * `mcpServers.include`/`exclude`).
+ * `mcpServers.include`/`exclude`) and settings of single tools
+ * (`tools.config`).
  *
  * Rules: exact names and `*` patterns, `exclude` winning over `include`, an
  * empty `include`, reasons naming the Agent, and nothing filtered without a
- * selection or without a runtime.
+ * selection or without a runtime; `tools.config` lookup and its startup
+ * warnings.
+ *
+ * Tool settings: the shell tool's stated default timeout, the timeout and
+ * output limit it runs with, and a tool's result limit in the loop; without
+ * settings, the built-in values.
  *
  * Runtime, against the fixture model: a left-out tool is missing from the
  * request's tools and from the deferred-tool list, a call the model makes
@@ -50,7 +56,10 @@ await fixture.start();
 process.env.ANTHROPIC_MODEL = FIXTURE_MODEL;
 
 const { resolveHarnessFromInputs } = await import("../harness/resolve.js");
-const { selectionMatches, selectionOffReason, unmatchedSelectionEntries } = await import("../harness/selection.js");
+const { selectionMatches, selectionOffReason, unmatchedSelectionEntries, toolConfigOf, toolConfigProblems } =
+  await import("../harness/selection.js");
+const { bashTool } = await import("../tools/bashTool.js");
+const { powerShellTool } = await import("../tools/powerShellTool.js");
 const { getAllTools, getRegisteredTools, findToolByName } = await import("../tools/index.js");
 const { resetSettingsCache } = await import("../config/sources.js");
 const { getMcpRegistryEntry } = await import("../services/mcp/registry.js");
@@ -130,6 +139,36 @@ await check("a child Agent's list replaces its parent's along extends", () => {
 await check("unmatched entries are the ones that name nothing", () => {
   const resolved = resolveSpec({ a: { tools: { include: ["Read", "Wirte"], exclude: ["mcp__x__*", "Read"] } } }, "a");
   assert.deepEqual(unmatchedSelectionEntries(resolved, "tools", ["Read", "Write"]), ["Wirte", "mcp__x__*"]);
+});
+
+await check("tools.config gives one tool's settings and reports names and keys that do not fit", () => {
+  const resolved = resolveSpec(
+    {
+      tuned: {
+        tools: {
+          config: {
+            Bash: { timeoutMs: 300_000, maxOutputBytes: 50_000 },
+            Read: { maxResultChars: 2_000, timeoutMs: 5 },
+            Bsh: { timeoutMs: 1 },
+            mcp__docs__search: { maxResultChars: 500 },
+          },
+        },
+      },
+    },
+    "tuned",
+  );
+  assert.deepEqual(toolConfigOf(resolved, "Bash"), { timeoutMs: 300_000, maxOutputBytes: 50_000 });
+  assert.deepEqual(toolConfigOf(resolved, "Grep"), {});
+  assert.deepEqual(toolConfigOf(resolveSpec({}, "default"), "Bash"), {}, "nothing without the key");
+  assert.deepEqual(toolConfigProblems(resolved, ["Bash", "Read", "Grep"]), [
+    "tools.config.Read: timeoutMs apply only to Bash and PowerShell",
+    "tools.config.Bsh names no built-in tool",
+  ]);
+  const invalid = resolveSpec({ bad: { tools: { config: { Bash: { timeoutMs: -1, retries: 2 } } } } }, "bad");
+  assert.ok(
+    invalid.issues.some((issue) => issue.level === "error" && issue.path?.startsWith("tools.config.Bash")),
+    "invalid settings are spec errors",
+  );
 });
 
 await check("without a selection or a runtime every enabled tool stays", () => {
@@ -317,6 +356,73 @@ try {
     }
   });
 
+  await check("tools.config sets the shell timeout and output limit and a tool's result limit", async () => {
+    const shellLimits = { timeoutMs: 1500, maxOutputBytes: 40 };
+    await writeJson(userSettings, {
+      harnesses: {
+        ...harnesses,
+        tuned: {
+          tools: {
+            config: {
+              Bash: shellLimits,
+              PowerShell: shellLimits,
+              Read: { maxResultChars: 50 },
+              Grep: { timeoutMs: 1 },
+            },
+          },
+        },
+      },
+    });
+    const shell = process.platform === "win32" ? powerShellTool : bashTool;
+    const statedDefault = () => JSON.stringify(shell.inputSchema.properties);
+    const warnings: string[] = [];
+    const runtime = await start("tuned", warnings);
+    try {
+      assert.ok(
+        warnings.some((message) => /tools\.config\.Grep: timeoutMs apply only to Bash and PowerShell/.test(message)),
+        "a shell setting on another tool is reported at startup",
+      );
+      assert.match(statedDefault(), /Timeout in milliseconds \(default 1500\)/, "the model is told the default");
+
+      const file = path.join(cwd, "long.txt");
+      await writeFile(file, "z".repeat(400));
+      fixture.requests.length = 0;
+      fixture.script([
+        { kind: "tool", name: "Read", input: { file_path: file } },
+        { kind: "text", text: "ok" },
+      ]);
+      await send(runtime, "read it");
+      assert.match(
+        toolResultText(fixture.requests[1]),
+        /showing first 50\]/,
+        "the Read result is cut at 50 characters",
+      );
+
+      const slow = await shell.call({ command: `node -e "setTimeout(() => {}, 20000)"` }, { cwd });
+      assert.equal(slow.content, "Command timed out after 1500ms");
+      const loud = await shell.call({ command: `node -e "process.stdout.write('y'.repeat(500))"` }, { cwd });
+      // PowerShell may add a line break to a native command's output, so the counts are bounds.
+      const kept = String(loud.content);
+      assert.match(kept, /\n\.\.\.\[truncated 4[56]\d bytes\]\r?\n/, `output is cut to 40 bytes: ${kept}`);
+      assert.ok(/y{30}/.test(kept) && !/y{41}/.test(kept), `the last 40 bytes are kept: ${kept}`);
+      const explicit = await shell.call({ command: `node -e "setTimeout(() => {}, 300)"`, timeout: 10_000 }, { cwd });
+      assert.notEqual(explicit.isError, true, `a timeout the call sets still wins: ${String(explicit.content)}`);
+    } finally {
+      await rm(path.join(cwd, "long.txt"), { force: true });
+      await writeJson(userSettings, { harnesses });
+      await runtime.dispose();
+    }
+    const plain = await start(undefined);
+    try {
+      assert.match(statedDefault(), /\(default 120000\)/, "without settings the built-in default");
+      fixture.requests.length = 0;
+      fixture.script([{ kind: "text", text: "ok" }]);
+      await send(plain, "hello");
+    } finally {
+      await plain.dispose();
+    }
+  });
+
   // ─── MCP servers ────────────────────────────────────────────────────
 
   const serverModule = (specifier: string) => import.meta.resolve(`@modelcontextprotocol/sdk/${specifier}`);
@@ -445,7 +551,10 @@ await server.connect(new StdioServerTransport());
   process.exit(1);
 } finally {
   await fixture.close();
-  await rm(root, { recursive: true, force: true });
+  // Leave the directory first: Windows cannot remove a process's working
+  // directory, and MCP servers started in it run until this process exits.
+  process.chdir(os.tmpdir());
+  await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }).catch(() => {});
 }
 
 console.log(`\nHarness tool selection: ${passed} passed, 0 failed.`);
