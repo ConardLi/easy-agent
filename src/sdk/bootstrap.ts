@@ -23,7 +23,7 @@ import { isProjectTrusted, trustProjectForSession } from "../config/globalState.
 import { setFlagSettings } from "../config/sources.js";
 import { detectWorkspaceRisks } from "../config/workspaceRisks.js";
 import { installHarness } from "../harness/active.js";
-import { harnessEnvironment, resolveHarness } from "../harness/resolve.js";
+import { type HarnessIssue, harnessEnvironment, type ResolvedHarness, resolveHarness } from "../harness/resolve.js";
 import { refreshHookDisableFromSettings } from "../hooks/settings.js";
 import { refreshActivePlugins } from "../plugins/runtime.js";
 import { getSandboxCapability, getSandboxUnavailableReason, loadSandboxSettings } from "../sandbox/index.js";
@@ -34,8 +34,10 @@ import { applySessionRetentionPolicy } from "../session/storage.js";
 import { bootstrapOutputStyles } from "../styles/bootstrap.js";
 import { setAdditionalAllowedRoots } from "../tools/pathUtils.js";
 import { loadEnv } from "../utils/loadEnv.js";
+import { logWarn } from "../utils/log.js";
 import { hardenPrivateDataStorage } from "../utils/privateData.js";
 import { readTrustedStringArraySetting } from "../utils/settings.js";
+import { AgentSdkError } from "./errors.js";
 import type { AgentRuntimeOptions, RuntimeLogger } from "./types.js";
 
 export interface WorkspaceReport {
@@ -55,9 +57,25 @@ export const consoleLogger: RuntimeLogger = {
 
 const errorMessage = (error: unknown): string => (error as Error).message;
 
+function describeIssue(issue: HarnessIssue): string {
+  const where = issue.harness && !issue.message.includes(`"${issue.harness}"`) ? `Agent "${issue.harness}"` : "";
+  const at = issue.path ? `${where ? " " : ""}${issue.path}` : "";
+  return `${where}${at}${where || at ? ": " : ""}${issue.message}`;
+}
+
+/** The errors of a resolved Agent as one line, or undefined when it has none. */
+function agentErrors(resolved: ResolvedHarness): string | undefined {
+  const errors = resolved.issues.filter((issue) => issue.level === "error");
+  return errors.length > 0 ? errors.map(describeIssue).join("; ") : undefined;
+}
+
 export async function loadWorkspace(options: AgentRuntimeOptions): Promise<WorkspaceReport> {
   const { cwd } = options;
   const logger = options.logger ?? consoleLogger;
+  const target = options.harness ?? {};
+  if (target.name !== undefined && target.spec !== undefined) {
+    throw new AgentSdkError("invalid_argument", "Select an Agent by name or by spec, not both.");
+  }
 
   if (options.hardenPrivateData !== false) {
     const privateDataReport = await hardenPrivateDataStorage({ projectCwd: cwd });
@@ -80,15 +98,46 @@ export async function loadWorkspace(options: AgentRuntimeOptions): Promise<Works
   // Environment variables are taken now; settings files are read again on
   // each refresh.
   const env = harnessEnvironment();
-  const resolver = { cwd, resolve: (dir: string) => resolveHarness({ cwd: dir, env }) };
-  try {
-    installHarness(await resolver.resolve(cwd), resolver);
-  } catch (error) {
-    installHarness(null, resolver);
-    logger.warn(
-      `[easy-agent] ⚠ Could not resolve Agent settings: ${errorMessage(error)}. Using environment variables and built-in defaults.`,
-    );
+  const selection =
+    target.spec !== undefined ? { spec: target.spec } : target.name !== undefined ? { name: target.name } : {};
+  const selected = "spec" in selection || "name" in selection;
+  // A selected Agent that stops resolving (its definition was edited or
+  // removed) keeps its last good settings; the problem is reported once.
+  let running = false;
+  let reported: string | undefined;
+  const resolver = {
+    cwd,
+    resolve: async (dir: string) => {
+      const resolved = await resolveHarness({ cwd: dir, env, ...selection });
+      const problem = selected ? agentErrors(resolved) : undefined;
+      if (problem === undefined) {
+        if (nodePath.resolve(dir) === nodePath.resolve(cwd)) reported = undefined;
+        return resolved;
+      }
+      if (running && problem !== reported) {
+        reported = problem;
+        logWarn(`The selected Agent no longer resolves (${problem}); keeping its previous settings.`);
+      }
+      throw new AgentSdkError("harness", `The selected Agent does not resolve: ${problem}`);
+    },
+  };
+  if (selected) {
+    // Running another Agent than the one asked for would be wrong, so a
+    // selected Agent that does not resolve stops the startup.
+    const resolved = await resolver.resolve(cwd);
+    installHarness(resolved, resolver);
+    for (const issue of resolved.issues) logger.warn(`[easy-agent] ⚠ ${describeIssue(issue)}`);
+  } else {
+    try {
+      installHarness(await resolver.resolve(cwd), resolver);
+    } catch (error) {
+      installHarness(null, resolver);
+      logger.warn(
+        `[easy-agent] ⚠ Could not resolve Agent settings: ${errorMessage(error)}. Using environment variables and built-in defaults.`,
+      );
+    }
   }
+  running = true;
 
   let ignoredProjectConfig: string[] = [];
   if (!projectTrusted) {

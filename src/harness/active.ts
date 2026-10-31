@@ -103,7 +103,9 @@ export interface HarnessForOptions {
  * now). For another directory, such as a sub-agent's worktree, the runtime's
  * Agent is resolved for that directory. Without a runtime, the `default`
  * Agent is resolved from that directory's settings files and the process
- * environment. Throws when the settings cannot be resolved.
+ * environment. When the runtime's own Agent cannot be resolved again, its
+ * installed snapshot is returned; otherwise a failure throws, so a caller
+ * never falls back to defaults it did not ask for.
  */
 export async function harnessFor(cwd: string, options: HarnessForOptions = {}): Promise<ResolvedHarness> {
   const how = resolver;
@@ -111,7 +113,13 @@ export async function harnessFor(cwd: string, options: HarnessForOptions = {}): 
   if (!how) return resolveHarness({ cwd: dir });
   if (dir !== how.cwd) return how.resolve(dir);
   if (installed && !options.current) return installed;
-  return how.resolve(dir);
+  try {
+    return await how.resolve(dir);
+  } catch (error) {
+    // The last snapshot the runtime installed, never a default.
+    if (installed) return installed;
+    throw error;
+  }
 }
 
 /** The value of one Harness key in `harnessFor(cwd, options)`. */

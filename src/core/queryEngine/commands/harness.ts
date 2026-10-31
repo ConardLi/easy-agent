@@ -1,5 +1,9 @@
-/** `/harness [name|file]` and `/harness diff <a> <b>`: the same views as `eagent harness`. */
+/**
+ * `/harness [name|file]` and `/harness diff <a> <b>`: the same views as
+ * `eagent harness`. Without an argument, the Agent this session runs.
+ */
 
+import { harnessFor } from "../../../harness/active.js";
 import { listBuiltInComponents } from "../../../harness/components.js";
 import { diffHarnesses } from "../../../harness/diff.js";
 import { formatHarness, formatHarnessDiff } from "../../../harness/format.js";
@@ -9,7 +13,7 @@ import type { QueryEngineEvent } from "../types.js";
 import type { CommandContext } from "./context.js";
 
 async function resolveArgument(argument: string | undefined, cwd: string): Promise<ResolvedHarness> {
-  if (argument === undefined) return resolveHarness({ cwd });
+  if (argument === undefined) return harnessFor(cwd, { current: true });
   return resolveHarness({ cwd, ...(await harnessTarget(argument, cwd)) });
 }
 

@@ -58,6 +58,8 @@ An editor cannot show Easy Agent's trust prompt, so ACP mode uses the trust deci
 
 To trust a workspace, either open it once in the terminal with `eagent` and accept the prompt, or add `--trust-project-config` to the agent's arguments to trust whichever workspace the editor opens, for that process only.
 
+Add `--harness <name|file>` to the agent's arguments to run another Agent than `default` (see [Agent specs](./configuration.md#agent-specs-harnesses)). An Agent that does not resolve makes `session/new` fail with the reason.
+
 ## What maps to what
 
 | Easy Agent | ACP |

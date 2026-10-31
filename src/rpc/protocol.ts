@@ -388,6 +388,14 @@ export const MethodParams = {
     interactions: z.array(InteractionKind).optional(),
     /** "wait" connects MCP servers and plugin services before answering. Defaults to "background". */
     services: z.enum(["background", "wait"]).optional(),
+    /**
+     * Experimental. The Agent the runtime's sessions use: a name from `harnesses` in the
+     * user settings, or a spec over its `extends`. Defaults to `--harness`, then `default`.
+     */
+    harness: z
+      .object({ name: z.string().min(1).optional(), spec: z.record(z.string(), z.unknown()).optional() })
+      .refine((target) => target.name === undefined || target.spec === undefined, "name and spec are exclusive")
+      .optional(),
   }),
   "runtime/capabilities": z.object({}),
   "runtime/inventory": z.object({}),

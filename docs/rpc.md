@@ -46,7 +46,7 @@ Requests sent while `initialize` is running wait for it to finish, so a client m
 
 | Method | Params | Result |
 | --- | --- | --- |
-| `initialize` | `protocolVersion`, `clientInfo?`, `trust?`, `interactions?`, `services?` | `protocolVersion`, `sessionProtocolVersion`, `serverInfo`, `workspace`, `capabilities` |
+| `initialize` | `protocolVersion`, `clientInfo?`, `trust?`, `interactions?`, `services?`, `harness?` | `protocolVersion`, `sessionProtocolVersion`, `serverInfo`, `workspace`, `capabilities` |
 | `runtime/capabilities` | | built-in commands, skills, user commands, sub-agent types, output style |
 | `runtime/inventory` | | skills, commands, sub-agents, output styles, MCP servers, plugins, hooks, rule files, and tools, each with its source, path, whether it is in effect and why not, and token estimates; see the [SDK inventory](./sdk.md#inventory) |
 | `runtime/harness` | `name?`, `spec?` | an Agent resolved like `getHarness()`: every setting with its value and source, ignored values and reasons, issues, and a hash; see the [SDK](./sdk.md#agents). Experimental |
@@ -96,6 +96,7 @@ Requests sent while `initialize` is running wait for it to finish, so a client m
 - `trust`: `"persisted"` (default) uses the trust decision saved for the workspace. `"session"` trusts it for this process only, like `--trust-project-config`. An untrusted workspace ignores project settings, `.env` credentials, hooks, project MCP servers, plugin executables, and model profiles; `workspace.ignoredProjectConfig` lists what was ignored.
 - `interactions`: the request kinds the client answers, from `permission`, `plan_approval`, `question`. Default: all three. Kinds left out get the safe default without being published: permission and plan approval are denied, questions are cancelled.
 - `services`: `"background"` (default) connects MCP servers and plugin services after answering, so a slow server does not delay startup; their tools appear once connected. `"wait"` connects them before answering.
+- `harness` (experimental): the Agent the sessions use, `{ name }` from `harnesses` in the user settings or `{ spec }` resolved over its `extends`; not both. Defaults to the `--harness` the server was started with, then `default`. An Agent that does not resolve fails `initialize` with `-32000` and data code `harness`; the client can call `initialize` again. See [Agent specs](./configuration.md#agent-specs-harnesses).
 
 `session/send` accepts `images`, a list of `{ data, mimeType }` with base64 PNG, JPEG, GIF, or WebP data; the model sees them after the text. With `queue: true` it waits for a running turn to finish instead of failing with `busy`. Without it, a send while the session is busy fails with error data code `busy`.
 

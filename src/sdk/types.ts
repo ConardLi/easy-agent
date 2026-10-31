@@ -122,9 +122,16 @@ export interface AgentRuntimeOptions {
   services?: StartServicesOptions | false;
   /** Where startup warnings go. Defaults to the console. */
   logger?: RuntimeLogger;
+  /**
+   * Experimental. The Agent this runtime's sessions use: a name from
+   * `harnesses` in the user settings, or a spec object resolved over its
+   * `extends`. Defaults to `default`. Creation fails with code `harness` when
+   * the Agent does not resolve.
+   */
+  harness?: HarnessTarget;
 }
 
-/** Experimental. An Agent by name (default `default`), or a spec object resolved over its `extends`. */
+/** Experimental. An Agent by name (default `default`), or a spec object resolved over its `extends`. Not both. */
 export interface HarnessTarget {
   name?: string;
   spec?: unknown;

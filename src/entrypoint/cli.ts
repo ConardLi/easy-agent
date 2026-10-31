@@ -70,11 +70,14 @@ Options:
                               SendMessage tools). Equivalent
                               to setting EASY_AGENT_TEAMS=1.
   --dump-system-prompt        Print the assembled system prompt and exit
+  --harness <name|file>       Run this Agent: a name from "harnesses" in the user
+                              settings, or a spec file (path or .json) used for
+                              this run only. Default: default
 
 Agents:
   eagent harness show [name|file] [--json]
                               Show every setting an Agent resolves to and where
-                              each comes from (no option selects an Agent yet)
+                              each comes from
   eagent harness diff <a> <b> [--json]
                               Compare the resolved settings of two Agents
 
@@ -249,6 +252,26 @@ Settings keys (in ~/.easy-agent/settings.json or <cwd>/.easy-agent/settings.json
   if (permissionMode) flagSettings.mode = permissionMode;
   setFlagSettings(flagSettings);
 
+  // `--harness <name|file>`: the Agent this run uses. A file is a spec for
+  // this run only; nothing is written to the settings.
+  let harness: { name: string } | { spec: unknown } | undefined;
+  const harnessIndex = process.argv.indexOf("--harness");
+  if (harnessIndex !== -1) {
+    const value = process.argv[harnessIndex + 1];
+    if (!value || value.startsWith("-")) {
+      console.error("[easy-agent] --harness requires an Agent name or a spec file.");
+      process.exit(1);
+    }
+    const { harnessTarget } = await import("../harness/target.js");
+    try {
+      const target = await harnessTarget(value, process.cwd());
+      harness = "spec" in target ? { spec: target.spec } : { name: target.name };
+    } catch (error) {
+      console.error(`[easy-agent] --harness: ${error instanceof Error ? error.message : String(error)}`);
+      process.exit(1);
+    }
+  }
+
   // Resolve workspace trust before loading project-controlled environment or
   // trust-sensitive settings. Non-interactive invocations use the persisted
   // trust decision unless the caller explicitly opts in for this process.
@@ -283,20 +306,31 @@ Settings keys (in ~/.easy-agent/settings.json or <cwd>/.easy-agent/settings.json
   }
   // Trust and the flag settings layer are already settled above, and local
   // data was hardened first thing, so the workspace bootstrap only loads.
-  const workspaceOptions = { cwd, pluginDirs, hardenPrivateData: false, services: false } as const;
+  const workspaceOptions = {
+    cwd,
+    pluginDirs,
+    hardenPrivateData: false,
+    services: false,
+    ...(harness ? { harness } : {}),
+  } as const;
 
   // RPC mode bootstraps the workspace itself when the client calls
   // `initialize`, so the client can pick the trust mode first.
   if (isRpcMode) {
     const { runRpcOverStdio } = await import("../rpc/stdio.js");
-    await runRpcOverStdio({ cwd, pluginDirs, version: VERSION });
+    await runRpcOverStdio({ cwd, pluginDirs, version: VERSION, ...(harness ? { harness } : {}) });
     return;
   }
 
   // ACP mode creates the runtime for the directory of the editor's first session.
   if (isAcpMode) {
     const { runAcpOverStdio } = await import("../acp/stdio.js");
-    await runAcpOverStdio({ version: VERSION, pluginDirs, trustWorkspace: trustProjectConfig });
+    await runAcpOverStdio({
+      version: VERSION,
+      pluginDirs,
+      trustWorkspace: trustProjectConfig,
+      ...(harness ? { harness } : {}),
+    });
     return;
   }
 

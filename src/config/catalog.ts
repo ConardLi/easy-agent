@@ -252,7 +252,7 @@ export const SETTING_CATALOG: Record<string, SettingCatalogEntry> = {
     category: "agent",
     security: true,
     scope: "user-file",
-    summary: "User-defined Agents: name to Harness spec. Not selectable yet.",
+    summary: "User-defined Agents: name to Harness spec, selected with --harness.",
   },
 };
 
