@@ -26,7 +26,9 @@ export type AgentSdkErrorCode =
   /** The call needs project configuration, which an untrusted workspace ignores. */
   | "untrusted"
   /** A plugin or marketplace operation failed: not found, invalid, changed since the preview, or not confirmed. */
-  | "plugin";
+  | "plugin"
+  /** The selected Agent does not resolve: unknown name, invalid spec, or a broken `extends` chain. */
+  | "harness";
 
 export class AgentSdkError extends Error {
   readonly code: AgentSdkErrorCode;

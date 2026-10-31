@@ -73,6 +73,22 @@
                     "background",
                     "wait"
                   ]
+                },
+                "harness": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "spec": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {}
+                    }
+                  }
                 }
               },
               "required": [

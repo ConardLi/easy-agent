@@ -53,6 +53,7 @@ const runtime = await createAgentRuntime({
   pluginDirs: [],            // extra plugin directories
   services: { mcpServers: true, wait: true }, // or false, then call runtime.startServices()
   logger: { warn, error },   // startup warnings; defaults to the console
+  harness: { name: "reviewer" }, // experimental: the Agent sessions use, or { spec }; default "default"
 });
 ```
 
@@ -77,7 +78,7 @@ const runtime = await createAgentRuntime({
 | `setWorkspaceTrust(trusted)` | Save or revoke trust for the workspace; it applies to the next runtime |
 | `checkModel(model)`, `listModels(model)` | Send a one-token request through a model handle; list the models its provider offers |
 | `getInventory()` | Everything the runtime has loaded, see [Inventory](#inventory) |
-| `getHarness({ name?, spec? })` / `diffHarness(a, b)` | Resolve an Agent and compare two; see [Agents](#agents). Their shape may still change while Agent selection is built |
+| `getHarness({ name?, spec? })` / `diffHarness(a, b)` | Resolve an Agent and compare two; see [Agents](#agents). Experimental |
 | `reload()` | Reload skills, commands, sub-agents, output styles, and plugins from disk. Open sessions use the new set from their next turn; returns the registry sizes, plugin MCP servers started and stopped, and plugin errors |
 | `approveMcpServer(name, approved, scope?)` | Approve or reject a server from the project's `.mcp.json`. The decision is saved in `enabledMcpjsonServers` or `disabledMcpjsonServers` of `scope` (default `local`); an approved server connects right away, a rejected one stops. Rejects with `untrusted` in an untrusted workspace |
 | `reconnectMcpServer(name)` | Drop a registered MCP server's connection and connect again; returns the status, the error if it failed, and the tool count |
@@ -103,9 +104,11 @@ Items that occupy context carry token counts as `{ value, estimated }`: a skill'
 
 ### Agents
 
-`getHarness()` returns the Agent this runtime's sessions use, the built-in `default`, with the settings files as they are now and the environment variables as they were when the runtime started; `{ name }` resolves an Agent from the `harnesses` key of the user settings file, and `{ spec }` resolves a spec object over its `extends` (see [Agent specs](./configuration.md#agent-specs-harnesses)). The result has the Agent `name`, the `chain` of specs applied over the built-in default, a `hash` of all values, `issues` (unknown names, `extends` cycles, invalid specs, keys this version does not apply yet), and `values`: for each key such as `model.main` or `permissions.deny`, the `value`, the layer it came from (`source`: `built-in`, `user`, `harness`, `project`, `local`, `environment`, `flag`, `policy`) with a `detail` such as the settings key, whether this version `applied` it, every accepted `contribution`, the `ignored` values with a `reason`, and `overridesHarness` when a project or local setting replaced the Agent's value. `diffHarness(a, b)` lists the keys whose values differ.
+`createAgentRuntime({ harness })` selects the Agent this runtime's sessions use: `{ name }` from the `harnesses` key of the user settings file, or `{ spec }`, a spec object resolved over its `extends`; without it, `default`. Every Agent setting the sessions read comes from that Agent. A selection that does not resolve (unknown name, invalid spec, broken `extends`) rejects with code `harness`; passing both `name` and `spec` rejects with `invalid_argument`. Keys the Agent sets that this version does not apply yet go to the `logger` as warnings.
 
-No session uses an Agent other than the default yet, so `{ name }` and `{ spec }` describe configuration; they do not change what a session does.
+`getHarness()` returns the Agent this runtime's sessions use, with the settings files as they are now and the environment variables as they were when the runtime started; `{ name }` resolves an Agent from the `harnesses` key of the user settings file, and `{ spec }` resolves a spec object over its `extends` (see [Agent specs](./configuration.md#agent-specs-harnesses)). The result has the Agent `name`, the `chain` of specs applied over the built-in default, a `hash` of all values, `issues` (unknown names, `extends` cycles, invalid specs, keys this version does not apply yet), and `values`: for each key such as `model.main` or `permissions.deny`, the `value`, the layer it came from (`source`: `built-in`, `user`, `harness`, `project`, `local`, `environment`, `flag`, `policy`) with a `detail` such as the settings key, whether this version `applied` it, every accepted `contribution`, the `ignored` values with a `reason`, and `overridesHarness` when a project or local setting replaced the Agent's value. `diffHarness(a, b)` lists the keys whose values differ.
+
+`getHarness({ name })` and `getHarness({ spec })` resolve other Agents for comparison; they do not change what the runtime's sessions use.
 
 ## Sessions
 
@@ -233,4 +236,4 @@ The SDK uses the same checks as the terminal:
 
 ## Errors
 
-Errors raised by the SDK are `AgentSdkError` with a stable `code`: `busy`, `closed`, `replaced`, `permission_settings`, `session_restore`, `session_storage`, `already_open`, `runtime_active`, `not_found` (no saved session, `.mcp.json` server, or MCP server with that name), `invalid_argument` (for example a session id that is not one), `provider` (a model provider request failed), `untrusted` (the call needs project configuration an untrusted workspace ignores), `plugin` (a plugin or marketplace operation failed: not found, invalid, changed since the preview). Use `isAgentSdkError(error, code)` to check. A turn that fails for any other reason rejects `send()` with the original error and emits `turn_failed`.
+Errors raised by the SDK are `AgentSdkError` with a stable `code`: `busy`, `closed`, `replaced`, `permission_settings`, `session_restore`, `session_storage`, `already_open`, `runtime_active`, `not_found` (no saved session, `.mcp.json` server, or MCP server with that name), `invalid_argument` (for example a session id that is not one), `provider` (a model provider request failed), `untrusted` (the call needs project configuration an untrusted workspace ignores), `plugin` (a plugin or marketplace operation failed: not found, invalid, changed since the preview), `harness` (the Agent selected with `createAgentRuntime({ harness })` does not resolve). Use `isAgentSdkError(error, code)` to check. A turn that fails for any other reason rejects `send()` with the original error and emits `turn_failed`.

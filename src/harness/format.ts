@@ -46,7 +46,6 @@ export function formatHarness(resolved: ResolvedHarness, components: readonly Bu
     `Agent: ${resolved.name}${builtInOnly ? " (built-in)" : ` (${["built-in default", ...resolved.chain].join(" → ")})`}`,
   );
   lines.push(`Hash: ${resolved.hash}`);
-  lines.push("No option selects an Agent yet; the values below show what this one resolves to.");
 
   const errors = resolved.issues.filter((issue) => issue.level === "error");
   const warnings = resolved.issues.filter((issue) => issue.level === "warning");

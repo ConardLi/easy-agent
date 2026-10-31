@@ -554,6 +554,40 @@ try {
     assert.equal(await trusted.stop(), 0);
   });
 
+  await check("--harness selects the Agent the editor's sessions use; an unknown one fails session/new", async () => {
+    const userSettings = path.join(home, ".easy-agent", "settings.json");
+    const saved = await readFile(userSettings, "utf8");
+    await writeFile(
+      userSettings,
+      JSON.stringify({
+        ...JSON.parse(saved),
+        harnesses: { reviewer: { model: { main: "acp-reviewer" }, permissions: { deny: ["Edit"] } } },
+      }),
+    );
+    await writeFile(path.join(cwd, "notes.txt"), "draft\n");
+    try {
+      const selected = start({ args: ["--harness", "reviewer"] });
+      await selected.initialize();
+      const id = await selected.newSession();
+      fixture.script([
+        { kind: "tool", name: "Edit", input: { file_path: "notes.txt", old_string: "draft", new_string: "edited" } },
+        { kind: "text", text: "Blocked." },
+      ]);
+      await selected.prompt(id, "Edit it.");
+      assert.equal(fixture.requests.at(-1)?.body.model, "acp-reviewer", "the Agent's model");
+      assert.equal(selected.permissionRequests.length, 0, "the Agent's deny rule answers without asking");
+      assert.equal(await readFile(path.join(cwd, "notes.txt"), "utf8"), "draft\n");
+      assert.equal(await selected.stop(), 0);
+
+      const ghost = start({ args: ["--harness", "ghost"] });
+      await ghost.initialize();
+      await assert.rejects(ghost.newSession(), /no Agent named "ghost"/);
+      assert.equal(await ghost.stop(), 0);
+    } finally {
+      await writeFile(userSettings, saved);
+    }
+  });
+
   console.log("\n[6] authentication");
 
   await check("without credentials, sessions need authentication and a terminal login is offered", async () => {

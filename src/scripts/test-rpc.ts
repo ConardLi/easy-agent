@@ -928,6 +928,91 @@ try {
     assert.equal(await piped.exited, 0);
   });
 
+  await check("initialize and --harness select the Agent; one that does not resolve fails initialize", async () => {
+    const userSettings = path.join(home, ".easy-agent", "settings.json");
+    const saved = await readFile(userSettings, "utf8");
+    const specFile = path.join(root, "rpc-agent.json");
+    await writeFile(
+      userSettings,
+      JSON.stringify({
+        ...JSON.parse(saved),
+        harnesses: {
+          reviewer: { model: { main: "reviewer-model" }, permissions: { deny: ["Bash"] } },
+          looped: { extends: "loopback" },
+          loopback: { extends: "looped" },
+        },
+      }),
+    );
+    await writeFile(specFile, JSON.stringify({ extends: "reviewer", model: { main: "file-model" } }));
+    const agentOf = async (client: RpcClient) => {
+      const harness = await client.call<Json>("runtime/harness");
+      const values = harness.values as Record<string, Json>;
+      const created = await client.call<{ state: Json }>("session/create", { persist: false });
+      return {
+        name: harness.name,
+        model: created.state.model,
+        deny: values["permissions.deny"]?.value,
+      };
+    };
+    try {
+      const named = startClient();
+      await named.initialize({ harness: { name: "reviewer" } });
+      assert.deepEqual(await agentOf(named), { name: "reviewer", model: "reviewer-model", deny: ["WebFetch", "Bash"] });
+      assert.equal(await named.shutdown(), 0);
+
+      const inline = startClient();
+      await inline.initialize({ harness: { spec: { model: { main: "inline-model" } } } });
+      assert.deepEqual(await agentOf(inline), { name: "(inline)", model: "inline-model", deny: ["WebFetch"] });
+      assert.equal(await inline.shutdown(), 0);
+
+      const flagged = startClient(["--harness", specFile]);
+      await flagged.initialize();
+      assert.deepEqual(
+        await agentOf(flagged),
+        { name: "(inline)", model: "file-model", deny: ["WebFetch", "Bash"] },
+        "--harness <file> is the default for initialize",
+      );
+      assert.equal(await flagged.shutdown(), 0);
+
+      const overridden = startClient(["--harness", "reviewer"]);
+      await overridden.initialize({ harness: { name: "default" } });
+      assert.equal((await agentOf(overridden)).name, "default", "the initialize parameter wins over --harness");
+      assert.equal(await overridden.shutdown(), 0);
+
+      const ghost = startClient();
+      const unknown = await rejects(
+        ghost.initialize({ harness: { name: "ghost" } }),
+        protocol.RpcErrorCode.AgentError,
+        "harness",
+      );
+      assert.match(unknown.message, /no Agent named "ghost"/);
+      await rejects(ghost.call("session/list"), protocol.RpcErrorCode.NotInitialized);
+      await ghost.initialize({ harness: { name: "reviewer" } });
+      assert.equal((await agentOf(ghost)).name, "reviewer", "initialize can be retried after a failed selection");
+      assert.equal(await ghost.shutdown(), 0);
+
+      const looped = startClient();
+      const cycle = await rejects(
+        looped.initialize({ harness: { name: "looped" } }),
+        protocol.RpcErrorCode.AgentError,
+        "harness",
+      );
+      assert.match(cycle.message, /extends cycle/);
+      await rejects(
+        looped.call("initialize", { protocolVersion: 1, harness: { name: "reviewer", spec: {} } }, { valid: false }),
+        protocol.RpcErrorCode.InvalidParams,
+      );
+      looped.child.stdin.end();
+      assert.equal(await looped.exited, 0);
+
+      const missing = startClient(["--harness", path.join(root, "missing.json")]);
+      assert.equal(await missing.exited, 1);
+      assert.match(missing.stderr, /--harness: cannot read/);
+    } finally {
+      await writeFile(userSettings, saved);
+    }
+  });
+
   await check("the --rpc flag cannot be combined with --print", async () => {
     const bad = startClient(["--print", "hi"]);
     assert.equal(await bad.exited, 1);

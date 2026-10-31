@@ -1219,20 +1219,25 @@ await check(
       await refreshHarness();
       assert.equal(await features.resolveRoleModel(cwd, "background", "fallback"), "bg", "after the next refresh");
 
-      installHarness(snapshot, {
+      const unreadable = {
         cwd,
-        resolve: async () => {
+        resolve: async (): Promise<ResolvedHarness> => {
           throw new Error("unreadable");
         },
-      });
-      await assert.rejects(
-        loadPermissionSettings(cwd),
-        /unreadable/,
-        "permission settings never fall back to defaults",
+      };
+      installHarness(snapshot, unreadable);
+      assert.deepEqual(
+        (await loadPermissionSettings(cwd)).deny,
+        ["Bash(rm*)"],
+        "an unreadable re-read keeps the installed Agent, never the defaults",
       );
-      assert.equal(await harnessFor(cwd), snapshot);
+      assert.equal(await harnessFor(cwd, { current: true }), snapshot);
+      await assert.rejects(harnessFor(other), /unreadable/, "another directory has no snapshot to fall back to");
       await fileHistory.configureFileHistory(cwd, "harness-unreadable");
       assert.equal(fileHistory.fileHistoryEnabled(), false, "unreadable settings fall back to the installed Agent");
+
+      installHarness(null, unreadable);
+      await assert.rejects(loadPermissionSettings(cwd), /unreadable/, "with no snapshot, the failure surfaces");
 
       installHarness(null, resolver);
       asked.length = 0;
@@ -1247,6 +1252,153 @@ await check(
       for (const name of ENV_NAMES) delete process.env[name];
       await writeJson(userSettings, {});
       await untrustProject(other);
+      resetSettingsCache();
+    }
+  },
+);
+
+await check(
+  "a selected Agent drives the runtime: model, permissions, output style, ToolSearch, worktrees",
+  async () => {
+    const { createAgentRuntime, isAgentSdkError } = await import("../sdk/index.js");
+    const { createAnthropicFixture, FIXTURE_MODEL } = await import("./fixtures/anthropicFixture.js");
+    const { existsSync } = await import("node:fs");
+    const fixture = createAnthropicFixture();
+    await fixture.start();
+    const userSettings = path.join(home, ".easy-agent", "settings.json");
+    const other = path.join(root, "selected-worktree");
+    await mkdir(path.join(other, ".easy-agent"), { recursive: true });
+    for (const name of ENV_NAMES) delete process.env[name];
+    process.env.ANTHROPIC_AUTH_TOKEN = "test-token";
+    process.env.EASY_AGENT_DISABLE_HOOKS = "1";
+    process.env.ANTHROPIC_MODEL = FIXTURE_MODEL;
+    const harnesses = {
+      reviewer: {
+        model: { main: "reviewer-model" },
+        permissions: { deny: ["Write"] },
+        outputStyle: "Explanatory",
+        features: { toolSearch: "off" },
+        tools: { exclude: ["WebFetch"] },
+      },
+      looped: { extends: "loopback" },
+      loopback: { extends: "looped" },
+    };
+    await writeJson(userSettings, { harnesses });
+    await writeJson(path.join(cwd, ".easy-agent", "settings.json"), {});
+    await writeJson(path.join(cwd, ".easy-agent", "settings.local.json"), {});
+    resetSettingsCache();
+    const warnings: string[] = [];
+    const logger = { warn: (message: string) => warnings.push(message), error() {} };
+    const target = path.join(cwd, "written-by-agent.txt");
+    const writeCall = async (runtime: Awaited<ReturnType<typeof createAgentRuntime>>) => {
+      const session = await runtime.createSession({
+        persist: false,
+        handlers: { permission: () => ({ decision: "allow_once" }) },
+      });
+      fixture.script([
+        { kind: "tool", name: "Write", input: { file_path: target, content: "x" } },
+        { kind: "text", text: "done" },
+      ]);
+      await session.send("write it");
+      await session.close();
+      const written = existsSync(target);
+      await rm(target, { force: true });
+      return written;
+    };
+
+    try {
+      const plain = await createAgentRuntime({ cwd, services: false, logger });
+      assert.equal(plain.getCapabilities().outputStyle, "default");
+      assert.equal(await writeCall(plain), true, "without a selection the Write is allowed");
+      await plain.dispose();
+
+      const runtime = await createAgentRuntime({ cwd, services: false, logger, harness: { name: "reviewer" } });
+      try {
+        assert.equal((await runtime.getHarness()).name, "reviewer");
+        assert.equal(await runtime.resolveModel(), "reviewer-model");
+        assert.equal(await writeCall(runtime), false, "the Agent's deny rule blocks the Write");
+        assert.equal(fixture.requests.at(-1)?.body.model, "reviewer-model", "requests use the Agent's model");
+        assert.equal(runtime.getCapabilities().outputStyle, "Explanatory");
+        const inventory = await runtime.getInventory();
+        assert.equal(inventory.outputStyles.find((style) => style.active)?.name, "Explanatory");
+        assert.ok(
+          inventory.tools.every((tool) => !tool.deferred),
+          "toolSearch off: nothing is deferred",
+        );
+        assert.ok(
+          warnings.some((message) =>
+            /tools\.exclude is set by Agent "reviewer", but this build does not apply it/.test(message),
+          ),
+          "keys the Agent sets but this build ignores are reported at startup",
+        );
+        assert.equal((await harnessFor(other)).name, "reviewer", "another directory resolves the same Agent");
+        const viewer = await runtime.createSession({ persist: false });
+        const outputs: string[] = [];
+        viewer.subscribe((event) => {
+          if (event.type === "command_output") outputs.push(event.message);
+        });
+        await viewer.send("/harness");
+        await viewer.close();
+        assert.match(outputs.join("\n"), /^Agent: reviewer/m, "/harness shows the selected Agent");
+
+        // The Agent's definition breaks while the runtime runs: its last good settings stay.
+        await writeJson(userSettings, {});
+        resetSettingsCache();
+        const reported: string[] = [];
+        const consoleError = console.error;
+        console.error = (message: unknown) => reported.push(String(message));
+        try {
+          assert.equal(harnessValue(await refreshHarness(), "outputStyle"), "Explanatory");
+          assert.deepEqual((await loadPermissionSettings(cwd)).deny, ["Write"], "never the defaults");
+          assert.equal((await runtime.getHarness()).name, "reviewer");
+        } finally {
+          console.error = consoleError;
+        }
+        assert.equal(reported.length, 1, "the broken Agent is reported once");
+        assert.match(reported[0]!, /no Agent named "reviewer".*keeping its previous settings/);
+      } finally {
+        await runtime.dispose();
+      }
+      assert.equal(activeHarness().name, "default", "dispose removes the selected Agent");
+
+      await writeJson(userSettings, { harnesses });
+      resetSettingsCache();
+      const inline = await createAgentRuntime({
+        cwd,
+        services: false,
+        logger,
+        harness: { spec: { extends: "reviewer", outputStyle: "Learning" } },
+      });
+      assert.deepEqual(harnessValue(await inline.getHarness(), "permissions.deny"), ["Write"]);
+      assert.equal(inline.getCapabilities().outputStyle, "Learning");
+      assert.equal(await writeCall(inline), false, "an inline spec inherits through extends");
+      await inline.dispose();
+
+      const failures: [object, string, RegExp][] = [
+        [{ name: "ghost" }, "harness", /no Agent named "ghost"/],
+        [{ name: "looped" }, "harness", /extends cycle/],
+        [{ spec: { extends: "missing" } }, "harness", /no Agent named "missing"/],
+        [{ spec: { nope: true } }, "harness", /nope/],
+        [{ name: "reviewer", spec: {} }, "invalid_argument", /not both/],
+      ];
+      for (const [harness, code, message] of failures) {
+        await assert.rejects(
+          createAgentRuntime({ cwd, services: false, logger, harness }),
+          (error: unknown) => isAgentSdkError(error) && error.code === code && message.test(error.message),
+          JSON.stringify(harness),
+        );
+        assert.equal(activeHarness().name, "default", "a failed start leaves no Agent installed");
+      }
+      const after = await createAgentRuntime({ cwd, services: false, logger });
+      assert.equal((await after.getHarness()).name, "default", "and the next runtime starts normally");
+      await after.dispose();
+    } finally {
+      await fixture.close();
+      for (const name of [...ENV_NAMES, "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL", "EASY_AGENT_DISABLE_HOOKS"]) {
+        delete process.env[name];
+      }
+      await writeJson(userSettings, {});
+      await rm(target, { force: true });
       resetSettingsCache();
     }
   },
@@ -1396,6 +1548,93 @@ await check("eagent harness show and diff print the views and exit non-zero on e
   assert.equal(usage.code, 1);
   assert.match(usage.stderr, /Usage:\n {2}eagent harness show/);
 });
+
+await check(
+  "--harness selects the Agent for Headless, /harness, and --dump-system-prompt; bad selections exit 1",
+  async () => {
+    const { createAnthropicFixture } = await import("./fixtures/anthropicFixture.js");
+    const fixture = createAnthropicFixture();
+    await fixture.start();
+    const baseURL = process.env.ANTHROPIC_BASE_URL!;
+    delete process.env.ANTHROPIC_BASE_URL;
+    await writeJson(path.join(home, ".easy-agent", "settings.json"), {
+      harnesses: {
+        reviewer: { model: { main: "review-model" }, outputStyle: "Explanatory" },
+        broken: { extends: "nowhere" },
+      },
+    });
+    await writeFile(
+      path.join(cwd, "agent.json"),
+      JSON.stringify({ extends: "reviewer", model: { main: "file-model" } }),
+    );
+    const run = (...args: string[]) =>
+      new Promise<{ code: number; stdout: string; stderr: string }>((resolvePromise) => {
+        const child = execFile(
+          process.execPath,
+          ["--import", import.meta.resolve("tsx"), CLI, ...args],
+          {
+            cwd,
+            timeout: 60_000,
+            env: {
+              ...process.env,
+              HOME: home,
+              USERPROFILE: home,
+              NO_COLOR: "1",
+              ANTHROPIC_BASE_URL: baseURL,
+              ANTHROPIC_AUTH_TOKEN: "test-token",
+              ANTHROPIC_MODEL: "env-model",
+              EASY_AGENT_DISABLE_HOOKS: "1",
+            },
+          },
+          (error, stdout, stderr) => {
+            const code = error ? (typeof error.code === "number" ? error.code : 1) : 0;
+            resolvePromise({ code, stdout, stderr });
+          },
+        );
+        child.stdin?.end();
+      });
+    try {
+      fixture.script([
+        { kind: "text", text: "plain" },
+        { kind: "text", text: "named" },
+        { kind: "text", text: "file" },
+      ]);
+      const plain = await run("-p", "hi");
+      assert.equal(plain.code, 0, plain.stderr);
+      const named = await run("-p", "hi", "--harness", "reviewer");
+      assert.equal(named.code, 0, named.stderr);
+      const file = await run("-p", "hi", "--harness", "agent.json");
+      assert.equal(file.code, 0, file.stderr);
+      assert.deepEqual(
+        fixture.requests.map((request) => request.body.model),
+        ["env-model", "review-model", "file-model"],
+      );
+      assert.doesNotMatch(JSON.stringify(fixture.requests[0]?.body.system), /Output Style: Explanatory/);
+      assert.match(JSON.stringify(fixture.requests[1]?.body.system), /Output Style: Explanatory/);
+
+      const prompt = await run("--dump-system-prompt", "--harness", "reviewer");
+      assert.match(prompt.stdout, /Output Style: Explanatory/);
+
+      const failures: [string[], RegExp][] = [
+        [["--harness", "ghost"], /no Agent named "ghost"/],
+        [["--harness", "broken"], /no Agent named "nowhere"/],
+        [["--harness", "missing.json"], /--harness: cannot read/],
+        [["--harness"], /--harness requires an Agent name or a spec file/],
+      ];
+      for (const [args, message] of failures) {
+        const failed = await run("-p", "hi", ...args);
+        assert.equal(failed.code, 1, args.join(" "));
+        assert.match(failed.stderr, message);
+      }
+      assert.equal(fixture.requests.length, 3, "a failed selection sends nothing to the model");
+    } finally {
+      process.env.ANTHROPIC_BASE_URL = baseURL;
+      await fixture.close();
+      delete process.env.ANTHROPIC_BASE_URL;
+      await rm(path.join(cwd, "agent.json"), { force: true });
+    }
+  },
+);
 
 console.log(`\nHarness resolver: ${passed} passed, 0 failed.`);
 setFlagSettings(null);

@@ -20,6 +20,7 @@ import {
   type AgentRuntime,
   type AgentRuntimeOptions,
   type AgentSession,
+  type HarnessTarget,
   type InteractionKind,
   type InteractionResponse,
   type SessionEvent,
@@ -45,6 +46,8 @@ export interface RpcServerOptions {
   createRuntime(options: AgentRuntimeOptions): Promise<AgentRuntime>;
   /** Diagnostics that must not go to the protocol stream. */
   logError(message: string): void;
+  /** `--harness`: the Agent used when `initialize` names none. */
+  harness?: HarnessTarget;
 }
 
 export { RpcError };
@@ -263,6 +266,7 @@ export class RpcServer {
       hardenPrivateData: false,
       services: false,
       ...(params.trust ? { trust: params.trust } : {}),
+      ...(harnessOf(params.harness) ?? harnessOf(this.#options.harness) ?? {}),
       logger: {
         warn: (message) => this.#log("warn", message),
         error: (message) => this.#log("error", message),
@@ -336,6 +340,13 @@ export class RpcServer {
   #notify(method: string, params: unknown): void {
     this.#peer.notify(method, params);
   }
+}
+
+/** `{ harness }` for a target that names an Agent or carries a spec. */
+function harnessOf(target: HarnessTarget | undefined): { harness: HarnessTarget } | undefined {
+  if (target?.spec !== undefined) return { harness: { spec: target.spec } };
+  if (target?.name !== undefined) return { harness: { name: target.name } };
+  return undefined;
 }
 
 function toRpcError(error: unknown): RpcError | undefined {

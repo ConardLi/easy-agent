@@ -22,6 +22,7 @@ import {
   type AgentRuntime,
   type AgentRuntimeOptions,
   type AgentSession,
+  type HarnessTarget,
   INTERACTIVE_DEFAULT_MAX_TURNS,
   type InteractionKind,
   type InteractionRequest,
@@ -60,6 +61,8 @@ export interface AcpAgentOptions {
   pluginDirs: readonly string[];
   /** `--trust-project-config`: trust whichever workspace the editor opens, for this process only. */
   trustWorkspace: boolean;
+  /** `--harness`: the Agent the editor's sessions use. */
+  harness?: HarnessTarget;
   send(line: string): void;
   logError(message: string): void;
   createRuntime(options: AgentRuntimeOptions): Promise<AgentRuntime>;
@@ -256,6 +259,7 @@ export class AcpAgent {
       hardenPrivateData: false,
       services: false,
       ...(this.#options.trustWorkspace ? { trust: "session" as const } : {}),
+      ...(this.#options.harness ? { harness: this.#options.harness } : {}),
       logger: { warn: this.#options.logError, error: this.#options.logError },
     });
     // ACP connects MCP servers before a session is ready, so their tools are there for the first prompt.
