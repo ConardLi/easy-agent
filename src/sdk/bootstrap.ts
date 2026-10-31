@@ -22,8 +22,9 @@ import { bootstrapUserCommands } from "../commands/userCommands/bootstrap.js";
 import { isProjectTrusted, trustProjectForSession } from "../config/globalState.js";
 import { setFlagSettings } from "../config/sources.js";
 import { detectWorkspaceRisks } from "../config/workspaceRisks.js";
-import { installHarness } from "../harness/active.js";
+import { activeHarness, installHarness } from "../harness/active.js";
 import { type HarnessIssue, harnessEnvironment, type ResolvedHarness, resolveHarness } from "../harness/resolve.js";
+import { unmatchedSelectionEntries } from "../harness/selection.js";
 import { refreshHookDisableFromSettings } from "../hooks/settings.js";
 import { refreshActivePlugins } from "../plugins/runtime.js";
 import { getSandboxCapability, getSandboxUnavailableReason, loadSandboxSettings } from "../sandbox/index.js";
@@ -32,6 +33,7 @@ import { bootstrapSkills } from "../services/skills/bootstrap.js";
 import { cleanupOldFileHistoryBackups } from "../session/fileHistory.js";
 import { applySessionRetentionPolicy } from "../session/storage.js";
 import { bootstrapOutputStyles } from "../styles/bootstrap.js";
+import { getRegisteredTools } from "../tools/index.js";
 import { setAdditionalAllowedRoots } from "../tools/pathUtils.js";
 import { loadEnv } from "../utils/loadEnv.js";
 import { logWarn } from "../utils/log.js";
@@ -138,6 +140,15 @@ export async function loadWorkspace(options: AgentRuntimeOptions): Promise<Works
     }
   }
   running = true;
+  // MCP tools are not known until their servers connect, so only built-in names are checked.
+  const unknownTools = unmatchedSelectionEntries(
+    activeHarness(),
+    "tools",
+    getRegisteredTools().map((tool) => tool.name),
+  ).filter((entry) => !entry.startsWith("mcp__"));
+  if (unknownTools.length > 0) {
+    logger.warn(`[easy-agent] ⚠ tools.include and tools.exclude name no built-in tool: ${unknownTools.join(", ")}`);
+  }
 
   let ignoredProjectConfig: string[] = [];
   if (!projectTrusted) {

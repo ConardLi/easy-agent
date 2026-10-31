@@ -40,6 +40,8 @@ import { sendMessageTool } from "./sendMessageTool.js";
 import { toolSearchTool } from "./toolSearchTool.js";
 import { lspTool } from "./lspTool.js";
 import type { PermissionMode } from "../permissions/permissions.js";
+import { activeHarness } from "../harness/active.js";
+import { selectionOffReason } from "../harness/selection.js";
 
 const BUILTIN_TOOLS: Tool[] = [
   fileReadTool,
@@ -94,17 +96,27 @@ export function clearMcpTools(): void {
   mcpTools = [];
 }
 
+/** Tools the session can use: enabled, and kept by the active Agent's `tools.include` and `tools.exclude`. */
 export function getAllTools(): Tool[] {
-  return getRegisteredTools().filter((tool) => tool.isEnabled());
+  const harness = activeHarness();
+  return getRegisteredTools().filter((tool) => tool.isEnabled() && !selectionOffReason(harness, "tools", tool.name));
 }
 
-/** Built-in and MCP tools, including the ones `isEnabled()` currently turns off. */
+/** Built-in and MCP tools, including the ones `isEnabled()` or the Agent currently turns off. */
 export function getRegisteredTools(): Tool[] {
   return [...VALID_BUILTIN_TOOLS, ...mcpTools];
 }
 
+/** A registered tool the active Agent keeps. */
 export function findToolByName(name: string): Tool | undefined {
-  return [...VALID_BUILTIN_TOOLS, ...mcpTools].find((tool) => tool.name === name);
+  const tool = getRegisteredTools().find((candidate) => candidate.name === name);
+  return tool && !selectionOffReason(activeHarness(), "tools", name) ? tool : undefined;
+}
+
+/** Why the active Agent leaves out a registered tool, or undefined when it keeps it or no such tool exists. */
+export function toolOffByAgent(name: string): string | undefined {
+  if (!getRegisteredTools().some((tool) => tool.name === name)) return undefined;
+  return selectionOffReason(activeHarness(), "tools", name);
 }
 
 /**
