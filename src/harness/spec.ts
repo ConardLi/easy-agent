@@ -31,6 +31,20 @@ const Names = z.array(z.string().trim().min(1));
 const Rules = z.array(z.string().trim().min(1));
 const Selection = { include: Names.optional(), exclude: Names.optional() };
 const ModelHandle = z.string().trim().min(1);
+const PositiveInteger = z.number().int().positive();
+
+/** Settings of one tool, by tool name. */
+export const ToolConfigSchema = z.strictObject({
+  /** Bash and PowerShell: timeout of a command whose call sets none. */
+  timeoutMs: PositiveInteger.optional(),
+  /** Bash and PowerShell: command output kept for the model. */
+  maxOutputBytes: PositiveInteger.optional(),
+  /** Any tool: result characters before the result is truncated. */
+  maxResultChars: PositiveInteger.optional(),
+});
+export type ToolConfig = z.infer<typeof ToolConfigSchema>;
+/** Tools that read `timeoutMs` and `maxOutputBytes`. */
+export const SHELL_TOOLS = ["Bash", "PowerShell"] as const;
 
 const PromptSectionSchema = z.union([
   z.boolean(),
@@ -63,6 +77,7 @@ export const HarnessSpecSchema = z.strictObject({
   tools: z
     .strictObject({
       ...Selection,
+      config: z.record(z.string().trim().min(1), ToolConfigSchema).optional(),
       respectGitignore: z.boolean().optional(),
       webSearchBackend: z.enum(["bing", "api"]).optional(),
     })

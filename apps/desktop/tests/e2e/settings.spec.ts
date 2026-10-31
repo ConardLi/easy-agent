@@ -1,11 +1,15 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, type Page, test } from "@playwright/test";
 import { type AgentWorld, createAgentWorld, openProject as open } from "../helpers/agent";
 
 let world: AgentWorld;
 const openProject = () => open(world);
-const userSettings = () => JSON.parse(readFileSync(join(world.home, ".easy-agent", "settings.json"), "utf8")) as Record<string, unknown>;
+/** The user settings file, or `{}` before its first write, so a poll keeps waiting instead of failing. */
+const userSettings = (): Record<string, unknown> => {
+  const file = join(world.home, ".easy-agent", "settings.json");
+  return existsSync(file) ? (JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>) : {};
+};
 
 test.beforeEach(async () => {
   world = await createAgentWorld();

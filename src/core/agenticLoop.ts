@@ -14,11 +14,12 @@ import {
 import { streamMessage } from "../services/api/streaming.js";
 import { featureSettingsOf } from "../config/features.js";
 import { getFlagSettings } from "../config/sources.js";
-import { harnessFor, refreshHarness } from "../harness/active.js";
+import { activeHarness, harnessFor, refreshHarness } from "../harness/active.js";
+import { toolConfigOf } from "../harness/selection.js";
 import { ESCALATED_MAX_TOKENS, MAX_OUTPUT_TOKENS_RECOVERY_LIMIT } from "../services/api/client.js";
 import type { QuerySource } from "../services/api/withRetry.js";
 import { compactMessages } from "../context/compaction.js";
-import { findToolByName } from "../tools/index.js";
+import { findToolByName, toolOffByAgent } from "../tools/index.js";
 import { hasValidToolInputSchema, validateToolInput } from "../tools/inputValidation.js";
 import { truncateToolResult, type Tool, type ToolContext, type ToolResult } from "../tools/Tool.js";
 import { appendTextToContent, prependTextToContent } from "../tools/contentBlocks.js";
@@ -330,8 +331,11 @@ async function runOneToolBlock(
       block.input && typeof block.input === "object" && !Array.isArray(block.input)
         ? (block.input as Record<string, unknown>)
         : {};
+    const offByAgent = toolOffByAgent(block.name);
     const result: ToolResult = {
-      content: `Error: Unknown tool "${block.name}"`,
+      content: offByAgent
+        ? `Error: Tool "${block.name}" is turned off for this Agent. ${offByAgent}`
+        : `Error: Unknown tool "${block.name}"`,
       isError: true,
     };
     return {
@@ -506,7 +510,10 @@ async function runOneToolBlock(
     const rawResult = await tool.call(toolInput, callContext);
     let result: ToolResult = {
       ...rawResult,
-      content: truncateToolResult(rawResult.content, tool.maxResultSizeChars),
+      content: truncateToolResult(
+        rawResult.content,
+        toolConfigOf(activeHarness(), tool.name).maxResultChars ?? tool.maxResultSizeChars,
+      ),
     };
 
     // A failed call to a deferred tool whose schema was never loaded is

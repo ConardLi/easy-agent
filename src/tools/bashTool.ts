@@ -13,6 +13,7 @@ import { appendBashProgress, completeBashProgress, startBashProgress } from "../
 import { readMergedEnv } from "../utils/settings.js";
 import { analyzeBashCommand } from "./bashReadOnlyAnalysis.js";
 import { formatCapturedOutput, runControlledProcess } from "../utils/controlledProcess.js";
+import { shellTimeoutProperties, shellToolLimits } from "./shellToolConfig.js";
 
 export {
   analyzeBashCommand,
@@ -53,29 +54,25 @@ async function buildProfileForCwd(cwd: string, settings: ResolvedSandboxSettings
   });
 }
 
-const DEFAULT_TIMEOUT_MS = 120_000;
-const MAX_OUTPUT_BYTES = 30_000;
-
 export const bashTool: Tool = {
   name: "Bash",
   searchHint: "execute shell commands",
   description: "Execute a shell command in the current working directory and return stdout/stderr.",
-  inputSchema: {
-    type: "object" as const,
-    properties: {
-      command: { type: "string", description: "Shell command to execute" },
-      timeout: { type: "number", description: "Timeout in milliseconds (default 120000)" },
-      idleTimeout: {
-        type: "number",
-        description: "Stop after this many milliseconds without output (default: command timeout)",
+  // A getter, so the stated default timeout follows the Agent's tools.config.
+  get inputSchema() {
+    return {
+      type: "object" as const,
+      properties: {
+        command: { type: "string", description: "Shell command to execute" },
+        ...shellTimeoutProperties("Bash"),
+        dangerouslyDisableSandbox: {
+          type: "boolean",
+          description:
+            "If true, run this command OUTSIDE the sandbox even when sandboxing is enabled. Only use this when the command genuinely needs unrestricted access (e.g. installing system packages, running docker, accessing devices). Most commands should run inside the sandbox.",
+        },
       },
-      dangerouslyDisableSandbox: {
-        type: "boolean",
-        description:
-          "If true, run this command OUTSIDE the sandbox even when sandboxing is enabled. Only use this when the command genuinely needs unrestricted access (e.g. installing system packages, running docker, accessing devices). Most commands should run inside the sandbox.",
-      },
-    },
-    required: ["command"],
+      required: ["command"],
+    };
   },
   async call(rawInput: Record<string, unknown>, context: ToolContext): Promise<ToolResult> {
     const input = rawInput as unknown as BashInput;
@@ -84,7 +81,8 @@ export const bashTool: Tool = {
     }
     const readOnlyAnalysis = analyzeBashCommand(input.command);
 
-    const timeoutMs = typeof input.timeout === "number" ? input.timeout : DEFAULT_TIMEOUT_MS;
+    const limits = shellToolLimits("Bash");
+    const timeoutMs = typeof input.timeout === "number" ? input.timeout : limits.timeoutMs;
     const idleTimeoutMs = typeof input.idleTimeout === "number" ? input.idleTimeout : timeoutMs;
     if (
       !Number.isSafeInteger(timeoutMs) ||
@@ -196,7 +194,7 @@ export const bashTool: Tool = {
         signal: context.abortSignal,
         timeoutMs,
         idleTimeoutMs,
-        maxOutputBytes: MAX_OUTPUT_BYTES,
+        maxOutputBytes: limits.maxOutputBytes,
         onStdout: progressId ? (chunk) => appendBashProgress(progressId, chunk) : undefined,
         onStderr: progressId ? (chunk) => appendBashProgress(progressId, chunk) : undefined,
       });

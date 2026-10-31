@@ -24,6 +24,7 @@ import { buildPluginView } from "../core/queryEngine/commands/pluginView.js";
 import { hooksGloballyDisabled, listConfiguredHooks, refreshHookDisableFromSettings } from "../hooks/settings.js";
 import { getActivePlugins } from "../plugins/runtime.js";
 import { resolveProfile } from "../services/api/providers/profile.js";
+import { mcpServerOffByAgent } from "../services/mcp/bootstrap.js";
 import { getProjectMcpJsonPath, loadMcpConfigs } from "../services/mcp/config.js";
 import { getMcpRegistry } from "../services/mcp/registry.js";
 import { formatSkillListingLines } from "../services/skills/budget.js";
@@ -36,7 +37,8 @@ import { getActiveOutputStyleName, getAllOutputStyles } from "../styles/registry
 import { getRegisteredTools, getToolsForMode } from "../tools/index.js";
 import { type Tool, toolToApiParam } from "../tools/Tool.js";
 import type { ScopedMcpServerConfig } from "../types/mcp.js";
-import { componentId } from "../harness/components.js";
+import { activeHarness } from "../harness/active.js";
+import { componentId, toolOffReason } from "../harness/components.js";
 import { estimateJsonTokens, estimateTextTokens } from "../utils/tokens.js";
 import { prepareToolSearchRequest } from "../utils/toolSearch.js";
 import type { WorkspaceReport } from "./bootstrap.js";
@@ -244,7 +246,7 @@ function pluginOfServer(): Map<string, string> {
 }
 
 async function listMcpServers(cwd: string, deferred: Set<string>): Promise<McpServerInventoryItem[]> {
-  const { projectServers = [] } = await loadMcpConfigs(cwd, { quiet: true });
+  const { servers: configured, projectServers = [] } = await loadMcpConfigs(cwd, { quiet: true });
   const projectFile = getProjectMcpJsonPath(cwd);
   const fromProjectFile = new Set(projectServers.filter((s) => s.state === "approved").map((s) => s.name));
   const owners = pluginOfServer();
@@ -291,6 +293,38 @@ async function listMcpServers(cwd: string, deferred: Set<string>): Promise<McpSe
       reason,
       ...transportOf(server.config),
       status,
+      tools: [],
+    });
+  }
+
+  // Configured servers the Agent leaves out are never started.
+  const leftOut: { name: string; config: ScopedMcpServerConfig; pluginId?: string }[] = [
+    ...Object.entries(configured).map(([name, config]) => ({ name, config })),
+    ...getActivePlugins().flatMap((plugin) =>
+      plugin.mcpServers.map((server) => ({
+        name: server.namespacedName,
+        config: server.config,
+        pluginId: plugin.pluginId,
+      })),
+    ),
+  ];
+  for (const server of leftOut) {
+    const reason = registered.has(server.name) ? undefined : mcpServerOffByAgent(server.name);
+    if (!reason) continue;
+    registered.add(server.name);
+    items.push({
+      kind: "mcp_server",
+      id: componentId.mcpServer(server.name),
+      name: server.name,
+      source: server.pluginId ? "plugin" : server.config.scope,
+      ...(server.pluginId ? { pluginId: server.pluginId } : {}),
+      ...(!server.pluginId && server.config.scope === "project" && fromProjectFile.has(server.name)
+        ? { path: projectFile }
+        : {}),
+      enabled: false,
+      reason,
+      ...transportOf(server.config),
+      status: "disabled",
       tools: [],
     });
   }
@@ -439,17 +473,18 @@ function listTools(deferred: Set<string>): ToolInventoryItem[] {
       });
     }
   }
+  const harness = activeHarness();
   return getRegisteredTools().map((tool) => {
     const server = servers.get(tool.name);
-    const enabled = tool.isEnabled();
+    const reason = toolOffReason(tool, harness);
     return {
       kind: "tool",
       id: componentId.tool(tool.name),
       name: tool.name,
       source: server?.source ?? "built-in",
       ...(server?.pluginId ? { pluginId: server.pluginId } : {}),
-      enabled,
-      ...(enabled ? {} : { reason: "Turned off by its feature setting or not available on this platform." }),
+      enabled: !reason,
+      ...(reason ? { reason } : {}),
       description: summary(tool.description),
       readOnly: tool.isReadOnly(),
       ...(server ? { mcpServer: server.name } : {}),

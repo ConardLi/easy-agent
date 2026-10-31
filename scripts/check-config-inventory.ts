@@ -173,21 +173,22 @@ const BEHAVIOR_CONSTANTS: BehaviorConstant[] = [
   },
   {
     component: "tools",
-    file: "src/tools/bashTool.ts",
-    declaration: "const DEFAULT_TIMEOUT_MS = 120_000;",
-    summary: "Bash command timeout when the call sets none.",
+    file: "src/tools/shellToolConfig.ts",
+    declaration: "export const DEFAULT_SHELL_TIMEOUT_MS = 120_000;",
+    summary: "Bash and PowerShell command timeout when the call sets none (tools.config.<tool>.timeoutMs).",
   },
   {
     component: "tools",
-    file: "src/tools/bashTool.ts",
-    declaration: "const MAX_OUTPUT_BYTES = 30_000;",
-    summary: "Bash output kept for the model.",
+    file: "src/tools/shellToolConfig.ts",
+    declaration: "export const DEFAULT_SHELL_MAX_OUTPUT_BYTES = 30_000;",
+    summary: "Bash and PowerShell output kept for the model (tools.config.<tool>.maxOutputBytes).",
   },
   {
     component: "tools",
     file: "src/tools/Tool.ts",
     declaration: "export const DEFAULT_MAX_RESULT_SIZE_CHARS = 100_000;",
-    summary: "Tool result size before it is truncated, unless the tool sets its own.",
+    summary:
+      "Tool result size before it is truncated, unless the tool sets its own (tools.config.<tool>.maxResultChars).",
   },
   {
     component: "context",

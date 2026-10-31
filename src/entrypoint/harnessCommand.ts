@@ -39,7 +39,7 @@ export async function runHarnessCommand(args: readonly string[], cwd = process.c
     if (subcommand === "show" && rest.length <= 1) {
       await loadEnv(cwd);
       const resolved = await resolveArgument(rest[0], cwd);
-      const components = listBuiltInComponents();
+      const components = listBuiltInComponents(resolved);
       process.stdout.write(
         json
           ? `${JSON.stringify({ harness: resolved, components }, null, 2)}\n`

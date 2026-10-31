@@ -12,7 +12,9 @@ import {
   getMcpRegistryEntry,
   setMcpRegistryEntry,
 } from "./registry.js";
-import { debugLog } from "../../utils/log.js";
+import { debugLog, logWarn } from "../../utils/log.js";
+import { activeHarness } from "../../harness/active.js";
+import { selectionOffReason } from "../../harness/selection.js";
 
 export interface McpBootstrapResult {
   connections: McpServerConnection[];
@@ -75,9 +77,21 @@ function scheduleReconnect(name: string, config: PendingMcpServer["config"], imm
   reconnectTimers.set(name, timer);
 }
 
-/** Connect configured servers in parallel and publish each result as it arrives. */
+/** Why the active Agent does not start an MCP server (`mcpServers.include`, `mcpServers.exclude`), or undefined. */
+export function mcpServerOffByAgent(name: string): string | undefined {
+  return selectionOffReason(activeHarness(), "mcpServers", name);
+}
+
+/** Connect the configured servers the Agent keeps, in parallel, and publish each result as it arrives. */
 export async function bootstrapMcp(cwd: string): Promise<McpBootstrapResult> {
-  const { servers, errors: configErrors } = await loadMcpConfigs(cwd);
+  const { servers: configured, errors: configErrors } = await loadMcpConfigs(cwd);
+  const servers = Object.fromEntries(
+    Object.entries(configured).filter(([name]) => {
+      const off = mcpServerOffByAgent(name);
+      if (off) debugLog("mcp", `[${name}] not started: ${off}`);
+      return !off;
+    }),
+  );
   registerMcpProcessCleanup();
   for (const name of reconnectTimers.keys()) stopReconnect(name);
   setMcpConnectionListeners({
@@ -149,8 +163,9 @@ async function connectAndRegister(
 
 /**
  * Connect servers supplied while running, such as the ones an editor passes
- * over ACP. A name already in the registry keeps its server. Call after
- * `bootstrapMcp`, which resets the registry.
+ * over ACP. A name already in the registry keeps its server, and a server
+ * the Agent leaves out is not started; both are reported as skipped. Call
+ * after `bootstrapMcp`, which resets the registry.
  */
 export async function connectAdditionalMcpServers(
   servers: Record<string, PendingMcpServer["config"]>,
@@ -160,7 +175,9 @@ export async function connectAdditionalMcpServers(
   const skipped: string[] = [];
   const startedAt = Date.now();
   for (const [name, config] of Object.entries(servers)) {
-    if (getMcpRegistryEntry(name)) {
+    const off = mcpServerOffByAgent(name);
+    if (off) logWarn(`MCP server "${name}" is not started: ${off}`);
+    if (off || getMcpRegistryEntry(name)) {
       skipped.push(name);
       continue;
     }
