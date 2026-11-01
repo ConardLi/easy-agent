@@ -39,6 +39,7 @@ import { type Tool, toolToApiParam } from "../tools/Tool.js";
 import type { ScopedMcpServerConfig } from "../types/mcp.js";
 import { activeHarness } from "../harness/active.js";
 import { componentId, toolOffReason } from "../harness/components.js";
+import { contextSourceLoaded, contextSourceOffReason, promptSectionOffReason } from "../harness/prompt.js";
 import { estimateJsonTokens, estimateTextTokens } from "../utils/tokens.js";
 import { prepareToolSearchRequest } from "../utils/toolSearch.js";
 import type { WorkspaceReport } from "./bootstrap.js";
@@ -429,28 +430,39 @@ async function listHooks(
 const lineCount = (text: string): number => (text ? text.split("\n").length : 0);
 
 async function listRules(cwd: string): Promise<RuleInventoryItem[]> {
-  const items: RuleInventoryItem[] = (await listAgentMdFiles(cwd)).map((file) => ({
-    kind: "rule",
-    id: componentId.rule(file.filePath),
-    name: path.basename(file.filePath),
-    source: file.scope === "global" ? "user" : "project",
-    path: file.filePath,
-    enabled: !file.excluded,
-    ...(file.excluded ? { reason: "Matched by claudeMdExcludes." } : {}),
-    scope: file.scope,
-    excluded: file.excluded,
-    lines: lineCount(file.content),
-    tokens: textTokens(file.content),
-  }));
+  const harness = activeHarness();
+  const agentMdOff = contextSourceLoaded(harness, "agent_md")
+    ? undefined
+    : (contextSourceOffReason(harness, "agent_md") ?? promptSectionOffReason(harness, "agent_md") ?? REPLACED);
+  const items: RuleInventoryItem[] = (await listAgentMdFiles(cwd)).map((file) => {
+    const reason = file.excluded ? "Matched by claudeMdExcludes." : agentMdOff;
+    return {
+      kind: "rule",
+      id: componentId.rule(file.filePath),
+      name: path.basename(file.filePath),
+      source: file.scope === "global" ? "user" : "project",
+      path: file.filePath,
+      enabled: !reason,
+      ...(reason ? { reason } : {}),
+      scope: file.scope,
+      excluded: file.excluded,
+      lines: lineCount(file.content),
+      tokens: textTokens(file.content),
+    };
+  });
   const memory = await readMemoryEntrypoint(cwd).catch(() => null);
   if (memory) {
+    const reason = contextSourceLoaded(harness, "memory")
+      ? undefined
+      : (contextSourceOffReason(harness, "memory") ?? promptSectionOffReason(harness, "memory") ?? REPLACED);
     items.push({
       kind: "rule",
       id: componentId.memoryRule(),
       name: MEMORY_ENTRYPOINT,
       source: "project",
       path: path.join(await getProjectMemoryDir(cwd), MEMORY_ENTRYPOINT),
-      enabled: true,
+      enabled: !reason,
+      ...(reason ? { reason } : {}),
       scope: "memory",
       excluded: false,
       lines: lineCount(memory),
@@ -459,6 +471,8 @@ async function listRules(cwd: string): Promise<RuleInventoryItem[]> {
   }
   return items;
 }
+
+const REPLACED = "The Agent replaces the section that would show it (prompt.sections).";
 
 function listTools(deferred: Set<string>): ToolInventoryItem[] {
   const servers = new Map<string, { name: string; source: InventorySource; pluginId?: string }>();

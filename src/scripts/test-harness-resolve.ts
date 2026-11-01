@@ -279,6 +279,15 @@ async function currentValues(): Promise<Record<string, unknown>> {
     "tools.exclude": undefined,
     "mcpServers.include": undefined,
     "mcpServers.exclude": undefined,
+    // Nor replaced the identity, changed a prompt section, or turned off a context source.
+    "prompt.identity": undefined,
+    "prompt.sections": undefined,
+    "context.agentMd": true,
+    "context.memory": true,
+    "context.environment": true,
+    "context.gitStatus": true,
+    "context.skills": true,
+    "context.agents": true,
   };
 }
 

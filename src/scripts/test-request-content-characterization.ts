@@ -62,6 +62,9 @@ const SCENARIOS = [
   "after-compaction",
   "openai-chat",
   "gemini",
+  "agent-identity",
+  "agent-no-memory",
+  "agent-file-section",
 ] as const;
 type ScenarioName = (typeof SCENARIOS)[number];
 
@@ -76,6 +79,11 @@ const DESCRIPTIONS: Record<ScenarioName, string> = {
   "after-compaction": "One turn, /compact, then the next turn.",
   "openai-chat": "An openai-chat model profile as the default model.",
   gemini: "A gemini model profile as the default model.",
+  "agent-identity": "An Agent whose prompt.identity comes from a file.",
+  "agent-no-memory":
+    "The project-memory workspace with an Agent that turns off the memory section and the AGENTS.md source.",
+  "agent-file-section":
+    "AGENTS.md in the project and an Agent that adds a file section after agent_md and moves the language section first.",
 };
 
 // ─── Child: run one scenario ─────────────────────────────────────────────
@@ -169,11 +177,50 @@ async function runScenario(name: ScenarioName): Promise<ScenarioOutput> {
   const captured: CapturedRequest[] = [];
   const servers: Server[] = [];
   let trust: "session" | undefined;
+  let harness: string | undefined;
 
   switch (name) {
-    case "project-memory": {
+    case "project-memory":
+    case "agent-no-memory": {
       await writeFile(path.join(cwd, "AGENTS.md"), "# Project rules\n\nRun `npm test` before every commit.\n");
       await writeFile(path.join(cwd, "AGENT.md"), "# Agent notes\n\nPrefer small pull requests.\n");
+      if (name === "agent-no-memory") {
+        harness = "focused";
+        userSettings.harnesses = {
+          focused: { prompt: { sections: { memory: false } }, context: { agentMd: false } },
+        };
+      }
+      break;
+    }
+    case "agent-identity": {
+      harness = "reviewer";
+      await mkdir(path.join(userDir, "prompts"), { recursive: true });
+      await writeFile(
+        path.join(userDir, "prompts", "reviewer.md"),
+        "You are a code reviewer. Read the change, then list concrete problems with file and line.\n",
+      );
+      userSettings.harnesses = { reviewer: { prompt: { identity: { file: "prompts/reviewer.md" } } } };
+      break;
+    }
+    case "agent-file-section": {
+      harness = "rules";
+      await writeFile(path.join(cwd, "AGENTS.md"), "# Project rules\n\nRun `npm test` before every commit.\n");
+      await mkdir(path.join(userDir, "prompts"), { recursive: true });
+      await writeFile(
+        path.join(userDir, "prompts", "review-rules.md"),
+        "Review rules:\n- Flag missing tests.\n- Flag changed public APIs.\n",
+      );
+      userSettings.language = "French";
+      userSettings.harnesses = {
+        rules: {
+          prompt: {
+            sections: {
+              "review-rules": { file: "~/.easy-agent/prompts/review-rules.md", after: "agent_md" },
+              language: { after: "instructions" },
+            },
+          },
+        },
+      };
       break;
     }
     case "skills-and-agents": {
@@ -227,7 +274,7 @@ async function runScenario(name: ScenarioName): Promise<ScenarioOutput> {
   const fixture = createAnthropicFixture();
   await fixture.start();
 
-  if (name === "project-memory") {
+  if (name === "project-memory" || name === "agent-no-memory") {
     const { getProjectMemoryDir } = await import("../context/memory/memdir.js");
     const memoryDir = await getProjectMemoryDir(cwd);
     await mkdir(memoryDir, { recursive: true });
@@ -245,6 +292,7 @@ async function runScenario(name: ScenarioName): Promise<ScenarioOutput> {
   const runtime = await createAgentRuntime({
     cwd,
     ...(trust ? { trust } : {}),
+    ...(harness ? { harness: { name: harness } } : {}),
     services: name.startsWith("mcp-") ? {} : false,
     logger: { warn: () => {}, error: () => {} },
   });

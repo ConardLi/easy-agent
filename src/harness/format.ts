@@ -100,6 +100,9 @@ export function formatHarness(resolved: ResolvedHarness, components: readonly Bu
       );
       if (off.length)
         lines.push(`  ${"".padEnd(16)} off: ${off.map((item) => `${item.id} (${item.reason})`).join(", ")}`);
+      const replaced = ofKind.filter((item) => item.enabled && item.replacedBy);
+      if (replaced.length)
+        lines.push(`  ${"".padEnd(16)} text: ${replaced.map((item) => `${item.id} (${item.replacedBy})`).join(", ")}`);
     }
   }
   return lines.join("\n");

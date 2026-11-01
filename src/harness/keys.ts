@@ -265,7 +265,7 @@ export const HARNESS_KEYS: readonly HarnessKey[] = [
     applied: true,
   },
 
-  specOnly("prompt.identity", "prompt", "Identity section text."),
+  { ...specOnly("prompt.identity", "prompt", "Identity section text; empty leaves it out."), applied: true },
   {
     path: "prompt.language",
     component: "prompt",
@@ -274,14 +274,21 @@ export const HARNESS_KEYS: readonly HarnessKey[] = [
     settings: { key: "language", read: trimmedString("language"), scope: "trusted" },
     applied: true,
   },
-  specOnly("prompt.sections", "prompt", "Dynamic sections turned off, replaced, or added."),
+  {
+    ...specOnly("prompt.sections", "prompt", "Dynamic sections turned off, replaced, moved, or added."),
+    applied: true,
+  },
 
-  specOnly("context.agentMd", "context", "Load AGENTS.md and AGENT.md files.", true),
-  specOnly("context.memory", "context", "Load project memory.", true),
-  specOnly("context.environment", "context", "Include the environment section.", true),
-  specOnly("context.gitStatus", "context", "Include the git status snapshot.", true),
-  specOnly("context.skills", "context", "Include the skill listing.", true),
-  specOnly("context.agents", "context", "Include the sub-agent listing.", true),
+  ...(
+    [
+      ["context.agentMd", "Load AGENTS.md and AGENT.md files."],
+      ["context.memory", "Load the project memory index."],
+      ["context.environment", "Include the working directory, date, and operating system."],
+      ["context.gitStatus", "Include the git snapshot taken when the session starts."],
+      ["context.skills", "Include the skill listing."],
+      ["context.agents", "Include the sub-agent listing."],
+    ] as const
+  ).map(([keyPath, summary]): HarnessKey => ({ ...specOnly(keyPath, "context", summary, true), applied: true })),
 
   specOnly("compaction.auto", "compaction", "Compact automatically near the context limit.", true),
   specOnly("compaction.autoThreshold", "compaction", "Fraction of the effective window that starts auto-compaction."),
