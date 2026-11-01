@@ -39,6 +39,7 @@ import { readInstalledPlugins } from "./state.js";
 import { getEnabledPluginState } from "./enable.js";
 import { loadPlugin } from "./loader.js";
 import { applyPluginMcpDiff } from "./mcpApply.js";
+import { mcpServerOffByAgent } from "../services/mcp/bootstrap.js";
 import type { LoadedPlugin } from "./loadedTypes.js";
 import type { PluginError } from "./schemas.js";
 
@@ -296,6 +297,7 @@ async function performRefresh(cwd: string, opts: RefreshOptions): Promise<{ comp
   for (const p of plugins) {
     if (!trustedById.get(p.pluginId)) continue;
     for (const server of p.mcpServers) {
+      if (mcpServerOffByAgent(server.namespacedName)) continue;
       desiredMcp.set(server.namespacedName, server.config);
     }
   }

@@ -36,7 +36,7 @@ export async function* handleHarnessCommand(
       return { handled: true };
     }
     const resolved = await resolveArgument(args[0], ctx.cwd);
-    yield { type: "command", kind: "info", message: formatHarness(resolved, listBuiltInComponents()) };
+    yield { type: "command", kind: "info", message: formatHarness(resolved, listBuiltInComponents(resolved)) };
   } catch (error) {
     yield { type: "command", kind: "error", message: error instanceof Error ? error.message : String(error) };
   }

@@ -273,6 +273,12 @@ async function currentValues(): Promise<Record<string, unknown>> {
     "skills.listingBudgetChars": positiveInteger(env.EASY_AGENT_SKILL_CHAR_BUDGET) ?? 8000,
     "compaction.contextWindow": referenceContextWindow(env),
     "tools.webSearchBackend": webSearch === "bing" || webSearch === "api" ? webSearch : undefined,
+    // No setting or variable selected tools or MCP servers or configured a single tool.
+    "tools.include": undefined,
+    "tools.config": undefined,
+    "tools.exclude": undefined,
+    "mcpServers.include": undefined,
+    "mcpServers.exclude": undefined,
   };
 }
 
@@ -681,14 +687,27 @@ await check("file references load text, relative to ~/.easy-agent", async () => 
 await check("keys this build does not apply yet are reported when set", () => {
   const resolved = resolve({
     name: "minimalish",
-    user: { ask: ["Bash(git push*)"], harnesses: { minimalish: { tools: { exclude: ["WebFetch"] } } } },
+    user: {
+      ask: ["Bash(git push*)"],
+      harnesses: {
+        minimalish: {
+          skills: { exclude: ["review"] },
+          tools: { exclude: ["WebFetch"], config: { Bash: { timeoutMs: 5000 } } },
+          mcpServers: { include: ["docs"] },
+        },
+      },
+    },
   });
   const messages = warnings(resolved).map((issue) => issue.message);
   assert.ok(
-    messages.some((m) => /tools\.exclude is set by Agent "minimalish", but this build does not apply it yet/.test(m)),
+    messages.some((m) => /skills\.exclude is set by Agent "minimalish", but this build does not apply it yet/.test(m)),
   );
   assert.ok(messages.some((m) => /permissions\.ask is set by user, but this build does not apply it yet/.test(m)));
-  assert.equal(resolved.values["tools.exclude"]!.applied, false);
+  for (const applied of ["tools.exclude", "tools.config", "mcpServers.include"]) {
+    assert.ok(!messages.some((m) => m.startsWith(`${applied} `)), `${applied} is applied`);
+    assert.equal(resolved.values[applied]!.applied, true);
+  }
+  assert.equal(resolved.values["skills.exclude"]!.applied, false);
   assert.equal(resolved.values["model.main"]!.applied, true);
 });
 
@@ -1279,6 +1298,7 @@ await check(
         outputStyle: "Explanatory",
         features: { toolSearch: "off" },
         tools: { exclude: ["WebFetch"] },
+        skills: { exclude: ["review"] },
       },
       looped: { extends: "loopback" },
       loopback: { extends: "looped" },
@@ -1327,10 +1347,13 @@ await check(
         );
         assert.ok(
           warnings.some((message) =>
-            /tools\.exclude is set by Agent "reviewer", but this build does not apply it/.test(message),
+            /skills\.exclude is set by Agent "reviewer", but this build does not apply it/.test(message),
           ),
           "keys the Agent sets but this build ignores are reported at startup",
         );
+        const webFetch = inventory.tools.find((tool) => tool.name === "WebFetch");
+        assert.equal(webFetch?.enabled, false, "the Agent's tools.exclude turns WebFetch off");
+        assert.match(webFetch?.reason ?? "", /tools\.exclude \(Agent "reviewer"\)/);
         assert.equal((await harnessFor(other)).name, "reviewer", "another directory resolves the same Agent");
         const viewer = await runtime.createSession({ persist: false });
         const outputs: string[] = [];
@@ -1465,12 +1488,18 @@ await check("the text view marks overrides, ignored values, and keys not applied
   const resolved = resolve({
     name: "reviewer",
     workspaceTrusted: false,
-    user: { harnesses: { reviewer: { outputStyle: "Learning", tools: { exclude: ["WebFetch"] } } } },
+    user: {
+      harnesses: {
+        reviewer: { outputStyle: "Learning", tools: { exclude: ["WebFetch"] }, skills: { exclude: ["review"] } },
+      },
+    },
     layers: [{ source: "project", path: "/p", raw: { allow: ["Write"] } }],
   });
-  const text = formatHarness(resolved, listBuiltInComponents());
+  const text = formatHarness(resolved, listBuiltInComponents(resolved));
   assert.match(text, /^Agent: reviewer \(built-in default → reviewer\)\nHash: [0-9a-f]{16}\n/);
-  assert.match(text, /exclude +\["WebFetch"\] {2}← Agent "reviewer" {2}\[not applied yet\]/);
+  assert.match(text, /exclude +\["review"\] {2}← Agent "reviewer" {2}\[not applied yet\]/);
+  assert.match(text, /\n {2}exclude +\["WebFetch"\] {2}← Agent "reviewer"\n/, "tools.exclude is applied");
+  assert.match(text, /off: .*tool:WebFetch \(Left out by tools\.exclude \(Agent "reviewer"\)\.\)/);
   assert.match(text, /ignored project settings: allow \["Write"\]: workspace is not trusted/);
   assert.match(text, /\nBuilt-in components\n {2}tool +tool:Read, /);
   assert.match(text, /\n {2}context_source +context_source:agent_md, /);

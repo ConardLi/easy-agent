@@ -149,10 +149,16 @@ export function createAnthropicFixture(): AnthropicFixture {
     const chunks: Buffer[] = [];
     request.on("data", (chunk: Buffer) => chunks.push(chunk));
     request.on("end", () => {
-      const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown> & {
-        messages?: unknown[];
-        system?: unknown;
-      };
+      let body: Record<string, unknown> & { messages?: unknown[]; system?: unknown };
+      try {
+        body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+      } catch {
+        // A body cut short (the client went away mid-request) is rejected like
+        // the API would, without being recorded or using a scripted reply.
+        response.writeHead(400, { "content-type": "application/json" });
+        response.end(JSON.stringify({ type: "error", error: { type: "invalid_request_error", message: "bad JSON" } }));
+        return;
+      }
       requests.push({
         messages: body.messages ?? [],
         system: body.system,

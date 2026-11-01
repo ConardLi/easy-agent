@@ -61,6 +61,7 @@
     "test:project-memory": "node --import tsx src/scripts/test-project-memory-files.ts",
     "test:feature-config": "node --import tsx src/scripts/test-feature-config.ts",
     "test:harness": "node --import tsx src/scripts/test-harness-resolve.ts",
+    "test:harness-tools": "node --import tsx src/scripts/test-harness-tools.ts",
     "test:providerstream": "tsx src/scripts/test-providerstream-characterization.ts",
     "test:request-content": "node --import tsx src/scripts/test-request-content-characterization.ts",
     "test:permission-decisions": "node --import tsx src/scripts/test-permission-decisions-characterization.ts",

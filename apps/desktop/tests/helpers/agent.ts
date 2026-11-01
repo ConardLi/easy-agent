@@ -52,10 +52,17 @@ export async function openProject(world: AgentWorld): Promise<LaunchedApp> {
   return launched;
 }
 
+/**
+ * Send a prompt once the previous turn has ended. The reply text shows up
+ * before the turn ends, and Enter during a turn leaves the prompt in the
+ * composer, so a test that sends again right after seeing a reply waits here.
+ */
 export async function send(page: Page, text: string): Promise<void> {
   const input = page.getByRole("textbox", { name: "消息" });
+  await expect(page.getByRole("button", { name: "中断" })).toHaveCount(0, { timeout: 20_000 });
   await input.fill(text);
   await input.press("Enter");
+  await expect(input).toHaveValue("");
 }
 
 export const sessionRow = (page: Page, title: string) => page.locator("nav").getByRole("button", { name: title, exact: true });

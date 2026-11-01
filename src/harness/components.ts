@@ -11,6 +11,10 @@
 import type { SettingSource } from "../config/sources.js";
 import type { PromptSectionName } from "../context/systemPrompt.js";
 import { getRegisteredTools } from "../tools/index.js";
+import type { Tool } from "../tools/Tool.js";
+import { activeHarness } from "./active.js";
+import type { ResolvedHarness } from "./resolve.js";
+import { selectionOffReason } from "./selection.js";
 
 /** Where a component comes from: built in, a settings layer (`flag` is the command line), a plugin, or an SDK caller. */
 export type HarnessComponentSource = "built-in" | SettingSource | "plugin" | "sdk";
@@ -94,19 +98,27 @@ export const CONTEXT_SOURCES: readonly {
   { name: "agents", specKey: "context.agents", section: "agents", description: "The sub-agent listing." },
 ];
 
-/** Built-in tools (MCP tools excluded), prompt sections, and context sources. */
-export function listBuiltInComponents(): BuiltInComponent[] {
+/** Why a registered tool is off for `resolved`, or undefined when the session can use it. */
+export function toolOffReason(tool: Tool, resolved: ResolvedHarness): string | undefined {
+  return (
+    selectionOffReason(resolved, "tools", tool.name) ??
+    (tool.isEnabled() ? undefined : "Turned off by its feature setting or not available on this platform.")
+  );
+}
+
+/** Built-in tools (MCP tools excluded), prompt sections, and context sources, with tools on or off for `resolved`. */
+export function listBuiltInComponents(resolved: ResolvedHarness = activeHarness()): BuiltInComponent[] {
   const tools = getRegisteredTools()
     .filter((tool) => !tool.isMcp)
     .map((tool): BuiltInComponent => {
-      const enabled = tool.isEnabled();
+      const reason = toolOffReason(tool, resolved);
       return {
         id: componentId.tool(tool.name),
         kind: "tool",
         name: tool.name,
         source: "built-in",
-        enabled,
-        ...(enabled ? {} : { reason: "Turned off by its feature setting or not available on this platform." }),
+        enabled: !reason,
+        ...(reason ? { reason } : {}),
         description:
           tool.description
             .trim()

@@ -182,9 +182,9 @@ const specOnly = (path: string, component: HarnessComponent, summary: string, de
   applied: false,
 });
 
-const selection = (component: HarnessComponent, noun: string): HarnessKey[] => [
-  specOnly(`${component}.include`, component, `Only these ${noun}.`),
-  specOnly(`${component}.exclude`, component, `Leave out these ${noun}.`),
+const selection = (component: HarnessComponent, noun: string, applied = false): HarnessKey[] => [
+  { ...specOnly(`${component}.include`, component, `Only these ${noun}.`), applied },
+  { ...specOnly(`${component}.exclude`, component, `Leave out these ${noun}.`), applied },
 ];
 
 export const HARNESS_KEYS: readonly HarnessKey[] = [
@@ -231,7 +231,15 @@ export const HARNESS_KEYS: readonly HarnessKey[] = [
   specOnly("model.roles.compaction", "model", "Model for compaction summaries."),
   specOnly("model.roles.webFetch", "model", "Model for WebFetch summaries."),
 
-  ...selection("tools", "tools"),
+  ...selection("tools", "tools", true),
+  {
+    ...specOnly(
+      "tools.config",
+      "tools",
+      "Settings of single tools by name: timeoutMs, maxOutputBytes, maxResultChars.",
+    ),
+    applied: true,
+  },
   {
     path: "tools.respectGitignore",
     component: "tools",
@@ -367,7 +375,7 @@ export const HARNESS_KEYS: readonly HarnessKey[] = [
     settings: { key: "outputStyle", read: trimmedString("outputStyle"), scope: "trusted" },
     applied: true,
   },
-  ...selection("mcpServers", "MCP servers"),
+  ...selection("mcpServers", "MCP servers", true),
   ...selection("plugins", "plugins"),
 
   {

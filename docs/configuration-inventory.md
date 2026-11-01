@@ -122,9 +122,9 @@ Fixed values that change behavior and have no setting yet.
 | compaction | `export const WARNING_THRESHOLD_BUFFER_TOKENS = 20_000;` | `src/utils/tokens.ts` | The context warning starts this far below the effective window. |
 | compaction | `const MICROCOMPACT_MIN_MESSAGES = 10;` | `src/context/compaction.ts` | Messages before old tool results are cleared. |
 | compaction | `const MICROCOMPACT_KEEP_RECENT_MESSAGES = 8;` | `src/context/compaction.ts` | Recent messages whose tool results are kept when clearing. |
-| tools | `const DEFAULT_TIMEOUT_MS = 120_000;` | `src/tools/bashTool.ts` | Bash command timeout when the call sets none. |
-| tools | `const MAX_OUTPUT_BYTES = 30_000;` | `src/tools/bashTool.ts` | Bash output kept for the model. |
-| tools | `export const DEFAULT_MAX_RESULT_SIZE_CHARS = 100_000;` | `src/tools/Tool.ts` | Tool result size before it is truncated, unless the tool sets its own. |
+| tools | `export const DEFAULT_SHELL_TIMEOUT_MS = 120_000;` | `src/tools/shellToolConfig.ts` | Bash and PowerShell command timeout when the call sets none (tools.config.<tool>.timeoutMs). |
+| tools | `export const DEFAULT_SHELL_MAX_OUTPUT_BYTES = 30_000;` | `src/tools/shellToolConfig.ts` | Bash and PowerShell output kept for the model (tools.config.<tool>.maxOutputBytes). |
+| tools | `export const DEFAULT_MAX_RESULT_SIZE_CHARS = 100_000;` | `src/tools/Tool.ts` | Tool result size before it is truncated, unless the tool sets its own (tools.config.<tool>.maxResultChars). |
 | context | `export const MAX_ENTRYPOINT_LINES = 200;` | `src/context/memory/memdir.ts` | Lines of MEMORY.md loaded into the system prompt. |
 | context | `export const MAX_ENTRYPOINT_BYTES = 25_000;` | `src/context/memory/memdir.ts` | Bytes of MEMORY.md loaded into the system prompt. |
 | context | `const TURNS_BETWEEN_ATTACHMENTS = 5;` | `src/context/planAttachments.ts` | Turns between Plan Mode reminders. |

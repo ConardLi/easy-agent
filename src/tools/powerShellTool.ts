@@ -2,6 +2,7 @@ import type { Tool, ToolContext, ToolResult } from "./Tool.js";
 import { readMergedEnv } from "../utils/settings.js";
 import { decideSandboxExecution, loadSandboxSettings } from "../sandbox/index.js";
 import { formatCapturedOutput, runControlledProcess } from "../utils/controlledProcess.js";
+import { shellTimeoutProperties, shellToolLimits } from "./shellToolConfig.js";
 
 /**
  * PowerShell registers only on Windows. Windows process isolation is not yet
@@ -14,9 +15,6 @@ interface PowerShellInput {
   idleTimeout?: number;
 }
 
-const DEFAULT_TIMEOUT_MS = 120_000;
-const MAX_OUTPUT_BYTES = 30_000;
-
 function resolveExecutable(): string {
   // pwsh (PowerShell 7+) if explicitly requested; default to Windows PowerShell.
   return process.env.EASY_AGENT_POWERSHELL || "powershell.exe";
@@ -26,24 +24,24 @@ export const powerShellTool: Tool = {
   name: "PowerShell",
   searchHint: "execute Windows PowerShell commands",
   description: "Execute a PowerShell command on Windows and return stdout/stderr. Use this instead of Bash on Windows.",
-  inputSchema: {
-    type: "object" as const,
-    properties: {
-      command: { type: "string", description: "PowerShell command to execute" },
-      timeout: { type: "number", description: "Timeout in milliseconds (default 120000)" },
-      idleTimeout: {
-        type: "number",
-        description: "Stop after this many milliseconds without output (default: command timeout)",
+  // A getter, so the stated default timeout follows the Agent's tools.config.
+  get inputSchema() {
+    return {
+      type: "object" as const,
+      properties: {
+        command: { type: "string", description: "PowerShell command to execute" },
+        ...shellTimeoutProperties("PowerShell"),
       },
-    },
-    required: ["command"],
+      required: ["command"],
+    };
   },
   async call(rawInput: Record<string, unknown>, context: ToolContext): Promise<ToolResult> {
     const input = rawInput as unknown as PowerShellInput;
     if (!input.command) {
       return { content: "Error: command is required", isError: true };
     }
-    const timeoutMs = typeof input.timeout === "number" ? input.timeout : DEFAULT_TIMEOUT_MS;
+    const limits = shellToolLimits("PowerShell");
+    const timeoutMs = typeof input.timeout === "number" ? input.timeout : limits.timeoutMs;
     const idleTimeoutMs = typeof input.idleTimeout === "number" ? input.idleTimeout : timeoutMs;
     if (
       !Number.isSafeInteger(timeoutMs) ||
@@ -95,7 +93,7 @@ export const powerShellTool: Tool = {
         signal: context.abortSignal,
         timeoutMs,
         idleTimeoutMs,
-        maxOutputBytes: MAX_OUTPUT_BYTES,
+        maxOutputBytes: limits.maxOutputBytes,
       });
       if (run.reason === "aborted") return { content: "Command aborted", isError: true };
       if (run.reason === "timeout") return { content: `Command timed out after ${timeoutMs}ms`, isError: true };
