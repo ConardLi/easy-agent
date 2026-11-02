@@ -618,7 +618,24 @@ try {
     session.close();
     const restored = await createMcpAuthSession("direct-auth", url, { type: "authorization_code" });
     assert.equal((await restored?.provider.tokens())?.access_token, "code-token");
+    const registeredRedirect = restored?.interactive?.redirectUrl;
+    assert.ok(restored?.provider.clientInformation(), "the registered client is reused on the same port");
     restored?.close();
+
+    // The callback port a server would get is taken: another port is used and the client registers again.
+    const callbackPort = Number(new URL(registeredRedirect ?? "").port);
+    const blocker = createServer();
+    await new Promise<void>((resolve) => blocker.listen(callbackPort, "127.0.0.1", resolve));
+    try {
+      const moved = await createMcpAuthSession("direct-auth", url, { type: "authorization_code" });
+      assert.ok(moved?.interactive);
+      assert.notEqual(new URL(moved.interactive.redirectUrl).port, String(callbackPort));
+      assert.equal(moved.provider.clientInformation(), undefined, "a client registered for another port is dropped");
+      assert.equal((await moved.provider.tokens())?.access_token, "code-token", "tokens stay");
+      moved.close();
+    } finally {
+      await new Promise<void>((resolve) => blocker.close(() => resolve()));
+    }
 
     const project = path.join(home, "oauth-project");
     const liveUrl = `http://127.0.0.1:${address.port}/mcp-live`;

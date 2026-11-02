@@ -58,23 +58,39 @@ class AuthorizationCodeProvider implements OAuthClientProvider {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
     const listener = createServer();
-    const defaultPort = 39_000 + (parseInt(key.slice(0, 8), 16) % 20_000);
-    await new Promise<void>((resolve, reject) => {
-      listener.once("error", reject);
-      listener.listen(config.redirectPort ?? defaultPort, "127.0.0.1", () => {
-        listener.off("error", reject);
-        resolve();
+    const listen = (port: number) =>
+      new Promise<void>((resolve, reject) => {
+        listener.once("error", reject);
+        listener.listen(port, "127.0.0.1", () => {
+          listener.off("error", reject);
+          resolve();
+        });
       });
-    });
+    if (config.redirectPort !== undefined) {
+      // A pre-registered client's redirect URI names this port, so no other will do.
+      await listen(config.redirectPort);
+    } else {
+      // A stable port per server lets a registered client be reused across runs.
+      const defaultPort = 39_000 + (parseInt(key.slice(0, 8), 16) % 20_000);
+      try {
+        await listen(defaultPort);
+      } catch (error) {
+        // Taken, or in a range the OS reserves (Windows answers EACCES there): any free port works.
+        const code = (error as NodeJS.ErrnoException).code;
+        if (code !== "EADDRINUSE" && code !== "EACCES") throw error;
+        await listen(0);
+      }
+    }
     const port = (listener.address() as AddressInfo).port;
     listener.unref();
-    const provider = new AuthorizationCodeProvider(
-      config,
-      filePath,
-      saved,
-      listener,
-      `http://127.0.0.1:${port}/callback`,
-    );
+    const redirectUrl = `http://127.0.0.1:${port}/callback`;
+    // A client registered for another callback port would be redirected to the wrong place; register again.
+    const registered = (saved.client as { redirect_uris?: unknown } | undefined)?.redirect_uris;
+    if (Array.isArray(registered) && !registered.includes(redirectUrl)) {
+      delete saved.client;
+      delete saved.verifier;
+    }
+    const provider = new AuthorizationCodeProvider(config, filePath, saved, listener, redirectUrl);
     listener.on("request", (request, response) => {
       const url = new URL(request.url ?? "/", provider.redirectUrl);
       if (url.pathname !== "/callback") {

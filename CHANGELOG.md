@@ -60,6 +60,7 @@ All notable changes to Easy Agent are documented in this file.
 
 ### Fixed
 
+- The MCP OAuth callback listener no longer fails to start when its usual port is taken or reserved by the system (Windows reports `EACCES` there); it uses a free port and registers the client again, keeping saved tokens. A configured `redirectPort` is still used as is.
 - `EASY_AGENT_AUTO_MODE_MODEL` now sets the Auto Mode classifier model. Sessions passed their own model to the classifier, which took precedence, so the variable only applied to callers that passed none. The classifier now uses the Agent's `model.roles.classifier` (`EASY_AGENT_AUTO_MODE_MODEL` or an Agent spec), then the session's model.
 - Interrupting while the model is responding ends the turn as interrupted; it was reported as a model error, `Request was aborted.` An interrupt that arrives while a turn is still being prepared (hooks, checkpoints, context) now stops it before the model is called; it was lost.
 - A session's label in `/resume` and `listSessions()` is the first prompt the user typed again. Since transcripts record hidden context, the label could show a plan-mode reminder or a background notification instead.
