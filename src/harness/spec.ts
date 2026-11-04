@@ -48,12 +48,16 @@ export const SHELL_TOOLS = ["Bash", "PowerShell"] as const;
 
 const PromptSectionSchema = z.union([
   z.boolean(),
-  z.strictObject({
-    text: z.string().optional(),
-    file: z.string().trim().min(1).optional(),
-    /** Name of the section this one follows. */
-    after: z.string().trim().min(1).optional(),
-  }),
+  z
+    .strictObject({
+      text: z.string().optional(),
+      file: z.string().trim().min(1).optional(),
+      /** Name of the section this one follows; `instructions` puts it first in the dynamic block. */
+      after: z.string().trim().min(1).optional(),
+    })
+    .refine((section) => section.text === undefined || section.file === undefined, {
+      message: "set text or file, not both",
+    }),
 ]);
 
 export const HarnessSpecSchema = z.strictObject({

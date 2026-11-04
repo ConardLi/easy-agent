@@ -27,6 +27,7 @@
  */
 
 import { CONTEXT_UPDATE_MARKER } from "../constants/systemPromptMarkers.js";
+import type { ResolvedHarness } from "../harness/resolve.js";
 import { shouldIgnoreMemory } from "./memory/memdir.js";
 import {
   assembleSystemPrompt,
@@ -34,6 +35,7 @@ import {
   collectDynamicSections,
   getLocalDateString,
   getRuntimeEnvironmentContext,
+  promptHarnessFor,
   type PromptSection,
   type PromptSectionName,
   type RuntimeEnvironmentContext,
@@ -52,6 +54,9 @@ const SECTION_TITLES: Record<PromptSectionName, string> = {
   agents: "Available sub-agents",
   team: "Agent team",
 };
+
+/** A section the Agent adds is titled by its name. */
+const sectionTitle = (name: string): string => SECTION_TITLES[name as PromptSectionName] ?? name;
 
 export interface PreparedTurnContext {
   /** System prompt parts for this turn's requests. */
@@ -78,7 +83,7 @@ interface Snapshot {
   /** Dynamic sections in `systemParts`, as built. */
   sections: PromptSection[];
   /** Section text as the model last saw it, from the prompt or a later update. */
-  seen: Map<PromptSectionName, string>;
+  seen: Map<string, string>;
   /** Last date the model was told about. */
   seenDate: string;
 }
@@ -93,17 +98,21 @@ export function createSessionPromptContext(options: SessionPromptContextOptions)
   const now = options.now ?? (() => new Date());
   let snapshot: Snapshot | null = null;
 
-  const collect = (environment: RuntimeEnvironmentContext): Promise<PromptSection[]> =>
+  const collect = (
+    environment: RuntimeEnvironmentContext,
+    harness: ResolvedHarness | undefined,
+  ): Promise<PromptSection[]> =>
     collectDynamicSections({
       cwd: options.cwd,
       environment,
       additionalInstructions: options.additionalInstructions,
+      harness,
     });
 
-  async function build(): Promise<Snapshot> {
+  async function build(harness: ResolvedHarness | undefined): Promise<Snapshot> {
     const environment = await getRuntimeEnvironmentContext(options.cwd, now());
-    const staticParts = buildStaticSystemParts();
-    const sections = await collect(environment);
+    const staticParts = buildStaticSystemParts(harness);
+    const sections = await collect(environment, harness);
     return {
       environment,
       staticParts,
@@ -115,7 +124,7 @@ export function createSessionPromptContext(options: SessionPromptContextOptions)
   }
 
   async function peek(): Promise<{ systemParts: string[]; sections: PromptSection[] }> {
-    snapshot ??= await build();
+    snapshot ??= await build(await promptHarnessFor(options.cwd));
     return { systemParts: snapshot.systemParts, sections: snapshot.sections };
   }
 
@@ -125,9 +134,11 @@ export function createSessionPromptContext(options: SessionPromptContextOptions)
         turn.userQuery && shouldIgnoreMemory(turn.userQuery)
           ? "The user asked not to use memory for this turn. Do not read or rely on the memory index when answering."
           : null;
+      // One read of the Agent per turn, so the static block and the sections agree.
+      const harness = await promptHarnessFor(options.cwd);
 
-      if (!snapshot || !sameParts(snapshot.staticParts, buildStaticSystemParts())) {
-        snapshot = await build();
+      if (!snapshot || !sameParts(snapshot.staticParts, buildStaticSystemParts(harness))) {
+        snapshot = await build(harness);
         return {
           systemParts: snapshot.systemParts,
           update: formatUpdate(ignoreMemoryNote ? [["Memory", ignoreMemoryNote]] : []),
@@ -140,12 +151,18 @@ export function createSessionPromptContext(options: SessionPromptContextOptions)
         entries.push(["Date", `Today's date is now ${today}.`]);
         snapshot.seenDate = today;
       }
-      for (const section of await collect(snapshot.environment)) {
+      const current = await collect(snapshot.environment, harness);
+      const currentNames = new Set(current.map((section) => section.name));
+      // A section the Agent no longer adds is reported as removed.
+      const gone = [...snapshot.seen.keys()]
+        .filter((name) => !currentNames.has(name))
+        .map((name) => ({ name, text: "" }));
+      for (const section of [...current, ...gone]) {
         if (section.name === "environment") continue;
         const previous = snapshot.seen.get(section.name) ?? "";
         if (section.text === previous) continue;
         entries.push([
-          SECTION_TITLES[section.name],
+          sectionTitle(section.name),
           section.text || "This section no longer applies. Disregard the earlier version.",
         ]);
         snapshot.seen.set(section.name, section.text);

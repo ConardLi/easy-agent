@@ -23,6 +23,7 @@ import { isProjectTrusted, trustProjectForSession } from "../config/globalState.
 import { setFlagSettings } from "../config/sources.js";
 import { detectWorkspaceRisks } from "../config/workspaceRisks.js";
 import { activeHarness, installHarness } from "../harness/active.js";
+import { promptSectionProblems } from "../harness/prompt.js";
 import { type HarnessIssue, harnessEnvironment, type ResolvedHarness, resolveHarness } from "../harness/resolve.js";
 import { toolConfigProblems, unmatchedSelectionEntries } from "../harness/selection.js";
 import { refreshHookDisableFromSettings } from "../hooks/settings.js";
@@ -149,6 +150,7 @@ export async function loadWorkspace(options: AgentRuntimeOptions): Promise<Works
     logger.warn(`[easy-agent] ⚠ tools.include and tools.exclude name no built-in tool: ${unknownTools.join(", ")}`);
   }
   for (const problem of toolConfigProblems(activeHarness(), builtInTools)) logger.warn(`[easy-agent] ⚠ ${problem}`);
+  for (const problem of promptSectionProblems(activeHarness())) logger.warn(`[easy-agent] ⚠ ${problem}`);
 
   let ignoredProjectConfig: string[] = [];
   if (!projectTrusted) {

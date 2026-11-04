@@ -203,7 +203,9 @@ function promptPieces(
     }
     const weight =
       section.name === "memory" ? Math.max(0, section.text.length - memoryEntryLength) : section.text.length;
-    pieces.push({ category: "system", item: { id: section.name, label: SECTION_LABELS[section.name] }, weight });
+    // A section the Agent adds is labelled by its name.
+    const label = SECTION_LABELS[section.name as PromptSectionName] ?? section.name;
+    pieces.push({ category: "system", item: { id: section.name, label }, weight });
   }
   return pieces;
 }
@@ -296,10 +298,16 @@ export async function computeContextBreakdown(input: ContextBreakdownInput): Pro
     hasPendingMcpServers: hasPendingMcpServers(),
     source: "context",
   });
-  const [agentMdFiles, memoryEntry] = await Promise.all([
-    listAgentMdFiles(cwd).catch(() => []),
+  // Rule files and the memory index count only when the pinned prompt carries
+  // them: the Agent can leave either source or its section out.
+  const sectionText = (name: PromptSectionName) =>
+    input.systemPrompt.sections.find((section) => section.name === name)?.text ?? "";
+  const [agentMdFiles, memoryIndex] = await Promise.all([
+    sectionText("agent_md") ? listAgentMdFiles(cwd).catch(() => []) : [],
     readMemoryEntrypoint(cwd).catch(() => null),
   ]);
+  const memoryEntry =
+    memoryIndex && sectionText("memory").includes(`Memory index:\n${memoryIndex}`) ? memoryIndex : null;
   const loadedAgentMd = agentMdFiles.filter((file) => !file.excluded);
   const agentMd = loadedAgentMd.map(formatAgentMdSection).join("\n\n");
 

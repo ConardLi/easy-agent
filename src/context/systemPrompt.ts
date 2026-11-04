@@ -22,7 +22,17 @@ import { formatAgentsSystemReminder } from "../agents/promptInjection.js";
 import { formatTeamSystemReminder } from "../agents/teamPromptInjection.js";
 import { getAllAgents } from "../agents/registry.js";
 import { getActiveOutputStyleConfig } from "../styles/registry.js";
-import { harnessSettingFor } from "../harness/active.js";
+import { harnessFor } from "../harness/active.js";
+import {
+  arrangePromptSections,
+  type ContextSourceName,
+  contextSourceLoaded,
+  contextSourceOn,
+  identityText,
+  keepsBuiltInText,
+  promptSectionSettings,
+} from "../harness/prompt.js";
+import { harnessValue, type ResolvedHarness } from "../harness/resolve.js";
 import {
   SYSTEM_PROMPT_DYNAMIC_END,
   SYSTEM_PROMPT_DYNAMIC_START,
@@ -49,7 +59,7 @@ export interface BuildSystemPromptOptions {
   userQuery?: string;
 }
 
-/** Named parts of the dynamic system prompt block, in prompt order. */
+/** Named parts of the built-in dynamic system prompt block, in prompt order. */
 export type PromptSectionName =
   | "output_style"
   | "language"
@@ -61,9 +71,12 @@ export type PromptSectionName =
   | "agents"
   | "team";
 
-/** One dynamic section. `text` is empty when the section does not apply. */
+/**
+ * One dynamic section: a built-in one (`PromptSectionName`) or one the Agent
+ * adds under its own name. `text` is empty when the section does not apply.
+ */
 export interface PromptSection {
-  name: PromptSectionName;
+  name: string;
   text: string;
 }
 
@@ -73,9 +86,24 @@ export interface CollectDynamicSectionsOptions {
   additionalInstructions?: string;
   /** Leave the memory index out and say so (the user asked not to use memory). */
   ignoreMemory?: boolean;
+  /**
+   * The Agent whose prompt and context settings apply; resolved for `cwd`
+   * when the key is absent. Undefined keeps the built-in sections as they are.
+   */
+  harness?: ResolvedHarness | undefined;
 }
 
-// Identity framing — always present, regardless of output style.
+/**
+ * The Agent the prompt of `cwd` follows, with its settings files as they are
+ * now. Undefined when it cannot be resolved; the prompt then uses the
+ * built-in text and loads every context source.
+ */
+export function promptHarnessFor(cwd: string): Promise<ResolvedHarness | undefined> {
+  return harnessFor(cwd, { current: true }).catch(() => undefined);
+}
+
+// Identity framing — always present, regardless of output style, unless the
+// Agent replaces it (`prompt.identity`).
 const IDENTITY_SECTIONS = [
   "You are Easy Agent, a terminal-native local coding assistant running inside the user's workspace.",
   "Treat the current working directory and explicitly configured additional directories as the file-tool boundary. Easy Agent exposes its plans directory when a plan file is required; memory, sessions, and other internal state are managed through dedicated runtime features.",
@@ -93,8 +121,9 @@ const CODING_INSTRUCTION_SECTIONS = [
   "Keep answers structured and practical. Summarize what you changed or found, and avoid unnecessary narration.",
 ];
 
-function getStaticPromptSections(keepCodingInstructions: boolean): string[] {
-  return keepCodingInstructions ? [...IDENTITY_SECTIONS, ...CODING_INSTRUCTION_SECTIONS] : [...IDENTITY_SECTIONS];
+function getStaticPromptSections(keepCodingInstructions: boolean, identity: string | undefined): string[] {
+  const identitySections = identity === undefined ? IDENTITY_SECTIONS : identity ? [identity] : [];
+  return keepCodingInstructions ? [...identitySections, ...CODING_INSTRUCTION_SECTIONS] : [...identitySections];
 }
 
 async function getGitContext(
@@ -138,13 +167,19 @@ export async function getRuntimeEnvironmentContext(
   };
 }
 
-function formatEnvironmentContext(context: RuntimeEnvironmentContext): string {
-  const lines = [
-    "Environment:",
-    "- Current working directory: " + context.cwd,
-    "- Today's date: " + context.date,
-    "- Operating system: " + context.os,
-  ];
+function formatEnvironmentContext(context: RuntimeEnvironmentContext, harness: ResolvedHarness | undefined): string {
+  const withEnvironment = !harness || contextSourceOn(harness, "environment");
+  const withGit = !harness || contextSourceOn(harness, "git_status");
+  if (!withEnvironment && !withGit) return "";
+  const lines = ["Environment:"];
+  if (withEnvironment) {
+    lines.push(
+      "- Current working directory: " + context.cwd,
+      "- Today's date: " + context.date,
+      "- Operating system: " + context.os,
+    );
+  }
+  if (!withGit) return lines.join("\n");
 
   if (context.gitBranch) {
     lines.push("- Git branch at session start: " + context.gitBranch);
@@ -164,19 +199,24 @@ function formatEnvironmentContext(context: RuntimeEnvironmentContext): string {
 
 /**
  * Static block: identity plus coding instructions. Changes only when the
- * active output style toggles `keepCodingInstructions`.
+ * Agent's identity text changes or the active output style toggles
+ * `keepCodingInstructions`.
  */
-export function buildStaticSystemParts(): string[] {
+export function buildStaticSystemParts(harness?: ResolvedHarness): string[] {
   // Output style reshapes HOW the agent answers. A non-null
   // config means a non-default style is active; keepCodingInstructions
   // decides whether the base coding guidance survives.
   const activeStyle = getActiveOutputStyleConfig();
   const keepCodingInstructions = !activeStyle || activeStyle.keepCodingInstructions !== false;
-  return [SYSTEM_PROMPT_STATIC_START, ...getStaticPromptSections(keepCodingInstructions), SYSTEM_PROMPT_STATIC_END];
+  return [
+    SYSTEM_PROMPT_STATIC_START,
+    ...getStaticPromptSections(keepCodingInstructions, harness ? identityText(harness) : undefined),
+    SYSTEM_PROMPT_STATIC_END,
+  ];
 }
 
 /** Join the static block and the non-empty dynamic sections into prompt parts. */
-export function assembleSystemPrompt(staticParts: string[], sections: PromptSection[]): string[] {
+export function assembleSystemPrompt(staticParts: string[], sections: readonly PromptSection[]): string[] {
   return [
     ...staticParts,
     SYSTEM_PROMPT_DYNAMIC_START,
@@ -192,41 +232,54 @@ export function assembleSystemPrompt(staticParts: string[], sections: PromptSect
  */
 export async function buildSystemPrompt(options: BuildSystemPromptOptions): Promise<string[]> {
   const ignoreMemory = options.userQuery ? shouldIgnoreMemory(options.userQuery) : false;
-  const environment = await getRuntimeEnvironmentContext(options.cwd);
+  const [environment, harness] = await Promise.all([
+    getRuntimeEnvironmentContext(options.cwd),
+    promptHarnessFor(options.cwd),
+  ]);
   const sections = await collectDynamicSections({
     cwd: options.cwd,
     environment,
     additionalInstructions: options.additionalInstructions,
     ignoreMemory,
+    harness,
   });
-  return assembleSystemPrompt(buildStaticSystemParts(), sections);
+  return assembleSystemPrompt(buildStaticSystemParts(harness), sections);
 }
 
 /**
  * Every dynamic section in prompt order, including empty ones, so callers can
- * compare two collections section by section.
+ * compare two collections section by section. The Agent's `prompt.sections`
+ * decides which sections are left out, replaced, added, and where they go;
+ * its `context` settings decide which sources the built-in sections load.
  */
 export async function collectDynamicSections(options: CollectDynamicSectionsOptions): Promise<PromptSection[]> {
   const ignoreMemory = options.ignoreMemory === true;
-  const memoryDir = await ensureMemoryDirExists(options.cwd);
-  const [agentMdContext, memoryEntrypoint, language] = await Promise.all([
-    loadAgentMdContext(options.cwd),
-    ignoreMemory ? Promise.resolve(null) : readMemoryEntrypoint(options.cwd),
-    harnessSettingFor<string | undefined>(options.cwd, "prompt.language", { current: true }).catch(() => undefined),
+  const harness = "harness" in options ? options.harness : await promptHarnessFor(options.cwd);
+  // A section the Agent turns off or replaces never shows its built-in text, so its sources are not read.
+  const loads = (source: ContextSourceName) => contextSourceLoaded(harness, source);
+
+  const withMemory = keepsBuiltInText(harness, "memory");
+  const memoryDir = withMemory ? await ensureMemoryDirExists(options.cwd) : "";
+  const [agentMdContext, memoryEntrypoint] = await Promise.all([
+    loads("agent_md") ? loadAgentMdContext(options.cwd) : Promise.resolve(""),
+    ignoreMemory || !loads("memory") ? Promise.resolve(null) : readMemoryEntrypoint(options.cwd),
   ]);
+  const language = harness ? harnessValue<string | undefined>(harness, "prompt.language") : undefined;
   const activeStyle = getActiveOutputStyleConfig();
 
-  const memorySections = [
-    ...formatMemorySystemLocation(memoryDir),
-    ...buildMemoryPromptInstructions(),
-    ...buildMemoryTypeGuidance(),
-    ...buildMemoryExclusionGuidance(),
-    ...buildMemoryAccessGuidance(),
-    ...buildMemoryValidationGuidance(),
-    ...buildMemoryPersistenceBoundaryGuidance(),
-    ignoreMemory ? "Memory is disabled for this turn because the user asked not to use it." : "",
-    memoryEntrypoint ? `Memory index:\n${memoryEntrypoint}` : "",
-  ].filter(Boolean);
+  const memorySections = withMemory
+    ? [
+        ...formatMemorySystemLocation(memoryDir),
+        ...buildMemoryPromptInstructions(),
+        ...buildMemoryTypeGuidance(),
+        ...buildMemoryExclusionGuidance(),
+        ...buildMemoryAccessGuidance(),
+        ...buildMemoryValidationGuidance(),
+        ...buildMemoryPersistenceBoundaryGuidance(),
+        ignoreMemory ? "Memory is disabled for this turn because the user asked not to use it." : "",
+        memoryEntrypoint ? `Memory index:\n${memoryEntrypoint}` : "",
+      ].filter(Boolean)
+    : [];
 
   // Skill discovery listing — see skills/budget.ts for the budget logic.
   // Wrapped as a <system-reminder> block (not a top-level instruction) so the
@@ -234,12 +287,12 @@ export async function collectDynamicSections(options: CollectDynamicSectionsOpti
   // Conditional skills (frontmatter `paths`) only appear here AFTER they've
   // been promoted in by activateConditionalSkillsForPaths(); see
   // skills/conditional.ts.
-  const skillsReminder = formatSkillsSystemReminder(getModelVisibleSkills());
+  const skillsReminder = loads("skills") ? formatSkillsSystemReminder(getModelVisibleSkills()) : "";
 
   // Agents discovery listing — same pattern as skills. Tells the model
   // which `subagent_type` values it can pass to the Agent tool. The
   // registry is populated at startup by bootstrapAgents() in cli.ts.
-  const agentsReminder = formatAgentsSystemReminder(getAllAgents());
+  const agentsReminder = loads("agents") ? formatAgentsSystemReminder(getAllAgents()) : "";
 
   // Agent Teams reminder — appears only when the feature flag
   // is on AND a team is currently active. The model already sees the
@@ -263,10 +316,10 @@ export async function collectDynamicSections(options: CollectDynamicSectionsOpti
     ? `Respond to the user in ${language}, unless they explicitly ask for another language. Keep code, file paths, and identifiers unchanged.`
     : "";
 
-  return [
+  const builtIn: PromptSection[] = [
     { name: "output_style", text: outputStyleSection },
     { name: "language", text: languageSection },
-    { name: "environment", text: formatEnvironmentContext(options.environment) },
+    { name: "environment", text: formatEnvironmentContext(options.environment, harness) },
     { name: "agent_md", text: agentMdContext ? "Project memory (AGENT.md):\n" + agentMdContext : "" },
     { name: "memory", text: memorySections.length > 0 ? memorySections.join("\n\n") : "" },
     {
@@ -277,6 +330,7 @@ export async function collectDynamicSections(options: CollectDynamicSectionsOpti
     { name: "agents", text: agentsReminder },
     { name: "team", text: teamReminder },
   ];
+  return harness ? arrangePromptSections(builtIn, promptSectionSettings(harness)) : builtIn;
 }
 
 export function renderSystemPrompt(parts: string[]): string {

@@ -9,12 +9,21 @@
  */
 
 import type { SettingSource } from "../config/sources.js";
-import type { PromptSectionName } from "../context/systemPrompt.js";
 import { getRegisteredTools } from "../tools/index.js";
 import type { Tool } from "../tools/Tool.js";
 import { activeHarness } from "./active.js";
+import {
+  addedPromptSections,
+  CONTEXT_SOURCES,
+  contextSourceOffReason,
+  DYNAMIC_SECTIONS,
+  promptSectionOffReason,
+  promptSectionReplacement,
+} from "./prompt.js";
 import type { ResolvedHarness } from "./resolve.js";
 import { selectionOffReason } from "./selection.js";
+
+export { CONTEXT_SOURCES };
 
 /** Where a component comes from: built in, a settings layer (`flag` is the command line), a plugin, or an SDK caller. */
 export type HarnessComponentSource = "built-in" | SettingSource | "plugin" | "sdk";
@@ -42,27 +51,18 @@ export interface BuiltInComponent {
   id: string;
   kind: BuiltInComponentKind;
   name: string;
-  source: "built-in";
+  /** `harness` for a prompt section the Agent adds. */
+  source: "built-in" | "harness";
   enabled: boolean;
   reason?: string;
   description: string;
+  /** Where the text comes from when the Agent replaces a prompt section's built-in text, or adds the section. */
+  replacedBy?: string;
   /** The Harness key that turns it on or off, when there is one. */
   specKey?: string;
 }
 
-const DYNAMIC_SECTIONS: Record<PromptSectionName, string> = {
-  output_style: "Instructions of the active output style.",
-  language: "The reply language from the language setting.",
-  environment: "Working directory, date, operating system, and the git snapshot.",
-  agent_md: "AGENTS.md and AGENT.md files.",
-  memory: "How to use project memory, and its index.",
-  session_instructions: "Extra instructions a caller passes for the session; nothing passes them yet.",
-  skills: "The skill listing.",
-  agents: "The sub-agent listing.",
-  team: "Agent Teams instructions.",
-};
-
-/** In prompt order: the static block first, then the dynamic sections. */
+/** Built-in prompt sections in built-in order: the static block first, then the dynamic sections. */
 export const PROMPT_SECTIONS: readonly { name: string; block: "static" | "dynamic"; description: string }[] = [
   { name: "identity", block: "static", description: "Who the agent is and the file-tool boundary." },
   {
@@ -73,31 +73,6 @@ export const PROMPT_SECTIONS: readonly { name: string; block: "static" | "dynami
   ...Object.entries(DYNAMIC_SECTIONS).map(([name, description]) => ({ name, block: "dynamic" as const, description })),
 ];
 
-/** Where dynamic context comes from, and the prompt section it fills. */
-export const CONTEXT_SOURCES: readonly {
-  name: string;
-  specKey: string;
-  section: PromptSectionName;
-  description: string;
-}[] = [
-  { name: "agent_md", specKey: "context.agentMd", section: "agent_md", description: "AGENTS.md and AGENT.md files." },
-  { name: "memory", specKey: "context.memory", section: "memory", description: "The project memory index." },
-  {
-    name: "environment",
-    specKey: "context.environment",
-    section: "environment",
-    description: "Working directory, date, and operating system.",
-  },
-  {
-    name: "git_status",
-    specKey: "context.gitStatus",
-    section: "environment",
-    description: "Git branch, status, and latest commit when the session starts.",
-  },
-  { name: "skills", specKey: "context.skills", section: "skills", description: "The skill listing." },
-  { name: "agents", specKey: "context.agents", section: "agents", description: "The sub-agent listing." },
-];
-
 /** Why a registered tool is off for `resolved`, or undefined when the session can use it. */
 export function toolOffReason(tool: Tool, resolved: ResolvedHarness): string | undefined {
   return (
@@ -106,7 +81,12 @@ export function toolOffReason(tool: Tool, resolved: ResolvedHarness): string | u
   );
 }
 
-/** Built-in tools (MCP tools excluded), prompt sections, and context sources, with tools on or off for `resolved`. */
+/**
+ * Built-in tools (MCP tools excluded), prompt sections (with the ones the
+ * Agent adds), and context sources, each on or off for `resolved`. A prompt
+ * section that is on can still be empty when it has nothing to show, such as
+ * the team section without a team.
+ */
 export function listBuiltInComponents(resolved: ResolvedHarness = activeHarness()): BuiltInComponent[] {
   const tools = getRegisteredTools()
     .filter((tool) => !tool.isMcp)
@@ -127,27 +107,47 @@ export function listBuiltInComponents(resolved: ResolvedHarness = activeHarness(
         specKey: "tools.include",
       };
     });
-  const sections = PROMPT_SECTIONS.map(
-    (section): BuiltInComponent => ({
+  const sections = PROMPT_SECTIONS.map((section): BuiltInComponent => {
+    const reason = section.name === "instructions" ? undefined : promptSectionOffReason(resolved, section.name);
+    const replacedBy = reason ? undefined : promptSectionReplacement(resolved, section.name);
+    return {
       id: componentId.promptSection(section.name),
       kind: "prompt_section",
       name: section.name,
       source: "built-in",
-      enabled: true,
+      enabled: !reason,
+      ...(reason ? { reason } : {}),
       description: section.description,
-      specKey: section.name === "identity" ? "prompt.identity" : "prompt.sections",
+      ...(replacedBy ? { replacedBy } : {}),
+      ...(section.name === "instructions"
+        ? {}
+        : { specKey: section.name === "identity" ? "prompt.identity" : "prompt.sections" }),
+    };
+  });
+  const added = addedPromptSections(resolved).map(
+    (section): BuiltInComponent => ({
+      id: componentId.promptSection(section.name),
+      kind: "prompt_section",
+      name: section.name,
+      source: "harness",
+      enabled: true,
+      description: `Added by the Agent (${section.text.length} chars).`,
+      replacedBy: promptSectionReplacement(resolved, section.name)!,
+      specKey: "prompt.sections",
     }),
   );
-  const contextSources = CONTEXT_SOURCES.map(
-    (source): BuiltInComponent => ({
+  const contextSources = CONTEXT_SOURCES.map((source): BuiltInComponent => {
+    const reason = contextSourceOffReason(resolved, source.name);
+    return {
       id: componentId.contextSource(source.name),
       kind: "context_source",
       name: source.name,
       source: "built-in",
-      enabled: true,
+      enabled: !reason,
+      ...(reason ? { reason } : {}),
       description: source.description,
       specKey: source.specKey,
-    }),
-  );
-  return [...tools, ...sections, ...contextSources];
+    };
+  });
+  return [...tools, ...sections, ...added, ...contextSources];
 }
