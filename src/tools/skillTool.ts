@@ -16,7 +16,7 @@
  * context. `disable-model-invocation` remains enforced for model-originated calls.
  */
 
-import { findSkill } from "../services/skills/registry.js";
+import { findSkill, loadedSkillOffByAgent } from "../services/skills/registry.js";
 import type { Skill } from "../types/types.js";
 import type { Tool, ToolContext, ToolResult } from "./Tool.js";
 
@@ -92,8 +92,11 @@ export const skillTool: Tool = {
 
     const skill = findSkill(name);
     if (!skill) {
+      const offByAgent = loadedSkillOffByAgent(name);
       return {
-        content: `Error: skill "${name}" not found. Run with --dump-system-prompt to see the available list.`,
+        content: offByAgent
+          ? `Error: skill "${name}" is turned off for this Agent. ${offByAgent}`
+          : `Error: skill "${name}" not found. Run with --dump-system-prompt to see the available list.`,
         isError: true,
       };
     }

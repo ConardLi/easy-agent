@@ -7,7 +7,7 @@ import type {
   PermissionRuleSet,
   PermissionSettings,
 } from "../../permissions/permissions.js";
-import { findAgent } from "../../agents/registry.js";
+import { findAgent, loadedSubAgentOffByAgent } from "../../agents/registry.js";
 
 /** Execute a skill in a fresh agent context without widening the parent's tool pool or rules. */
 export async function executeForkSkill(skill: Skill, prompt: string, context: ToolContext): Promise<ToolResult> {
@@ -16,7 +16,15 @@ export async function executeForkSkill(skill: Skill, prompt: string, context: To
   }
   const agentName = typeof skill.frontmatter.raw.agent === "string" ? skill.frontmatter.raw.agent : "general-purpose";
   const definition = findAgent(agentName);
-  if (!definition) return { content: `Unknown skill agent: ${agentName}`, isError: true };
+  if (!definition) {
+    const offByAgent = loadedSubAgentOffByAgent(agentName);
+    return {
+      content: offByAgent
+        ? `Skill agent ${agentName} is turned off for this Agent. ${offByAgent}`
+        : `Unknown skill agent: ${agentName}`,
+      isError: true,
+    };
+  }
   const { runChildAgent } = await import("../../agents/runAgent.js");
   const { getAllTools } = await import("../../tools/index.js");
   const available = [...(context.availableTools ?? getAllTools())];

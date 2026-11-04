@@ -18,6 +18,7 @@
 import * as nodeOs from "node:os";
 import * as nodePath from "node:path";
 import { bootstrapAgents } from "../agents/bootstrap.js";
+import { getRegisteredAgents } from "../agents/registry.js";
 import { bootstrapUserCommands } from "../commands/userCommands/bootstrap.js";
 import { isProjectTrusted, trustProjectForSession } from "../config/globalState.js";
 import { setFlagSettings } from "../config/sources.js";
@@ -31,6 +32,7 @@ import { refreshActivePlugins } from "../plugins/runtime.js";
 import { getSandboxCapability, getSandboxUnavailableReason, loadSandboxSettings } from "../sandbox/index.js";
 import { resolveApiKeyFromHelper } from "../services/api/apiKeyHelper.js";
 import { bootstrapSkills } from "../services/skills/bootstrap.js";
+import { getRegisteredSkills } from "../services/skills/registry.js";
 import { cleanupOldFileHistoryBackups } from "../session/fileHistory.js";
 import { applySessionRetentionPolicy } from "../session/storage.js";
 import { bootstrapOutputStyles } from "../styles/bootstrap.js";
@@ -193,6 +195,15 @@ export async function loadWorkspace(options: AgentRuntimeOptions): Promise<Works
   await refreshActivePlugins(cwd, { pluginDirs: [...(options.pluginDirs ?? [])], applyMcp: false }).catch((error) => {
     logger.error(`[easy-agent] plugins bootstrap failed: ${errorMessage(error)}`);
   });
+  for (const [kind, label, names] of [
+    ["skills", "skill", getRegisteredSkills().map((skill) => skill.name)],
+    ["agents", "sub-agent", getRegisteredAgents().map((agent) => agent.agentType)],
+  ] as const) {
+    const unknown = unmatchedSelectionEntries(activeHarness(), kind, names);
+    if (unknown.length > 0) {
+      logger.warn(`[easy-agent] ⚠ ${kind}.include and ${kind}.exclude name no loaded ${label}: ${unknown.join(", ")}`);
+    }
+  }
 
   // Resolve the sandbox capability before the first shell command so an
   // unavailable security boundary is visible at startup.

@@ -26,7 +26,7 @@
  * the user is iterating on a plan they haven't approved.
  */
 
-import { findAgent, getAllAgents } from "../agents/registry.js";
+import { findAgent, getAllAgents, loadedSubAgentOffByAgent } from "../agents/registry.js";
 import { randomUUID } from "node:crypto";
 import type { AgentIsolation, AgentRunResult } from "../agents/types.js";
 import type { Tool, ToolContext, ToolResult } from "./Tool.js";
@@ -230,8 +230,11 @@ export const agentTool: Tool = {
       const available = getAllAgents()
         .map((a) => a.agentType)
         .join(", ");
+      const offByAgent = loadedSubAgentOffByAgent(agentType);
       return {
-        content: `Error: sub-agent type '${agentType}' is not registered. Available types: ${available || "(none)"}.`,
+        content: offByAgent
+          ? `Error: sub-agent type '${agentType}' is turned off for this Agent. ${offByAgent} Available types: ${available || "(none)"}.`
+          : `Error: sub-agent type '${agentType}' is not registered. Available types: ${available || "(none)"}.`,
         isError: true,
       };
     }

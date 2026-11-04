@@ -3,14 +3,32 @@
  * `eagent harness`. Without an argument, the Agent this session runs.
  */
 
+import { getRegisteredAgents, subAgentOffByAgent } from "../../../agents/registry.js";
 import { harnessFor } from "../../../harness/active.js";
 import { listBuiltInComponents } from "../../../harness/components.js";
 import { diffHarnesses } from "../../../harness/diff.js";
-import { formatHarness, formatHarnessDiff } from "../../../harness/format.js";
+import { formatHarness, formatHarnessDiff, type LeftOutResource } from "../../../harness/format.js";
 import { type ResolvedHarness, resolveHarness } from "../../../harness/resolve.js";
 import { harnessTarget } from "../../../harness/target.js";
+import { getRegisteredSkills, skillOffByAgent } from "../../../services/skills/registry.js";
 import type { QueryEngineEvent } from "../types.js";
 import type { CommandContext } from "./context.js";
+
+/** Loaded skills and sub-agents that `resolved` leaves out, with the reason. */
+function leftOutResources(resolved: ResolvedHarness): LeftOutResource[] {
+  return [
+    ...getRegisteredSkills().map((skill) => ({
+      kind: "skill" as const,
+      name: skill.name,
+      reason: skillOffByAgent(skill.name, resolved),
+    })),
+    ...getRegisteredAgents().map((agent) => ({
+      kind: "agent" as const,
+      name: agent.agentType,
+      reason: subAgentOffByAgent(agent.agentType, resolved),
+    })),
+  ].filter((item): item is LeftOutResource => item.reason !== undefined);
+}
 
 async function resolveArgument(argument: string | undefined, cwd: string): Promise<ResolvedHarness> {
   if (argument === undefined) return harnessFor(cwd, { current: true });
@@ -36,7 +54,11 @@ export async function* handleHarnessCommand(
       return { handled: true };
     }
     const resolved = await resolveArgument(args[0], ctx.cwd);
-    yield { type: "command", kind: "info", message: formatHarness(resolved, listBuiltInComponents(resolved)) };
+    yield {
+      type: "command",
+      kind: "info",
+      message: formatHarness(resolved, listBuiltInComponents(resolved), leftOutResources(resolved)),
+    };
   } catch (error) {
     yield { type: "command", kind: "error", message: error instanceof Error ? error.message : String(error) };
   }

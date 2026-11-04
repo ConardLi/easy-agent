@@ -220,13 +220,79 @@ An Agent is a Harness spec: the model, tools, prompt, context sources, compactio
 - `--dump-system-prompt --harness <name|file>` prints the prompt an Agent sends.
 - A child's `prompt.sections` replaces its parent's as a whole, as `tools.config` does.
 
+### Compaction
+
+```json
+{
+  "harnesses": {
+    "long-runs": { "compaction": { "autoThreshold": 0.6, "keepRecentMessages": 12 } },
+    "manual": { "compaction": { "auto": false, "microcompact": false } }
+  }
+}
+```
+
+- `compaction.auto` (default `true`) summarizes the conversation without being asked: before a turn once it reaches the threshold, and once after the model rejects a request as too long. With `false` neither happens; a request that is too long ends the turn with the error, and `/compact` still summarizes when you run it. `/context` then warns that the Agent does not compact automatically.
+- `compaction.autoThreshold` is the share of the effective window (the context window minus the room kept for the summary) at which auto-compaction starts, between 0 (exclusive) and 1. Unset starts it 13000 tokens below the effective window (scaled down for windows under 200000), as before. A value past the point where requests are refused is lowered to that point. `runtime/inventory`'s context breakdown and `/context` report the same threshold.
+- `compaction.microcompact` (default `true`) clears old tool results of Read, Grep, Glob, Bash, Edit, and Write, and old images, before each turn once the conversation has 10 messages. With `false` the conversation keeps them until it is summarized.
+- `compaction.keepRecentMessages` (default 8) is how many recent messages compaction keeps as they are: clearing leaves their tool results, and a summary keeps them verbatim after it (more when a kept tool result needs its call).
+- `compaction.contextWindow` sets the window size, as `EASY_AGENT_MAX_CONTEXT_TOKENS` does; the variable wins over the spec.
+- The settings apply from the next turn after an edit.
+
+### Feature switches
+
+Each switch under `features` (and `session.checkpoints`) is also controlled by the setting or environment variable it had before; those keep working and resolve as layers around the Agent's spec. The spec sits above user settings and below project and local settings, environment variables, flags, and managed policy, except where the table says the variable wins over every settings layer.
+
+| Key | Default | Same as | Order against the spec |
+|---|---|---|---|
+| `features.agentTeams` | `false` | `EASY_AGENT_TEAMS`, `--agent-teams` | the variable and the flag can turn it on over the spec |
+| `features.tasks` | `"task"` | `/tasks task\|todo` in a session | the session's `/tasks` changes it for that session |
+| `features.toolSearch`, `features.toolSearchAutoThreshold` | `"on"`, `10` | `toolSearch`, `toolSearchAutoThreshold`, `--tool-search`, `EASY_AGENT_ENABLE_TOOL_SEARCH` (deprecated) | project and local settings, the variable, and the flag win |
+| `features.thinking` | `true` | `alwaysThinkingEnabled`, `MAX_THINKING_TOKENS` | `MAX_THINKING_TOKENS` wins over every layer |
+| `features.thinkingBudget` | unset | `MAX_THINKING_TOKENS=N` | the variable wins over every layer |
+| `features.thinkingInRequests` | `true` | `CLAUDE_CODE_DISABLE_THINKING` | the variable wins over every layer |
+| `features.adaptiveThinking` | `true` | `CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING` | the variable wins over every layer |
+| `features.interleavedThinking` | `true` | `DISABLE_INTERLEAVED_THINKING` | the variable wins over every layer |
+| `features.effort` | unset | `effortLevel` | project and local settings win |
+| `features.effortForAllModels` | `false` | `CLAUDE_CODE_ALWAYS_ENABLE_EFFORT` | the variable wins over every layer |
+| `features.promptCaching` | `true` | `EASY_AGENT_DISABLE_PROMPT_CACHING` | the variable wins over every layer |
+| `features.experimentalBetas` | `true` | `EASY_AGENT_DISABLE_EXPERIMENTAL_BETAS` | the variable wins over every layer |
+| `features.maxRetries` | `10` | `EASY_AGENT_MAX_RETRIES` | the variable wins |
+| `features.maxTurns` | unset | `maxTurns`, `--max-turns` | project and local settings and the flag win |
+| `features.autoModeClassifier` | `true` | none | |
+| `session.checkpoints` | `true` | `checkpointingEnabled`, `EASY_AGENT_DISABLE_CHECKPOINTING` | the variable wins over every layer |
+
+- `features.tasks` is the task tracking a session starts with: `"task"`, the persistent task list (TaskCreate, TaskList, TaskGet, TaskUpdate), or `"todo"`, the session-only list (TodoWrite). `/tasks` marks the Agent's choice as the default.
+- `features.autoModeClassifier: false` keeps Auto Mode from calling the classifier. Deny rules, the blocked shell commands, read-only tools and commands, and `allow` rules decide as before, and an action none of them decides asks you instead of the classifier.
+- `eagent harness show` lists each switch with the layer its value came from.
+
+### Skills and sub-agents
+
+`skills.include` and `skills.exclude` choose the skills the Agent uses, and `agents.include` and `agents.exclude` the sub-agents it can start. They apply to built-in sub-agents and to skills and sub-agents from the user and project directories and from plugins.
+
+```json
+{
+  "harnesses": {
+    "reviewer": {
+      "skills": { "exclude": ["deploy", "docs:*"] },
+      "agents": { "include": ["Explore", "code-reviewer"] }
+    }
+  }
+}
+```
+
+- Entries match names exactly or by `*` patterns, with the rules of the tool lists above. A plugin's skills and sub-agents are named `<plugin>:<name>`.
+- A skill the Agent leaves out is not listed to the model, not activated by a matching file, and refused when the model calls it with the Skill tool or you type `/<name>`; the message names the list that left it out. A sub-agent it leaves out is not listed, and the Agent tool refuses it, including the default `general-purpose` when the call names no type and a forked skill's agent.
+- The lists come only from the Agent's spec. A project skill or sub-agent with a left-out name stays out.
+- `/skills` and `/agents` list the kept ones and name the ones left out, `/harness` lists them with the reason, and `runtime/inventory` returns them with `enabled: false` and the reason. `getCapabilities()` returns only the kept ones. Names that match no loaded skill or sub-agent are printed as a warning when the runtime starts.
+- The lists apply from the next turn after an edit; the listing change reaches the model as a context update.
+
 `--harness <name|file>` selects the Agent for one run: a name from `harnesses`, or a spec file (an argument with a path separator or a `.json` suffix) that is used for that run only and never written to the settings. It works for the terminal UI, Headless (`-p`), `--dump-system-prompt`, RPC (as the default for `initialize`), and ACP. The SDK takes `createAgentRuntime({ harness: { name } })` or `{ spec }`, and RPC `initialize` takes the same `harness` parameter. Without a selection the runtime uses `default`, as before.
 
 A selected Agent must resolve: an unknown name, an invalid spec, a broken `extends` chain, or an unreadable `file` reference stops the startup with the reason (exit code 1, SDK error code `harness`) instead of running another Agent. Keys the Agent sets that this version does not apply yet are printed as warnings when the runtime starts. If the definition stops resolving while the runtime runs (it was edited or removed), the runtime keeps the Agent's last good settings and warns once. A spec file or spec object is trusted like `--settings`: it can set permission `mode` and `allow` rules, because whoever starts Easy Agent chose it.
 
-A value resolves through these layers, lowest first: the built-in default, top-level keys in user settings, the Agent's spec, project settings, local settings, environment variables, CLI flags, and managed policy. Project and local settings follow the same trust rules as today: in an untrusted workspace they can only add deny rules and other restrictions, and permission `mode` comes only from user settings, flags, and policy. Some environment variables keep their existing precedence: `ANTHROPIC_MODEL` acts as the default model, and `MAX_THINKING_TOKENS`, `EASY_AGENT_DISABLE_CHECKPOINTING`, and the thinking, caching, and beta switches override every settings layer. The resolved snapshot records, for each value, the layer it came from and any values a layer set but could not apply. Spec keys that no code reads yet, such as `skills.exclude` or `compaction.auto`, are reported when set.
+A value resolves through these layers, lowest first: the built-in default, top-level keys in user settings, the Agent's spec, project settings, local settings, environment variables, CLI flags, and managed policy. Project and local settings follow the same trust rules as today: in an untrusted workspace they can only add deny rules and other restrictions, and permission `mode` comes only from user settings, flags, and policy. Some environment variables keep their existing precedence: `ANTHROPIC_MODEL` acts as the default model, and `MAX_THINKING_TOKENS`, `EASY_AGENT_DISABLE_CHECKPOINTING`, and the thinking, caching, and beta switches override every settings layer. The resolved snapshot records, for each value, the layer it came from and any values a layer set but could not apply. Spec keys that no code reads yet, such as `commands.exclude` or `trace.level`, are reported when set.
 
-A runtime resolves its Agent (`default` unless one is selected) when it starts, after the workspace environment is loaded, and every Agent setting in the table above is read from the resolved Agent: models and model roles, ToolSearch, `respectGitignore`, `language`, `outputStyle`, `maxTurns`, checkpoints, permission rules and mode, thinking, effort, retries, prompt caching, experimental betas, the context window, the skill listing budget, the WebSearch backend, Agent Teams, the tools and MCP servers it keeps, and its prompt sections and context sources. Environment variables and flags are taken when the runtime starts, so change them and restart; [configuration-inventory.md](./configuration-inventory.md) marks each environment variable read this way as `runtime`.
+A runtime resolves its Agent (`default` unless one is selected) when it starts, after the workspace environment is loaded, and every Agent setting in the table above is read from the resolved Agent: models and model roles, ToolSearch, `respectGitignore`, `language`, `outputStyle`, `maxTurns`, checkpoints, permission rules and mode, thinking, effort, retries, prompt caching, experimental betas, the context window, the skill listing budget, the WebSearch backend, Agent Teams, the tools and MCP servers it keeps, its prompt sections and context sources, compaction, the task mode, the Auto Mode classifier switch, and the skills and sub-agents it keeps. Environment variables and flags are taken when the runtime starts, so change them and restart; [configuration-inventory.md](./configuration-inventory.md) marks each environment variable read this way as `runtime`.
 
 Settings files can change while the runtime runs. Before each model request the runtime resolves the Agent again, and everything that request reads (thinking, effort, ToolSearch, model roles, `respectGitignore`) comes from that one snapshot, so an edit applies from the next request. Reads outside a request use the files as they are at that moment: a session reads `model`, `defaultModel`, `mode`, and `checkpointingEnabled` when it opens, a turn reads `maxTurns` and `language` when it starts, and permission rules are read when a session opens and after `/config` or `/permissions` change them. A request that names no model uses the Agent's main model. A sub-agent working in another directory, such as a worktree, resolves the same Agent with that directory's settings files. `/harness` without an argument shows the Agent the session runs. `/config list` shows when each setting takes effect.
 

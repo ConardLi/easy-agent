@@ -108,7 +108,9 @@ export const HarnessSpecSchema = z.strictObject({
       auto: z.boolean().optional(),
       /** Fraction of the effective context window at which auto-compaction starts. */
       autoThreshold: z.number().gt(0).max(1).optional(),
+      /** Clear old tool results and images before each turn. */
       microcompact: z.boolean().optional(),
+      /** Recent messages compaction keeps as they are. */
       keepRecentMessages: z.number().int().positive().optional(),
       contextWindow: z.number().int().positive().optional(),
     })
@@ -132,6 +134,10 @@ export const HarnessSpecSchema = z.strictObject({
   features: z
     .strictObject({
       agentTeams: z.boolean().optional(),
+      /** Task tracking a session starts with: the persistent task list or the session-only todo list. */
+      tasks: z.enum(["task", "todo"]).optional(),
+      /** Auto Mode asks the classifier about actions no rule decides; false asks the user instead. */
+      autoModeClassifier: z.boolean().optional(),
       toolSearch: z.enum(["off", "auto", "on"]).optional(),
       toolSearchAutoThreshold: z.number().min(0).max(100).optional(),
       thinking: z.boolean().optional(),

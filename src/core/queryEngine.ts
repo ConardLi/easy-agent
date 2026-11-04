@@ -29,13 +29,13 @@ import type { Usage } from "../types/message.js";
 import type { ModelProfile } from "../services/api/providers/profile.js";
 import { getPlanFilePath, planExists as checkPlanExists } from "../context/plans.js";
 import { getPlanModeAttachment, getPlanModeExitAttachment } from "../context/planAttachments.js";
-import { getTaskMode, setTaskMode } from "../state/taskModeStore.js";
+import { defaultTaskMode, getTaskMode, setTaskMode, type TaskMode } from "../state/taskModeStore.js";
 import { resetTaskList } from "../state/taskStore.js";
 import { resolveTaskScope } from "../tools/taskScope.js";
 import { getActiveTeam } from "../state/teamContext.js";
 import { TEAM_LEAD_NAME } from "../utils/teamHelpers.js";
 import { drainUnreadMessages, formatMailboxAttachment, readMailbox } from "../utils/teammateMailbox.js";
-import { findSkill } from "../services/skills/registry.js";
+import { findSkill, loadedSkillOffByAgent } from "../services/skills/registry.js";
 import { drainPendingNotifications, pendingNotificationCount } from "../state/notificationStore.js";
 import type { Skill } from "../types/types.js";
 import { findUserCommand } from "../commands/userCommands/registry.js";
@@ -1023,14 +1023,16 @@ export class QueryEngine {
         const arg = args[0]?.trim();
         const current = getTaskMode();
         if (!arg) {
+          const agentDefault = defaultTaskMode();
+          const mark = (mode: TaskMode) => (mode === agentDefault ? " (default)" : "");
           yield {
             type: "command",
             kind: "info",
             message: [
               "Task system status",
               `- Active: ${current} (${current === "task" ? "persistent task list" : "session-only todo list"})`,
-              "- Usage: /tasks task      Use the persistent task list (default)",
-              "- Usage: /tasks todo      Use a session-only todo list",
+              `- Usage: /tasks task      Use the persistent task list${mark("task")}`,
+              `- Usage: /tasks todo      Use a session-only todo list${mark("todo")}`,
               "- Usage: /tasks reset     Delete every task in the current task list",
             ].join("\n"),
           };
@@ -1327,13 +1329,17 @@ export class QueryEngine {
         yield { type: "command", kind: "info", message: `Reasoning effort: ${arg}` };
         return { handled: true };
       }
-      default:
+      default: {
+        const skillOff = loadedSkillOffByAgent(name);
         yield {
           type: "command",
           kind: "error",
-          message: `Unknown command: /${name}. Try /help.`,
+          message: skillOff
+            ? `Skill /${name} is turned off for this Agent. ${skillOff}`
+            : `Unknown command: /${name}. Try /help.`,
         };
         return { handled: true };
+      }
     }
   }
 

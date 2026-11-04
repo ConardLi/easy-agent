@@ -118,10 +118,10 @@ Fixed values that change behavior and have no setting yet.
 | loop | `const MAX_TOOL_USE_CONCURRENCY = 10;` | `src/core/agenticLoop.ts` | Concurrency-safe tool calls run at the same time. |
 | compaction | `export const MODEL_CONTEXT_WINDOW_DEFAULT = 200_000;` | `src/utils/tokens.ts` | Context window of a model with no known size. |
 | compaction | `export const MAX_OUTPUT_TOKENS_FOR_SUMMARY = 20_000;` | `src/utils/tokens.ts` | Tokens kept free for the compaction summary, at most 20% of the window. |
-| compaction | `export const AUTOCOMPACT_BUFFER_TOKENS = 13_000;` | `src/utils/tokens.ts` | Auto-compaction starts this far below the effective window. |
+| compaction | `export const AUTOCOMPACT_BUFFER_TOKENS = 13_000;` | `src/utils/tokens.ts` | Auto-compaction starts this far below the effective window unless compaction.autoThreshold is set. |
 | compaction | `export const WARNING_THRESHOLD_BUFFER_TOKENS = 20_000;` | `src/utils/tokens.ts` | The context warning starts this far below the effective window. |
 | compaction | `const MICROCOMPACT_MIN_MESSAGES = 10;` | `src/context/compaction.ts` | Messages before old tool results are cleared. |
-| compaction | `const MICROCOMPACT_KEEP_RECENT_MESSAGES = 8;` | `src/context/compaction.ts` | Recent messages whose tool results are kept when clearing. |
+| compaction | `export const DEFAULT_KEEP_RECENT_MESSAGES = 8;` | `src/harness/keys.ts` | Recent messages compaction keeps as they are: tool results not cleared, kept after a summary (compaction.keepRecentMessages). |
 | tools | `export const DEFAULT_SHELL_TIMEOUT_MS = 120_000;` | `src/tools/shellToolConfig.ts` | Bash and PowerShell command timeout when the call sets none (tools.config.<tool>.timeoutMs). |
 | tools | `export const DEFAULT_SHELL_MAX_OUTPUT_BYTES = 30_000;` | `src/tools/shellToolConfig.ts` | Bash and PowerShell output kept for the model (tools.config.<tool>.maxOutputBytes). |
 | tools | `export const DEFAULT_MAX_RESULT_SIZE_CHARS = 100_000;` | `src/tools/Tool.ts` | Tool result size before it is truncated, unless the tool sets its own (tools.config.<tool>.maxResultChars). |

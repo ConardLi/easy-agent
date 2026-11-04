@@ -3,7 +3,7 @@ import type { MessageParam } from "@anthropic-ai/sdk/resources/messages.js";
 import type { Tool } from "../tools/Tool.js";
 import { analyzeBashCommand, type BashReadOnlyAnalysis } from "../tools/bashReadOnlyAnalysis.js";
 import { getPlanFilePath } from "../context/plans.js";
-import { harnessFor } from "../harness/active.js";
+import { harnessFor, harnessSetting } from "../harness/active.js";
 import { harnessValue } from "../harness/resolve.js";
 import { loadSandboxSettings, shouldUseSandbox, splitCommand } from "../sandbox/index.js";
 import { classifyAutoModeAction } from "./autoClassifier.js";
@@ -392,7 +392,8 @@ function getRiskLabel(tool: Tool, input: Record<string, unknown>, bashAnalysis?:
  *   4. Bash hard-deny blacklist        → deny (never-safe; saves a classifier call)
  *   5. Read-only fast-path             → allow (saves a classifier call)
  *   6. Explicit allow rules            → allow
- *   7. AI classifier                   → allow / (block → deny) / (unavailable → ask)
+ *   7. AI classifier                   → allow / (block → deny) / (unavailable → ask);
+ *      ask without calling it when the Agent turns `features.autoModeClassifier` off
  *
  * The classifier never auto-allows on uncertainty: an unavailable verdict
  * falls back to the normal confirmation UI and feeds the failure circuit
@@ -443,6 +444,10 @@ async function resolveAutoModeDecision(
     matchesAnyRule(safeSettingsAllow, params.tool.name, params.input)
   ) {
     return { behavior: "allow", reason: "matched allow rule", request };
+  }
+
+  if (!harnessSetting<boolean>("features.autoModeClassifier")) {
+    return { behavior: "ask", reason: "Auto Mode classifier is off for this Agent — manual review", request };
   }
 
   const verdict = await classifyAutoModeAction({

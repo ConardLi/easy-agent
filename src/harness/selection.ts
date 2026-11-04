@@ -1,6 +1,7 @@
 /**
- * Which tools and MCP servers an Agent keeps, from its `include` and
- * `exclude` lists, and the settings it gives single tools (`tools.config`).
+ * Which tools, MCP servers, skills, and sub-agents an Agent keeps, from its
+ * `include` and `exclude` lists, and the settings it gives single tools
+ * (`tools.config`).
  *
  * A name matches a list entry exactly, or by pattern where `*` stands for any
  * run of characters (`mcp__github__*`, `Task*`). Without `include` everything
@@ -12,7 +13,7 @@ import { describeSource } from "./format.js";
 import type { ResolvedHarness, ResolvedHarnessValue } from "./resolve.js";
 import { SHELL_TOOLS, type ToolConfig } from "./spec.js";
 
-export type HarnessSelection = "tools" | "mcpServers";
+export type HarnessSelection = "tools" | "mcpServers" | "skills" | "agents";
 
 const patterns = new Map<string, RegExp>();
 

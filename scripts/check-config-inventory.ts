@@ -151,7 +151,7 @@ const BEHAVIOR_CONSTANTS: BehaviorConstant[] = [
     component: "compaction",
     file: "src/utils/tokens.ts",
     declaration: "export const AUTOCOMPACT_BUFFER_TOKENS = 13_000;",
-    summary: "Auto-compaction starts this far below the effective window.",
+    summary: "Auto-compaction starts this far below the effective window unless compaction.autoThreshold is set.",
   },
   {
     component: "compaction",
@@ -167,9 +167,10 @@ const BEHAVIOR_CONSTANTS: BehaviorConstant[] = [
   },
   {
     component: "compaction",
-    file: "src/context/compaction.ts",
-    declaration: "const MICROCOMPACT_KEEP_RECENT_MESSAGES = 8;",
-    summary: "Recent messages whose tool results are kept when clearing.",
+    file: "src/harness/keys.ts",
+    declaration: "export const DEFAULT_KEEP_RECENT_MESSAGES = 8;",
+    summary:
+      "Recent messages compaction keeps as they are: tool results not cleared, kept after a summary (compaction.keepRecentMessages).",
   },
   {
     component: "tools",

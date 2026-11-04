@@ -2,17 +2,25 @@ import type { MessageParam } from "@anthropic-ai/sdk/resources/messages.js";
 import { compactMessages, type CompactionResult } from "./compaction.js";
 import {
   tokenCountWithEstimation,
+  getAutoCompactThreshold,
+  getBlockingLimit,
   getContextWindowForModel,
   getEffectiveContextWindowSize,
-  AUTOCOMPACT_BUFFER_TOKENS,
   WARNING_THRESHOLD_BUFFER_TOKENS,
-  MANUAL_COMPACT_BUFFER_TOKENS,
 } from "../utils/tokens.js";
 import { debugLog } from "../utils/log.js";
 import type { Usage } from "../types/message.js";
 import { defineSessionState } from "../state/sessionScope.js";
+import { harnessSetting } from "../harness/active.js";
+
+export { getAutoCompactThreshold, getBlockingLimit };
 
 export const MAX_CONSECUTIVE_AUTOCOMPACT_FAILURES = 3;
+
+/** Whether the Agent summarizes the conversation without being asked (`compaction.auto`). */
+export function isAutoCompactEnabled(): boolean {
+  return harnessSetting<boolean>("compaction.auto");
+}
 
 export type TokenWarningState = "normal" | "warning" | "error" | "blocking";
 
@@ -37,16 +45,6 @@ function scaleBuffer(buffer: number, effectiveWindow: number): number {
   const referenceWindow = 180_000; // effectiveContextWindow at 200K
   if (effectiveWindow >= referenceWindow) return buffer;
   return Math.round(buffer * (effectiveWindow / referenceWindow));
-}
-
-export function getAutoCompactThreshold(model: string): number {
-  const effective = getEffectiveContextWindowSize(model);
-  return Math.max(0, effective - scaleBuffer(AUTOCOMPACT_BUFFER_TOKENS, effective));
-}
-
-export function getBlockingLimit(model: string): number {
-  const effective = getEffectiveContextWindowSize(model);
-  return Math.max(0, effective - scaleBuffer(MANUAL_COMPACT_BUFFER_TOKENS, effective));
 }
 
 export function calculateTokenWarningState(estimatedTokens: number, model: string): TokenWarningResult {
@@ -79,7 +77,7 @@ export function isAtBlockingLimit(estimatedTokens: number, model: string): boole
 }
 
 export function shouldAutoCompact(estimatedTokens: number, model: string, querySource?: string): boolean {
-  if (querySource === "compact" || querySource === "session_memory") {
+  if (querySource === "compact" || querySource === "session_memory" || !isAutoCompactEnabled()) {
     return false;
   }
   if (autoCompactFailures().consecutive >= MAX_CONSECUTIVE_AUTOCOMPACT_FAILURES) {
