@@ -34,6 +34,7 @@ Layers are user (`~/.easy-agent/settings.json`), project (`.easy-agent/settings.
 | `enabledMcpjsonServers` | resource | yes | all; project and local need trust | restart |  | Approved servers from the project .mcp.json. |
 | `enabledPlugins` | resource | yes | all; project and local need trust | plugin reload | `{}` | Plugins turned on or off in this layer. |
 | `env` | environment | yes | all; project and local need trust | restart |  | Environment variables applied to the process and to commands it starts. Project and local values cannot replace a credential-shaped variable the parent process already set. |
+| `harness` | agent | yes | local file only, needs trust | restart |  | The Agent this workspace uses when none is selected: a name from harnesses. |
 | `harnesses` | agent | yes | user file only | restart |  | User-defined Agents: name to Harness spec, selected with --harness. |
 | `hooks` | resource | yes | all; project and local need trust | next event |  | Shell commands run on lifecycle events. |
 | `language` | agent |  | all; project and local need trust | next turn |  | Language the agent replies in. |

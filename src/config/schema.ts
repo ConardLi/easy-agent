@@ -110,6 +110,9 @@ export const SettingsSchema = z.looseObject({
   // User-defined Agents: name → Harness spec. Read only from the user
   // settings file; each spec is validated when it is resolved (src/harness/).
   harnesses: z.record(z.string(), z.unknown()).optional(),
+  // The project's default Agent: a name from `harnesses`. Read only from the
+  // local settings file of a trusted workspace (src/harness/resolve.ts).
+  harness: z.string().trim().min(1).optional(),
 });
 
 const RULE_ARRAY_KEYS = ["allow", "deny", "ask"] as const;

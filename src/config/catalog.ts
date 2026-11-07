@@ -68,8 +68,10 @@ export type ConfigCategory = "environment" | "resource" | "agent";
  *   only remove capabilities use this.
  * - `user`: user, flag, and policy; project and local values are ignored.
  * - `user-file`: the user settings file only; every other layer is ignored with a warning.
+ * - `local-file`: the local settings file of a trusted workspace only; every
+ *   other layer, and the local file of an untrusted workspace, is ignored with a warning.
  */
-export type SettingScope = "trusted" | "any" | "user" | "user-file";
+export type SettingScope = "trusted" | "any" | "user" | "user-file" | "local-file";
 
 export interface SettingCatalogEntry {
   category: ConfigCategory;
@@ -253,6 +255,12 @@ export const SETTING_CATALOG: Record<string, SettingCatalogEntry> = {
     security: true,
     scope: "user-file",
     summary: "User-defined Agents: name to Harness spec, selected with --harness.",
+  },
+  harness: {
+    category: "agent",
+    security: true,
+    scope: "local-file",
+    summary: "The Agent this workspace uses when none is selected: a name from harnesses.",
   },
 };
 

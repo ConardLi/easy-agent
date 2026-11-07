@@ -4,6 +4,8 @@ Easy Agent is published to npm as `eagent` by the tag-triggered [release workflo
 
 - `dist/eagent.js`, the single-file ESM bundle with a Node shebang;
 - `dist/eagent.js.map`, a source map with relative paths and no embedded source text;
+- `dist/sdk.js`, `dist/sdk.d.ts`, and `dist/sdk.js.map`, the session SDK bundle (`eagent/sdk`) without the terminal UI;
+- `dist/sdk-experimental.js`, `dist/sdk-experimental.d.ts`, and `dist/sdk-experimental.js.map`, the `eagent/sdk/experimental` entry, which re-exports from `dist/sdk.js` so both share one module instance;
 - `dist/THIRD_PARTY_LICENSES.txt`, license texts for every third-party package inlined into the bundle;
 - `README.md`, `README.zh-CN.md`, `LICENSE`, and `package.json`.
 

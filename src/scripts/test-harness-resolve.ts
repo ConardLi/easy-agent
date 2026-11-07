@@ -1615,7 +1615,7 @@ await check("eagent harness show and diff print the views and exit non-zero on e
 
   const usage = await runCli("bogus");
   assert.equal(usage.code, 1);
-  assert.match(usage.stderr, /Usage:\n {2}eagent harness show/);
+  assert.match(usage.stderr, /Usage:\n {2}eagent harness list .*\n {2}eagent harness show/);
 });
 
 await check(

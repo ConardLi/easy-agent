@@ -41,7 +41,7 @@ export interface HarnessSettingsInput {
   key: string;
   /** The value in one settings layer, or undefined when that layer does not set it. */
   read: (raw: Record<string, unknown>) => unknown;
-  scope: Exclude<SettingScope, "user-file">;
+  scope: Exclude<SettingScope, "user-file" | "local-file">;
 }
 
 export type HarnessEnvRead =

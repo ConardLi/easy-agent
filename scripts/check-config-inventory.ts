@@ -529,6 +529,7 @@ const SCOPE_LABEL: Record<SettingScope, string> = {
   any: "all, also untrusted",
   user: "user, flag, policy",
   "user-file": "user file only",
+  "local-file": "local file only, needs trust",
 };
 
 const cell = (value: string) => value.replace(/\|/g, "\\|");

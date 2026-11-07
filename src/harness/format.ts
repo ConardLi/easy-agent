@@ -3,6 +3,7 @@
 import type { BuiltInComponent } from "./components.js";
 import type { HarnessDiff, HarnessDiffSide } from "./diff.js";
 import { HARNESS_KEYS } from "./keys.js";
+import type { HarnessListing } from "./manage.js";
 import type { HarnessContribution, ResolvedHarness } from "./resolve.js";
 
 const LAYER_LABEL: Record<HarnessContribution["source"], string> = {
@@ -56,6 +57,11 @@ export function formatHarness(
   lines.push(
     `Agent: ${resolved.name}${builtInOnly ? " (built-in)" : ` (${["built-in default", ...resolved.chain].join(" → ")})`}`,
   );
+  if (resolved.selectedBy) {
+    lines.push(
+      `Selected as the workspace's default Agent${resolved.selectedBy.path ? ` (harness in ${resolved.selectedBy.path})` : ""}`,
+    );
+  }
   lines.push(`Hash: ${resolved.hash}`);
 
   const errors = resolved.issues.filter((issue) => issue.level === "error");
@@ -123,6 +129,29 @@ export function formatHarness(
       if (ofKind.length)
         lines.push(`  ${kind.padEnd(16)} ${ofKind.map((item) => `${item.name} (${item.reason})`).join(", ")}`);
     }
+  }
+  return lines.join("\n");
+}
+
+/** `eagent harness list` and `/harness list`. */
+export function formatHarnessList(listing: HarnessListing): string {
+  const width = Math.max(12, ...listing.harnesses.map((agent) => agent.name.length + 2));
+  const lines = [`Agents (${listing.path})`];
+  for (const agent of listing.harnesses) {
+    const notes = [
+      agent.builtIn ? (agent.defined ? "built-in, changed" : "built-in") : `extends ${agent.extends}`,
+      agent.projectDefault ? "this workspace's default" : "",
+      agent.errors.length ? `error: ${agent.errors.join("; ")}` : "",
+    ].filter(Boolean);
+    lines.push(
+      `  ${agent.name.padEnd(width)}${notes.join(", ")}${agent.description ? `\n  ${"".padEnd(width)}${agent.description}` : ""}`,
+    );
+  }
+  const project = listing.projectDefault;
+  if (project && !project.applied) {
+    lines.push("", `harness "${project.name}" in ${project.path} is ignored: ${project.reason}.`);
+  } else if (!project) {
+    lines.push("", "This workspace uses default. Set its default Agent with /harness use <name>.");
   }
   return lines.join("\n");
 }

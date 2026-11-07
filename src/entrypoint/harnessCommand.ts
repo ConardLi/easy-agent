@@ -1,5 +1,6 @@
 /**
- * `eagent harness show [name|file] [--json]` and `eagent harness diff <a> <b> [--json]`.
+ * `eagent harness list [--json]`, `eagent harness show [name|file] [--json]`,
+ * and `eagent harness diff <a> <b> [--json]`.
  *
  * Read-only. The workspace environment is loaded the way a session loads it
  * (settings `env` and `.env` for a trusted workspace), so environment-backed
@@ -9,12 +10,14 @@
 import { trustProjectForSession } from "../config/globalState.js";
 import { listBuiltInComponents } from "../harness/components.js";
 import { diffHarnesses } from "../harness/diff.js";
-import { formatHarness, formatHarnessDiff } from "../harness/format.js";
+import { formatHarness, formatHarnessDiff, formatHarnessList } from "../harness/format.js";
+import { listHarnesses } from "../harness/manage.js";
 import { type ResolvedHarness, resolveHarness } from "../harness/resolve.js";
 import { harnessTarget } from "../harness/target.js";
 import { loadEnv } from "../utils/loadEnv.js";
 
 const USAGE = `Usage:
+  eagent harness list [--json]               List the Agents and this workspace's default Agent
   eagent harness show [name|file] [--json]   Resolve an Agent and show every setting and where it comes from
   eagent harness diff <a> <b> [--json]       Compare the resolved settings of two Agents
   An argument with a path separator or a .json suffix is read as a spec file.
@@ -36,6 +39,11 @@ export async function runHarnessCommand(args: readonly string[], cwd = process.c
   if (args.includes("--trust-project-config")) await trustProjectForSession(cwd);
 
   try {
+    if (subcommand === "list" && rest.length === 0) {
+      const listing = await listHarnesses(cwd);
+      process.stdout.write(json ? `${JSON.stringify(listing, null, 2)}\n` : `${formatHarnessList(listing)}\n`);
+      return 0;
+    }
     if (subcommand === "show" && rest.length <= 1) {
       await loadEnv(cwd);
       const resolved = await resolveArgument(rest[0], cwd);

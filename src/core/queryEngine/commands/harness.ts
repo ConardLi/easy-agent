@@ -1,13 +1,15 @@
 /**
- * `/harness [name|file]` and `/harness diff <a> <b>`: the same views as
- * `eagent harness`. Without an argument, the Agent this session runs.
+ * `/harness [show] [name|file]`, `/harness diff <a> <b>`, and `/harness list`:
+ * the same views as `eagent harness`. Without an argument, the Agent this
+ * session runs. `/harness use <name>` sets the workspace's default Agent.
  */
 
 import { getRegisteredAgents, subAgentOffByAgent } from "../../../agents/registry.js";
 import { harnessFor } from "../../../harness/active.js";
 import { listBuiltInComponents } from "../../../harness/components.js";
 import { diffHarnesses } from "../../../harness/diff.js";
-import { formatHarness, formatHarnessDiff, type LeftOutResource } from "../../../harness/format.js";
+import { formatHarness, formatHarnessDiff, formatHarnessList, type LeftOutResource } from "../../../harness/format.js";
+import { listHarnesses, setProjectHarness } from "../../../harness/manage.js";
 import { type ResolvedHarness, resolveHarness } from "../../../harness/resolve.js";
 import { harnessTarget } from "../../../harness/target.js";
 import { getRegisteredSkills, skillOffByAgent } from "../../../services/skills/registry.js";
@@ -40,6 +42,31 @@ export async function* handleHarnessCommand(
   args: string[],
 ): AsyncGenerator<QueryEngineEvent, { handled: boolean }> {
   try {
+    if (args[0] === "list" && args.length === 1) {
+      yield { type: "command", kind: "info", message: formatHarnessList(await listHarnesses(ctx.cwd)) };
+      return { handled: true };
+    }
+    if (args[0] === "use") {
+      if (args.length !== 2) {
+        yield {
+          type: "command",
+          kind: "error",
+          message: "Usage: /harness use <name>   (default goes back to default)",
+        };
+        return { handled: true };
+      }
+      const running = (await harnessFor(ctx.cwd)).name;
+      const { name, path } = await setProjectHarness(ctx.cwd, args[1]!);
+      yield {
+        type: "command",
+        kind: "info",
+        message:
+          `This workspace's default Agent is now ${name} (${name === "default" ? "removed harness from" : "harness in"} ${path}). ` +
+          `Sessions started here from now on use it${name === running ? "" : `; this one keeps ${running} until you restart`}.`,
+      };
+      return { handled: true };
+    }
+    if (args[0] === "show") args = args.slice(1);
     if (args[0] === "diff") {
       if (args.length !== 3) {
         yield { type: "command", kind: "error", message: "Usage: /harness diff <a> <b>" };
@@ -50,7 +77,11 @@ export async function* handleHarnessCommand(
       return { handled: true };
     }
     if (args.length > 1) {
-      yield { type: "command", kind: "error", message: "Usage: /harness [name|file] or /harness diff <a> <b>" };
+      yield {
+        type: "command",
+        kind: "error",
+        message: "Usage: /harness [show] [name|file], /harness diff <a> <b>, /harness list, /harness use <name>",
+      };
       return { handled: true };
     }
     const resolved = await resolveArgument(args[0], ctx.cwd);

@@ -1013,6 +1013,116 @@ try {
     }
   });
 
+  await check("harness/* manage Agents; two server processes writing at once keep each other's Agents", async () => {
+    const userSettings = path.join(home, ".easy-agent", "settings.json");
+    const localSettings = path.join(cwd, ".easy-agent", "settings.local.json");
+    const saved = await readFile(userSettings, "utf8");
+    const first = startClient();
+    const second = startClient();
+    try {
+      await rejects(first.call("harness/list"), protocol.RpcErrorCode.NotInitialized);
+      await first.initialize({ trust: "session" });
+      await second.initialize();
+
+      const created = await first.call<Json>("harness/write", {
+        name: "reviewer",
+        spec: { description: "Reviews code", permissions: { deny: ["Bash"] } },
+      });
+      assert.deepEqual(
+        { created: created.created, affected: created.affected, reloaded: created.reloaded },
+        { created: true, affected: ["reviewer"], reloaded: false },
+      );
+      const read = await second.call<Json>("harness/read", { name: "reviewer" });
+      assert.deepEqual(read.spec, { description: "Reviews code", permissions: { deny: ["Bash"] } });
+
+      await Promise.all(
+        Array.from({ length: 4 }, (_, i) =>
+          (i % 2 ? first : second).call("harness/write", { name: `agent-${i}`, spec: { extends: "reviewer" } }),
+        ),
+      );
+      const listing = await first.call<{ harnesses: Json[]; projectDefault: Json | null }>("harness/list");
+      assert.deepEqual(
+        listing.harnesses.map((agent) => agent.name),
+        ["default", "agent-0", "agent-1", "agent-2", "agent-3", "reviewer"],
+      );
+      assert.deepEqual(JSON.parse(await readFile(userSettings, "utf8")).deny, ["WebFetch"], "other keys stay");
+
+      const broken = await rejects(
+        first.call("harness/write", { name: "reviewer", spec: { extends: "agent-0" } }),
+        protocol.RpcErrorCode.AgentError,
+        "harness",
+      );
+      assert.match(broken.message, /extends cycle/);
+      await rejects(first.call("harness/delete", { name: "reviewer" }), protocol.RpcErrorCode.AgentError, "harness");
+      await rejects(first.call("harness/read", { name: "ghost" }), protocol.RpcErrorCode.AgentError, "not_found");
+      await rejects(first.call("harness/write", { name: "x" }, { valid: false }), protocol.RpcErrorCode.InvalidParams);
+
+      const renamed = await first.call<Json>("harness/rename", { from: "agent-3", to: "agent-9" });
+      assert.deepEqual(renamed.affected, ["agent-3", "agent-9"]);
+      const deleted = await first.call<Json>("harness/delete", { name: "agent-9" });
+      assert.equal(deleted.deleted, true);
+
+      const exported = await first.call<Json>("harness/export", { name: "reviewer" });
+      const preview = await second.call<Json>("harness/previewImport", { data: exported });
+      assert.equal(preview.exists, true);
+      assert.deepEqual((preview.permissions as Json).deny, ["Bash"]);
+      const imported = await second.call<Json>("harness/import", {
+        data: exported,
+        fingerprint: preview.fingerprint,
+        name: "reviewer-copy",
+      });
+      assert.equal(imported.created, true);
+
+      await rejects(
+        second.call("harness/setProjectDefault", { name: "reviewer" }),
+        protocol.RpcErrorCode.AgentError,
+        "untrusted",
+      );
+      const project = await first.call<Json>("harness/setProjectDefault", { name: "reviewer" });
+      assert.deepEqual(project, { name: "reviewer", path: localSettings });
+      const after = await first.call<{ projectDefault: Json }>("harness/list");
+      assert.equal(after.projectDefault.name, "reviewer");
+      assert.equal(after.projectDefault.applied, true);
+      await first.call("harness/setProjectDefault", { name: null });
+      assert.equal(Object.hasOwn(JSON.parse(await readFile(localSettings, "utf8")), "harness"), false);
+    } finally {
+      assert.equal(await first.shutdown(), 0);
+      assert.equal(await second.shutdown(), 0);
+      await writeFile(userSettings, saved);
+    }
+  });
+
+  await check("a server whose Agent is changed reloads it; the workspace default picks the Agent", async () => {
+    const userSettings = path.join(home, ".easy-agent", "settings.json");
+    const localSettings = path.join(cwd, ".easy-agent", "settings.local.json");
+    const saved = await readFile(userSettings, "utf8");
+    await writeFile(
+      userSettings,
+      JSON.stringify({ ...JSON.parse(saved), harnesses: { reviewer: { model: { main: "reviewer-model" } } } }),
+    );
+    await writeFile(localSettings, JSON.stringify({ harness: "reviewer" }));
+    const client = startClient();
+    try {
+      await client.initialize({ trust: "session" });
+      const harness = await client.call<Json>("runtime/harness");
+      assert.equal(harness.name, "reviewer", "initialize without harness uses the workspace default");
+      assert.deepEqual(harness.selectedBy, { source: "local", path: localSettings });
+      const changed = await client.call<Json>("harness/write", {
+        name: "reviewer",
+        spec: { model: { main: "changed-model" } },
+      });
+      assert.equal(changed.reloaded, true);
+      const other = await client.call<Json>("harness/write", { name: "other", spec: {} });
+      assert.equal(other.reloaded, false);
+      const created = await client.call<{ state: Json }>("session/create", { persist: false });
+      assert.equal(created.state.model, "changed-model");
+    } finally {
+      assert.equal(await client.shutdown(), 0);
+      await writeFile(userSettings, saved);
+      await rm(localSettings, { force: true });
+    }
+  });
+
   await check("the --rpc flag cannot be combined with --print", async () => {
     const bad = startClient(["--print", "hi"]);
     assert.equal(await bad.exited, 1);

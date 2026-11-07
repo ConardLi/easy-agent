@@ -335,10 +335,39 @@ const HarnessContributionSchema = z
   .object({ source: HarnessLayerSchema, detail: z.string().optional(), value: z.unknown().optional() })
   .loose();
 
+const HarnessName = z.string().min(1);
+
+/** Experimental: one Agent in `harness/list`. */
+const HarnessSummarySchema = z
+  .object({
+    name: z.string(),
+    builtIn: z.boolean(),
+    defined: z.boolean(),
+    description: z.string().optional(),
+    extends: z.string().optional(),
+    dependents: z.array(z.string()),
+    projectDefault: z.boolean(),
+    errors: z.array(z.string()),
+  })
+  .loose();
+
+/** Experimental: what an Agent change did; `affected` names the Agents whose settings can change. */
+const HarnessChangeSchema = z
+  .object({
+    name: z.string(),
+    spec: z.record(z.string(), z.unknown()).nullable(),
+    affected: z.array(z.string()),
+    /** The server's runtime uses an affected Agent and was reloaded. */
+    reloaded: z.boolean(),
+  })
+  .loose();
+
 /** Experimental: every Harness setting of an Agent and the layer it came from. */
 const ResolvedHarnessSchema = z
   .object({
     name: z.string(),
+    /** Present when the workspace's default Agent chose `name`. */
+    selectedBy: z.object({ source: z.literal("local"), path: z.string().nullable() }).optional(),
     chain: z.array(z.string()),
     values: z.record(
       z.string(),
@@ -406,6 +435,25 @@ export const MethodParams = {
   }),
   /** Reloads skills, commands, sub-agents, output styles, and plugins; open sessions use them from their next turn. */
   "runtime/reload": z.object({}),
+  /** Experimental. Agent management: the Agents in `harnesses` of the user settings file. */
+  "harness/list": z.object({}),
+  "harness/read": z.object({ name: HarnessName }),
+  /** Validated against the spec schema and every Agent's `extends` chain before anything is written. */
+  "harness/write": z.object({ name: HarnessName, spec: z.record(z.string(), z.unknown()) }),
+  "harness/delete": z.object({ name: HarnessName }),
+  "harness/rename": z.object({ from: HarnessName, to: HarnessName }),
+  "harness/export": z.object({ name: HarnessName }),
+  /** Show the result to the user before importing. */
+  "harness/previewImport": z.object({ data: z.unknown() }),
+  /** `fingerprint` comes from the preview the user confirmed. */
+  "harness/import": z.object({
+    data: z.unknown(),
+    fingerprint: z.string().min(1),
+    name: HarnessName.optional(),
+    replace: z.boolean().optional(),
+  }),
+  /** The workspace's default Agent; `null` or `default` goes back to `default`. Applies to the next runtime. */
+  "harness/setProjectDefault": z.object({ name: HarnessName.nullable() }),
   /** Approve or reject a `.mcp.json` server; the decision goes to `scope` (default `local`). Needs a trusted workspace. */
   "mcp/approve": z.object({
     name: z.string().min(1),
@@ -527,6 +575,55 @@ export const MethodResults = {
   "runtime/capabilities": z.object({ builtinCommands: z.array(z.string()) }).loose(),
   "runtime/inventory": RuntimeInventorySchema,
   "runtime/harness": ResolvedHarnessSchema,
+  "harness/list": z
+    .object({
+      harnesses: z.array(HarnessSummarySchema),
+      projectDefault: z
+        .object({ name: z.string(), path: z.string(), applied: z.boolean(), reason: z.string().optional() })
+        .loose()
+        .nullable(),
+      path: z.string(),
+    })
+    .loose(),
+  "harness/read": HarnessSummarySchema.omit({ projectDefault: true }).extend({
+    spec: z.record(z.string(), z.unknown()),
+    path: z.string(),
+  }),
+  "harness/write": HarnessChangeSchema.extend({ created: z.boolean() }),
+  "harness/delete": HarnessChangeSchema.extend({ deleted: z.boolean() }),
+  "harness/rename": HarnessChangeSchema.extend({
+    from: z.string(),
+    updatedExtends: z.array(z.string()),
+    updatedProjectDefault: z.boolean(),
+  }),
+  "harness/export": z
+    .object({
+      format: z.literal("easy-agent-harness"),
+      version: z.literal(1),
+      name: z.string(),
+      spec: z.record(z.string(), z.unknown()),
+    })
+    .loose(),
+  "harness/previewImport": z
+    .object({
+      name: z.string(),
+      spec: z.record(z.string(), z.unknown()),
+      exists: z.boolean(),
+      tools: z.array(z.string()),
+      mcpServers: z.array(z.string()),
+      permissions: z.object({
+        mode: z.string(),
+        allow: z.array(z.string()),
+        ask: z.array(z.string()),
+        deny: z.array(z.string()),
+      }),
+      sets: z.array(z.string()),
+      errors: z.array(z.string()),
+      fingerprint: z.string(),
+    })
+    .loose(),
+  "harness/import": HarnessChangeSchema.extend({ created: z.boolean() }),
+  "harness/setProjectDefault": z.object({ name: z.string(), path: z.string() }),
   "runtime/reload": z
     .object({
       plugins: z.object({ enabled: z.number().int(), disabled: z.number().int() }),

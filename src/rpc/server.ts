@@ -25,6 +25,7 @@ import {
   type InteractionResponse,
   type SessionEvent,
 } from "../sdk/index.js";
+import * as harnesses from "../sdk/experimental.js";
 import {
   type MethodName,
   MethodParams,
@@ -71,6 +72,22 @@ export class RpcServer {
     "runtime/harness": async ({ name, spec }) =>
       this.#requireRuntime().getHarness(spec !== undefined ? { spec } : name !== undefined ? { name } : {}),
     "runtime/reload": async () => this.#requireRuntime().reload(),
+    "harness/list": async () => harnesses.listHarnesses(this.#workspace()),
+    "harness/read": async ({ name }) => harnesses.readHarness(this.#agentName(name)),
+    "harness/write": async ({ name, spec }) => harnesses.writeHarness(this.#agentName(name), spec),
+    "harness/delete": async ({ name }) => harnesses.deleteHarness(this.#agentName(name)),
+    "harness/rename": async ({ from, to }) => harnesses.renameHarness(from, to, this.#workspace()),
+    "harness/export": async ({ name }) => harnesses.exportHarness(this.#agentName(name)),
+    "harness/previewImport": async ({ data }) => harnesses.previewHarnessImport(data, this.#workspace()),
+    "harness/import": async ({ data, fingerprint, name, replace }) => {
+      this.#requireRuntime();
+      return harnesses.importHarness(data, {
+        fingerprint,
+        ...(name !== undefined ? { name } : {}),
+        ...(replace !== undefined ? { replace } : {}),
+      });
+    },
+    "harness/setProjectDefault": async ({ name }) => harnesses.setProjectHarness(name, this.#workspace()),
     "mcp/approve": async ({ name, approved, scope }) =>
       this.#requireRuntime().approveMcpServer(name, approved, scope ?? "local"),
     "mcp/reconnect": async ({ name }) => this.#requireRuntime().reconnectMcpServer(name),
@@ -330,6 +347,16 @@ export class RpcServer {
   #requireRuntime(): AgentRuntime {
     if (!this.#runtime) throw new RpcError(RpcErrorCode.NotInitialized, "Call initialize first.");
     return this.#runtime;
+  }
+
+  /** Agent management works on the workspace the runtime serves, once `initialize` succeeded. */
+  #workspace(): { cwd: string } {
+    return { cwd: this.#requireRuntime().cwd };
+  }
+
+  #agentName(name: string): string {
+    this.#requireRuntime();
+    return name;
   }
 
   #log(level: "warn" | "error", message: string): void {
