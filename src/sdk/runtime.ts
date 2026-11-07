@@ -48,7 +48,7 @@ import { checkModel, listModels, readConfig, setWorkspaceTrust, writeConfig } fr
 import { AgentSdkError } from "./errors.js";
 import { approveMcpServer, reconnectMcpServer, reloadExtensions } from "./extensions.js";
 import { buildRuntimeInventory } from "./inventory.js";
-import { refreshHarness, uninstallHarness } from "../harness/active.js";
+import { activeHarness, refreshHarness, uninstallHarness } from "../harness/active.js";
 import { diffHarnesses, type HarnessDiff } from "../harness/diff.js";
 import { harnessValue, type ResolvedHarness, resolveHarness } from "../harness/resolve.js";
 import { listPlugins, mutatePlugins, previewPlugin } from "./plugins.js";
@@ -80,6 +80,22 @@ export const INTERACTIVE_DEFAULT_MAX_TURNS = INTERACTIVE_MAX_TOOL_TURNS;
 
 let activeRuntime: AgentRuntime | null = null;
 let bootstrapping = false;
+
+/**
+ * @internal After Agent definitions changed: when the runtime in this
+ * process uses one of `agents` (its Agent or one it extends), resolve it
+ * again and reload the permission settings of its open sessions. Returns
+ * whether it did.
+ */
+export async function reloadRuntimeUsing(agents: readonly string[]): Promise<boolean> {
+  const runtime = activeRuntime;
+  if (!runtime || agents.length === 0) return false;
+  const current = activeHarness();
+  if (![current.name, ...current.chain].some((name) => agents.includes(name))) return false;
+  await refreshHarness();
+  await Promise.all(runtime.listOpenSessions().map((session) => reloadSettingsOf(session)));
+  return true;
+}
 
 export class AgentRuntime {
   readonly cwd: string;

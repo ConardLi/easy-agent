@@ -37,6 +37,8 @@ import type {
 
 /** Keys only a user-level (or flag/policy) source may set; project files cannot escalate them. */
 const USER_ONLY_KEYS = new Set(["mode", "autoMode", "harnesses"]);
+/** Keys only the local settings file of a trusted workspace may set (the project's default Agent). */
+const LOCAL_ONLY_KEYS = new Set(["harness"]);
 /** Keys whose values merge across sources instead of the last one winning. */
 const ARRAY_KEYS = new Set([
   "allow",
@@ -102,7 +104,9 @@ export async function readConfig(cwd: string): Promise<ConfigSnapshot> {
     loadProfiles(cwd),
   ]);
   const applies = (source: SettingSource, key: string) =>
-    isTrustedScopeForSensitiveKeys(source) || (workspaceTrusted && !USER_ONLY_KEYS.has(key));
+    LOCAL_ONLY_KEYS.has(key)
+      ? source === "local" && workspaceTrusted
+      : isTrustedScopeForSensitiveKeys(source) || (workspaceTrusted && !USER_ONLY_KEYS.has(key));
 
   const info: ConfigSourceInfo[] = sources.map((src) => ({
     source: src.source,
@@ -196,6 +200,11 @@ export async function writeConfig(
     throw new AgentSdkError(
       "invalid_argument",
       `"${key}" is only read from user settings; a ${scope} file cannot set it.`,
+    );
+  if (scope !== "local" && LOCAL_ONLY_KEYS.has(key))
+    throw new AgentSdkError(
+      "invalid_argument",
+      `"${key}" is only read from the local settings file; a ${scope} file cannot set it.`,
     );
   let next = value;
   if (value !== null) {

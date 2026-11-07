@@ -25,7 +25,13 @@ import { setFlagSettings } from "../config/sources.js";
 import { detectWorkspaceRisks } from "../config/workspaceRisks.js";
 import { activeHarness, installHarness } from "../harness/active.js";
 import { promptSectionProblems } from "../harness/prompt.js";
-import { type HarnessIssue, harnessEnvironment, type ResolvedHarness, resolveHarness } from "../harness/resolve.js";
+import {
+  type HarnessIssue,
+  harnessEnvironment,
+  type ResolvedHarness,
+  resolveHarness,
+  resolveProjectHarness,
+} from "../harness/resolve.js";
 import { toolConfigProblems, unmatchedSelectionEntries } from "../harness/selection.js";
 import { refreshHookDisableFromSettings } from "../hooks/settings.js";
 import { refreshActivePlugins } from "../plugins/runtime.js";
@@ -103,8 +109,20 @@ export async function loadWorkspace(options: AgentRuntimeOptions): Promise<Works
   // Environment variables are taken now; settings files are read again on
   // each refresh.
   const env = harnessEnvironment();
-  const selection =
+  let selection: { spec: unknown } | { name: string; selectedBy?: ResolvedHarness["selectedBy"] } | object =
     target.spec !== undefined ? { spec: target.spec } : target.name !== undefined ? { name: target.name } : {};
+  // Without a selection the workspace's default Agent applies. The runtime
+  // binds it by name, so later edits to the local settings file apply when
+  // the next runtime starts, and a worktree resolves the same Agent.
+  let projectFile: string | null | undefined;
+  if (!("spec" in selection) && !("name" in selection)) {
+    const project = await resolveProjectHarness(cwd);
+    for (const issue of project.issues) logger.warn(`[easy-agent] ⚠ ${describeIssue(issue)}`);
+    if (project.selection) {
+      projectFile = project.selection.path;
+      selection = { name: project.selection.name, selectedBy: { source: "local", path: project.selection.path } };
+    }
+  }
   const selected = "spec" in selection || "name" in selection;
   // A selected Agent that stops resolving (its definition was edited or
   // removed) keeps its last good settings; the problem is reported once.
@@ -123,7 +141,12 @@ export async function loadWorkspace(options: AgentRuntimeOptions): Promise<Works
         reported = problem;
         logWarn(`The selected Agent no longer resolves (${problem}); keeping its previous settings.`);
       }
-      throw new AgentSdkError("harness", `The selected Agent does not resolve: ${problem}`);
+      throw new AgentSdkError(
+        "harness",
+        projectFile !== undefined
+          ? `The workspace's default Agent "${resolved.name}"${projectFile ? ` (harness in ${projectFile})` : ""} does not resolve: ${problem}. Select another with --harness, or change or remove that setting.`
+          : `The selected Agent does not resolve: ${problem}`,
+      );
     },
   };
   if (selected) {

@@ -396,7 +396,7 @@ assert(
   "test and smoke scripts are not bundled",
 );
 
-for (const bundleFile of ["dist/eagent.js", "dist/sdk.js"]) {
+for (const bundleFile of ["dist/eagent.js", "dist/sdk.js", "dist/sdk-experimental.js"]) {
   const bundleHygiene = run(process.execPath, [
     "--import",
     "tsx",
@@ -489,6 +489,9 @@ try {
     `dist/${THIRD_PARTY_NOTICES_FILE}`,
     "dist/eagent.js",
     "dist/eagent.js.map",
+    "dist/sdk-experimental.d.ts",
+    "dist/sdk-experimental.js",
+    "dist/sdk-experimental.js.map",
     "dist/sdk.d.ts",
     "dist/sdk.js",
     "dist/sdk.js.map",
@@ -598,6 +601,26 @@ try {
       sdkImport.status === 0 && sdkImport.stdout.trim() === "function 1",
       "installed package exposes the session SDK as eagent/sdk",
       sdkImport.stderr || sdkImport.stdout,
+    );
+    const experimentalImport = run(
+      process.execPath,
+      [
+        "--input-type=module",
+        "-e",
+        [
+          "const sdk = await import('eagent/sdk');",
+          "const experimental = await import('eagent/sdk/experimental');",
+          "const names = Object.keys(experimental);",
+          "const same = names.length > 0 && names.every((name) => experimental[name] === sdk.__experimental[name]);",
+          "console.log(typeof experimental.listHarnesses, same);",
+        ].join(" "),
+      ],
+      { cwd: sdkProject },
+    );
+    assert(
+      experimentalImport.status === 0 && experimentalImport.stdout.trim() === "function true",
+      "eagent/sdk/experimental loads and shares the eagent/sdk module instance",
+      experimentalImport.stderr || experimentalImport.stdout,
     );
 
     section("[6] installed CLI");

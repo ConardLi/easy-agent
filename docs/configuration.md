@@ -137,7 +137,7 @@ When the REPL reaches the limit, the conversation so far is kept. Send another m
 
 ## Agent specs (`harnesses`)
 
-`eagent harness show [name|file]` prints every setting an Agent resolves to, where each value comes from, values a layer set but could not apply, and the built-in tools, prompt sections, and context sources with their ids; `--json` prints the same data. `eagent harness diff <a> <b>` compares two Agents key by key. An argument with a path separator or a `.json` suffix is read as a spec file. In a session, `/harness` and `/harness diff <a> <b>` show the same views.
+`eagent harness list` lists the Agents, which ones do not resolve and why, and this workspace's default Agent; `--json` prints the same data. `eagent harness show [name|file]` prints every setting an Agent resolves to, where each value comes from, values a layer set but could not apply, and the built-in tools, prompt sections, and context sources with their ids; `--json` prints the same data. `eagent harness diff <a> <b>` compares two Agents key by key. An argument with a path separator or a `.json` suffix is read as a spec file. In a session, `/harness [show] [name|file]`, `/harness diff <a> <b>`, and `/harness list` show the same views, and `/harness use <name>` sets this workspace's default Agent (see below). Programs create, edit, rename, delete, export, and import Agents through the [SDK](./sdk.md#agent-management) or the `harness/*` [RPC methods](./rpc.md#methods); those writes validate every Agent before they change the file.
 
 An Agent is a Harness spec: the model, tools, prompt, context sources, compaction, permissions, skills, sub-agents, commands, output style, MCP servers, plugins, and feature switches it uses. User-defined Agents live only in the user settings file; `harnesses` in project, local, flag, or policy settings is ignored with a warning, and the SDK and RPC refuse to write it to a project or local file.
 
@@ -156,7 +156,7 @@ An Agent is a Harness spec: the model, tools, prompt, context sources, compactio
 ```
 
 - `extends` names a built-in Agent (`default`) or another one in `harnesses`; it defaults to `default`. Objects merge with their parent, and lists and plain values replace it. Cycles and unknown names are errors.
-- `harnesses.default` overrides the built-in default and extends nothing else, so it only records what you changed.
+- `harnesses.default` overrides the built-in default and extends nothing else, so it only records what you changed. Editing it through the SDK or RPC drops values the built-in default and the top-level user settings already give; deleting it restores the built-in default.
 - Text fields accept a string, `{ "text": "…" }`, or `{ "file": "…" }`. Relative paths resolve against `~/.easy-agent/`, and `~/` against the home directory.
 - Unknown keys are errors, so a typo is reported instead of ignored.
 
@@ -286,7 +286,13 @@ Each switch under `features` (and `session.checkpoints`) is also controlled by t
 - `/skills` and `/agents` list the kept ones and name the ones left out, `/harness` lists them with the reason, and `runtime/inventory` returns them with `enabled: false` and the reason. `getCapabilities()` returns only the kept ones. Names that match no loaded skill or sub-agent are printed as a warning when the runtime starts.
 - The lists apply from the next turn after an edit; the listing change reaches the model as a context update.
 
-`--harness <name|file>` selects the Agent for one run: a name from `harnesses`, or a spec file (an argument with a path separator or a `.json` suffix) that is used for that run only and never written to the settings. It works for the terminal UI, Headless (`-p`), `--dump-system-prompt`, RPC (as the default for `initialize`), and ACP. The SDK takes `createAgentRuntime({ harness: { name } })` or `{ spec }`, and RPC `initialize` takes the same `harness` parameter. Without a selection the runtime uses `default`, as before.
+`--harness <name|file>` selects the Agent for one run: a name from `harnesses`, or a spec file (an argument with a path separator or a `.json` suffix) that is used for that run only and never written to the settings. It works for the terminal UI, Headless (`-p`), `--dump-system-prompt`, RPC (as the default for `initialize`), and ACP. The SDK takes `createAgentRuntime({ harness: { name } })` or `{ spec }`, and RPC `initialize` takes the same `harness` parameter.
+
+Without a selection the runtime uses the workspace's default Agent: `harness` in `.easy-agent/settings.local.json`, a name from `harnesses`. It is a personal choice, so it lives only in the local file, which is not committed; `/harness use <name>`, `setProjectHarness()`, and RPC `harness/setProjectDefault` write it, and `/harness use default` removes it. It applies only in a trusted workspace, and `harness` in the user, project, flag, or policy settings is ignored with a warning, so a repository cannot pick an Agent for you. A runtime binds the Agent when it starts, so a change applies to the next one. A name that no Agent has any more is reported and the runtime uses `default`; an Agent that does not resolve stops the startup as a selected one does. Without the key the runtime uses `default`, as before.
+
+```json
+{ "harness": "reviewer" }
+```
 
 A selected Agent must resolve: an unknown name, an invalid spec, a broken `extends` chain, or an unreadable `file` reference stops the startup with the reason (exit code 1, SDK error code `harness`) instead of running another Agent. Keys the Agent sets that this version does not apply yet are printed as warnings when the runtime starts. If the definition stops resolving while the runtime runs (it was edited or removed), the runtime keeps the Agent's last good settings and warns once. A spec file or spec object is trusted like `--settings`: it can set permission `mode` and `allow` rules, because whoever starts Easy Agent chose it.
 

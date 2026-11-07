@@ -91,7 +91,7 @@ export async function readJsonSettingsFile<T = unknown>(filePath: string): Promi
  *     That's all the current callers need.
  *   - Creates `~/.easy-agent/` if it doesn't exist yet.
  */
-export async function updateUserSettings(patch: Record<string, unknown>): Promise<void> {
+export async function updateUserSettings(patch: SettingsPatch): Promise<void> {
   await writeSettingsPatch(getUserSettingsPath(), patch, "private-home");
 }
 
@@ -101,7 +101,7 @@ export async function updateUserSettings(patch: Record<string, unknown>): Promis
  * A `value === undefined` in the patch deletes that key (mirrors the
  * single-source write semantics in the plan).
  */
-export async function updateProjectSettings(cwd: string, patch: Record<string, unknown>): Promise<void> {
+export async function updateProjectSettings(cwd: string, patch: SettingsPatch): Promise<void> {
   await writeSettingsPatch(getProjectSettingsPath(cwd), patch, "shared-project");
 }
 
@@ -110,10 +110,19 @@ export async function updateProjectSettings(cwd: string, patch: Record<string, u
  * (`<cwd>/.easy-agent/settings.local.json`), and make sure that file is
  * gitignored so personal overrides never get committed.
  */
-export async function updateLocalSettings(cwd: string, patch: Record<string, unknown>): Promise<void> {
+export async function updateLocalSettings(cwd: string, patch: SettingsPatch): Promise<void> {
   await writeSettingsPatch(getLocalSettingsPath(cwd), patch, "private-project");
   await ensureLocalSettingsGitignored(cwd);
 }
+
+/**
+ * Top-level keys to set (`undefined` deletes one), or a function that builds
+ * them from the file's current content. The function runs while the file is
+ * locked, so it sees every earlier write; when it throws, nothing is written.
+ */
+export type SettingsPatch =
+  | Record<string, unknown>
+  | ((current: Readonly<Record<string, unknown>>) => Record<string, unknown>);
 
 /**
  * Shared shallow read-merge-write primitive. A `value === undefined` deletes
@@ -122,13 +131,17 @@ export async function updateLocalSettings(cwd: string, patch: Record<string, unk
  */
 async function writeSettingsPatch(
   filePath: string,
-  patch: Record<string, unknown>,
+  patchOrBuild: SettingsPatch,
   storage: "private-home" | "private-project" | "shared-project",
 ): Promise<void> {
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   await withFileLock(filePath, async () => {
     const { raw, parseError } = await readJsonSettingsFile<Record<string, unknown>>(filePath);
     if (parseError) throw new PersistentDataError(filePath, parseError);
+    if (raw !== null && (typeof raw !== "object" || Array.isArray(raw))) {
+      throw new PersistentDataError(filePath, "settings root must be a JSON object");
+    }
+    const patch = typeof patchOrBuild === "function" ? patchOrBuild(raw ?? {}) : patchOrBuild;
     const merged: Record<string, unknown> = { ...(raw ?? {}) };
     for (const [key, value] of Object.entries(patch)) {
       if (value === undefined) delete merged[key];

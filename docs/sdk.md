@@ -53,7 +53,7 @@ const runtime = await createAgentRuntime({
   pluginDirs: [],            // extra plugin directories
   services: { mcpServers: true, wait: true }, // or false, then call runtime.startServices()
   logger: { warn, error },   // startup warnings; defaults to the console
-  harness: { name: "reviewer" }, // experimental: the Agent sessions use, or { spec }; default "default"
+  harness: { name: "reviewer" }, // experimental: the Agent sessions use, or { spec }; default: the workspace's default Agent
 });
 ```
 
@@ -104,11 +104,43 @@ Items that occupy context carry token counts as `{ value, estimated }`: a skill'
 
 ### Agents
 
-`createAgentRuntime({ harness })` selects the Agent this runtime's sessions use: `{ name }` from the `harnesses` key of the user settings file, or `{ spec }`, a spec object resolved over its `extends`; without it, `default`. Every Agent setting the sessions read comes from that Agent. A selection that does not resolve (unknown name, invalid spec, broken `extends`) rejects with code `harness`; passing both `name` and `spec` rejects with `invalid_argument`. Keys the Agent sets that this version does not apply yet go to the `logger` as warnings.
+`createAgentRuntime({ harness })` selects the Agent this runtime's sessions use: `{ name }` from the `harnesses` key of the user settings file, or `{ spec }`, a spec object resolved over its `extends`; without it, the workspace's default Agent (see [Agent management](#agent-management)), then `default`. Every Agent setting the sessions read comes from that Agent. A selection that does not resolve (unknown name, invalid spec, broken `extends`) rejects with code `harness`; passing both `name` and `spec` rejects with `invalid_argument`. Keys the Agent sets that this version does not apply yet go to the `logger` as warnings.
 
 `getHarness()` returns the Agent this runtime's sessions use, with the settings files as they are now and the environment variables as they were when the runtime started; `{ name }` resolves an Agent from the `harnesses` key of the user settings file, and `{ spec }` resolves a spec object over its `extends` (see [Agent specs](./configuration.md#agent-specs-harnesses)). The result has the Agent `name`, the `chain` of specs applied over the built-in default, a `hash` of all values, `issues` (unknown names, `extends` cycles, invalid specs, keys this version does not apply yet), and `values`: for each key such as `model.main` or `permissions.deny`, the `value`, the layer it came from (`source`: `built-in`, `user`, `harness`, `project`, `local`, `environment`, `flag`, `policy`) with a `detail` such as the settings key, whether this version `applied` it, every accepted `contribution`, the `ignored` values with a `reason`, and `overridesHarness` when a project or local setting replaced the Agent's value. `diffHarness(a, b)` lists the keys whose values differ.
 
-`getHarness({ name })` and `getHarness({ spec })` resolve other Agents for comparison; they do not change what the runtime's sessions use.
+`getHarness({ name })` and `getHarness({ spec })` resolve other Agents for comparison; they do not change what the runtime's sessions use. When the workspace's default Agent chose the runtime's Agent, the result has `selectedBy: { source: "local", path }`.
+
+### Agent management
+
+`eagent/sdk/experimental` creates, edits, renames, deletes, exports, and imports the Agents in `harnesses`, and sets the workspace's default Agent. These exports may change in a minor release. They work with or without a runtime, and share the module instance of `eagent/sdk`, so a change to the Agent of the runtime in the same process reloads it.
+
+```ts
+import { listHarnesses, writeHarness, setProjectHarness } from "eagent/sdk/experimental";
+
+await writeHarness("reviewer", { description: "Reviews code", tools: { exclude: ["Write", "Edit"] } });
+await setProjectHarness("reviewer", { cwd }); // runtimes started in cwd now use it
+const { harnesses, projectDefault } = await listHarnesses({ cwd });
+```
+
+| Function | Purpose |
+| --- | --- |
+| `listHarnesses({ cwd? })` | The built-in Agents and those in `harnesses`, each with `builtIn`, `defined` (has an entry; for `default`, whether you changed it), `description`, `extends`, `dependents` (Agents that extend it), `projectDefault`, and `errors`; the workspace's `projectDefault` (`name`, `path`, `applied`, `reason`); the settings file `path` |
+| `readHarness(name)` | The stored `spec` (`{}` for an unchanged built-in) with the same fields. Unknown names reject with `not_found` |
+| `writeHarness(name, spec)` | Create or replace an Agent. Returns the stored `spec`, `created`, `affected`, and `reloaded` |
+| `deleteHarness(name)` | Delete an Agent; `default` goes back to the built-in. An Agent others extend rejects with `harness` |
+| `renameHarness(from, to, { cwd? })` | Rename an Agent; the Agents that extend it and the workspace's default Agent follow (`updatedExtends`, `updatedProjectDefault`) |
+| `exportHarness(name)` | `{ format: "easy-agent-harness", version: 1, name, spec }` |
+| `previewHarnessImport(data, { cwd? })` | What an export would do in the workspace, and the `fingerprint` that confirms it |
+| `importHarness(data, { fingerprint, name?, replace? })` | Write an export into `harnesses` |
+| `setProjectHarness(name \| null, { cwd? })` | Set the workspace's default Agent, or go back to `default` with `null` |
+
+- **Writes.** Each change is one locked read-modify-write of the user settings file: only the `harnesses` key changes, concurrent writers (other processes too) keep each other's Agents, and the file is replaced atomically. Before writing, every Agent is resolved against the new definitions; when the change would give one an error it did not have (an invalid spec, an `extends` that names no Agent or forms a cycle, an unreadable `file`), it rejects with `harness` and the file stays as it was. Agents that were already broken do not block other writes. Specs have no credential fields, and the functions return nothing else from the file.
+- **`default`.** `writeHarness("default", spec)` writes `harnesses.default` with only what differs from the built-in default and the top-level user settings; a spec without differences removes the entry, and so does `deleteHarness("default")`. It cannot extend another Agent.
+- **Reloading.** `affected` lists the Agent and every Agent that extends it (for `default`, every Agent). When the runtime in this process uses one of them (its Agent or one it extends), it resolves its Agent again and reloads the permission rules of its open sessions, and `reloaded` is `true`; other runtimes pick the change up before their next model request. Servers an Agent's `mcpServers` lists choose are started at startup, so restart for those. A frontend that runs one process per Agent restarts or reloads only the processes whose Agent is in `affected`.
+- **Export and import.** An export holds every value along the Agent's `extends` chain (the changes to `default` included), with `file` references replaced by their text, so it resolves the same on another machine. `previewHarnessImport` lists the built-in tools and the workspace's configured MCP servers the Agent keeps, the permission mode it runs in, the `allow`, `ask`, and `deny` rules it adds, every key it sets, and the errors that would make the import fail; show this to the user. `importHarness` needs the preview's `fingerprint` and rejects content that differs from it, an existing name without `replace`, and a spec that reads a `file` (an import carries its text inline).
+- **The workspace's default Agent** is `harness` in `<cwd>/.easy-agent/settings.local.json`, which is personal and not committed. `setProjectHarness` needs a trusted workspace (`untrusted` otherwise) and an Agent that resolves. A runtime started without `harness` uses it and keeps it until it stops. When it names an Agent that no longer exists, the runtime warns and uses `default`; when that Agent does not resolve, startup rejects with `harness`. The key is ignored with a warning in an untrusted workspace and in every other settings file.
+
+Errors carry the SDK codes `not_found`, `invalid_argument`, `harness`, and `untrusted`. RPC offers the same operations as `harness/*` methods.
 
 ## Sessions
 

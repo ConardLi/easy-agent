@@ -256,6 +256,375 @@
             },
             "method": {
               "type": "string",
+              "const": "harness/list"
+            },
+            "params": {
+              "type": "object",
+              "properties": {}
+            }
+          },
+          "required": [
+            "jsonrpc",
+            "method"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "jsonrpc": {
+              "type": "string",
+              "const": "2.0"
+            },
+            "id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "method": {
+              "type": "string",
+              "const": "harness/read"
+            },
+            "params": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "name"
+              ]
+            }
+          },
+          "required": [
+            "jsonrpc",
+            "method"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "jsonrpc": {
+              "type": "string",
+              "const": "2.0"
+            },
+            "id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "method": {
+              "type": "string",
+              "const": "harness/write"
+            },
+            "params": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "spec": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                }
+              },
+              "required": [
+                "name",
+                "spec"
+              ]
+            }
+          },
+          "required": [
+            "jsonrpc",
+            "method"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "jsonrpc": {
+              "type": "string",
+              "const": "2.0"
+            },
+            "id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "method": {
+              "type": "string",
+              "const": "harness/delete"
+            },
+            "params": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "name"
+              ]
+            }
+          },
+          "required": [
+            "jsonrpc",
+            "method"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "jsonrpc": {
+              "type": "string",
+              "const": "2.0"
+            },
+            "id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "method": {
+              "type": "string",
+              "const": "harness/rename"
+            },
+            "params": {
+              "type": "object",
+              "properties": {
+                "from": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "to": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "from",
+                "to"
+              ]
+            }
+          },
+          "required": [
+            "jsonrpc",
+            "method"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "jsonrpc": {
+              "type": "string",
+              "const": "2.0"
+            },
+            "id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "method": {
+              "type": "string",
+              "const": "harness/export"
+            },
+            "params": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "name"
+              ]
+            }
+          },
+          "required": [
+            "jsonrpc",
+            "method"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "jsonrpc": {
+              "type": "string",
+              "const": "2.0"
+            },
+            "id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "method": {
+              "type": "string",
+              "const": "harness/previewImport"
+            },
+            "params": {
+              "type": "object",
+              "properties": {
+                "data": {}
+              },
+              "required": [
+                "data"
+              ]
+            }
+          },
+          "required": [
+            "jsonrpc",
+            "method"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "jsonrpc": {
+              "type": "string",
+              "const": "2.0"
+            },
+            "id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "method": {
+              "type": "string",
+              "const": "harness/import"
+            },
+            "params": {
+              "type": "object",
+              "properties": {
+                "data": {},
+                "fingerprint": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "name": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "replace": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "data",
+                "fingerprint"
+              ]
+            }
+          },
+          "required": [
+            "jsonrpc",
+            "method"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "jsonrpc": {
+              "type": "string",
+              "const": "2.0"
+            },
+            "id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "method": {
+              "type": "string",
+              "const": "harness/setProjectDefault"
+            },
+            "params": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "name"
+              ]
+            }
+          },
+          "required": [
+            "jsonrpc",
+            "method"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "jsonrpc": {
+              "type": "string",
+              "const": "2.0"
+            },
+            "id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "method": {
+              "type": "string",
               "const": "mcp/approve"
             },
             "params": {
@@ -3393,6 +3762,29 @@
             "name": {
               "type": "string"
             },
+            "selectedBy": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "const": "local"
+                },
+                "path": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "path"
+              ]
+            },
             "chain": {
               "type": "array",
               "items": {
@@ -3552,6 +3944,462 @@
             "hash"
           ],
           "additionalProperties": {}
+        },
+        "harness/list": {
+          "type": "object",
+          "properties": {
+            "harnesses": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "builtIn": {
+                    "type": "boolean"
+                  },
+                  "defined": {
+                    "type": "boolean"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "extends": {
+                    "type": "string"
+                  },
+                  "dependents": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "projectDefault": {
+                    "type": "boolean"
+                  },
+                  "errors": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "name",
+                  "builtIn",
+                  "defined",
+                  "dependents",
+                  "projectDefault",
+                  "errors"
+                ],
+                "additionalProperties": {}
+              }
+            },
+            "projectDefault": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "path": {
+                      "type": "string"
+                    },
+                    "applied": {
+                      "type": "boolean"
+                    },
+                    "reason": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "path",
+                    "applied"
+                  ],
+                  "additionalProperties": {}
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "path": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "harnesses",
+            "projectDefault",
+            "path"
+          ],
+          "additionalProperties": {}
+        },
+        "harness/read": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "builtIn": {
+              "type": "boolean"
+            },
+            "defined": {
+              "type": "boolean"
+            },
+            "description": {
+              "type": "string"
+            },
+            "extends": {
+              "type": "string"
+            },
+            "dependents": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "errors": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "spec": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {}
+            },
+            "path": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "builtIn",
+            "defined",
+            "dependents",
+            "errors",
+            "spec",
+            "path"
+          ],
+          "additionalProperties": {}
+        },
+        "harness/write": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "spec": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "affected": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "reloaded": {
+              "type": "boolean"
+            },
+            "created": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "name",
+            "spec",
+            "affected",
+            "reloaded",
+            "created"
+          ],
+          "additionalProperties": {}
+        },
+        "harness/delete": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "spec": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "affected": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "reloaded": {
+              "type": "boolean"
+            },
+            "deleted": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "name",
+            "spec",
+            "affected",
+            "reloaded",
+            "deleted"
+          ],
+          "additionalProperties": {}
+        },
+        "harness/rename": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "spec": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "affected": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "reloaded": {
+              "type": "boolean"
+            },
+            "from": {
+              "type": "string"
+            },
+            "updatedExtends": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "updatedProjectDefault": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "name",
+            "spec",
+            "affected",
+            "reloaded",
+            "from",
+            "updatedExtends",
+            "updatedProjectDefault"
+          ],
+          "additionalProperties": {}
+        },
+        "harness/export": {
+          "type": "object",
+          "properties": {
+            "format": {
+              "type": "string",
+              "const": "easy-agent-harness"
+            },
+            "version": {
+              "type": "number",
+              "const": 1
+            },
+            "name": {
+              "type": "string"
+            },
+            "spec": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {}
+            }
+          },
+          "required": [
+            "format",
+            "version",
+            "name",
+            "spec"
+          ],
+          "additionalProperties": {}
+        },
+        "harness/previewImport": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "spec": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {}
+            },
+            "exists": {
+              "type": "boolean"
+            },
+            "tools": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "mcpServers": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "permissions": {
+              "type": "object",
+              "properties": {
+                "mode": {
+                  "type": "string"
+                },
+                "allow": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "ask": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "deny": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "mode",
+                "allow",
+                "ask",
+                "deny"
+              ]
+            },
+            "sets": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "errors": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "fingerprint": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "spec",
+            "exists",
+            "tools",
+            "mcpServers",
+            "permissions",
+            "sets",
+            "errors",
+            "fingerprint"
+          ],
+          "additionalProperties": {}
+        },
+        "harness/import": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "spec": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "affected": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "reloaded": {
+              "type": "boolean"
+            },
+            "created": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "name",
+            "spec",
+            "affected",
+            "reloaded",
+            "created"
+          ],
+          "additionalProperties": {}
+        },
+        "harness/setProjectDefault": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "path"
+          ]
         },
         "runtime/reload": {
           "type": "object",
@@ -7659,6 +8507,15 @@
         "runtime/capabilities",
         "runtime/inventory",
         "runtime/harness",
+        "harness/list",
+        "harness/read",
+        "harness/write",
+        "harness/delete",
+        "harness/rename",
+        "harness/export",
+        "harness/previewImport",
+        "harness/import",
+        "harness/setProjectDefault",
         "runtime/reload",
         "mcp/approve",
         "mcp/reconnect",

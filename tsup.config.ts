@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "tsup";
 import { writeThirdPartyNotices } from "./scripts/third-party-notices.js";
@@ -31,7 +32,13 @@ const projectRoot = fileURLToPath(new URL(".", import.meta.url));
 export default defineConfig({
   // The CLI and the session SDK ship as two self-contained bundles: the SDK
   // bundle leaves out the terminal UI, and `eagent/sdk` resolves to it.
-  entry: { eagent: "src/entrypoint/cli.ts", sdk: "src/sdk/index.ts" },
+  // `eagent/sdk/experimental` is a thin entry over the SDK bundle (see the
+  // plugin below), so the two share one module instance.
+  entry: {
+    eagent: "src/entrypoint/cli.ts",
+    sdk: "src/sdk/sdkEntry.ts",
+    "sdk-experimental": "src/sdk/experimentalEntry.ts",
+  },
   outDir: "dist",
   format: ["esm"],
   platform: "node",
@@ -52,7 +59,7 @@ export default defineConfig({
   // Declarations for the SDK entry. Message types refer to `@anthropic-ai/sdk`,
   // which TypeScript consumers install themselves (see docs/sdk.md).
   dts: {
-    entry: { sdk: "src/sdk/index.ts" },
+    entry: { sdk: "src/sdk/index.ts", "sdk-experimental": "src/sdk/experimental.ts" },
     // tsup sets the deprecated `baseUrl` for the declaration build.
     compilerOptions: { ignoreDeprecations: "6.0" },
   },
@@ -75,6 +82,16 @@ export default defineConfig({
   // specifier to an empty stub instead; the branch that would touch it is
   // unreachable in a release build.
   esbuildPlugins: [
+    {
+      name: "experimental-entry-over-sdk-bundle",
+      setup(build) {
+        build.onResolve({ filter: /^\.\/sdkEntry\.js$/ }, (args) =>
+          args.importer.endsWith(`${path.sep}sdk${path.sep}experimentalEntry.ts`)
+            ? { path: "./sdk.js", external: true }
+            : undefined,
+        );
+      },
+    },
     {
       name: "stub-optional-ink-devtools",
       setup(build) {

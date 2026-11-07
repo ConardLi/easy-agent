@@ -62,6 +62,8 @@ export interface HarnessIssue {
 export interface ResolvedHarness {
   /** The requested Agent, or `(inline)` for a spec passed directly. */
   name: string;
+  /** Set when the workspace's default Agent (`harness` in the local settings file) chose `name`. */
+  selectedBy?: { source: "local"; path: string | null };
   /** Specs applied over the built-in default, base first. */
   chain: readonly string[];
   values: Readonly<Record<string, ResolvedHarnessValue>>;
@@ -83,8 +85,10 @@ export interface HarnessInputs {
   env: NodeJS.ProcessEnv;
   /** `--agent-teams` was passed. */
   agentTeamsFlag?: boolean;
-  /** Agent to resolve; defaults to `default`. */
+  /** Agent to resolve; defaults to the workspace's default Agent, then `default`. */
   name?: string;
+  /** Recorded in the result with `name`: the workspace default chose that name earlier. */
+  selectedBy?: ResolvedHarness["selectedBy"];
   /** A spec passed directly (CLI file or SDK object), resolved over its `extends`. */
   spec?: unknown;
   /** Reads a text file referenced by the spec. Throws when it cannot. */
@@ -139,7 +143,52 @@ function parseSpec(name: string, raw: unknown, issues: HarnessIssue[]): HarnessS
   return undefined;
 }
 
-function buildChain(inputs: HarnessInputs, issues: HarnessIssue[]): { name: string; chain: ChainEntry[] } {
+/**
+ * The workspace's default Agent: `harness` in the local settings file of a
+ * trusted workspace. The key in any other layer, or in an untrusted
+ * workspace, is ignored with a warning. A name no Agent has falls back to
+ * `default` with a warning, since the Agent may have been deleted since.
+ */
+export function projectHarnessSelection(
+  inputs: Pick<HarnessInputs, "layers" | "workspaceTrusted">,
+  definitions: Readonly<Record<string, unknown>>,
+  issues: HarnessIssue[] = [],
+): { name: string; path: string | null } | undefined {
+  let selected: { name: string; path: string | null } | undefined;
+  for (const layer of inputs.layers) {
+    const value = layer.raw?.harness;
+    if (value === undefined) continue;
+    const where = `${layer.source} settings${layer.path ? ` (${layer.path})` : ""}`;
+    if (layer.source !== "local") {
+      issues.push({
+        level: "warning",
+        message: `harness in ${where} is ignored; the workspace's default Agent is set only in the local settings file`,
+      });
+    } else if (!inputs.workspaceTrusted) {
+      issues.push({ level: "warning", message: `harness in ${where} is ignored: ${SETTINGS_REASON.untrusted}` });
+    } else if (typeof value === "string" && value.trim()) {
+      selected = { name: value.trim(), path: layer.path };
+    }
+  }
+  if (!selected) return undefined;
+  if (
+    !Object.hasOwn(definitions, selected.name) &&
+    !(BUILT_IN_HARNESSES as readonly string[]).includes(selected.name)
+  ) {
+    issues.push({
+      level: "warning",
+      harness: selected.name,
+      message: `the workspace's default Agent "${selected.name}"${selected.path ? ` (${selected.path})` : ""} does not exist; using default`,
+    });
+    return undefined;
+  }
+  return selected;
+}
+
+function buildChain(
+  inputs: HarnessInputs,
+  issues: HarnessIssue[],
+): { name: string; chain: ChainEntry[]; selectedBy?: ResolvedHarness["selectedBy"] } {
   const definitions = readHarnessDefinitions(inputs, issues);
   const builtIn = new Set<string>(BUILT_IN_HARNESSES);
 
@@ -178,8 +227,20 @@ function buildChain(inputs: HarnessInputs, issues: HarnessIssue[]): { name: stri
     if (!spec) return { name: INLINE, chain: [] };
     return { name: INLINE, chain: [...resolveName(spec.extends ?? "default", [INLINE]), { name: INLINE, spec }] };
   }
-  const name = inputs.name ?? "default";
-  return { name, chain: resolveName(name, []) };
+  if (inputs.name !== undefined) {
+    return {
+      name: inputs.name,
+      chain: resolveName(inputs.name, []),
+      ...(inputs.selectedBy ? { selectedBy: inputs.selectedBy } : {}),
+    };
+  }
+  const project = projectHarnessSelection(inputs, definitions, issues);
+  if (!project) return { name: "default", chain: resolveName("default", []) };
+  return {
+    name: project.name,
+    chain: resolveName(project.name, []),
+    selectedBy: { source: "local", path: project.path },
+  };
 }
 
 function valueAt(spec: unknown, dotted: string): unknown {
@@ -394,7 +455,7 @@ function deepFreeze<T>(value: T): T {
 /** Resolve a harness from already-loaded inputs. Pure apart from reading referenced text files. */
 export function resolveHarnessFromInputs(inputs: HarnessInputs): ResolvedHarness {
   const issues: HarnessIssue[] = [];
-  const { name, chain } = buildChain(inputs, issues);
+  const { name, chain, selectedBy } = buildChain(inputs, issues);
   const values: Record<string, ResolvedHarnessValue> = {};
   for (const key of HARNESS_KEYS) values[key.path] = resolveKey(key, chain, inputs, issues);
   const effective = Object.fromEntries(Object.entries(values).map(([keyPath, entry]) => [keyPath, entry.value]));
@@ -402,7 +463,14 @@ export function resolveHarnessFromInputs(inputs: HarnessInputs): ResolvedHarness
     .update(JSON.stringify(sortKeys(effective)))
     .digest("hex")
     .slice(0, 16);
-  return deepFreeze({ name, chain: chain.map((entry) => entry.name), values, issues, hash });
+  return deepFreeze({
+    name,
+    ...(selectedBy ? { selectedBy } : {}),
+    chain: chain.map((entry) => entry.name),
+    values,
+    issues,
+    hash,
+  });
 }
 
 export interface ResolveHarnessOptions {
@@ -410,6 +478,7 @@ export interface ResolveHarnessOptions {
   name?: string;
   spec?: unknown;
   env?: NodeJS.ProcessEnv;
+  selectedBy?: ResolvedHarness["selectedBy"];
 }
 
 const hasAgentTeamsFlag = () => process.argv.includes("--agent-teams");
@@ -427,8 +496,25 @@ export async function resolveHarness(options: ResolveHarnessOptions): Promise<Re
     agentTeamsFlag: hasAgentTeamsFlag(),
     ...(options.name !== undefined ? { name: options.name } : {}),
     ...(options.spec !== undefined ? { spec: options.spec } : {}),
+    ...(options.selectedBy ? { selectedBy: options.selectedBy } : {}),
     configDir: path.dirname(getUserSettingsPath()),
   });
+}
+
+/**
+ * The workspace's default Agent for `cwd`, and the warnings about the
+ * `harness` key (set outside the local file, untrusted workspace, unknown
+ * name). Undefined when the workspace sets none that applies.
+ */
+export async function resolveProjectHarness(
+  cwd: string,
+): Promise<{ selection?: { name: string; path: string | null }; issues: HarnessIssue[] }> {
+  const [sources, workspaceTrusted] = await Promise.all([loadSettingSources(cwd), isProjectTrusted(cwd)]);
+  const layers = sources.map(({ source, path: file, raw }: LoadedSource) => ({ source, path: file, raw }));
+  const issues: HarnessIssue[] = [];
+  const definitions = readHarnessDefinitions({ layers, workspaceTrusted, env: {} }, []);
+  const selection = projectHarnessSelection({ layers, workspaceTrusted }, definitions, issues);
+  return { ...(selection ? { selection } : {}), issues };
 }
 
 const ENVIRONMENT_NAMES = [...new Set(HARNESS_KEYS.flatMap((key) => key.env?.names ?? []))];
