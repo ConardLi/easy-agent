@@ -51,6 +51,7 @@ import { buildRuntimeInventory } from "./inventory.js";
 import { activeHarness, refreshHarness, uninstallHarness } from "../harness/active.js";
 import { diffHarnesses, type HarnessDiff } from "../harness/diff.js";
 import { harnessValue, type ResolvedHarness, resolveHarness } from "../harness/resolve.js";
+import { bindSessionHarness, type SessionHarnessCheck, sessionHarnessRecord } from "../harness/session.js";
 import { listPlugins, mutatePlugins, previewPlugin } from "./plugins.js";
 import { AgentSession, reloadSettingsOf } from "./session.js";
 import { SessionController } from "./session/controller.js";
@@ -157,12 +158,20 @@ export class AgentRuntime {
   async createSession(options: AgentSessionOptions = {}): Promise<AgentSession> {
     this.#assertActive();
     const permissionSettings = await this.#loadPermissionSettings();
-    const model = options.model ?? (await this.resolveModel());
+    const harness = await refreshHarness();
+    const model = options.model ?? harnessValue<string>(harness, "model.main");
     const sessionId = createSessionId();
     if (options.persist !== false) {
       const startedAt = new Date().toISOString();
       try {
-        await initSessionStorage({ sessionId, cwd: this.cwd, startedAt, updatedAt: startedAt, model });
+        await initSessionStorage({
+          sessionId,
+          cwd: this.cwd,
+          startedAt,
+          updatedAt: startedAt,
+          model,
+          harness: sessionHarnessRecord(harness),
+        });
       } catch (error) {
         throw new AgentSdkError("session_storage", (error as Error).message, { cause: error });
       }
@@ -176,7 +185,13 @@ export class AgentRuntime {
     });
   }
 
-  /** Reopen a saved session; without an id, the most recent one. */
+  /**
+   * Reopen a saved session; without an id, the most recent one. It runs with
+   * this runtime's Agent; `session.harnessCheck` compares that with the
+   * Agent the session last ran with, and the session records the runtime's
+   * Agent when they differ. Start the runtime with `harness: { session }` to
+   * reopen it with the Agent it last ran with.
+   */
   async resumeSession(sessionId?: string, options: AgentSessionOptions = {}): Promise<AgentSession> {
     this.#assertActive();
     const permissionSettings = await this.#loadPermissionSettings();
@@ -184,13 +199,16 @@ export class AgentRuntime {
     if (this.#sessions.has(restored.summary.sessionId)) {
       throw new AgentSdkError("already_open", `Session ${restored.summary.sessionId} is already open.`);
     }
-    const model = options.model ?? (await this.resolveModel());
+    const harness = await refreshHarness();
+    const model = options.model ?? harnessValue<string>(harness, "model.main");
+    const harnessCheck = await this.#bindHarness(restored, harness, options.persist !== false);
     return this.#open({
       sessionId: restored.summary.sessionId,
       model,
       options,
       permissionSettings,
       restored,
+      harnessCheck,
     });
   }
 
@@ -283,6 +301,8 @@ export class AgentRuntime {
         startedAt,
         updatedAt: startedAt,
         model: source.summary.model,
+        // A fork keeps the Agent the forked session last ran with.
+        ...(source.harness ? { harness: source.harness } : {}),
       });
       const kept = source.messages.slice(0, end);
       for (const [index, message] of kept.entries()) {
@@ -491,6 +511,22 @@ export class AgentRuntime {
     }
   }
 
+  /**
+   * Compare the Agent a session last ran with and the one it opens with, and
+   * record the new one when they differ (persisted sessions only).
+   */
+  async #bindHarness(
+    restored: RestoredSession,
+    harness: ResolvedHarness,
+    persist: boolean,
+  ): Promise<SessionHarnessCheck> {
+    try {
+      return await bindSessionHarness(this.cwd, restored, harness, persist);
+    } catch (error) {
+      throw new AgentSdkError("session_storage", (error as Error).message, { cause: error });
+    }
+  }
+
   async #restore(sessionId?: string): Promise<RestoredSession> {
     if (sessionId !== undefined) this.#assertSessionId(sessionId);
     try {
@@ -520,6 +556,7 @@ export class AgentRuntime {
     options: AgentSessionOptions;
     permissionSettings: PermissionSettings;
     restored: RestoredSession | null;
+    harnessCheck?: SessionHarnessCheck;
   }): Promise<AgentSession> {
     const controller = await SessionController.create({
       scope: createSessionScope(),
@@ -542,7 +579,7 @@ export class AgentRuntime {
         this.#sessions.delete(sessionId);
       },
     });
-    const session = new AgentSession(params.sessionId, controller);
+    const session = new AgentSession(params.sessionId, controller, params.harnessCheck ?? null);
     this.#sessions.set(params.sessionId, session);
     return session;
   }

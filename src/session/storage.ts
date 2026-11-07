@@ -39,12 +39,23 @@ export interface SessionPaths {
   latestPath: string;
 }
 
+/**
+ * The Agent a session runs with: its name, the hash of its resolved settings,
+ * and a digest of each setting, so a later resume can tell which ones changed.
+ */
+export interface SessionHarnessRecord {
+  name: string;
+  hash: string;
+  keys: Record<string, string>;
+}
+
 export interface SessionMetadata {
   sessionId: string;
   cwd: string;
   startedAt: string;
   updatedAt: string;
   model: string;
+  harness?: SessionHarnessRecord;
 }
 
 export interface SessionSummary {
@@ -53,6 +64,8 @@ export interface SessionSummary {
   startedAt: string;
   updatedAt: string;
   model: string;
+  /** The Agent the session runs with; `default` without a hash for sessions saved before Agents were recorded. */
+  harness: { name: string; hash?: string };
   messageCount: number;
   totalUsage: Usage;
   /** The first user prompt, used as a human-readable label (may be empty). */
@@ -79,7 +92,20 @@ export interface FileHistorySnapshotRecord {
 }
 
 export type TranscriptEntry =
-  | { type: "session_meta"; sessionId: string; cwd: string; startedAt: string; model: string }
+  /**
+   * The first record of a session. Another one is appended when a resume
+   * binds the session to a different Agent, or the same Agent with changed
+   * settings; its `harness` replaces the earlier one. The other fields stay
+   * those of the first record, which readers that predate `harness` use.
+   */
+  | {
+      type: "session_meta";
+      sessionId: string;
+      cwd: string;
+      startedAt: string;
+      model: string;
+      harness?: SessionHarnessRecord;
+    }
   | { type: "message"; timestamp: string; role: "user" | "assistant"; message: MessageParam; messageId?: string }
   | {
       type: "tool_event";
@@ -115,6 +141,8 @@ export type TranscriptEntry =
 
 export interface RestoredSession {
   summary: SessionSummary;
+  /** The Agent the session runs with, as recorded; null for sessions saved before Agents were recorded. */
+  harness: SessionHarnessRecord | null;
   messages: MessageParam[];
   /** Id of the user turn that added each message, aligned with `messages`; null when unknown. */
   messageIds: (string | null)[];
@@ -143,6 +171,37 @@ function isMessageParam(value: unknown): value is MessageParam {
   return (record.role === "user" || record.role === "assistant") && "content" in record;
 }
 
+/** A well-formed Agent record, or undefined; a malformed one is left out rather than failing the transcript. */
+function harnessRecordOf(value: unknown): SessionHarnessRecord | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const { name, hash, keys } = value as Record<string, unknown>;
+  if (typeof name !== "string" || !name || typeof hash !== "string") return undefined;
+  const digests =
+    keys && typeof keys === "object" && !Array.isArray(keys)
+      ? Object.fromEntries(
+          Object.entries(keys).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+        )
+      : {};
+  return { name, hash, keys: digests };
+}
+
+type SessionMetaEntry = Extract<TranscriptEntry, { type: "session_meta" }>;
+
+/** The first metadata record and the Agent the latest one names. */
+function sessionMetaOf(
+  entries: readonly TranscriptEntry[],
+): { meta: SessionMetaEntry; harness: SessionHarnessRecord | null } | null {
+  const metas = entries.filter((entry): entry is SessionMetaEntry => entry.type === "session_meta");
+  const meta = metas[0];
+  if (!meta) return null;
+  const latest = [...metas].reverse().find((entry) => entry.harness);
+  return { meta, harness: latest?.harness ?? null };
+}
+
+function harnessSummaryOf(record: SessionHarnessRecord | null): SessionSummary["harness"] {
+  return record ? { name: record.name, hash: record.hash } : { name: "default" };
+}
+
 function parseJsonLine(line: string): TranscriptEntry | null {
   try {
     const parsed = JSON.parse(line) as Record<string, unknown>;
@@ -154,12 +213,14 @@ function parseJsonLine(line: string): TranscriptEntry | null {
         typeof parsed.startedAt === "string" &&
         typeof parsed.model === "string"
       ) {
+        const harness = harnessRecordOf(parsed.harness);
         return {
           type: "session_meta",
           sessionId: parsed.sessionId,
           cwd: parsed.cwd,
           startedAt: parsed.startedAt,
           model: parsed.model,
+          ...(harness ? { harness } : {}),
         };
       }
       return null;
@@ -407,6 +468,7 @@ export async function initSessionStorage(metadata: SessionMetadata): Promise<Ses
     cwd: metadata.cwd,
     startedAt: metadata.startedAt,
     model: metadata.model,
+    ...(metadata.harness ? { harness: metadata.harness } : {}),
   };
 
   await withFileLock(paths.transcriptPath, () =>
@@ -414,6 +476,24 @@ export async function initSessionStorage(metadata: SessionMetadata): Promise<Ses
   );
   await writePrivateFile(paths.latestPath, `${metadata.sessionId}\n`);
   return paths;
+}
+
+/**
+ * Bind a saved session to the Agent it now runs with: a metadata record
+ * that repeats the first one's fields with the new `harness`.
+ */
+export async function recordSessionHarness(
+  summary: Pick<SessionSummary, "sessionId" | "cwd" | "startedAt" | "model">,
+  harness: SessionHarnessRecord,
+): Promise<void> {
+  await appendTranscriptEntry(summary.cwd, summary.sessionId, {
+    type: "session_meta",
+    sessionId: summary.sessionId,
+    cwd: summary.cwd,
+    startedAt: summary.startedAt,
+    model: summary.model,
+    harness,
+  });
 }
 
 /**
@@ -485,12 +565,11 @@ export async function restoreSession(cwd: string, sessionId?: string): Promise<R
     throw new Error(`Session ${resolvedSessionId} is empty or unreadable.`);
   }
 
-  const meta = entries.find(
-    (entry): entry is Extract<TranscriptEntry, { type: "session_meta" }> => entry.type === "session_meta",
-  );
-  if (!meta) {
+  const found = sessionMetaOf(entries);
+  if (!found) {
     throw new Error(`Session ${resolvedSessionId} is missing session metadata.`);
   }
+  const { meta, harness } = found;
 
   // Find the last compaction marker; only use messages after it
   let startIndex = 0;
@@ -527,11 +606,13 @@ export async function restoreSession(cwd: string, sessionId?: string): Promise<R
       startedAt: meta.startedAt,
       updatedAt: getLastUpdatedAt(entries, meta.startedAt),
       model: meta.model,
+      harness: harnessSummaryOf(harness),
       messageCount: messages.length,
       totalUsage: latestUsage?.total ?? createEmptyUsage(),
       firstPrompt: extractFirstPrompt(messages),
       ...(await readTitleAt(transcriptPath.replace(/\.jsonl$/, TITLE_SUFFIX))),
     },
+    harness,
     messages,
     messageIds: messageEntries.map((entry) => entry.messageId ?? null),
     fileHistorySnapshots: [...fhMap.values()],
@@ -683,10 +764,9 @@ export async function listProjectSessions(cwd: string, limit = MAX_SESSIONS): Pr
   const sessions = await Promise.all(
     sessionFiles.map(async (filePath) => {
       const transcriptEntries = await readTranscriptEntries(filePath);
-      const meta = transcriptEntries.find(
-        (entry): entry is Extract<TranscriptEntry, { type: "session_meta" }> => entry.type === "session_meta",
-      );
-      if (!meta) return null;
+      const found = sessionMetaOf(transcriptEntries);
+      if (!found) return null;
+      const { meta } = found;
 
       const messages = transcriptEntries.filter((entry) => entry.type === "message");
       const latestUsage = [...transcriptEntries]
@@ -699,6 +779,7 @@ export async function listProjectSessions(cwd: string, limit = MAX_SESSIONS): Pr
         startedAt: meta.startedAt,
         updatedAt: getLastUpdatedAt(transcriptEntries, meta.startedAt),
         model: meta.model,
+        harness: harnessSummaryOf(found.harness),
         messageCount: messages.length,
         totalUsage: latestUsage?.total ?? createEmptyUsage(),
         firstPrompt: extractFirstPrompt(messages.map((m) => m.message)),

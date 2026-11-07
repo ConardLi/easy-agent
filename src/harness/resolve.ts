@@ -62,8 +62,12 @@ export interface HarnessIssue {
 export interface ResolvedHarness {
   /** The requested Agent, or `(inline)` for a spec passed directly. */
   name: string;
-  /** Set when the workspace's default Agent (`harness` in the local settings file) chose `name`. */
-  selectedBy?: { source: "local"; path: string | null };
+  /**
+   * Set when `name` was not selected explicitly: the workspace's default
+   * Agent (`harness` in the local settings file), or the Agent a saved
+   * session last ran with.
+   */
+  selectedBy?: { source: "local"; path: string | null } | { source: "session"; sessionId: string };
   /** Specs applied over the built-in default, base first. */
   chain: readonly string[];
   values: Readonly<Record<string, ResolvedHarnessValue>>;
@@ -515,6 +519,14 @@ export async function resolveProjectHarness(
   const definitions = readHarnessDefinitions({ layers, workspaceTrusted, env: {} }, []);
   const selection = projectHarnessSelection({ layers, workspaceTrusted }, definitions, issues);
   return { ...(selection ? { selection } : {}), issues };
+}
+
+/** Whether an Agent named `name` exists: a built-in one, or one in `harnesses` of the user settings file. */
+export async function harnessDefined(cwd: string, name: string): Promise<boolean> {
+  if ((BUILT_IN_HARNESSES as readonly string[]).includes(name)) return true;
+  const sources = await loadSettingSources(cwd);
+  const layers = sources.map(({ source, path: file, raw }: LoadedSource) => ({ source, path: file, raw }));
+  return Object.hasOwn(readHarnessDefinitions({ layers, workspaceTrusted: false, env: {} }, []), name);
 }
 
 const ENVIRONMENT_NAMES = [...new Set(HARNESS_KEYS.flatMap((key) => key.env?.names ?? []))];

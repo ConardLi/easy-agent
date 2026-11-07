@@ -52,7 +52,8 @@ Options:
   --tool-search <mode>         ToolSearch mode: off | auto | on
   --max-turns <n>             Maximum tool turns per request (default: 200 in
                               the REPL, 50 with -p). Overrides the maxTurns setting.
-  --resume [session-id]       Resume the latest or a specific session
+  --resume [session-id]       Resume the latest or a specific session, with the
+                              Agent it last ran with unless --harness picks one
   --plan                      Start in plan mode (read-only tools only)
   --auto                      Start in auto mode: an AI classifier auto-approves
                               safe tool calls and blocks risky ones (uncertain
@@ -72,7 +73,8 @@ Options:
   --dump-system-prompt        Print the assembled system prompt and exit
   --harness <name|file>       Run this Agent: a name from "harnesses" in the user
                               settings, or a spec file (path or .json) used for
-                              this run only. Default: default
+                              this run only. Default: the workspace's default
+                              Agent, then default
 
 Agents:
   eagent harness show [name|file] [--json]
@@ -346,7 +348,11 @@ Settings keys (in ~/.easy-agent/settings.json or <cwd>/.easy-agent/settings.json
   }
 
   const { createAgentRuntime } = await import("../sdk/index.js");
-  const runtime = await createAgentRuntime(workspaceOptions);
+  // A resumed session runs with the Agent it last ran with, unless `--harness` picks one.
+  const runtime = await createAgentRuntime({
+    ...workspaceOptions,
+    ...(!harness && shouldResume && !isPrintMode ? { harness: { session: resumeSessionId ?? true } } : {}),
+  });
 
   // Terminal render preferences, read once like the other startup settings.
   {

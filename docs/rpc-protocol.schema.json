@@ -87,6 +87,18 @@
                         "type": "string"
                       },
                       "additionalProperties": {}
+                    },
+                    "session": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        {
+                          "type": "boolean",
+                          "const": true
+                        }
+                      ]
                     }
                   }
                 }
@@ -3763,26 +3775,46 @@
               "type": "string"
             },
             "selectedBy": {
-              "type": "object",
-              "properties": {
-                "source": {
-                  "type": "string",
-                  "const": "local"
-                },
-                "path": {
-                  "anyOf": [
-                    {
-                      "type": "string"
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "source": {
+                      "type": "string",
+                      "const": "local"
                     },
-                    {
-                      "type": "null"
+                    "path": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     }
+                  },
+                  "required": [
+                    "source",
+                    "path"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "source": {
+                      "type": "string",
+                      "const": "session"
+                    },
+                    "sessionId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "source",
+                    "sessionId"
                   ]
                 }
-              },
-              "required": [
-                "source",
-                "path"
               ]
             },
             "chain": {
@@ -7554,6 +7586,64 @@
                 "revertedToolUses"
               ],
               "additionalProperties": {}
+            },
+            "harness": {
+              "type": "object",
+              "properties": {
+                "recorded": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "hash": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "name"
+                  ]
+                },
+                "current": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "hash": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "hash"
+                  ]
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "same",
+                    "changed",
+                    "deleted",
+                    "other"
+                  ]
+                },
+                "changed": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "recorded",
+                "current",
+                "status",
+                "changed"
+              ]
             }
           },
           "required": [
@@ -7583,6 +7673,20 @@
                   },
                   "model": {
                     "type": "string"
+                  },
+                  "harness": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "hash": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "name"
+                    ]
                   },
                   "messageCount": {
                     "type": "integer",
@@ -7618,6 +7722,7 @@
                   "startedAt",
                   "updatedAt",
                   "model",
+                  "harness",
                   "messageCount",
                   "totalUsage",
                   "firstPrompt"
@@ -7650,6 +7755,20 @@
                 },
                 "model": {
                   "type": "string"
+                },
+                "harness": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "hash": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "name"
+                  ]
                 },
                 "messageCount": {
                   "type": "integer",
@@ -7685,6 +7804,7 @@
                 "startedAt",
                 "updatedAt",
                 "model",
+                "harness",
                 "messageCount",
                 "totalUsage",
                 "firstPrompt"
@@ -7722,6 +7842,20 @@
                 "model": {
                   "type": "string"
                 },
+                "harness": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "hash": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "name"
+                  ]
+                },
                 "messageCount": {
                   "type": "integer",
                   "minimum": -9007199254740991,
@@ -7756,6 +7890,7 @@
                 "startedAt",
                 "updatedAt",
                 "model",
+                "harness",
                 "messageCount",
                 "totalUsage",
                 "firstPrompt"
@@ -7792,6 +7927,20 @@
                 "model": {
                   "type": "string"
                 },
+                "harness": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "hash": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "name"
+                  ]
+                },
                 "messageCount": {
                   "type": "integer",
                   "minimum": -9007199254740991,
@@ -7826,6 +7975,7 @@
                 "startedAt",
                 "updatedAt",
                 "model",
+                "harness",
                 "messageCount",
                 "totalUsage",
                 "firstPrompt"

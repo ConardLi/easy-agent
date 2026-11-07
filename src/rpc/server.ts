@@ -135,8 +135,10 @@ export class RpcServer {
           ...(persist === false ? { persist } : {}),
         }),
       ),
-    "session/resume": async ({ sessionId, ...open }) =>
-      this.#attach(await this.#requireRuntime().resumeSession(sessionId, this.#sessionOptions(open))),
+    "session/resume": async ({ sessionId, ...open }) => {
+      const session = await this.#requireRuntime().resumeSession(sessionId, this.#sessionOptions(open));
+      return { ...this.#attach(session), ...(session.harnessCheck ? { harness: session.harnessCheck } : {}) };
+    },
     "session/list": async ({ limit }) => ({ sessions: await this.#requireRuntime().listSessions(limit) }),
     "session/read": async ({ sessionId }) => this.#requireRuntime().readSession(sessionId),
     "session/rename": async ({ sessionId, title }) => ({
@@ -369,10 +371,11 @@ export class RpcServer {
   }
 }
 
-/** `{ harness }` for a target that names an Agent or carries a spec. */
+/** `{ harness }` for a target that names an Agent, carries a spec, or names a session. */
 function harnessOf(target: HarnessTarget | undefined): { harness: HarnessTarget } | undefined {
   if (target?.spec !== undefined) return { harness: { spec: target.spec } };
   if (target?.name !== undefined) return { harness: { name: target.name } };
+  if (target?.session !== undefined) return { harness: { session: target.session } };
   return undefined;
 }
 

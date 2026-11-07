@@ -583,10 +583,11 @@ export function useAgentSession({
         if (shouldResume) {
           const state = session.getState();
           setTotalUsage({ input: state.usage.total.input_tokens, output: state.usage.total.output_tokens });
+          const agentNote = session.harnessCheck?.message;
           setSystemNotice({
             tone: "info",
             title: "Session restored",
-            body: `Resumed session ${session.id} with ${state.messages.length} messages.`,
+            body: `Resumed session ${session.id} with ${state.messages.length} messages.${agentNote ? `\n${agentNote}` : ""}`,
           });
         }
         setCurrentModel(model);

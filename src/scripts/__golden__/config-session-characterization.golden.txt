@@ -83,6 +83,7 @@
         }
       }
     ],
+    "harness": null,
     "messageIds": [
       "user-1",
       null
@@ -106,6 +107,9 @@
     "summary": {
       "cwd": "<CWD>",
       "firstPrompt": "Review this file.",
+      "harness": {
+        "name": "default"
+      },
       "messageCount": 2,
       "model": "fixture-model",
       "sessionId": "session-contract",
