@@ -20,6 +20,7 @@ import { toolToApiParam, type ApiToolParam, type Tool } from "../tools/Tool.js";
 import type { ContentBlock, ToolReferenceBlock } from "../types/message.js";
 import { redactUrlForDisplay } from "../config/redaction.js";
 import { debugLog } from "./log.js";
+import { markMessageSource } from "../core/messageSources.js";
 import { featureSettingsOf, type FeatureSettings } from "../config/features.js";
 import { activeHarness } from "../harness/active.js";
 import { getContextWindowForModel } from "./tokens.js";
@@ -444,7 +445,7 @@ function prependDeferredToolsAnnouncement(messages: readonly MessageParam[], def
   const announcement = `<available-deferred-tools>\n${deferredList}\n</available-deferred-tools>`;
   const first = messages[0];
   if (!first || first.role !== "user") {
-    return [{ role: "user", content: announcement }, ...messages];
+    return [markMessageSource({ role: "user", content: announcement }, "deferred_tools"), ...messages];
   }
   const existing: ContentBlock[] =
     typeof first.content === "string"

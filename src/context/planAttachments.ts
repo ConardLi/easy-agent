@@ -12,6 +12,7 @@
  */
 
 import type { MessageParam } from "@anthropic-ai/sdk/resources/messages.js";
+import { markMessageSource } from "../core/messageSources.js";
 
 export const PLAN_ATTACHMENT_MARKER = "[plan_mode_attachment]";
 const PLAN_EXIT_MARKER = "[plan_mode_exit]";
@@ -135,7 +136,7 @@ export function getPlanModeAttachment(messages: readonly MessageParam[], planFil
     (m) => m.role === "user" && typeof m.content === "string" && m.content.includes(PLAN_ATTACHMENT_MARKER),
   );
   if (!hasAnyAttachment) {
-    return { role: "user", content: buildFullPlanModeText(planFilePath) };
+    return markMessageSource({ role: "user", content: buildFullPlanModeText(planFilePath) }, "plan_attachment");
   }
 
   if (turnsSince < TURNS_BETWEEN_ATTACHMENTS) {
@@ -147,12 +148,15 @@ export function getPlanModeAttachment(messages: readonly MessageParam[], planFil
 
   const text = isFull ? buildFullPlanModeText(planFilePath) : buildSparsePlanModeText(planFilePath);
 
-  return { role: "user", content: text };
+  return markMessageSource({ role: "user", content: text }, "plan_attachment");
 }
 
 /**
  * Returns a one-shot exit attachment, or null if not needed.
  */
 export function getPlanModeExitAttachment(planFilePath: string, planExists: boolean): MessageParam {
-  return { role: "user", content: buildPlanModeExitText(planFilePath, planExists) };
+  return markMessageSource(
+    { role: "user", content: buildPlanModeExitText(planFilePath, planExists) },
+    "plan_attachment",
+  );
 }

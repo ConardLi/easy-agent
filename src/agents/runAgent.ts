@@ -37,6 +37,8 @@ import { resolveAgentTools } from "./resolveAgentTools.js";
 import type { AgentDefinition, AgentRunResult } from "./types.js";
 import type { ContentBlock, Usage } from "../types/message.js";
 import { drainUnreadMessages, formatMailboxAttachment } from "../utils/teammateMailbox.js";
+import { markMessageSource } from "../core/messageSources.js";
+import { describeSystemPrompt } from "../trace/requestTrace.js";
 
 export const DEFAULT_AGENT_MAX_TURNS = 30;
 
@@ -210,15 +212,17 @@ export async function runChildAgent(params: RunChildAgentParams): Promise<AgentR
   if (params.teammateIdentity) {
     const unread = await drainUnreadMessages(params.teammateIdentity.agentName, params.teammateIdentity.teamName);
     if (unread.length > 0) {
-      initialMessages.push({
-        role: "user",
-        content: `${formatMailboxAttachment(unread)}\n\n${params.prompt}`,
-      });
+      initialMessages.push(
+        markMessageSource(
+          { role: "user", content: `${formatMailboxAttachment(unread)}\n\n${params.prompt}` },
+          "subagent_prompt",
+        ),
+      );
     } else {
-      initialMessages.push({ role: "user", content: params.prompt });
+      initialMessages.push(markMessageSource({ role: "user", content: params.prompt }, "subagent_prompt"));
     }
   } else {
-    initialMessages.push({ role: "user", content: params.prompt });
+    initialMessages.push(markMessageSource({ role: "user", content: params.prompt }, "subagent_prompt"));
   }
 
   // Id we'll use for SubagentStop hooks. Sync sub-agents
@@ -229,9 +233,11 @@ export async function runChildAgent(params: RunChildAgentParams): Promise<AgentR
     ? `teammate:${params.teammateIdentity.teamName}:${params.teammateIdentity.agentName}`
     : `${def.agentType}:${Date.now()}`;
 
+  const systemPrompt = def.getSystemPrompt();
+  describeSystemPrompt(systemPrompt, [{ component: `agent:${def.source}:${def.agentType}`, text: systemPrompt }]);
   const loop = query({
     messages: initialMessages,
-    systemPrompt: def.getSystemPrompt(),
+    systemPrompt,
     tools: resolved.resolvedTools,
     model: params.model,
     abortSignal: params.abortSignal,
@@ -244,7 +250,9 @@ export async function runChildAgent(params: RunChildAgentParams): Promise<AgentR
               params.teammateIdentity!.agentName,
               params.teammateIdentity!.teamName,
             );
-            return unread.length > 0 ? [{ role: "user", content: formatMailboxAttachment(unread) }] : [];
+            return unread.length > 0
+              ? [markMessageSource({ role: "user", content: formatMailboxAttachment(unread) }, "team_message")]
+              : [];
           },
         }
       : {}),

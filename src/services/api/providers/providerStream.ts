@@ -30,6 +30,8 @@ import { APIError } from "@anthropic-ai/sdk";
 
 import { DEFAULT_MAX_TOKENS } from "../client.js";
 import type { StreamRequestParams, StreamResult } from "../streaming.js";
+import { toolChoiceName, type RequestTrace } from "../../../trace/requestTrace.js";
+import type { MessageParam } from "@anthropic-ai/sdk/resources/messages.js";
 import { getProfileBaseURL, type ModelProfile } from "./profile.js";
 import type {
   ContentBlock,
@@ -135,6 +137,8 @@ interface PreparedRequest {
   url: string;
   headers: Record<string, string>;
   body: Record<string, unknown>;
+  /** The Anthropic-shaped request that was translated into `body`. */
+  source: { system?: string; tools?: object[]; messages: MessageParam[]; maxTokens: number };
 }
 
 /** Translate Anthropic-shaped params into a ready-to-fetch provider request. */
@@ -152,9 +156,16 @@ export function prepareRequest(profile: ModelProfile, params: StreamRequestParam
   const providerTools = params.tools && params.tools.length > 0 ? stripDeferLoading(params.tools) : undefined;
   const providerMessages = renderToolReferencesAsText(params.messages, params.tools ?? []);
 
+  const maxTokens = profile.maxTokens ?? params.maxTokens ?? DEFAULT_MAX_TOKENS;
+  const source = {
+    ...(params.system ? { system: params.system } : {}),
+    ...(providerTools ? { tools: providerTools } : {}),
+    messages: providerMessages,
+    maxTokens,
+  };
   const anthropicBody = {
     model: profile.model,
-    max_tokens: profile.maxTokens ?? params.maxTokens ?? DEFAULT_MAX_TOKENS,
+    max_tokens: maxTokens,
     messages: providerMessages,
     ...(params.system ? { system: params.system } : {}),
     ...(providerTools ? { tools: providerTools } : {}),
@@ -203,6 +214,7 @@ export function prepareRequest(profile: ModelProfile, params: StreamRequestParam
         ...extraHeaders,
       },
       body: translated,
+      source,
     };
   }
 
@@ -246,6 +258,7 @@ export function prepareRequest(profile: ModelProfile, params: StreamRequestParam
       ...extraHeaders,
     },
     body,
+    source,
   };
 }
 
@@ -283,8 +296,10 @@ function parserFor(provider: ProviderType): (s: ReadableStream) => AsyncGenerato
 export async function* streamViaProvider(
   profile: ModelProfile,
   params: StreamRequestParams,
+  trace?: RequestTrace,
 ): AsyncGenerator<StreamEvent, StreamResult> {
   const prepared = prepareRequest(profile, params);
+  const bodyText = JSON.stringify(prepared.body);
 
   writeStreamDebug("provider_request", {
     protocol: profile.protocol,
@@ -299,10 +314,35 @@ export async function* streamViaProvider(
     thinkingConfig: (prepared.body.generationConfig as Record<string, unknown> | undefined)?.thinkingConfig,
   });
 
+  const thinking =
+    prepared.body.reasoning ??
+    prepared.body.reasoning_effort ??
+    (prepared.body.generationConfig as Record<string, unknown> | undefined)?.thinkingConfig;
+  trace?.sent({
+    protocol: profile.protocol,
+    model: profile.model,
+    systemText: prepared.source.system,
+    system: prepared.source.system,
+    tools: prepared.source.tools,
+    messages: prepared.source.messages,
+    sourceMessages: params.messages,
+    params: {
+      maxTokens: prepared.source.maxTokens,
+      ...(thinking !== undefined ? { thinking } : {}),
+      betas: [],
+      ...(params.toolChoice ? { toolChoice: toolChoiceName(params.toolChoice) } : {}),
+      toolSearch: params.toolSearchEnabled === true,
+      promptCaching: !isPromptCachingDisabled(),
+      cacheMarkers: 0,
+      promptCacheKey: "prompt_cache_key" in prepared.body,
+    },
+    wireBytes: Buffer.byteLength(bodyText),
+  });
+
   let response = await fetch(prepared.url, {
     method: "POST",
     headers: prepared.headers,
-    body: JSON.stringify(prepared.body),
+    body: bodyText,
     signal: params.signal,
   });
 
@@ -538,8 +578,9 @@ export async function* streamViaProvider(
 export async function collectViaProvider(
   profile: ModelProfile,
   params: StreamRequestParams,
+  trace?: RequestTrace,
 ): Promise<{ content: ContentBlock[]; usage: Usage; stopReason: string }> {
-  const gen = streamViaProvider(profile, params);
+  const gen = streamViaProvider(profile, params, trace);
   let next = await gen.next();
   while (!next.done) {
     next = await gen.next();

@@ -29,6 +29,7 @@
 import { CONTEXT_UPDATE_MARKER } from "../constants/systemPromptMarkers.js";
 import type { ResolvedHarness } from "../harness/resolve.js";
 import { shouldIgnoreMemory } from "./memory/memdir.js";
+import { describeSystemPrompt } from "../trace/requestTrace.js";
 import {
   assembleSystemPrompt,
   buildStaticSystemParts,
@@ -36,6 +37,8 @@ import {
   getLocalDateString,
   getRuntimeEnvironmentContext,
   promptHarnessFor,
+  renderSystemPrompt,
+  systemPromptLayout,
   type PromptSection,
   type PromptSectionName,
   type RuntimeEnvironmentContext,
@@ -113,14 +116,20 @@ export function createSessionPromptContext(options: SessionPromptContextOptions)
     const environment = await getRuntimeEnvironmentContext(options.cwd, now());
     const staticParts = buildStaticSystemParts(harness);
     const sections = await collect(environment, harness);
+    const systemParts = assembleSystemPrompt(staticParts, sections);
     return {
       environment,
       staticParts,
-      systemParts: assembleSystemPrompt(staticParts, sections),
+      systemParts,
       sections,
       seen: new Map(sections.map((section) => [section.name, section.text])),
       seenDate: environment.date,
     };
+  }
+
+  /** Tell request records which component each part of the turn's prompt comes from. */
+  function describe(built: Snapshot): void {
+    describeSystemPrompt(renderSystemPrompt(built.systemParts), systemPromptLayout(built.staticParts, built.sections));
   }
 
   async function peek(): Promise<{ systemParts: string[]; sections: PromptSection[] }> {
@@ -139,6 +148,7 @@ export function createSessionPromptContext(options: SessionPromptContextOptions)
 
       if (!snapshot || !sameParts(snapshot.staticParts, buildStaticSystemParts(harness))) {
         snapshot = await build(harness);
+        describe(snapshot);
         return {
           systemParts: snapshot.systemParts,
           update: formatUpdate(ignoreMemoryNote ? [["Memory", ignoreMemoryNote]] : []),
@@ -168,6 +178,7 @@ export function createSessionPromptContext(options: SessionPromptContextOptions)
         snapshot.seen.set(section.name, section.text);
       }
       if (ignoreMemoryNote) entries.push(["Memory", ignoreMemoryNote]);
+      describe(snapshot);
       return { systemParts: snapshot.systemParts, update: formatUpdate(entries) };
     },
 

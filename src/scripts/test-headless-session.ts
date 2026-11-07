@@ -111,23 +111,26 @@ await server.connect(new StdioServerTransport());
 try {
   console.log("\n[1] nothing on disk");
 
-  await check("a headless run writes no transcript, no latest pointer, and no backups", async () => {
-    fixture.script([
-      { kind: "tool", name: "Write", input: { file_path: "written.txt", content: "hello\n" } },
-      { kind: "text", text: "Wrote it." },
-    ]);
-    const result = await runCli(["-p", "Write a file.", "--dangerously-skip-permissions"]);
-    assert.equal(result.code, 0, result.stderr);
-    assert.equal(result.stdout, "Wrote it.\n");
-    assert.equal(await readFile(path.join(cwd, "written.txt"), "utf8"), "hello\n");
-    const easyAgentHome = path.join(home, ".easy-agent");
-    const tree = await listTree(easyAgentHome);
-    assert.deepEqual(
-      tree.filter((entry) => /\.jsonl$|(?:^|\/)latest$|^file-history\//.test(entry)),
-      [],
-      `unexpected session files: ${tree.join(", ")}`,
-    );
-  });
+  await check(
+    "a headless run writes no transcript, no request records, no latest pointer, and no backups",
+    async () => {
+      fixture.script([
+        { kind: "tool", name: "Write", input: { file_path: "written.txt", content: "hello\n" } },
+        { kind: "text", text: "Wrote it." },
+      ]);
+      const result = await runCli(["-p", "Write a file.", "--dangerously-skip-permissions"]);
+      assert.equal(result.code, 0, result.stderr);
+      assert.equal(result.stdout, "Wrote it.\n");
+      assert.equal(await readFile(path.join(cwd, "written.txt"), "utf8"), "hello\n");
+      const easyAgentHome = path.join(home, ".easy-agent");
+      const tree = await listTree(easyAgentHome);
+      assert.deepEqual(
+        tree.filter((entry) => /\.jsonl$|\.trace\.ndjson$|(?:^|\/)latest$|^file-history\//.test(entry)),
+        [],
+        `unexpected session files: ${tree.join(", ")}`,
+      );
+    },
+  );
 
   console.log("\n[2] MCP servers");
 

@@ -462,6 +462,13 @@ export function resolveHarnessFromInputs(inputs: HarnessInputs): ResolvedHarness
   const { name, chain, selectedBy } = buildChain(inputs, issues);
   const values: Record<string, ResolvedHarnessValue> = {};
   for (const key of HARNESS_KEYS) values[key.path] = resolveKey(key, chain, inputs, issues);
+  if (values["trace.level"]?.value === "full") {
+    issues.push({
+      level: "warning",
+      path: "trace.level",
+      message: "trace.level full is not available yet; requests are recorded at summary level",
+    });
+  }
   const effective = Object.fromEntries(Object.entries(values).map(([keyPath, entry]) => [keyPath, entry.value]));
   const hash = createHash("sha256")
     .update(JSON.stringify(sortKeys(effective)))

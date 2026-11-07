@@ -27,7 +27,8 @@ The gate runs, in order:
 
 1. `verify:production`: typecheck, source hygiene, build, and the `core`, `extensions`, and `ui` test groups.
 2. `verify:production:platform`: real host sandbox tests on macOS and Linux. Linux needs `bubblewrap`, `socat`, `rg`, and unprivileged user namespaces; the tests are skipped on Windows.
-3. `src/scripts/test-stage36.ts`, the artifact checks:
+3. `perf:trace` (`src/scripts/perf-request-trace.ts`): the time a request spends on its request record stays within 5 ms (95th percentile of a growing session, and the first request of a resumed one), and a 30-turn session's record file stays within twice its transcript.
+4. `src/scripts/test-stage36.ts`, the artifact checks:
    - package metadata, pinned runtime dependency, and a product-focused description and keyword list;
    - README files carry no roadmap progress and every relative link resolves;
    - bundle hygiene (`scripts/check-source-hygiene.ts --bundle dist/eagent.js`), no bundled test scripts, no absolute build-machine paths, and a source map without embedded sources;

@@ -1,6 +1,7 @@
 import type { Tool, ToolContext, ToolResult } from "./Tool.js";
 import { createMessage } from "../services/api/streaming.js";
 import { debugLog } from "../utils/log.js";
+import { markMessageSource } from "../core/messageSources.js";
 import { fetchUrlContent, MAX_MARKDOWN_LENGTH, type FetchedContent } from "./webFetch/fetcher.js";
 import { isPreapprovedUrl } from "./webFetch/preapproved.js";
 import { validateFetchUrl } from "./webFetch/urlValidation.js";
@@ -47,8 +48,9 @@ async function applyPromptToContent(prompt: string, content: string, model: stri
     const response = await createMessage({
       model,
       maxTokens: EXTRACT_MAX_TOKENS,
-      messages: [{ role: "user", content: userPrompt }],
+      messages: [markMessageSource({ role: "user", content: userPrompt }, "web_page")],
       querySource: "background",
+      trace: { purpose: "webFetch" },
     });
     const text = response.content
       .filter((b): b is Extract<typeof b, { type: "text" }> => b.type === "text")
