@@ -301,6 +301,8 @@ async function currentValues(): Promise<Record<string, unknown>> {
     "skills.exclude": undefined,
     "agents.include": undefined,
     "agents.exclude": undefined,
+    // Requests are recorded at summary level; no setting or variable changes it.
+    "trace.level": "summary",
   };
 }
 

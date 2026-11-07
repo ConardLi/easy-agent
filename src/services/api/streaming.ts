@@ -8,7 +8,7 @@
  */
 
 import type Anthropic from "@anthropic-ai/sdk";
-import type { MessageParam } from "@anthropic-ai/sdk/resources/messages.js";
+import type { MessageParam, TextBlockParam } from "@anthropic-ai/sdk/resources/messages.js";
 import { getAnthropicClientForProfile, getDefaultModel, DEFAULT_MAX_TOKENS } from "./client.js";
 import { resolveProfile } from "./providers/profile.js";
 import { streamViaProvider, collectViaProvider } from "./providers/providerStream.js";
@@ -38,6 +38,12 @@ import { normalizeToolReferencesForAPI } from "../../utils/toolSearch.js";
 import { classifyAPIError, getUserFacingErrorMessage, toFriendlyError } from "./errors.js";
 import { callWithRetry, decideRetry, getMaxRetries, sleep, type QuerySource } from "./withRetry.js";
 import { applyAnthropicPromptCache, isPromptCachingDisabled } from "./promptCache.js";
+import {
+  startRequestTrace,
+  toolChoiceName,
+  type RequestTrace,
+  type RequestTraceContext,
+} from "../../trace/requestTrace.js";
 
 // ─── Request Parameters ────────────────────────────────────────────
 
@@ -99,6 +105,8 @@ export interface StreamRequestParams {
    * classifier); one-off calls would pay the cache write for nothing.
    */
   cacheStablePrefix?: boolean;
+  /** What the request is for, for its request record; unset counts as the main loop. */
+  trace?: RequestTraceContext;
 }
 
 // ─── Streaming Result ──────────────────────────────────────────────
@@ -117,14 +125,17 @@ export interface StreamResult {
  * it lets them propagate so the retry wrapper can decide whether to re-issue
  * the request. (The retry decision must live above a single attempt.)
  */
-async function* streamOnce(params: StreamRequestParams): AsyncGenerator<StreamEvent, StreamResult> {
+async function* streamOnce(
+  params: StreamRequestParams,
+  trace?: RequestTrace,
+): AsyncGenerator<StreamEvent, StreamResult> {
   // Resolve the model handle into a profile. Non-Anthropic protocols
   // (OpenAI Chat/Responses, Gemini) are translated at the edge via llm-bridge;
   // the Anthropic path below is unchanged except it sources its client/model
   // from the (possibly synthetic) profile.
   const profile = await resolveProfile(params.model ?? getDefaultModel());
   if (profile.protocol !== "anthropic") {
-    return yield* streamViaProvider(profile, params);
+    return yield* streamViaProvider(profile, params, trace);
   }
 
   const client = getAnthropicClientForProfile(profile);
@@ -224,6 +235,27 @@ async function* streamOnce(params: StreamRequestParams): AsyncGenerator<StreamEv
     betas: betaHeaders,
     promptCaching,
     hasApiKey: Boolean(profile.apiKey || process.env.ANTHROPIC_AUTH_TOKEN),
+  });
+
+  trace?.sent({
+    protocol: profile.protocol,
+    model,
+    systemText: params.system,
+    system: baseParams.system,
+    tools: baseParams.tools,
+    messages: baseParams.messages,
+    sourceMessages: params.messages,
+    params: {
+      maxTokens,
+      ...(thinkingParam ? { thinking: thinkingParam } : {}),
+      ...(outputConfig ? { effort: effortLevel } : {}),
+      betas: betaHeaders,
+      ...(params.toolChoice ? { toolChoice: toolChoiceName(params.toolChoice) } : {}),
+      toolSearch: params.toolSearchEnabled === true,
+      promptCaching,
+      cacheMarkers: 0,
+      promptCacheKey: false,
+    },
   });
 
   // Initiate the stream
@@ -470,21 +502,24 @@ async function* streamOnce(params: StreamRequestParams): AsyncGenerator<StreamEv
 export async function* streamMessage(params: StreamRequestParams): AsyncGenerator<StreamEvent, StreamResult> {
   const maxRetries = getMaxRetries();
   const model = params.model ?? getDefaultModel();
+  const trace = startRequestTrace(params.trace, model);
   let attempt = 0;
   let consecutive529 = 0;
 
   // eslint-disable-next-line no-constant-condition
   while (true) {
     attempt++;
-    const inner = streamOnce(params);
+    const inner = streamOnce(params, trace);
     let hasYieldedContent = false;
 
     try {
       while (true) {
         const { value, done } = await inner.next();
         if (done) {
+          trace.complete(value);
           return value;
         }
+        if (value.type === "message_start") trace.firstEvent();
         if (value.type === "text" || value.type === "tool_use_start" || value.type === "tool_use_input") {
           hasYieldedContent = true;
         }
@@ -499,6 +534,7 @@ export async function* streamMessage(params: StreamRequestParams): AsyncGenerato
       // Aborted requests are never retried — surface the original error and
       // stop, preserving the pre-Stage-27 abort behavior.
       if (params.signal?.aborted) {
+        trace.fail("aborted");
         yield {
           type: "error",
           error: error instanceof Error ? error : new Error(String(error)),
@@ -517,6 +553,7 @@ export async function* streamMessage(params: StreamRequestParams): AsyncGenerato
       // Only retry if the decision allows it AND nothing has been streamed yet
       // (re-running after partial output would duplicate visible content).
       if (decision.retry && !hasYieldedContent) {
+        trace.retry({ attempt, category: classifyAPIError(error), delayMs: decision.delayMs });
         yield {
           type: "retry",
           attempt,
@@ -530,6 +567,7 @@ export async function* streamMessage(params: StreamRequestParams): AsyncGenerato
       }
 
       // Non-retryable, exhausted, or mid-stream failure → surface friendly.
+      trace.fail(classifyAPIError(error));
       yield {
         type: "error",
         error: toFriendlyError(error, model),
@@ -559,16 +597,34 @@ function errorStreamResult(): StreamResult {
 export async function createMessage(
   params: Omit<StreamRequestParams, "signal">,
 ): Promise<{ content: ContentBlock[]; usage: Usage; stopReason: string }> {
+  const trace = startRequestTrace(params.trace, params.model ?? getDefaultModel());
+  try {
+    const result = await createMessageTraced(params, trace);
+    trace.complete(result);
+    return result;
+  } catch (error) {
+    trace.fail(classifyAPIError(error));
+    throw error;
+  }
+}
+
+async function createMessageTraced(
+  params: Omit<StreamRequestParams, "signal">,
+  trace: RequestTrace,
+): Promise<{ content: ContentBlock[]; usage: Usage; stopReason: string }> {
   const profile = await resolveProfile(params.model ?? getDefaultModel());
+  const onRetry = ({ attempt, delayMs, category }: { attempt: number; delayMs: number; category: string }) => {
+    trace.retry({ attempt, category, delayMs });
+    writeStreamDebug("createMessage_retry", { attempt, delayMs, category });
+  };
 
   // Non-Anthropic profiles have no native non-streaming primitive here; drain
   // the translated provider stream into a single result, with the same
   // transient-failure resilience as the Anthropic branch below.
   if (profile.protocol !== "anthropic") {
-    return await callWithRetry(() => collectViaProvider(profile, params), {
+    return await callWithRetry(() => collectViaProvider(profile, params, trace), {
       querySource: params.querySource ?? "background",
-      onRetry: ({ attempt, delayMs, category }) =>
-        writeStreamDebug("createMessage_retry", { attempt, delayMs, category }),
+      onRetry,
     });
   }
 
@@ -590,32 +646,52 @@ export async function createMessage(
     availableToolNames: new Set((params.tools ?? []).map((t) => t.name)),
   });
   const cachePrefix = params.cacheStablePrefix === true && !isPromptCachingDisabled();
+  const prompt: { system?: string | TextBlockParam[]; tools?: ApiToolParam[]; messages: MessageParam[] } = cachePrefix
+    ? applyAnthropicPromptCache({
+        system: params.system,
+        tools: params.tools,
+        messages: bgMessages,
+        markMessages: false,
+      })
+    : {
+        messages: bgMessages,
+        ...(params.system && { system: params.system }),
+        ...(params.tools && params.tools.length > 0 && { tools: params.tools }),
+      };
+  const body = {
+    model,
+    max_tokens: maxTokens,
+    ...prompt,
+    ...(params.toolChoice && { tool_choice: params.toolChoice }),
+  } as Anthropic.MessageCreateParamsNonStreaming;
   const response = await callWithRetry(
-    () =>
-      client.messages.create(
-        {
-          model,
-          max_tokens: maxTokens,
-          ...(cachePrefix
-            ? applyAnthropicPromptCache({
-                system: params.system,
-                tools: params.tools,
-                messages: bgMessages,
-                markMessages: false,
-              })
-            : {
-                messages: bgMessages,
-                ...(params.system && { system: params.system }),
-                ...(params.tools && params.tools.length > 0 && { tools: params.tools }),
-              }),
-          ...(params.toolChoice && { tool_choice: params.toolChoice }),
+    () => {
+      trace.sent({
+        protocol: profile.protocol,
+        model,
+        systemText: params.system,
+        system: prompt.system,
+        tools: prompt.tools,
+        messages: prompt.messages,
+        sourceMessages: params.messages,
+        params: {
+          maxTokens,
+          betas: params.betaHeaders ?? [],
+          ...(params.toolChoice ? { toolChoice: toolChoiceName(params.toolChoice) } : {}),
+          toolSearch: params.toolSearchEnabled === true,
+          promptCaching: cachePrefix,
+          cacheMarkers: 0,
+          promptCacheKey: false,
         },
+      });
+      return client.messages.create(
+        body,
         params.betaHeaders?.length ? { headers: { "anthropic-beta": params.betaHeaders.join(",") } } : undefined,
-      ),
+      );
+    },
     {
       querySource: params.querySource ?? "background",
-      onRetry: ({ attempt, delayMs, category }) =>
-        writeStreamDebug("createMessage_retry", { attempt, delayMs, category }),
+      onRetry,
     },
   );
 

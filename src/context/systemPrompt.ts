@@ -226,6 +226,38 @@ export function assembleSystemPrompt(staticParts: string[], sections: readonly P
 }
 
 /**
+ * The component of each part `assembleSystemPrompt(staticParts, sections)`
+ * returns, in the same order: the block markers, the identity and coding
+ * instructions of the static block, and the non-empty dynamic sections.
+ */
+export function systemPromptLayout(
+  staticParts: readonly string[],
+  sections: readonly PromptSection[],
+): Array<{ component: string; text: string }> {
+  const markers = new Set([
+    SYSTEM_PROMPT_STATIC_START,
+    SYSTEM_PROMPT_STATIC_END,
+    SYSTEM_PROMPT_DYNAMIC_START,
+    SYSTEM_PROMPT_DYNAMIC_END,
+  ]);
+  const instructions = new Set(CODING_INSTRUCTION_SECTIONS);
+  const staticComponent = (text: string) =>
+    markers.has(text)
+      ? "prompt:marker"
+      : instructions.has(text)
+        ? "prompt_section:instructions"
+        : "prompt_section:identity";
+  return [
+    ...staticParts.map((text) => ({ component: staticComponent(text), text })),
+    { component: "prompt:marker", text: SYSTEM_PROMPT_DYNAMIC_START },
+    ...sections
+      .filter((section) => section.text)
+      .map((section) => ({ component: `prompt_section:${section.name}`, text: section.text })),
+    { component: "prompt:marker", text: SYSTEM_PROMPT_DYNAMIC_END },
+  ];
+}
+
+/**
  * Build a complete system prompt from the current workspace state. The main
  * session uses `createSessionPromptContext` instead, which keeps this prompt
  * fixed for the session and reports later changes separately.

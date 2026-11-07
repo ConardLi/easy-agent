@@ -451,6 +451,19 @@ export async function getSessionPaths(cwd: string, sessionId: string): Promise<S
   };
 }
 
+/**
+ * Request records live in `<session-id>.trace.ndjson` next to the transcript.
+ * The name must not end in `.jsonl`: versions that list sessions read every
+ * `*.jsonl` file as a transcript and fail on any record they do not know.
+ */
+const TRACE_SUFFIX = ".trace.ndjson";
+
+export async function getTracePath(cwd: string, sessionId: string): Promise<string> {
+  assertSessionId(sessionId);
+  const { projectDir } = await getSessionPaths(cwd, sessionId);
+  return path.join(projectDir, `${sessionId}${TRACE_SUFFIX}`);
+}
+
 async function ensureSessionDir(paths: SessionPaths): Promise<void> {
   await ensurePrivateDirectory(paths.projectDir);
 }
@@ -680,9 +693,11 @@ export async function appendCompactionSnapshot(
  * setting (default 30), sets the persistence flag, and prunes this project's
  * transcript directory:
  *
- *   - `0`             → persistence OFF. Delete ALL transcripts + the `latest`
- *                       pointer for this project; future writes no-op.
- *   - `N > 0`         → delete `*.jsonl` whose mtime is older than N days.
+ *   - `0`             → persistence OFF. Delete ALL transcripts, request
+ *                       records, and the `latest` pointer for this project;
+ *                       future writes no-op.
+ *   - `N > 0`         → delete `*.jsonl` and request record files whose mtime
+ *                       is older than N days.
  *   - unset / invalid → default 30 days.
  *
  * Best-effort: a read/delete failure never blocks startup.
@@ -717,10 +732,19 @@ export async function applySessionRetentionPolicy(cwd: string): Promise<{ period
     const removeSession = async (filePath: string): Promise<void> => {
       await fs.rm(filePath, { force: true }).catch(() => {});
       await fs.rm(filePath.replace(/\.jsonl$/, TITLE_SUFFIX), { force: true }).catch(() => {});
+      await fs.rm(filePath.replace(/\.jsonl$/, TRACE_SUFFIX), { force: true }).catch(() => {});
     };
     for (const entry of entries) {
-      if (!entry.isFile() || !entry.name.endsWith(".jsonl")) continue;
+      // A request record file whose transcript is gone (or never written) ages out on its own.
+      const isTrace = entry.name.endsWith(TRACE_SUFFIX);
+      if (!entry.isFile() || !(entry.name.endsWith(".jsonl") || isTrace)) continue;
       const filePath = path.join(projectDir, entry.name);
+      if (isTrace) {
+        const stat = await fs.stat(filePath).catch(() => null);
+        if (periodDays === 0 || (stat && stat.mtimeMs < cutoffMs))
+          await fs.rm(filePath, { force: true }).catch(() => {});
+        continue;
+      }
       if (periodDays === 0) {
         await removeSession(filePath);
         continue;
@@ -848,6 +872,7 @@ export async function deleteSessionTranscript(cwd: string, sessionId: string): P
   await fs.access(transcriptPath);
   await withFileLock(transcriptPath, () => fs.rm(transcriptPath, { force: true }));
   await fs.rm(titlePath, { force: true });
+  await fs.rm(await getTracePath(cwd, sessionId), { force: true });
   if ((await getLatestSessionId(cwd)) !== sessionId) return;
   const [next] = await listProjectSessions(cwd, 1);
   if (next) await writePrivateFile(latestPath, `${next.sessionId}\n`);
