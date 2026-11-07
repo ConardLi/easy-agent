@@ -1123,6 +1123,57 @@ try {
     }
   });
 
+  await check(
+    "sessions list their Agent; initialize can start with a session's Agent; resume compares them",
+    async () => {
+      const userSettings = path.join(home, ".easy-agent", "settings.json");
+      const saved = await readFile(userSettings, "utf8");
+      const withReviewer = (spec: Json) =>
+        writeFile(userSettings, JSON.stringify({ ...JSON.parse(saved), harnesses: { reviewer: spec } }));
+      await withReviewer({ model: { main: "reviewer-model" } });
+      try {
+        const writer = startClient();
+        await writer.initialize({ harness: { name: "reviewer" } });
+        const { sessionId } = await writer.call<{ sessionId: string }>("session/create");
+        const listed = (await writer.call<{ sessions: Json[] }>("session/list")).sessions.find(
+          (session) => session.sessionId === sessionId,
+        );
+        const recorded = (await writer.call<Json>("runtime/harness")).hash;
+        assert.deepEqual(listed?.harness, { name: "reviewer", hash: recorded });
+        assert.equal(await writer.shutdown(), 0);
+
+        await withReviewer({ model: { main: "edited-model" } });
+        const reader = startClient();
+        await reader.initialize({ harness: { session: sessionId } });
+        const harness = await reader.call<Json>("runtime/harness");
+        assert.equal(harness.name, "reviewer");
+        assert.deepEqual(harness.selectedBy, { source: "session", sessionId });
+        const resumed = await reader.call<{ harness: Json }>("session/resume", { sessionId });
+        assert.equal(resumed.harness.status, "changed");
+        assert.deepEqual(resumed.harness.changed, ["model.main"]);
+        assert.match(
+          String(resumed.harness.message),
+          /Agent "reviewer" has changed since this session last ran: model\.main/,
+        );
+        assert.equal(await reader.shutdown(), 0);
+
+        const both = startClient();
+        await rejects(
+          both.call(
+            "initialize",
+            { protocolVersion: 1, harness: { name: "reviewer", session: sessionId } },
+            { valid: false },
+          ),
+          protocol.RpcErrorCode.InvalidParams,
+        );
+        both.child.stdin.end();
+        assert.equal(await both.exited, 0);
+      } finally {
+        await writeFile(userSettings, saved);
+      }
+    },
+  );
+
   await check("the --rpc flag cannot be combined with --print", async () => {
     const bad = startClient(["--print", "hi"]);
     assert.equal(await bad.exited, 1);

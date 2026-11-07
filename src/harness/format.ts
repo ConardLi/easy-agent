@@ -57,10 +57,11 @@ export function formatHarness(
   lines.push(
     `Agent: ${resolved.name}${builtInOnly ? " (built-in)" : ` (${["built-in default", ...resolved.chain].join(" → ")})`}`,
   );
-  if (resolved.selectedBy) {
-    lines.push(
-      `Selected as the workspace's default Agent${resolved.selectedBy.path ? ` (harness in ${resolved.selectedBy.path})` : ""}`,
-    );
+  const by = resolved.selectedBy;
+  if (by?.source === "local") {
+    lines.push(`Selected as the workspace's default Agent${by.path ? ` (harness in ${by.path})` : ""}`);
+  } else if (by?.source === "session") {
+    lines.push(`Selected as the Agent session ${by.sessionId} last ran with`);
   }
   lines.push(`Hash: ${resolved.hash}`);
 

@@ -12,6 +12,8 @@ import { resolve as resolvePath, isAbsolute as isAbsolutePath } from "node:path"
 import { extractAssistantText } from "../helpers.js";
 import { writeTextToClipboard } from "../../../utils/clipboard.js";
 import { listProjectSessions, restoreSession } from "../../../session/storage.js";
+import { harnessFor } from "../../../harness/active.js";
+import { bindSessionHarness } from "../../../harness/session.js";
 import type { QueryEngineEvent } from "../types.js";
 import type { CommandContext } from "./context.js";
 
@@ -260,6 +262,21 @@ export async function* handleResumeCommand(
     return { handled: true };
   }
 
+  // The session continues with this runtime's Agent; compare it with the one
+  // the session last ran with, and record it when they differ.
+  let agentNote: string | undefined;
+  try {
+    const check = await bindSessionHarness(cwd, restored, await harnessFor(cwd, { current: true }), true);
+    if (check.message) {
+      agentNote =
+        check.status === "other"
+          ? `${check.message} To go back to ${check.recorded.name}, restart with eagent --resume ${targetId} --harness ${check.recorded.name}.`
+          : check.message;
+    }
+  } catch (error) {
+    agentNote = `Could not compare the Agent: ${error instanceof Error ? error.message : String(error)}`;
+  }
+
   ctx.applyRestoredSession(restored.messages, restored.summary.totalUsage);
 
   // Note: we deliberately do NOT emit `messages_updated` here. The UI's
@@ -284,7 +301,11 @@ export async function* handleResumeCommand(
     type: "notice",
     tone: "info",
     title: `Switched to session ${targetId.slice(0, 8)}`,
-    body: [`${restored.summary.messageCount} message(s) restored`, `Model: ${restored.summary.model}`].join("\n"),
+    body: [
+      `${restored.summary.messageCount} message(s) restored`,
+      `Model: ${restored.summary.model}`,
+      ...(agentNote ? [agentNote] : []),
+    ].join("\n"),
   };
   return { handled: true };
 }

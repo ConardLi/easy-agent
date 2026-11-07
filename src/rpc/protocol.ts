@@ -118,6 +118,8 @@ const StoredSessionSummarySchema = z
     startedAt: z.string(),
     updatedAt: z.string(),
     model: z.string(),
+    /** Experimental. The Agent the session last ran with; `default` without a hash for sessions saved before Agents were recorded. */
+    harness: z.object({ name: z.string(), hash: z.string().optional() }),
     messageCount: z.number().int(),
     totalUsage: z.object({ input_tokens: z.number(), output_tokens: z.number() }).loose(),
     firstPrompt: z.string(),
@@ -366,8 +368,13 @@ const HarnessChangeSchema = z
 const ResolvedHarnessSchema = z
   .object({
     name: z.string(),
-    /** Present when the workspace's default Agent chose `name`. */
-    selectedBy: z.object({ source: z.literal("local"), path: z.string().nullable() }).optional(),
+    /** Present when the workspace's default Agent, or the session the runtime was started for, chose `name`. */
+    selectedBy: z
+      .union([
+        z.object({ source: z.literal("local"), path: z.string().nullable() }),
+        z.object({ source: z.literal("session"), sessionId: z.string() }),
+      ])
+      .optional(),
     chain: z.array(z.string()),
     values: z.record(
       z.string(),
@@ -419,11 +426,20 @@ export const MethodParams = {
     services: z.enum(["background", "wait"]).optional(),
     /**
      * Experimental. The Agent the runtime's sessions use: a name from `harnesses` in the
-     * user settings, or a spec over its `extends`. Defaults to `--harness`, then `default`.
+     * user settings, a spec over its `extends`, or the Agent a saved session last ran with
+     * (`session`: its id, or `true` for the most recent one). Defaults to `--harness`, then
+     * the workspace's default Agent, then `default`.
      */
     harness: z
-      .object({ name: z.string().min(1).optional(), spec: z.record(z.string(), z.unknown()).optional() })
-      .refine((target) => target.name === undefined || target.spec === undefined, "name and spec are exclusive")
+      .object({
+        name: z.string().min(1).optional(),
+        spec: z.record(z.string(), z.unknown()).optional(),
+        session: z.union([z.string().min(1), z.literal(true)]).optional(),
+      })
+      .refine(
+        (target) => [target.name, target.spec, target.session].filter((value) => value !== undefined).length <= 1,
+        "name, spec, and session are exclusive",
+      )
       .optional(),
   }),
   "runtime/capabilities": z.object({}),
@@ -690,7 +706,20 @@ export const MethodResults = {
   }),
   "models/list": z.object({ models: z.array(z.string()) }),
   "session/create": z.object({ sessionId: z.string(), state: SessionStateSchema }),
-  "session/resume": z.object({ sessionId: z.string(), state: SessionStateSchema }),
+  "session/resume": z.object({
+    sessionId: z.string(),
+    state: SessionStateSchema,
+    /** Experimental. The Agent the session last ran with compared with the runtime's; see `SessionHarnessCheck`. */
+    harness: z
+      .object({
+        recorded: z.object({ name: z.string(), hash: z.string().optional() }),
+        current: z.object({ name: z.string(), hash: z.string() }),
+        status: z.enum(["same", "changed", "deleted", "other"]),
+        changed: z.array(z.string()),
+        message: z.string().optional(),
+      })
+      .optional(),
+  }),
   "session/list": z.object({ sessions: z.array(StoredSessionSummarySchema) }),
   "session/read": z.object({ summary: StoredSessionSummarySchema, messages: z.array(z.unknown()) }),
   "session/rename": z.object({ session: StoredSessionSummarySchema }),

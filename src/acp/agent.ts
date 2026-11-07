@@ -305,7 +305,10 @@ export class AcpAgent {
     if (existing) return existing;
     const runtime = await this.#prepare(cwd, mcpServers);
     try {
-      return this.#open(await runtime.resumeSession(sessionId, this.#sessionOptions()));
+      const session = await runtime.resumeSession(sessionId, this.#sessionOptions());
+      // ACP sessions run with the process's Agent (`--harness`); say so when the session last ran with another.
+      if (session.harnessCheck?.message) this.#options.logError(`[easy-agent] ${session.harnessCheck.message}`);
+      return this.#open(session);
     } catch (error) {
       if (error instanceof AgentSdkError && (error.code === "not_found" || error.code === "invalid_argument")) {
         throw new JsonRpcError(AcpErrorCode.ResourceNotFound, `No saved session ${sessionId}.`);

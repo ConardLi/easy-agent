@@ -53,7 +53,7 @@ const runtime = await createAgentRuntime({
   pluginDirs: [],            // extra plugin directories
   services: { mcpServers: true, wait: true }, // or false, then call runtime.startServices()
   logger: { warn, error },   // startup warnings; defaults to the console
-  harness: { name: "reviewer" }, // experimental: the Agent sessions use, or { spec }; default: the workspace's default Agent
+  harness: { name: "reviewer" }, // experimental: the Agent sessions use, or { spec } or { session }; default: the workspace's default Agent
 });
 ```
 
@@ -62,8 +62,8 @@ const runtime = await createAgentRuntime({
 | Method | Purpose |
 | --- | --- |
 | `createSession(options?)` | Start a new conversation |
-| `resumeSession(sessionId?, options?)` | Reopen a saved conversation; without an id, the most recent one |
-| `listSessions(limit?)` / `readSession(id)` | Saved conversations of the workspace, without opening them. Summaries carry the first prompt the user typed and the title, if set |
+| `resumeSession(sessionId?, options?)` | Reopen a saved conversation; without an id, the most recent one. It runs with this runtime's Agent; `session.harnessCheck` compares that with the Agent it last ran with (see [Sessions and Agents](#sessions-and-agents)) |
+| `listSessions(limit?)` / `readSession(id)` | Saved conversations of the workspace, without opening them. Summaries carry the first prompt the user typed, the title, if set, and the Agent the session last ran with (`harness: { name, hash? }`, experimental) |
 | `renameSession(id, title)` | Set a saved session's title; an empty title clears it |
 | `forkSession(id, { title?, fromMessage? })` | Copy a saved conversation into a new session. With `fromMessage`, a checkpoint id from `listCheckpoints()`, the copy ends just before that prompt. The copy keeps the file checkpoints of the turns it holds; the files on disk are not touched |
 | `deleteSession(id)` | Delete a saved session's transcript, title, file checkpoints, and task list; close it first |
@@ -104,11 +104,37 @@ Items that occupy context carry token counts as `{ value, estimated }`: a skill'
 
 ### Agents
 
-`createAgentRuntime({ harness })` selects the Agent this runtime's sessions use: `{ name }` from the `harnesses` key of the user settings file, or `{ spec }`, a spec object resolved over its `extends`; without it, the workspace's default Agent (see [Agent management](#agent-management)), then `default`. Every Agent setting the sessions read comes from that Agent. A selection that does not resolve (unknown name, invalid spec, broken `extends`) rejects with code `harness`; passing both `name` and `spec` rejects with `invalid_argument`. Keys the Agent sets that this version does not apply yet go to the `logger` as warnings.
+`createAgentRuntime({ harness })` selects the Agent this runtime's sessions use: `{ name }` from the `harnesses` key of the user settings file, `{ spec }`, a spec object resolved over its `extends`, or `{ session }`, the Agent a saved session last ran with (see [Sessions and Agents](#sessions-and-agents)); without it, the workspace's default Agent (see [Agent management](#agent-management)), then `default`. Every Agent setting the sessions read comes from that Agent. A selection that does not resolve (unknown name, invalid spec, broken `extends`) rejects with code `harness`; passing more than one of `name`, `spec`, and `session` rejects with `invalid_argument`. Keys the Agent sets that this version does not apply yet go to the `logger` as warnings.
 
 `getHarness()` returns the Agent this runtime's sessions use, with the settings files as they are now and the environment variables as they were when the runtime started; `{ name }` resolves an Agent from the `harnesses` key of the user settings file, and `{ spec }` resolves a spec object over its `extends` (see [Agent specs](./configuration.md#agent-specs-harnesses)). The result has the Agent `name`, the `chain` of specs applied over the built-in default, a `hash` of all values, `issues` (unknown names, `extends` cycles, invalid specs, keys this version does not apply yet), and `values`: for each key such as `model.main` or `permissions.deny`, the `value`, the layer it came from (`source`: `built-in`, `user`, `harness`, `project`, `local`, `environment`, `flag`, `policy`) with a `detail` such as the settings key, whether this version `applied` it, every accepted `contribution`, the `ignored` values with a `reason`, and `overridesHarness` when a project or local setting replaced the Agent's value. `diffHarness(a, b)` lists the keys whose values differ.
 
-`getHarness({ name })` and `getHarness({ spec })` resolve other Agents for comparison; they do not change what the runtime's sessions use. When the workspace's default Agent chose the runtime's Agent, the result has `selectedBy: { source: "local", path }`.
+`getHarness({ name })` and `getHarness({ spec })` resolve other Agents for comparison; they do not change what the runtime's sessions use. When the workspace's default Agent chose the runtime's Agent, the result has `selectedBy: { source: "local", path }`; when a saved session did, `selectedBy: { source: "session", sessionId }`.
+
+### Sessions and Agents
+
+Experimental. A runtime runs one Agent, and every session it opens runs with that Agent. A saved session records the Agent it ran with: its name, the `hash` of its resolved settings, and a digest of each setting. `listSessions()`, `readSession()`, and `forkSession()` return the name and hash as `summary.harness`; sessions saved before Agents were recorded read as `{ name: "default" }`. A fork keeps the Agent of its source.
+
+To reopen a session with the Agent it last ran with, start the runtime for it, as `eagent --resume` does:
+
+```ts
+const runtime = await createAgentRuntime({ cwd, harness: { session: sessionId } }); // or { session: true } for the latest
+const session = await runtime.resumeSession(sessionId);
+if (session.harnessCheck?.message) console.warn(session.harnessCheck.message);
+```
+
+`{ session }` selects the session's Agent by name, `default` for a session saved before Agents were recorded (the workspace's default Agent does not apply). When that Agent no longer exists, or was a spec passed directly, the runtime runs `default` and warns through the `logger`. When it exists but does not resolve, creation rejects with `harness`. A session that cannot be read selects nothing, so `resumeSession()` reports the error.
+
+`resumeSession()` sets `session.harnessCheck` (null for new sessions):
+
+| Field | Meaning |
+| --- | --- |
+| `recorded` | `{ name, hash? }`: the Agent the session last ran with |
+| `current` | `{ name, hash }`: the runtime's Agent, which the session runs with now |
+| `status` | `same`; `changed` (the same Agent, with the settings listed in `changed` resolving to other values; settings a newer version added do not count); `deleted` (the recorded Agent no longer exists); `other` (the runtime runs another Agent) |
+| `changed` | With `changed`, the setting keys, such as `model.main` or `permissions.deny` |
+| `message` | A sentence for the user, absent with `same` |
+
+When the Agent or its settings differ from the record, or there was no record, the session records the Agent it now runs with (unless it was opened with `persist: false`), so the next resume compares with that. `/resume` inside a session does the same and reports the check in its notice. The record is an extra field of the transcript's first record type, so earlier versions read the session and ignore it.
 
 ### Agent management
 

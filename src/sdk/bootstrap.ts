@@ -26,6 +26,7 @@ import { detectWorkspaceRisks } from "../config/workspaceRisks.js";
 import { activeHarness, installHarness } from "../harness/active.js";
 import { promptSectionProblems } from "../harness/prompt.js";
 import {
+  harnessDefined,
   type HarnessIssue,
   harnessEnvironment,
   type ResolvedHarness,
@@ -40,7 +41,7 @@ import { resolveApiKeyFromHelper } from "../services/api/apiKeyHelper.js";
 import { bootstrapSkills } from "../services/skills/bootstrap.js";
 import { getRegisteredSkills } from "../services/skills/registry.js";
 import { cleanupOldFileHistoryBackups } from "../session/fileHistory.js";
-import { applySessionRetentionPolicy } from "../session/storage.js";
+import { applySessionRetentionPolicy, isValidSessionId, restoreSession } from "../session/storage.js";
 import { bootstrapOutputStyles } from "../styles/bootstrap.js";
 import { getRegisteredTools } from "../tools/index.js";
 import { setAdditionalAllowedRoots } from "../tools/pathUtils.js";
@@ -80,12 +81,28 @@ function agentErrors(resolved: ResolvedHarness): string | undefined {
   return errors.length > 0 ? errors.map(describeIssue).join("; ") : undefined;
 }
 
+const INLINE_HARNESS = "(inline)";
+
+/** The Agent a saved session last ran with (`default` before Agents were recorded), or null when it cannot be read. */
+async function sessionHarnessOf(
+  cwd: string,
+  session: string | true,
+): Promise<{ sessionId: string; name: string } | null> {
+  if (session !== true && !isValidSessionId(session)) return null;
+  try {
+    const restored = await restoreSession(cwd, session === true ? undefined : session);
+    return { sessionId: restored.summary.sessionId, name: restored.summary.harness.name };
+  } catch {
+    return null;
+  }
+}
+
 export async function loadWorkspace(options: AgentRuntimeOptions): Promise<WorkspaceReport> {
   const { cwd } = options;
   const logger = options.logger ?? consoleLogger;
   const target = options.harness ?? {};
-  if (target.name !== undefined && target.spec !== undefined) {
-    throw new AgentSdkError("invalid_argument", "Select an Agent by name or by spec, not both.");
+  if ([target.name, target.spec, target.session].filter((value) => value !== undefined).length > 1) {
+    throw new AgentSdkError("invalid_argument", "Select an Agent by name, by spec, or by session; only one.");
   }
 
   if (options.hardenPrivateData !== false) {
@@ -111,6 +128,26 @@ export async function loadWorkspace(options: AgentRuntimeOptions): Promise<Works
   const env = harnessEnvironment();
   let selection: { spec: unknown } | { name: string; selectedBy?: ResolvedHarness["selectedBy"] } | object =
     target.spec !== undefined ? { spec: target.spec } : target.name !== undefined ? { name: target.name } : {};
+  // A saved session reopens with the Agent it last ran with.
+  let sessionId: string | undefined;
+  if (target.session !== undefined) {
+    const recorded = await sessionHarnessOf(cwd, target.session);
+    if (recorded) {
+      sessionId = recorded.sessionId;
+      const selectedBy = { source: "session" as const, sessionId };
+      const name = recorded.name;
+      if (name !== INLINE_HARNESS && (await harnessDefined(cwd, name))) {
+        selection = { name, selectedBy };
+      } else {
+        logger.warn(
+          name === INLINE_HARNESS
+            ? `[easy-agent] ⚠ Session ${sessionId} last ran with a spec passed directly; using default. Select that spec again to use it.`
+            : `[easy-agent] ⚠ The Agent "${name}" session ${sessionId} last ran with no longer exists; using default.`,
+        );
+        selection = { name: "default", selectedBy };
+      }
+    }
+  }
   // Without a selection the workspace's default Agent applies. The runtime
   // binds it by name, so later edits to the local settings file apply when
   // the next runtime starts, and a worktree resolves the same Agent.
@@ -145,7 +182,9 @@ export async function loadWorkspace(options: AgentRuntimeOptions): Promise<Works
         "harness",
         projectFile !== undefined
           ? `The workspace's default Agent "${resolved.name}"${projectFile ? ` (harness in ${projectFile})` : ""} does not resolve: ${problem}. Select another with --harness, or change or remove that setting.`
-          : `The selected Agent does not resolve: ${problem}`,
+          : sessionId !== undefined
+            ? `The Agent "${resolved.name}" session ${sessionId} last ran with does not resolve: ${problem}. Select another with --harness, or fix its definition.`
+            : `The selected Agent does not resolve: ${problem}`,
       );
     },
   };

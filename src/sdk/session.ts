@@ -26,6 +26,7 @@ import type {
   SessionContext,
   SessionEvent,
   SessionEventListener,
+  SessionHarnessCheck,
   SessionState,
   ShellResult,
   ThinkingSetting,
@@ -53,12 +54,19 @@ export function reloadSettingsOf(session: AgentSession): Promise<void> {
 
 export class AgentSession {
   readonly id: string;
+  /**
+   * Experimental. For a session opened with `resumeSession()`: the Agent it
+   * last ran with compared with the one it runs with now. Null for a new
+   * session and for one `/resume` switched to (that command reports it).
+   */
+  readonly harnessCheck: SessionHarnessCheck | null;
   readonly #controller: SessionController;
   #replacedBy: string | null = null;
 
   /** @internal Created by AgentRuntime. */
-  constructor(id: string, controller: SessionController) {
+  constructor(id: string, controller: SessionController, harnessCheck: SessionHarnessCheck | null = null) {
     this.id = id;
+    this.harnessCheck = harnessCheck;
     this.#controller = controller;
     controllers.set(this, controller);
   }

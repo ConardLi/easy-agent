@@ -1442,7 +1442,7 @@ await check(
         [{ name: "looped" }, "harness", /extends cycle/],
         [{ spec: { extends: "missing" } }, "harness", /no Agent named "missing"/],
         [{ spec: { nope: true } }, "harness", /nope/],
-        [{ name: "reviewer", spec: {} }, "invalid_argument", /not both/],
+        [{ name: "reviewer", spec: {} }, "invalid_argument", /by name, by spec, or by session; only one/],
       ];
       for (const [harness, code, message] of failures) {
         await assert.rejects(

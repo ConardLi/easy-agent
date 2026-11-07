@@ -31,6 +31,7 @@ import type { TokenWarningResult } from "../context/autoCompact.js";
 import type { PermissionMode } from "../permissions/permissions.js";
 import type { AsyncAgentEntry } from "../state/asyncAgentStore.js";
 export type { McpServerConfig } from "../types/mcp.js";
+export type { SessionHarnessCheck } from "../harness/session.js";
 import type { BashProgress } from "../state/bashProgressStore.js";
 import type { McpProgress } from "../state/mcpProgressStore.js";
 import type { SubAgentProgress } from "../state/subAgentProgressStore.js";
@@ -131,10 +132,22 @@ export interface AgentRuntimeOptions {
   harness?: HarnessTarget;
 }
 
-/** Experimental. An Agent by name (default `default`), or a spec object resolved over its `extends`. Not both. */
+/**
+ * Experimental. An Agent by name (default `default`), a spec object resolved
+ * over its `extends`, or the Agent a saved session last ran with. One of them.
+ */
 export interface HarnessTarget {
   name?: string;
   spec?: unknown;
+  /**
+   * A session id, or `true` for the workspace's most recent session: the
+   * Agent that session last ran with, `default` for one saved before Agents
+   * were recorded. When that Agent no longer exists, or was a spec passed
+   * directly, `default` runs with a warning. A session that cannot be read
+   * selects nothing, so the workspace's default Agent applies and resuming
+   * it reports the error.
+   */
+  session?: string | true;
 }
 
 /** One saved session of the workspace. */
@@ -208,6 +221,12 @@ export interface StoredSessionSummary {
   startedAt: string;
   updatedAt: string;
   model: string;
+  /**
+   * Experimental. The Agent the session last ran with and the hash of its
+   * settings then; `default` without a hash for sessions saved before
+   * Agents were recorded.
+   */
+  harness: { name: string; hash?: string };
   messageCount: number;
   totalUsage: Usage;
   /** First prompt the user typed; context the engine adds is skipped. */

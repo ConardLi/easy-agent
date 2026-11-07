@@ -69,6 +69,7 @@
     "test:harness-prompt": "node --import tsx src/scripts/test-harness-prompt.ts",
     "test:harness-features": "node --import tsx src/scripts/test-harness-features.ts",
     "test:harness-manage": "node --import tsx src/scripts/test-harness-manage.ts",
+    "test:harness-session": "node --import tsx src/scripts/test-harness-session.ts",
     "test:providerstream": "tsx src/scripts/test-providerstream-characterization.ts",
     "test:request-content": "node --import tsx src/scripts/test-request-content-characterization.ts",
     "test:permission-decisions": "node --import tsx src/scripts/test-permission-decisions-characterization.ts",
