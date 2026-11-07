@@ -288,6 +288,19 @@ async function currentValues(): Promise<Record<string, unknown>> {
     "context.gitStatus": true,
     "context.skills": true,
     "context.agents": true,
+    // Compaction ran automatically with a fixed buffer, cleared old tool results, and kept 8 recent messages.
+    "compaction.auto": true,
+    "compaction.autoThreshold": undefined,
+    "compaction.microcompact": true,
+    "compaction.keepRecentMessages": 8,
+    // Sessions started with the persistent task list, Auto Mode asked the classifier, and every
+    // loaded skill and sub-agent was available.
+    "features.tasks": "task",
+    "features.autoModeClassifier": true,
+    "skills.include": undefined,
+    "skills.exclude": undefined,
+    "agents.include": undefined,
+    "agents.exclude": undefined,
   };
 }
 
@@ -700,23 +713,41 @@ await check("keys this build does not apply yet are reported when set", () => {
       ask: ["Bash(git push*)"],
       harnesses: {
         minimalish: {
-          skills: { exclude: ["review"] },
+          commands: { exclude: ["review"] },
           tools: { exclude: ["WebFetch"], config: { Bash: { timeoutMs: 5000 } } },
           mcpServers: { include: ["docs"] },
+          skills: { exclude: ["review"] },
+          agents: { include: ["Explore"] },
+          compaction: { auto: false, autoThreshold: 0.6, microcompact: false, keepRecentMessages: 4 },
+          features: { tasks: "todo", autoModeClassifier: false },
         },
       },
     },
   });
   const messages = warnings(resolved).map((issue) => issue.message);
   assert.ok(
-    messages.some((m) => /skills\.exclude is set by Agent "minimalish", but this build does not apply it yet/.test(m)),
+    messages.some((m) =>
+      /commands\.exclude is set by Agent "minimalish", but this build does not apply it yet/.test(m),
+    ),
   );
   assert.ok(messages.some((m) => /permissions\.ask is set by user, but this build does not apply it yet/.test(m)));
-  for (const applied of ["tools.exclude", "tools.config", "mcpServers.include"]) {
+  for (const applied of [
+    "tools.exclude",
+    "tools.config",
+    "mcpServers.include",
+    "skills.exclude",
+    "agents.include",
+    "compaction.auto",
+    "compaction.autoThreshold",
+    "compaction.microcompact",
+    "compaction.keepRecentMessages",
+    "features.tasks",
+    "features.autoModeClassifier",
+  ]) {
     assert.ok(!messages.some((m) => m.startsWith(`${applied} `)), `${applied} is applied`);
     assert.equal(resolved.values[applied]!.applied, true);
   }
-  assert.equal(resolved.values["skills.exclude"]!.applied, false);
+  assert.equal(resolved.values["commands.exclude"]!.applied, false);
   assert.equal(resolved.values["model.main"]!.applied, true);
 });
 
@@ -1307,7 +1338,7 @@ await check(
         outputStyle: "Explanatory",
         features: { toolSearch: "off" },
         tools: { exclude: ["WebFetch"] },
-        skills: { exclude: ["review"] },
+        commands: { exclude: ["review"] },
       },
       looped: { extends: "loopback" },
       loopback: { extends: "looped" },
@@ -1356,7 +1387,7 @@ await check(
         );
         assert.ok(
           warnings.some((message) =>
-            /skills\.exclude is set by Agent "reviewer", but this build does not apply it/.test(message),
+            /commands\.exclude is set by Agent "reviewer", but this build does not apply it/.test(message),
           ),
           "keys the Agent sets but this build ignores are reported at startup",
         );
@@ -1499,7 +1530,7 @@ await check("the text view marks overrides, ignored values, and keys not applied
     workspaceTrusted: false,
     user: {
       harnesses: {
-        reviewer: { outputStyle: "Learning", tools: { exclude: ["WebFetch"] }, skills: { exclude: ["review"] } },
+        reviewer: { outputStyle: "Learning", tools: { exclude: ["WebFetch"] }, commands: { exclude: ["review"] } },
       },
     },
     layers: [{ source: "project", path: "/p", raw: { allow: ["Write"] } }],

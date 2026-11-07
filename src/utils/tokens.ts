@@ -172,25 +172,35 @@ function scaleBuffer(buffer: number, effectiveWindow: number): number {
   return Math.round(buffer * (effectiveWindow / referenceWindow));
 }
 
+/** Conversation size at which a request is refused as too long for the window. */
+export function getBlockingLimit(model: string): number {
+  const effective = getEffectiveContextWindowSize(model);
+  return Math.max(0, effective - scaleBuffer(MANUAL_COMPACT_BUFFER_TOKENS, effective));
+}
+
+/**
+ * Conversation size at which auto-compaction starts: the Agent's
+ * `compaction.autoThreshold` share of the effective window (never past the
+ * blocking limit), or a fixed buffer below the effective window.
+ */
+export function getAutoCompactThreshold(model: string): number {
+  const effective = getEffectiveContextWindowSize(model);
+  const fraction = harnessSetting<number | undefined>("compaction.autoThreshold");
+  if (fraction !== undefined) return Math.min(Math.floor(effective * fraction), getBlockingLimit(model));
+  return Math.max(0, effective - scaleBuffer(AUTOCOMPACT_BUFFER_TOKENS, effective));
+}
+
 export function buildTokenBudgetSnapshot(
   messages: readonly MessageParam[],
   options?: { usage?: Usage; usageAnchorIndex?: number; systemPrompt?: string; model?: string },
 ): TokenBudgetSnapshot {
   const estimatedConversationTokens = tokenCountWithEstimation(messages, options);
   const model = options?.model ?? harnessSetting<string>("model.main");
-  const contextWindow = getContextWindowForModel(model);
-  const effectiveContextWindow = getEffectiveContextWindowSize(model);
   return {
     estimatedConversationTokens,
-    contextWindow,
-    effectiveContextWindow,
-    autoCompactThreshold: Math.max(
-      0,
-      effectiveContextWindow - scaleBuffer(AUTOCOMPACT_BUFFER_TOKENS, effectiveContextWindow),
-    ),
-    manualCompactThreshold: Math.max(
-      0,
-      effectiveContextWindow - scaleBuffer(MANUAL_COMPACT_BUFFER_TOKENS, effectiveContextWindow),
-    ),
+    contextWindow: getContextWindowForModel(model),
+    effectiveContextWindow: getEffectiveContextWindowSize(model),
+    autoCompactThreshold: getAutoCompactThreshold(model),
+    manualCompactThreshold: getBlockingLimit(model),
   };
 }

@@ -91,7 +91,14 @@ jobs:
           package-manager-cache: false
       - run: sudo apt-get update && sudo apt-get install -y bubblewrap socat ripgrep
       - name: Enable unprivileged user namespaces for the sandbox test
-        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+        run: |
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          # The bwrap-userns-restrict profile strips capabilities from bwrap's children, so the
+          # seccomp helper cannot create its nested namespace.
+          if sudo grep -q '^bwrap ' /sys/kernel/security/apparmor/profiles; then
+            sudo apparmor_parser -R /etc/apparmor.d/bwrap-userns-restrict
+          fi
+          sudo grep -i bwrap /sys/kernel/security/apparmor/profiles || echo "no bwrap AppArmor profile loaded"
       - run: npm ci
       - run: npm run verify:release
       - name: Verify tag and choose npm channel

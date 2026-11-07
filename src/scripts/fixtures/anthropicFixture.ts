@@ -3,7 +3,7 @@
  *
  * Each request is answered with the next scripted step, streamed as SSE
  * (or as one JSON message when the request does not ask for a stream):
- * either a text reply or a single tool call. Requests are recorded so tests
+ * a text reply, a single tool call, or an API error. Requests are recorded so tests
  * can assert what reached the provider. `GET /v1/models` lists the fixture
  * model and consumes no step. `start()` points ANTHROPIC_BASE_URL
  * at the server; call it before importing modules that create API clients.
@@ -21,10 +21,14 @@ export type ScriptStep = (
       /** Stream the input JSON in fragments of this many characters instead of one delta. */
       inputChunk?: number;
     }
+  /** Reject the request with this HTTP status and an `invalid_request_error` carrying `message`. */
+  | { kind: "error"; status: number; message: string }
 ) & {
   /** Hold the reply this long after the response starts, to leave room for a cancel. */
   delayMs?: number;
 };
+
+type ReplyStep = Exclude<ScriptStep, { kind: "error" }>;
 
 export interface RecordedRequest {
   messages: unknown[];
@@ -64,7 +68,7 @@ export function createAnthropicFixture(): AnthropicFixture {
   let toolSeq = 0;
   const requests: RecordedRequest[] = [];
 
-  const streamFor = (step: ScriptStep, seq: number): string => {
+  const streamFor = (step: ReplyStep, seq: number): string => {
     const body =
       step.kind === "text"
         ? [
@@ -119,7 +123,7 @@ export function createAnthropicFixture(): AnthropicFixture {
   };
 
   /** The reply to a non-streaming request, such as a compaction summary. */
-  const messageFor = (step: ScriptStep, seq: number) => ({
+  const messageFor = (step: ReplyStep, seq: number) => ({
     id: `msg_${seq}`,
     type: "message",
     role: "assistant",
@@ -167,6 +171,13 @@ export function createAnthropicFixture(): AnthropicFixture {
         headers: { ...request.headers },
       });
       const step = queue.shift() ?? { kind: "text", text: "(fixture script exhausted)" };
+      if (step.kind === "error") {
+        response.writeHead(step.status, { "content-type": "application/json" });
+        response.end(
+          JSON.stringify({ type: "error", error: { type: "invalid_request_error", message: step.message } }),
+        );
+        return;
+      }
       if (body.stream !== true) {
         response.writeHead(200, { "content-type": "application/json" });
         response.end(JSON.stringify(messageFor(step, requests.length)));

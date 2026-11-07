@@ -68,7 +68,7 @@ const runtime = await createAgentRuntime({
 | `forkSession(id, { title?, fromMessage? })` | Copy a saved conversation into a new session. With `fromMessage`, a checkpoint id from `listCheckpoints()`, the copy ends just before that prompt. The copy keeps the file checkpoints of the turns it holds; the files on disk are not touched |
 | `deleteSession(id)` | Delete a saved session's transcript, title, file checkpoints, and task list; close it first |
 | `getSession(id)` / `listOpenSessions()` | Sessions currently open |
-| `getCapabilities()` | Built-in commands, invocable skills, user commands, sub-agent types, output style |
+| `getCapabilities()` | Built-in commands, invocable skills, user commands, sub-agent types, output style; skills and sub-agent types the Agent leaves out are not listed |
 | `resolveModel()` | The model a session uses when none is given |
 | `startServices(options?)` | Connect MCP servers and plugin services |
 | `connectMcpServers(servers)` | Connect more MCP servers, such as the ones an editor supplies; a name that is already configured keeps its server, and a server the Agent's `mcpServers` lists leave out is not started; both are returned in `skipped` |
@@ -100,7 +100,7 @@ const runtime = await createAgentRuntime({
 | `enabled` | Whether sessions use it: listed to the model, connected, loaded, or run |
 | `reason` | Why it is off or limited, such as an untrusted workspace, `claudeMdExcludes`, or hooks turned off |
 
-Items that occupy context carry token counts as `{ value, estimated }`: a skill's line in the skill list and its body, a sub-agent's line, an output style's prompt, a rule file, a tool's schema. Counts come from character lengths, so `estimated` is `true`. MCP servers report `status` (`connected`, `pending`, `failed`, `disabled`, `awaiting_approval`, `rejected`, or `ignored` in an untrusted workspace), their tools, and the error when connecting failed; a server the Agent's `mcpServers` lists leave out is `disabled` with the reason. Tools report whether ToolSearch defers them for the runtime's model, and a tool the Agent's `tools` lists leave out has `enabled: false` with the reason (see [Tools and MCP servers](./configuration.md#tools-and-mcp-servers)). Project configuration an untrusted workspace ignores still appears, disabled, with the reason.
+Items that occupy context carry token counts as `{ value, estimated }`: a skill's line in the skill list and its body, a sub-agent's line, an output style's prompt, a rule file, a tool's schema. Counts come from character lengths, so `estimated` is `true`. MCP servers report `status` (`connected`, `pending`, `failed`, `disabled`, `awaiting_approval`, `rejected`, or `ignored` in an untrusted workspace), their tools, and the error when connecting failed; a server the Agent's `mcpServers` lists leave out is `disabled` with the reason. Tools report whether ToolSearch defers them for the runtime's model, and a tool the Agent's `tools` lists leave out has `enabled: false` with the reason (see [Tools and MCP servers](./configuration.md#tools-and-mcp-servers)), and so do skills and sub-agents its `skills` and `agents` lists leave out (see [Skills and sub-agents](./configuration.md#skills-and-sub-agents)). Project configuration an untrusted workspace ignores still appears, disabled, with the reason.
 
 ### Agents
 

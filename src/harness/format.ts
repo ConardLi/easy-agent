@@ -39,7 +39,18 @@ export function formatValue(value: unknown): string {
   return json.length > 80 ? `${json.slice(0, 77)}…` : json;
 }
 
-export function formatHarness(resolved: ResolvedHarness, components: readonly BuiltInComponent[] = []): string {
+/** A loaded skill or sub-agent the Agent leaves out (`skills.*`, `agents.*`). */
+export interface LeftOutResource {
+  kind: "skill" | "agent";
+  name: string;
+  reason: string;
+}
+
+export function formatHarness(
+  resolved: ResolvedHarness,
+  components: readonly BuiltInComponent[] = [],
+  leftOut: readonly LeftOutResource[] = [],
+): string {
   const lines: string[] = [];
   const builtInOnly = resolved.chain.length === 0;
   lines.push(
@@ -103,6 +114,14 @@ export function formatHarness(resolved: ResolvedHarness, components: readonly Bu
       const replaced = ofKind.filter((item) => item.enabled && item.replacedBy);
       if (replaced.length)
         lines.push(`  ${"".padEnd(16)} text: ${replaced.map((item) => `${item.id} (${item.replacedBy})`).join(", ")}`);
+    }
+  }
+  if (leftOut.length > 0) {
+    lines.push("", "Left out");
+    for (const kind of ["skill", "agent"] as const) {
+      const ofKind = leftOut.filter((item) => item.kind === kind);
+      if (ofKind.length)
+        lines.push(`  ${kind.padEnd(16)} ${ofKind.map((item) => `${item.name} (${item.reason})`).join(", ")}`);
     }
   }
   return lines.join("\n");

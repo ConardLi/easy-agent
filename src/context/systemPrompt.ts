@@ -287,12 +287,12 @@ export async function collectDynamicSections(options: CollectDynamicSectionsOpti
   // Conditional skills (frontmatter `paths`) only appear here AFTER they've
   // been promoted in by activateConditionalSkillsForPaths(); see
   // skills/conditional.ts.
-  const skillsReminder = loads("skills") ? formatSkillsSystemReminder(getModelVisibleSkills()) : "";
+  const skillsReminder = loads("skills") ? formatSkillsSystemReminder(getModelVisibleSkills(harness)) : "";
 
   // Agents discovery listing — same pattern as skills. Tells the model
   // which `subagent_type` values it can pass to the Agent tool. The
   // registry is populated at startup by bootstrapAgents() in cli.ts.
-  const agentsReminder = loads("agents") ? formatAgentsSystemReminder(getAllAgents()) : "";
+  const agentsReminder = loads("agents") ? formatAgentsSystemReminder(getAllAgents(harness)) : "";
 
   // Agent Teams reminder — appears only when the feature flag
   // is on AND a team is currently active. The model already sees the

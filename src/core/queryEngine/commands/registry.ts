@@ -9,13 +9,18 @@
 
 import { getMcpRegistry, getMcpRegistryEntry } from "../../../services/mcp/registry.js";
 import { reconnectMcpServer } from "../../../services/mcp/bootstrap.js";
-import { getAllUserInvocableSkills } from "../../../services/skills/registry.js";
-import { getAllAgents } from "../../../agents/registry.js";
+import { getAllUserInvocableSkills, getRegisteredSkills, skillOffByAgent } from "../../../services/skills/registry.js";
+import { getAllAgents, getRegisteredAgents, subAgentOffByAgent } from "../../../agents/registry.js";
 import { loadHooksDiagnosticReport, HOOK_EVENTS, type HookEvent, type HooksSettings } from "../../../hooks/index.js";
 import type { ScopedMcpServerConfig } from "../../../types/mcp.js";
 import type { QueryEngineEvent } from "../types.js";
 import type { CommandContext } from "./context.js";
 import { refreshActivePlugins } from "../../../plugins/runtime.js";
+
+/** The loaded names the Agent leaves out, as one line. */
+function leftOutLine(names: readonly string[]): string {
+  return `Left out by this Agent: ${names.join(", ")} (see /harness).`;
+}
 
 /**
  * Handle `/skills` — list loaded skills, or atomically reload all extension
@@ -53,7 +58,8 @@ export async function* handleSkillsCommand(
   }
 
   const all = getAllUserInvocableSkills();
-  if (all.length === 0) {
+  const leftOut = getRegisteredSkills().filter((skill) => skillOffByAgent(skill.name));
+  if (all.length === 0 && leftOut.length === 0) {
     yield {
       type: "command",
       kind: "info",
@@ -76,6 +82,7 @@ export async function* handleSkillsCommand(
     lines.push(`  /${skill.name} — ${skill.description}`);
     lines.push(`    ${meta.join(" · ")}`);
   }
+  if (leftOut.length > 0) lines.push("", leftOutLine(leftOut.map((skill) => skill.name)));
   lines.push("", "Invoke a skill with /<name> [args], or let the model call it via the Skill tool.");
   yield { type: "command", kind: "info", message: lines.join("\n") };
   return { handled: true };
@@ -92,7 +99,8 @@ export async function* handleSkillsCommand(
  */
 export async function* handleAgentsCommand(): AsyncGenerator<QueryEngineEvent, { handled: boolean }> {
   const all = getAllAgents();
-  if (all.length === 0) {
+  const leftOut = getRegisteredAgents().filter((agent) => subAgentOffByAgent(agent.agentType));
+  if (all.length === 0 && leftOut.length === 0) {
     yield {
       type: "command",
       kind: "info",
@@ -138,6 +146,7 @@ export async function* handleAgentsCommand(): AsyncGenerator<QueryEngineEvent, {
       lines.push(`    ${agent.filePath}`);
     }
   }
+  if (leftOut.length > 0) lines.push("", leftOutLine(leftOut.map((agent) => agent.agentType)));
   lines.push(
     "",
     "Sub-agents are spawned by the model via the `Agent` tool —",

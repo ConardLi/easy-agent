@@ -10,7 +10,7 @@
 
 import * as path from "node:path";
 import { formatAgentListingLine } from "../agents/promptInjection.js";
-import { getAllAgents } from "../agents/registry.js";
+import { getRegisteredAgents, subAgentOffByAgent } from "../agents/registry.js";
 import { BUILTIN_COMMAND_HELP } from "../commands/builtinCommandHelp.js";
 import { BUILTIN_COMMAND_NAMES } from "../commands/builtinCommandNames.js";
 import { getAllUserCommands } from "../commands/userCommands/registry.js";
@@ -29,9 +29,10 @@ import { getProjectMcpJsonPath, loadMcpConfigs } from "../services/mcp/config.js
 import { getMcpRegistry } from "../services/mcp/registry.js";
 import { formatSkillListingLines } from "../services/skills/budget.js";
 import {
-  getAllUserInvocableSkills,
   getModelVisibleSkills,
+  getRegisteredSkills,
   listConditionalSkills,
+  skillOffByAgent,
 } from "../services/skills/registry.js";
 import { getActiveOutputStyleName, getAllOutputStyles } from "../styles/registry.js";
 import { getRegisteredTools, getToolsForMode } from "../tools/index.js";
@@ -127,16 +128,18 @@ function listSkills(): SkillInventoryItem[] {
   const lines = formatSkillListingLines(visible);
   const listing = new Map(visible.map((skill, index) => [skill.name, lines[index] ?? ""]));
   const latent = new Set(listConditionalSkills().map((skill) => skill.name));
-  return getAllUserInvocableSkills().map((skill) => {
+  return getRegisteredSkills().map((skill) => {
     const { frontmatter } = skill;
+    const offByAgent = skillOffByAgent(skill.name);
     const invocation = frontmatter.disableModelInvocation ? "manual" : frontmatter.paths?.length ? "paths" : "model";
-    const activated = invocation === "paths" ? !latent.has(skill.name) : undefined;
+    const activated = invocation === "paths" && !offByAgent ? !latent.has(skill.name) : undefined;
     const reason =
-      invocation === "manual"
+      offByAgent ??
+      (invocation === "manual"
         ? `Hidden from the model; run it with /${skill.name}.`
         : activated === false
           ? "Listed to the model once a matching file is read or edited."
-          : undefined;
+          : undefined);
     return {
       kind: "skill",
       id: componentId.skill(skill.source, skill.name),
@@ -144,7 +147,7 @@ function listSkills(): SkillInventoryItem[] {
       source: skill.source,
       ...(skill.pluginId ? { pluginId: skill.pluginId } : {}),
       path: skill.filePath,
-      enabled: true,
+      enabled: !offByAgent,
       ...(reason ? { reason } : {}),
       description: skill.description,
       ...(skill.whenToUse ? { whenToUse: skill.whenToUse } : {}),
@@ -190,19 +193,23 @@ function listCommands(): CommandInventoryItem[] {
 }
 
 function listAgents(): AgentInventoryItem[] {
-  return getAllAgents().map((agent) => ({
-    kind: "agent",
-    id: componentId.agent(agent.source, agent.agentType),
-    name: agent.agentType,
-    source: agent.source,
-    ...(agent.pluginId ? { pluginId: agent.pluginId } : {}),
-    ...(agent.filePath ? { path: agent.filePath } : {}),
-    enabled: true,
-    description: agent.whenToUse,
-    ...(agent.model ? { model: agent.model } : {}),
-    ...(agent.tools ? { tools: [...agent.tools] } : {}),
-    listing: textTokens(formatAgentListingLine(agent)),
-  }));
+  return getRegisteredAgents().map((agent) => {
+    const reason = subAgentOffByAgent(agent.agentType);
+    return {
+      kind: "agent",
+      id: componentId.agent(agent.source, agent.agentType),
+      name: agent.agentType,
+      source: agent.source,
+      ...(agent.pluginId ? { pluginId: agent.pluginId } : {}),
+      ...(agent.filePath ? { path: agent.filePath } : {}),
+      enabled: !reason,
+      ...(reason ? { reason } : {}),
+      description: agent.whenToUse,
+      ...(agent.model ? { model: agent.model } : {}),
+      ...(agent.tools ? { tools: [...agent.tools] } : {}),
+      listing: textTokens(reason ? "" : formatAgentListingLine(agent)),
+    };
+  });
 }
 
 function listOutputStyles(): OutputStyleInventoryItem[] {

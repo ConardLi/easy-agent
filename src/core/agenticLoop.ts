@@ -31,7 +31,7 @@ import { tokenCountWithEstimation } from "../utils/tokens.js";
 import { FILE_HISTORY_TOOLS, fileHistoryTrackEdit } from "../session/fileHistory.js";
 import { setToolStatus } from "../state/toolStatusStore.js";
 import * as path from "node:path";
-import { calculateTokenWarningState, type TokenWarningResult } from "../context/autoCompact.js";
+import { calculateTokenWarningState, isAutoCompactEnabled, type TokenWarningResult } from "../context/autoCompact.js";
 import type { ContentBlock, TextBlock, ToolUseBlock, Usage } from "../types/message.js";
 import { runPreToolUseHooks, runPostToolUseHooks, runStopHooks, runSubagentStopHooks } from "../hooks/index.js";
 
@@ -891,9 +891,15 @@ export async function* query(params: QueryParams): AsyncGenerator<AgenticLoopEve
       };
     }
     if (streamError) {
-      // Prompt-too-long → summarize the history once and retry the turn.
-      // Guarded by hasAttemptedReactiveCompact so we never loop on it.
-      if (streamError.category === "prompt_too_long" && !hasAttemptedReactiveCompact && state.messages.length > 0) {
+      // Prompt-too-long → summarize the history once and retry the turn,
+      // unless the Agent turned automatic compaction off. Guarded by
+      // hasAttemptedReactiveCompact so we never loop on it.
+      if (
+        streamError.category === "prompt_too_long" &&
+        !hasAttemptedReactiveCompact &&
+        state.messages.length > 0 &&
+        isAutoCompactEnabled()
+      ) {
         hasAttemptedReactiveCompact = true;
         try {
           const compactResult = await compactMessages(state.messages, undefined, {

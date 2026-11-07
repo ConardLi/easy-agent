@@ -12,8 +12,16 @@
  * Two sources of skills (user / project) are merged at load time with
  * project overriding user when names collide. After load a skill's origin
  * doesn't matter for execution — it only affects the discovery listing.
+ *
+ * The registry holds every loaded skill; the lookups below return only the
+ * ones the Agent keeps (`skills.include` / `skills.exclude`), whether they
+ * come from the user, the project, or a plugin. `getRegisteredSkills()`
+ * returns all of them, for views that show what the Agent leaves out.
  */
 
+import { activeHarness } from "../../harness/active.js";
+import type { ResolvedHarness } from "../../harness/resolve.js";
+import { selectionOffReason } from "../../harness/selection.js";
 import type { Skill } from "../../types/types.js";
 
 const dynamic = new Map<string, Skill>();
@@ -43,12 +51,20 @@ export function isSkillsInitialized(): boolean {
   return initialized;
 }
 
+/** Why the Agent leaves out the skill `name`, or undefined when it keeps it. */
+export function skillOffByAgent(name: string, resolved: ResolvedHarness = activeHarness()): string | undefined {
+  return selectionOffReason(resolved, "skills", name);
+}
+
+const kept = (skills: Iterable<Skill>, resolved: ResolvedHarness): Skill[] =>
+  [...skills].filter((skill) => !skillOffByAgent(skill.name, resolved));
+
 /**
  * Skills currently visible to the model — used to build the discovery
  * listing in the system prompt. EXCLUDES `disable-model-invocation` skills.
  */
-export function getModelVisibleSkills(): Skill[] {
-  return [...dynamic.values()].filter((s) => !s.frontmatter.disableModelInvocation);
+export function getModelVisibleSkills(resolved: ResolvedHarness = activeHarness()): Skill[] {
+  return kept(dynamic.values(), resolved).filter((s) => !s.frontmatter.disableModelInvocation);
 }
 
 /**
@@ -57,13 +73,24 @@ export function getModelVisibleSkills(): Skill[] {
  * the user can still trigger them) and conditional ones (so users aren't
  * surprised by "command not found" before the file path matches).
  */
-export function getAllUserInvocableSkills(): Skill[] {
+export function getAllUserInvocableSkills(resolved: ResolvedHarness = activeHarness()): Skill[] {
+  return kept([...dynamic.values(), ...conditional.values()], resolved);
+}
+
+/** Every loaded skill, including the ones the Agent leaves out. */
+export function getRegisteredSkills(): Skill[] {
   return [...dynamic.values(), ...conditional.values()];
 }
 
-/** Look up by name across both maps; returns undefined if not loaded. */
+/** Look up by name across both maps; undefined if not loaded or left out by the Agent. */
 export function findSkill(name: string): Skill | undefined {
-  return dynamic.get(name) ?? conditional.get(name);
+  const skill = dynamic.get(name) ?? conditional.get(name);
+  return skill && !skillOffByAgent(name) ? skill : undefined;
+}
+
+/** Why a loaded skill is left out by the Agent; undefined when it is kept or no such skill is loaded. */
+export function loadedSkillOffByAgent(name: string): string | undefined {
+  return dynamic.has(name) || conditional.has(name) ? skillOffByAgent(name) : undefined;
 }
 
 /**
@@ -79,9 +106,9 @@ export function activateConditional(name: string): boolean {
   return true;
 }
 
-/** Iterate over the conditional skills (read-only view). */
+/** The conditional skills the Agent keeps that are not activated yet (read-only view). */
 export function listConditionalSkills(): Skill[] {
-  return [...conditional.values()];
+  return kept(conditional.values(), activeHarness());
 }
 
 /** Drop everything — only used by tests / hot reload. */

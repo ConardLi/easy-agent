@@ -23,6 +23,8 @@ export const DEFAULT_MAX_RETRIES = 10;
 export const FALLBACK_MODEL = "claude-sonnet-4-20250514";
 /** Characters for the skill listing when nothing sets `skills.listingBudgetChars`. */
 export const DEFAULT_BUDGET_CHARS = 8000;
+/** Recent messages compaction keeps as they are when nothing sets `compaction.keepRecentMessages`. */
+export const DEFAULT_KEEP_RECENT_MESSAGES = 8;
 
 export type HarnessLayerSource =
   | "built-in"
@@ -290,10 +292,36 @@ export const HARNESS_KEYS: readonly HarnessKey[] = [
     ] as const
   ).map(([keyPath, summary]): HarnessKey => ({ ...specOnly(keyPath, "context", summary, true), applied: true })),
 
-  specOnly("compaction.auto", "compaction", "Compact automatically near the context limit.", true),
-  specOnly("compaction.autoThreshold", "compaction", "Fraction of the effective window that starts auto-compaction."),
-  specOnly("compaction.microcompact", "compaction", "Clear old tool results before compacting.", true),
-  specOnly("compaction.keepRecentMessages", "compaction", "Recent messages kept when clearing tool results."),
+  {
+    ...specOnly(
+      "compaction.auto",
+      "compaction",
+      "Summarize the conversation automatically near the context limit and after a prompt-too-long error.",
+      true,
+    ),
+    applied: true,
+  },
+  {
+    ...specOnly(
+      "compaction.autoThreshold",
+      "compaction",
+      "Fraction of the effective window that starts auto-compaction; unset starts it a fixed buffer below the window.",
+    ),
+    applied: true,
+  },
+  {
+    ...specOnly("compaction.microcompact", "compaction", "Clear old tool results and images before each turn.", true),
+    applied: true,
+  },
+  {
+    ...specOnly(
+      "compaction.keepRecentMessages",
+      "compaction",
+      "Recent messages compaction keeps as they are: their tool results are not cleared, and a summary keeps them after it.",
+      DEFAULT_KEEP_RECENT_MESSAGES,
+    ),
+    applied: true,
+  },
   {
     path: "compaction.contextWindow",
     component: "compaction",
@@ -355,7 +383,7 @@ export const HARNESS_KEYS: readonly HarnessKey[] = [
   specOnly("sandbox.enabled", "sandbox", "Run shell commands in the sandbox."),
   specOnly("hooks.enabled", "hooks", "Run command hooks.", true),
 
-  ...selection("skills", "skills"),
+  ...selection("skills", "skills", true),
   {
     path: "skills.listingBudgetChars",
     component: "skills",
@@ -372,7 +400,7 @@ export const HARNESS_KEYS: readonly HarnessKey[] = [
     },
     applied: true,
   },
-  ...selection("agents", "sub-agents"),
+  ...selection("agents", "sub-agents", true),
   ...selection("commands", "commands"),
   {
     path: "outputStyle",
@@ -397,6 +425,24 @@ export const HARNESS_KEYS: readonly HarnessKey[] = [
       position: "override",
     },
     argvAgentTeams: true,
+    applied: true,
+  },
+  {
+    ...specOnly(
+      "features.tasks",
+      "features",
+      "Task tracking a session starts with: task (persistent task list) or todo (session-only list).",
+      "task",
+    ),
+    applied: true,
+  },
+  {
+    ...specOnly(
+      "features.autoModeClassifier",
+      "features",
+      "Auto Mode asks the classifier about actions no rule decides; off asks the user.",
+      true,
+    ),
     applied: true,
   },
   {

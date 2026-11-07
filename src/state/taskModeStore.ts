@@ -5,23 +5,28 @@
  * env var, so the user can flip modes inside a live session without
  * restarting.
  *
- * `"task"` is the default (persistent task graph). `"todo"` falls back
- * to the V1 session-memory list. The selection belongs to the active session
- * scope (see sessionScope.ts): all tool `isEnabled()` checks read from here.
+ * A session starts in the Agent's `features.tasks` mode: `"task"` (the
+ * default, persistent task graph) or `"todo"` (the V1 session-memory list).
+ * The selection belongs to the active session scope (see sessionScope.ts):
+ * all tool `isEnabled()` checks read from here.
  */
 
+import { harnessSetting } from "../harness/active.js";
 import { defineSessionState } from "./sessionScope.js";
 
 export type TaskMode = "task" | "todo";
 
-const DEFAULT_TASK_MODE: TaskMode = "task";
-
 type Listener = (mode: TaskMode) => void;
 
 const taskModeState = defineSessionState("taskMode", () => ({
-  mode: DEFAULT_TASK_MODE as TaskMode,
+  mode: defaultTaskMode(),
   listeners: new Set<Listener>(),
 }));
+
+/** The mode a session starts in: the Agent's `features.tasks`. */
+export function defaultTaskMode(): TaskMode {
+  return harnessSetting<TaskMode>("features.tasks");
+}
 
 export function getTaskMode(): TaskMode {
   return taskModeState().mode;

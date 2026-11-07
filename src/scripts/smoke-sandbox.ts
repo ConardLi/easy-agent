@@ -127,19 +127,30 @@ async function main(): Promise<void> {
 
   console.log("\n[4] domain policy is enforced by the network proxy");
   await resetSandboxRuntime();
-  const domain = "example.com";
-  const url = `https://${domain}/`;
-  const preflight = spawnSync("curl", ["--max-time", "10", "--silent", "--show-error", "--fail", url], {
-    encoding: "utf8",
-  });
-  expect("network test endpoint is reachable", preflight.status === 0, preflight.stderr);
-  const defaultNetwork = await runSandboxed(
-    testRoot,
-    `curl --noproxy '' --max-time 5 --silent --show-error --fail '${url}'`,
-    settings(),
+  const domain = "www.google.com";
+  const url = `https://${domain}/generate_204`;
+  const reached = (stdout: string) => stdout.trim() === "204";
+  const curl = `curl --noproxy '' --max-time 5 --silent --show-error --fail --output /dev/null --write-out '%{http_code}' '${url}'`;
+  const preflight = spawnSync(
+    "curl",
+    [
+      "--max-time",
+      "10",
+      "--silent",
+      "--show-error",
+      "--fail",
+      "--output",
+      "/dev/null",
+      "--write-out",
+      "%{http_code}",
+      url,
+    ],
+    { encoding: "utf8" },
   );
+  expect("network test endpoint is reachable", preflight.status === 0 && reached(preflight.stdout), preflight.stderr);
+  const defaultNetwork = await runSandboxed(testRoot, curl, settings());
   expect("public network works without an allowlist", defaultNetwork.code === 0, defaultNetwork.stderr);
-  expect("default network response is returned", defaultNetwork.stdout.includes("Example Domain"));
+  expect("default network response is returned", reached(defaultNetwork.stdout), defaultNetwork.stdout);
   const networkSettings = settings({}, { allowedDomains: [domain] });
   const proxyProbe = await runSandboxed(
     testRoot,
@@ -147,39 +158,27 @@ async function main(): Promise<void> {
     networkSettings,
   );
   expect("sandbox can reach its network proxy", proxyProbe.code === 0, proxyProbe.stderr);
-  const allowedNetwork = await runSandboxed(
-    testRoot,
-    `curl --noproxy '' --max-time 5 --silent --show-error --fail '${url}'`,
-    networkSettings,
-  );
+  const allowedNetwork = await runSandboxed(testRoot, curl, networkSettings);
   expect("allowlisted destination succeeds", allowedNetwork.code === 0, allowedNetwork.stderr);
-  expect("allowlisted response is returned", allowedNetwork.stdout.includes("Example Domain"));
+  expect("allowlisted response is returned", reached(allowedNetwork.stdout), allowedNetwork.stdout);
   const unmatchedNetwork = await runSandboxed(
     testRoot,
-    `curl --noproxy '' --max-time 5 --silent --show-error --fail '${url}'`,
+    curl,
     settings({}, { allowedDomains: ["api.invalid.example"] }),
   );
   expect("configured allowlist blocks unmatched destinations", unmatchedNetwork.code !== 0, unmatchedNetwork.stderr);
   const deniedNetwork = await runSandboxed(
     testRoot,
-    `curl --noproxy '' --max-time 5 --silent --show-error --fail '${url}'`,
+    curl,
     settings({}, { allowedDomains: [domain], deniedDomains: [domain] }),
   );
   expect("denylist takes precedence", deniedNetwork.code !== 0, `exit=${deniedNetwork.code}`);
-  expect("denied response is not returned", !deniedNetwork.stdout.includes("Example Domain"));
+  expect("denied response is not returned", !reached(deniedNetwork.stdout), deniedNetwork.stdout);
 
   console.log("\n[5] concurrent commands keep independent network policies");
   const [delayedAllowed, concurrentDenied] = await Promise.all([
-    runSandboxed(
-      testRoot,
-      `sleep 1 && curl --noproxy '' --max-time 5 --silent --show-error --fail '${url}'`,
-      networkSettings,
-    ),
-    runSandboxed(
-      testRoot,
-      `curl --noproxy '' --max-time 5 --silent --show-error --fail '${url}'`,
-      settings({}, { deniedDomains: [domain] }),
-    ),
+    runSandboxed(testRoot, `sleep 1 && ${curl}`, networkSettings),
+    runSandboxed(testRoot, curl, settings({}, { deniedDomains: [domain] })),
   ]);
   expect("allowed command keeps its allowlist", delayedAllowed.code === 0, delayedAllowed.stderr);
   expect("concurrent denied command remains blocked", concurrentDenied.code !== 0, concurrentDenied.stderr);

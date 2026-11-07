@@ -1,4 +1,5 @@
 import { createMessage } from "../services/api/streaming.js";
+import { harnessSetting } from "../harness/active.js";
 import { debugLog } from "../utils/log.js";
 import { buildTokenBudgetSnapshot } from "../utils/tokens.js";
 import type { MessageParam, ContentBlockParam } from "@anthropic-ai/sdk/resources/messages.js";
@@ -7,7 +8,6 @@ import { COMPACT_DISCOVERED_TOOLS_KEY, extractDiscoveredToolNames } from "../uti
 
 export const OLD_TOOL_RESULT_PLACEHOLDER = "[Old tool result content cleared]";
 const MICROCOMPACT_MIN_MESSAGES = 10;
-const MICROCOMPACT_KEEP_RECENT_MESSAGES = 8;
 const COMPACTABLE_TOOLS = new Set(["Read", "Grep", "Glob", "Bash", "Edit", "Write"]);
 
 const NO_TOOLS_PREAMBLE = `CRITICAL: Respond with TEXT ONLY. Do NOT call any tools.
@@ -157,6 +157,12 @@ function microCompactMessage(message: MessageParam): { message: MessageParam; co
   };
 }
 
+/** Recent messages compaction keeps as they are (`compaction.keepRecentMessages`). */
+function keepRecentMessages(): number {
+  return harnessSetting<number>("compaction.keepRecentMessages");
+}
+
+/** Clear old tool results and images, keeping the Agent's number of recent messages as they are. */
 export function microCompactMessages(messages: MessageParam[]): {
   messages: MessageParam[];
   compactedToolIds: string[];
@@ -165,9 +171,10 @@ export function microCompactMessages(messages: MessageParam[]): {
     return { messages, compactedToolIds: [] };
   }
 
+  const keepRecent = keepRecentMessages();
   const compactedToolIds: string[] = [];
   const nextMessages = messages.map((message, index) => {
-    if (index >= messages.length - MICROCOMPACT_KEEP_RECENT_MESSAGES) {
+    if (index >= messages.length - keepRecent) {
       return message;
     }
 
@@ -254,12 +261,19 @@ async function summarizeMessages(messages: MessageParam[], focus?: string, model
   return text;
 }
 
+/**
+ * Clear old tool results (unless the Agent turns `compaction.microcompact`
+ * off), then summarize the conversation when `force` is set or, with
+ * `compaction.auto` on, when it reaches the auto-compaction threshold.
+ */
 export async function compactMessages(
   messages: MessageParam[],
   focus?: string,
   options: CompactionCheckOptions = {},
 ): Promise<CompactionResult> {
-  const microcompactResult = microCompactMessages(messages);
+  const microcompactResult = harnessSetting<boolean>("compaction.microcompact")
+    ? microCompactMessages(messages)
+    : { messages, compactedToolIds: [] };
   const microCompacted = microcompactResult.messages;
   const microChanged = JSON.stringify(microCompacted) !== JSON.stringify(messages);
 
@@ -280,9 +294,10 @@ export async function compactMessages(
     manualCompactThreshold: budget.manualCompactThreshold,
   });
 
-  if (!options.force && budget.estimatedConversationTokens < budget.autoCompactThreshold) {
+  const autoCompact = harnessSetting<boolean>("compaction.auto");
+  if (!options.force && (!autoCompact || budget.estimatedConversationTokens < budget.autoCompactThreshold)) {
     debugLog("compact", "skip_full_compact", {
-      reason: "below_auto_threshold",
+      reason: autoCompact ? "below_auto_threshold" : "auto_compaction_off",
       estimatedConversationTokens: budget.estimatedConversationTokens,
       autoCompactThreshold: budget.autoCompactThreshold,
     });
@@ -308,7 +323,7 @@ export async function compactMessages(
   const discoveredTools = [...extractDiscoveredToolNames(microCompacted)].sort();
 
   const summary = await summarizeMessages(microCompacted, focus, options.model);
-  const desiredTailCount = 8;
+  const desiredTailCount = keepRecentMessages();
   const tailStart =
     microCompacted.length <= desiredTailCount
       ? microCompacted.length // short conversation: summary covers everything, no tail

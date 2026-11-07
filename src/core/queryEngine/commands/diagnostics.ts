@@ -14,7 +14,7 @@ import {
   type LoadedProfiles,
 } from "../../../services/api/providers/profile.js";
 import { loadTrustedSettingSources } from "../../../config/sources.js";
-import { activeHarness } from "../../../harness/active.js";
+import { activeHarness, harnessSetting } from "../../../harness/active.js";
 import { MIN_NODE_MAJOR } from "../../../version.js";
 import { getMcpRegistry } from "../../../services/mcp/registry.js";
 import { getTaskMode } from "../../../state/taskModeStore.js";
@@ -129,7 +129,12 @@ export async function* handleContextCommand(
     );
   }
   if (breakdown.conversationTokens >= breakdown.autoCompactThreshold) {
-    lines.push("", "⚠ Approaching the auto-compact threshold — consider /compact.");
+    lines.push(
+      "",
+      harnessSetting<boolean>("compaction.auto")
+        ? "⚠ Approaching the auto-compact threshold — consider /compact."
+        : "⚠ Approaching the context limit, and this Agent does not compact automatically — consider /compact.",
+    );
   }
   yield { type: "command", kind: "info", message: lines.join("\n") };
   return { handled: true };
