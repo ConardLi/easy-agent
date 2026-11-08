@@ -676,7 +676,15 @@ export const HARNESS_KEYS: readonly HarnessKey[] = [
     },
     applied: true,
   },
-  specOnly("trace.level", "trace", "Request record level.", "off"),
+  {
+    ...specOnly(
+      "trace.level",
+      "trace",
+      "Request records: summary writes each request's parts (sizes, tokens, hashes) next to the transcript; off writes none.",
+      "summary",
+    ),
+    applied: true,
+  },
 ];
 
 export const HARNESS_KEY_BY_PATH: ReadonlyMap<string, HarnessKey> = new Map(HARNESS_KEYS.map((key) => [key.path, key]));

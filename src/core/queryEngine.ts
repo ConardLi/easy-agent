@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { MessageParam } from "@anthropic-ai/sdk/resources/messages.js";
 import { query, type LoopTerminationReason } from "./agenticLoop.js";
+import { markMessageSource } from "./messageSources.js";
 import {
   loadPermissionSettings,
   type PermissionDecision,
@@ -389,10 +390,10 @@ export class QueryEngine {
       // using the same visible-marker + hidden-body pattern as skills.
       const promptExpansion = tryExpandBuiltinPromptCommand(trimmed);
       if (promptExpansion) {
-        const markerMessage: MessageParam = {
-          role: "user",
-          content: promptExpansion.markerContent,
-        };
+        const markerMessage: MessageParam = markMessageSource(
+          { role: "user", content: promptExpansion.markerContent },
+          "command",
+        );
         this.messages = [...this.messages, markerMessage];
         yield { type: "messages_updated", messages: [...this.messages] };
         return yield* this.submitInternal(promptExpansion.bodyText);
@@ -408,10 +409,10 @@ export class QueryEngine {
         if (userExpansion.model) {
           this.turnModelOverride = userExpansion.model;
         }
-        const markerMessage: MessageParam = {
-          role: "user",
-          content: userExpansion.markerContent,
-        };
+        const markerMessage: MessageParam = markMessageSource(
+          { role: "user", content: userExpansion.markerContent },
+          "command",
+        );
         this.messages = [...this.messages, markerMessage];
         yield { type: "messages_updated", messages: [...this.messages] };
         return yield* this.submitInternal(userExpansion.bodyText);
@@ -455,7 +456,10 @@ export class QueryEngine {
               role: "assistant",
               content: typeof result.content === "string" ? result.content : JSON.stringify(result.content),
             };
-            this.messages.push({ role: "user", content: skillExpansion.markerContent }, message);
+            this.messages.push(
+              markMessageSource({ role: "user", content: skillExpansion.markerContent }, "command"),
+              message,
+            );
             yield { type: "assistant_message", message };
             yield { type: "messages_updated", messages: [...this.messages] };
             return { handled: true, reason: result.isError ? "model_error" : "completed" };
@@ -463,10 +467,10 @@ export class QueryEngine {
             this.abortController = null;
           }
         }
-        const markerMessage: MessageParam = {
-          role: "user",
-          content: skillExpansion.markerContent,
-        };
+        const markerMessage: MessageParam = markMessageSource(
+          { role: "user", content: skillExpansion.markerContent },
+          "command",
+        );
         this.messages = [...this.messages, markerMessage];
         yield { type: "messages_updated", messages: [...this.messages] };
         return yield* this.submitInternal(skillExpansion.bodyText);
@@ -616,10 +620,10 @@ export class QueryEngine {
       });
       const startCtx = startOutcome.additionalContext;
       if (startCtx) {
-        const startMessage: MessageParam = {
-          role: "user",
-          content: `[session-start]\n${startCtx}`,
-        };
+        const startMessage: MessageParam = markMessageSource(
+          { role: "user", content: `[session-start]\n${startCtx}` },
+          "hook_output",
+        );
         this.messages = [...this.messages, startMessage];
         yield { type: "messages_updated", messages: [...this.messages] };
       }
@@ -747,16 +751,19 @@ export class QueryEngine {
     if (activeTeam) {
       const teamMessages = await drainUnreadMessages(TEAM_LEAD_NAME, activeTeam.teamName);
       if (teamMessages.length > 0) {
-        this.messages = [...this.messages, { role: "user", content: formatMailboxAttachment(teamMessages) }];
+        this.messages = [
+          ...this.messages,
+          markMessageSource({ role: "user", content: formatMailboxAttachment(teamMessages) }, "team_message"),
+        ];
         yield { type: "messages_updated", messages: [...this.messages] };
       }
     }
     const pendingNotifs = drainPendingNotifications();
     for (const notif of pendingNotifs) {
-      const notifMessage: MessageParam = {
-        role: "user",
-        content: `[task-notification]\n${notif.text}`,
-      };
+      const notifMessage: MessageParam = markMessageSource(
+        { role: "user", content: `[task-notification]\n${notif.text}` },
+        "background_notification",
+      );
       this.messages = [...this.messages, notifMessage];
     }
     if (pendingNotifs.length > 0) {
@@ -767,10 +774,16 @@ export class QueryEngine {
     // memory index, skills, output style, a new date, ...) goes at the end of
     // the conversation so the cached prompt prefix stays byte-identical.
     if (turnContext.update) {
-      this.messages = [...this.messages, { role: "user", content: turnContext.update }];
+      this.messages = [
+        ...this.messages,
+        markMessageSource({ role: "user", content: turnContext.update }, "context_update"),
+      ];
     }
     if (this.pendingContextNotes.length > 0) {
-      this.messages = [...this.messages, { role: "user", content: formatContextNote(this.pendingContextNotes) }];
+      this.messages = [
+        ...this.messages,
+        markMessageSource({ role: "user", content: formatContextNote(this.pendingContextNotes) }, "context_update"),
+      ];
       this.pendingContextNotes = [];
     }
 
@@ -781,10 +794,10 @@ export class QueryEngine {
     // the thinking budget — it only nudges effort via a meta message. The
     // marker prefix keeps it out of the human-visible transcript.
     if (promptToSubmit.length > 0 && hasUltrathinkKeyword(promptToSubmit)) {
-      const ultrathinkMessage: MessageParam = {
-        role: "user",
-        content: `[ultrathink]\n${ULTRATHINK_META_MESSAGE}`,
-      };
+      const ultrathinkMessage: MessageParam = markMessageSource(
+        { role: "user", content: `[ultrathink]\n${ULTRATHINK_META_MESSAGE}` },
+        "meta",
+      );
       this.messages = [...this.messages, ultrathinkMessage];
     }
 

@@ -2,6 +2,7 @@
  * Agentic Loop — Core loop orchestration for one user query.
  */
 
+import { randomUUID } from "node:crypto";
 import type { MessageParam } from "@anthropic-ai/sdk/resources/messages.js";
 import {
   checkPermission,
@@ -34,6 +35,8 @@ import * as path from "node:path";
 import { calculateTokenWarningState, isAutoCompactEnabled, type TokenWarningResult } from "../context/autoCompact.js";
 import type { ContentBlock, TextBlock, ToolUseBlock, Usage } from "../types/message.js";
 import { runPreToolUseHooks, runPostToolUseHooks, runStopHooks, runSubagentStopHooks } from "../hooks/index.js";
+import { runInRequestFrame } from "../trace/requestTrace.js";
+import { markMessageSource } from "./messageSources.js";
 
 /** Default tool-turn limit for one request; Headless runs keep this value. */
 export const MAX_TOOL_TURNS = 50;
@@ -656,7 +659,7 @@ export async function runTools(
   }));
 
   return {
-    toolResultsMessage: { role: "user", content: toolResults as any },
+    toolResultsMessage: markMessageSource({ role: "user", content: toolResults as any }, "tool_result"),
     executions,
     permissionRequests,
   };
@@ -710,6 +713,10 @@ export async function* query(params: QueryParams): AsyncGenerator<AgenticLoopEve
   let maxOutputTokensOverride: number | undefined;
   let maxOutputTokensRecoveryCount = 0;
   let hasAttemptedReactiveCompact = false;
+  // The request whose output the loop is acting on; requests the loop's tools
+  // and compaction make name it as their parent.
+  let lastRequestId: string | undefined;
+  const turnId = params.toolContext.messageId;
 
   while (state.turnCount < maxTurns) {
     if (params.abortSignal?.aborted) {
@@ -797,6 +804,7 @@ export async function* query(params: QueryParams): AsyncGenerator<AgenticLoopEve
       hasPendingMcpServers: hasPendingMcpServers(),
       source: params.subagentInfo ? "subagent" : "query",
     });
+    lastRequestId = randomUUID();
     const stream = streamMessage({
       messages: prepared.messages,
       model: requestModel,
@@ -809,6 +817,14 @@ export async function* query(params: QueryParams): AsyncGenerator<AgenticLoopEve
       ...(maxOutputTokensOverride !== undefined ? { maxTokens: maxOutputTokensOverride } : {}),
       querySource: params.querySource,
       ...(params.toolContext.sessionId ? { promptCacheKey: params.toolContext.sessionId } : {}),
+      trace: {
+        purpose: params.subagentInfo ? "subagent" : "main",
+        requestId: lastRequestId,
+        ...(params.subagentInfo
+          ? { agent: { id: params.subagentInfo.agentId, type: params.subagentInfo.agentType } }
+          : {}),
+        ...(turnId ? { turnId } : {}),
+      },
     });
 
     let assistantContent: ContentBlock[] = [];
@@ -902,11 +918,13 @@ export async function* query(params: QueryParams): AsyncGenerator<AgenticLoopEve
       ) {
         hasAttemptedReactiveCompact = true;
         try {
-          const compactResult = await compactMessages(state.messages, undefined, {
-            systemPrompt: params.systemPrompt,
-            model: params.model,
-            force: true,
-          });
+          const compactResult = await runInRequestFrame({ requestId: lastRequestId, turnId }, () =>
+            compactMessages(state.messages, undefined, {
+              systemPrompt: params.systemPrompt,
+              model: params.model,
+              force: true,
+            }),
+          );
           if (compactResult.didCompact) {
             state = {
               messages: [...compactResult.messages],
@@ -963,10 +981,10 @@ export async function* query(params: QueryParams): AsyncGenerator<AgenticLoopEve
           turnCount: state.turnCount,
         };
 
-        const recoveryMessage: MessageParam = {
-          role: "user",
-          content: MAX_OUTPUT_TOKENS_RECOVERY_PROMPT,
-        };
+        const recoveryMessage: MessageParam = markMessageSource(
+          { role: "user", content: MAX_OUTPUT_TOKENS_RECOVERY_PROMPT },
+          "meta",
+        );
         state = {
           messages: [...state.messages, recoveryMessage],
           turnCount: state.turnCount,
@@ -1045,10 +1063,10 @@ export async function* query(params: QueryParams): AsyncGenerator<AgenticLoopEve
         const continuationText = stopOutcome.blockingError || stopOutcome.additionalContext;
         if (continuationText) {
           stopHookFired = true;
-          const continuationMessage: MessageParam = {
-            role: "user",
-            content: `[stop-hook]\n${continuationText}`,
-          };
+          const continuationMessage: MessageParam = markMessageSource(
+            { role: "user", content: `[stop-hook]\n${continuationText}` },
+            "hook_output",
+          );
           state = {
             messages: [...state.messages, continuationMessage],
             turnCount: state.turnCount,
@@ -1063,23 +1081,27 @@ export async function* query(params: QueryParams): AsyncGenerator<AgenticLoopEve
       return { state, usage: totalUsage, lastCallUsage, reason: "completed" };
     }
 
-    const { toolResultsMessage, executions, permissionRequests } = await runTools(
-      assistantContent,
-      {
-        ...params.toolContext,
-        abortSignal: params.abortSignal,
-      },
-      {
-        permissionMode: params.permissionMode,
-        permissionSettings: params.permissionSettings,
-        sessionPermissionRules: params.sessionPermissionRules,
-        onPermissionRequest: params.onPermissionRequest,
-        shouldAvoidPermissionPrompts: params.shouldAvoidPermissionPrompts,
-        conversationMessages: state.messages,
-        model: params.model,
-        availableTools: currentTools,
-        toolSearchEnabled: prepared.enabled,
-      },
+    const { toolResultsMessage, executions, permissionRequests } = await runInRequestFrame(
+      { requestId: lastRequestId, turnId },
+      () =>
+        runTools(
+          assistantContent,
+          {
+            ...params.toolContext,
+            abortSignal: params.abortSignal,
+          },
+          {
+            permissionMode: params.permissionMode,
+            permissionSettings: params.permissionSettings,
+            sessionPermissionRules: params.sessionPermissionRules,
+            onPermissionRequest: params.onPermissionRequest,
+            shouldAvoidPermissionPrompts: params.shouldAvoidPermissionPrompts,
+            conversationMessages: state.messages,
+            model: params.model,
+            availableTools: currentTools,
+            toolSearchEnabled: prepared.enabled,
+          },
+        ),
     );
 
     for (const request of permissionRequests) {

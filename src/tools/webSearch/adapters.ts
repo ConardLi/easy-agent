@@ -20,6 +20,9 @@ import he from "he";
 import { harnessSetting } from "../../harness/active.js";
 import { getAnthropicClientForProfile } from "../../services/api/client.js";
 import { resolveProfile } from "../../services/api/providers/profile.js";
+import { classifyAPIError } from "../../services/api/errors.js";
+import { markMessageSource } from "../../core/messageSources.js";
+import { startRequestTrace } from "../../trace/requestTrace.js";
 
 export interface SearchResult {
   title: string;
@@ -88,16 +91,46 @@ export class AnthropicApiSearchAdapter implements WebSearchAdapter {
       ...(options.blockedDomains?.length ? { blocked_domains: options.blockedDomains } : {}),
     };
 
-    const response = await client.messages.create(
-      {
-        model: profile.model,
-        max_tokens: 2048,
-        system: "You are an assistant performing a web search. Use the web_search tool to answer the query.",
-        messages: [{ role: "user", content: `Perform a web search for the query: ${query}` }],
-        tools: [webSearchTool] as unknown as Anthropic.MessageCreateParamsNonStreaming["tools"],
+    const body = {
+      model: profile.model,
+      max_tokens: 2048,
+      system: "You are an assistant performing a web search. Use the web_search tool to answer the query.",
+      messages: [
+        markMessageSource(
+          { role: "user" as const, content: `Perform a web search for the query: ${query}` },
+          "search_query",
+        ),
+      ],
+      tools: [webSearchTool] as unknown as Anthropic.MessageCreateParamsNonStreaming["tools"],
+    };
+    const trace = startRequestTrace({ purpose: "webSearch" }, this.modelHandle || undefined);
+    trace.sent({
+      protocol: profile.protocol,
+      model: profile.model,
+      system: body.system,
+      tools: body.tools as object[],
+      messages: body.messages,
+      sourceMessages: body.messages,
+      params: {
+        maxTokens: body.max_tokens,
+        betas: [],
+        toolSearch: false,
+        promptCaching: false,
+        cacheMarkers: 0,
+        promptCacheKey: false,
       },
-      options.signal ? { signal: options.signal } : undefined,
-    );
+    });
+    let response: Anthropic.Message;
+    try {
+      response = await client.messages.create(body, options.signal ? { signal: options.signal } : undefined);
+    } catch (error) {
+      trace.fail(classifyAPIError(error));
+      throw error;
+    }
+    trace.complete({
+      stopReason: response.stop_reason ?? "end_turn",
+      usage: { input_tokens: response.usage.input_tokens, output_tokens: response.usage.output_tokens },
+    });
 
     const results: SearchResult[] = [];
     for (const block of response.content as Array<{ type: string; content?: unknown }>) {

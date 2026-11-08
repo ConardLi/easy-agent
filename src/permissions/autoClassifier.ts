@@ -19,6 +19,7 @@ import type { MessageParam, ContentBlockParam } from "@anthropic-ai/sdk/resource
 import { harnessSetting } from "../harness/active.js";
 import { createMessage } from "../services/api/streaming.js";
 import { debugLog } from "../utils/log.js";
+import { markMessageSource } from "../core/messageSources.js";
 import { buildAutoClassifierSystemPrompt, type AutoClassifierPromptOptions } from "./autoClassifierPrompt.js";
 
 /** Max characters of a single tool input we embed before truncating. */
@@ -182,12 +183,13 @@ export async function classifyAutoModeAction(input: AutoClassifierInput): Promis
       model,
       maxTokens: CLASSIFIER_MAX_TOKENS,
       system: systemPrompt,
-      messages: [{ role: "user", content: userContent }],
+      messages: [markMessageSource({ role: "user", content: userContent }, "classifier_input")],
       tools: [CLASSIFY_RESULT_TOOL],
       toolChoice: { type: "tool", name: "classify_result" },
       querySource: "background",
       // The classifier prompt and tool are identical on every call.
       cacheStablePrefix: true,
+      trace: { purpose: "classifier" },
     });
 
     const toolUse = response.content.find((block) => block.type === "tool_use" && block.name === "classify_result");

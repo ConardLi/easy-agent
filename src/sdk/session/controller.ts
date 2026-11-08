@@ -102,6 +102,8 @@ import { EventHub } from "./eventHub.js";
 import { InteractionBroker } from "./interactions.js";
 import { TranscriptRecorder } from "./transcriptRecorder.js";
 import { TurnIndex } from "./turnIndex.js";
+import { configureRequestTrace } from "../../trace/requestTrace.js";
+import { flushRequestTraces } from "../../trace/traceStore.js";
 
 /** Rules a plan approval with "accept edits" adds for the rest of the session. */
 export const PLAN_ACCEPT_EDITS_RULES = ["Write", "Edit", "Bash(npm *)", "Bash(npx *)"] as const;
@@ -220,6 +222,12 @@ export class SessionController {
       if (persist && init.fileHistorySnapshots.length > 0) restoreFileHistorySnapshots(init.fileHistorySnapshots);
       const controller = new SessionController(init);
       controller.#observeStores();
+      configureRequestTrace({
+        cwd: init.cwd,
+        sessionId: () => controller.#sessionId,
+        persist,
+        turnId: () => controller.#engine.getCurrentMessageId(),
+      });
       return controller;
     });
   }
@@ -550,6 +558,7 @@ export class SessionController {
     for (const unsubscribe of this.#unsubscribers.splice(0)) unsubscribe();
     this.hub.close();
     this.#init.onClosed(this.#sessionId);
+    await flushRequestTraces();
   }
 
   async #runTurn(text: string, source: TurnSource): Promise<TurnResult> {

@@ -1,6 +1,7 @@
 import { createMessage } from "../services/api/streaming.js";
 import { harnessSetting } from "../harness/active.js";
 import { debugLog } from "../utils/log.js";
+import { markMessageSource } from "../core/messageSources.js";
 import { buildTokenBudgetSnapshot } from "../utils/tokens.js";
 import type { MessageParam, ContentBlockParam } from "@anthropic-ai/sdk/resources/messages.js";
 import type { Usage } from "../types/message.js";
@@ -238,11 +239,12 @@ async function summarizeMessages(messages: MessageParam[], focus?: string, model
     maxTokens: 8000,
     system: NO_TOOLS_PREAMBLE + BASE_COMPACT_PROMPT + extraInstruction,
     messages: [
-      {
-        role: "user",
-        content: `Conversation to summarize:\n${JSON.stringify(messages, null, 2)}`,
-      },
+      markMessageSource(
+        { role: "user", content: `Conversation to summarize:\n${JSON.stringify(messages, null, 2)}` },
+        "compaction_input",
+      ),
     ],
+    trace: { purpose: "compaction" },
   });
 
   const text = response.content
@@ -330,10 +332,13 @@ export async function compactMessages(
       : findPreservedTailStart(microCompacted, desiredTailCount);
   const tail = microCompacted.slice(tailStart);
   const compacted: MessageParam[] = [
-    {
-      role: "user",
-      content: `This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.\n\n${summary}${tail.length > 0 ? "\n\nRecent messages are preserved verbatim." : ""}`,
-    },
+    markMessageSource(
+      {
+        role: "user",
+        content: `This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.\n\n${summary}${tail.length > 0 ? "\n\nRecent messages are preserved verbatim." : ""}`,
+      },
+      "compaction_summary",
+    ),
     makeCompactBoundary({
       compactType: focus ? "manual" : "auto",
       reason: focus,
