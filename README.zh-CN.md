@@ -191,7 +191,7 @@ git diff | eagent -p "审查这个补丁"              # 合并 stdin 与 Prompt
 |---|---|
 | `/help` | 查看命令和快捷键 |
 | `/model`、`/mode`、`/think`、`/effort` | 控制模型与推理行为 |
-| `/config`、`/status`、`/doctor`、`/context` | 检查配置和运行状态 |
+| `/config`、`/status`、`/doctor`、`/context [details]` | 检查配置、运行状态，以及上一次请求带了什么 |
 | `/resume`、`/history`、`/export`、`/copy` | 管理会话与输出 |
 | `/rewind`、`/diff` | 查看或恢复文件改动 |
 | `/permissions` | 查看权限规则 |

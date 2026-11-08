@@ -231,7 +231,7 @@ test("the context panel splits the next request by category", async () => {
     for (const label of ["系统提示词", "内置工具", "技能", "规则", "对话消息"]) {
       await expect(panel.getByText(label, { exact: true })).toBeVisible({ timeout: 20_000 });
     }
-    await expect(panel.getByText(/· 估算/)).toBeVisible();
+    await expect(panel.getByText(/· 按上次请求估算/)).toBeVisible();
     await panel.getByRole("button", { name: /^规则/ }).click();
     await expect(panel.getByText("AGENTS.md", { exact: true })).toBeVisible();
     await panel.getByRole("button", { name: "在自定义中管理" }).click();

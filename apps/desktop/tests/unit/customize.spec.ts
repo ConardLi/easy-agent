@@ -236,6 +236,8 @@ test("context groups get labels, colors, and readable item names", () => {
     model: "m",
     contextWindow: 1000,
     estimated: true,
+    basis: "estimate",
+    components: [],
     used: 60,
     free: 940,
     conversationTokens: 10,

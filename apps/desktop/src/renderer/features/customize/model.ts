@@ -233,6 +233,16 @@ const ITEM_LABELS: Record<string, string> = {
   user: "你的消息",
   assistant: "模型回复",
   tool_results: "工具结果",
+  command: "命令",
+  skill_body: "技能正文",
+  plan_attachment: "计划模式附件",
+  background_notification: "后台通知",
+  team_message: "团队消息",
+  context_update: "上下文更新",
+  hook_output: "Hook 输出",
+  compaction_summary: "压缩摘要",
+  deferred_tools: "延迟加载的工具清单",
+  meta: "隐藏提示",
 };
 
 const SOURCE_LABELS: Record<string, string> = {

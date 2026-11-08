@@ -822,7 +822,7 @@ export async function* query(params: QueryParams): AsyncGenerator<AgenticLoopEve
         requestId: lastRequestId,
         ...(params.subagentInfo
           ? { agent: { id: params.subagentInfo.agentId, type: params.subagentInfo.agentType } }
-          : {}),
+          : { conversation: state.messages }),
         ...(turnId ? { turnId } : {}),
       },
     });

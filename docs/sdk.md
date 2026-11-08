@@ -194,7 +194,7 @@ const session = await runtime.createSession({
 | `runShell(command)` | Run a shell command without the model, under the usual Bash permission and sandbox rules |
 | `stopBackgroundAgent(agentId)` | Stop a background agent this session started |
 | `getState()` | Snapshot: messages, usage and context size, model, modes, thinking, pending requests, todos, tasks, background agents |
-| `getContext()` | How the next request fills the context window, see [Context breakdown](#context-breakdown) |
+| `getContext()` | How the latest request filled the context window, component by component, see [Context breakdown](#context-breakdown) |
 | `listCheckpoints()` | Prompts the conversation can go back to, see [Checkpoints and rewind](#checkpoints-and-rewind) |
 | `rewind({ to?, scope, dryRun? })` | Restore the files, the conversation, or both to just before a checkpoint's prompt. Rejects with `busy` while a turn runs |
 | `subscribe(listener)` / `events(signal?)` | Event stream, as a callback or an async iterator |
@@ -202,7 +202,7 @@ const session = await runtime.createSession({
 
 ### Context breakdown
 
-`getContext()` measures what the next request would carry: the system prompt the session has fixed, the tool list after ToolSearch, and the conversation. It returns the context window, `used` and `free` tokens, the conversation size and the auto-compact threshold, and `categories` in a fixed order:
+After the session's first model request, `getContext()` reads the record of the latest main-loop request (`basis: "request"`, see [Request records](./configuration.md#request-records)): what that request carried, plus the messages the conversation gained since (at least the reply to it). Before the first request, and when the conversation no longer starts with the request's (after `/clear`, compaction, a rewind, or resume), it falls back to an estimate of what the next request would carry (`basis: "estimate"`): the system prompt the session has fixed, the tool list after ToolSearch, and the conversation. It returns the context window, `used` and `free` tokens, the conversation size and the auto-compact threshold, and `categories` in a fixed order:
 
 | Category | Contents |
 | --- | --- |
@@ -212,9 +212,22 @@ const session = await runtime.createSession({
 | `skills` | Lines of the skill list |
 | `plugins` | Skills, sub-agents, and MCP tools that plugins contribute, one item per plugin |
 | `rules` | AGENT.md and AGENTS.md files and the memory index |
-| `messages` | User messages, assistant replies, and tool results |
+| `messages` | User messages, assistant replies, and tool results; from a request also commands, skill instructions, plan mode attachments, background notifications, team messages, context updates, hook output, the compaction summary, the deferred tool list, and hidden notes |
 
-Each category's items add up to the category, and the categories add up to `used`. `totals` holds the four figures `/context` prints, so the two always agree. All figures are estimates from character counts (`estimated: true`).
+Each category's items add up to the category, and the categories add up to `used`. `totals` holds the four figures `/context` prints, so the two always agree. Token figures are estimates from sizes (`estimated: true`).
+
+From a request, `components` lists every part of the request body in request order:
+
+| Component | Part |
+| --- | --- |
+| `prompt_section:<name>`, `prompt:marker` | System prompt sections and block markers |
+| `rule:<path>`, `rule:memory` | Each loaded AGENT.md or AGENTS.md file, and the memory index |
+| `skill:<source>:<name>`, `agent:<source>:<name>` | Each line of the skill and sub-agent lists |
+| `tool:<name>` | Each tool schema |
+| `message:<source>` | Messages by source, with `count`; a message that holds more than one source (the deferred tool list ToolSearch puts in front of the first message, the context a UserPromptSubmit hook puts before the prompt) is split |
+| `request:envelope`, `request:framing` | The model, parameters, and field names, and the JSON around the system prompt text and between tools and messages; no tokens |
+
+Each component has its `part`, the `category` and `item` it counts toward (null for the envelope and framing), `bytes`, `tokens`, and `count`. The ids are the [component ids](#agents) of the Agent's inventory. For the Anthropic protocol the bytes of the components, without the messages since the request, are exactly the body sent. `request` describes that request: `requestId`, `startedAt`, `turnId`, `protocol`, `model`, `bytes` of the body, `inputTokens` the provider reported (uncached, cache reads, and cache writes), and `unsent` (messages, bytes, and tokens added since). For OpenAI and Gemini profiles the components measure the request before translation and `bytes` is the translated body. Hook context that Pre- and PostToolUse hooks add to a tool result counts as the tool result. An estimate has empty `components` and no `request`.
 
 ### Checkpoints and rewind
 

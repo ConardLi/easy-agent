@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { MessageParam } from "@anthropic-ai/sdk/resources/messages.js";
 import { query, type LoopTerminationReason } from "./agenticLoop.js";
-import { markMessageSource } from "./messageSources.js";
+import { markLeadingSource, markMessageSource, USER_CONTEXT_PREFIX } from "./messageSources.js";
 import {
   loadPermissionSettings,
   type PermissionDecision,
@@ -107,6 +107,7 @@ import type { CommandContext } from "./queryEngine/commands/context.js";
 import { handleStatusCommand, handleContextCommand, handleDoctorCommand } from "./queryEngine/commands/diagnostics.js";
 import { handleHarnessCommand } from "./queryEngine/commands/harness.js";
 import { computeContextBreakdown, type ContextBreakdown } from "./queryEngine/contextBreakdown.js";
+import { getLatestMainRequest } from "../trace/requestTrace.js";
 import { handleDiffCommand } from "./queryEngine/commands/diff.js";
 import { handleCopyCommand, handleExportCommand, handleResumeCommand } from "./queryEngine/commands/sessionExport.js";
 import {
@@ -645,6 +646,7 @@ export class QueryEngine {
     // calls are the background-notification drain path — there's no
     // user prompt to feed the hook.
     let promptToSubmit = trimmed;
+    let hookContextPrefix: string | null = null;
     if (trimmed.length > 0) {
       const userOutcome = await runUserPromptSubmitHooks({
         prompt: trimmed,
@@ -659,7 +661,8 @@ export class QueryEngine {
         return { handled: true };
       }
       if (userOutcome.additionalContext) {
-        promptToSubmit = `[user-context]\n${userOutcome.additionalContext}\n\n${trimmed}`;
+        hookContextPrefix = `${USER_CONTEXT_PREFIX}${userOutcome.additionalContext}\n\n`;
+        promptToSubmit = `${hookContextPrefix}${trimmed}`;
       }
       if (userOutcome.systemMessage) {
         yield {
@@ -824,6 +827,7 @@ export class QueryEngine {
         role: "user",
         content: built.content as MessageParam["content"],
       };
+      if (hookContextPrefix) markLeadingSource(userMessage, "hook_output", hookContextPrefix);
       this.messages = [...this.messages, userMessage];
       yield { type: "messages_updated", messages: [...this.messages] };
     }
@@ -965,6 +969,8 @@ export class QueryEngine {
       permissionMode: this.currentPermissionMode,
       messages: this.messages,
       systemPrompt: await this.promptContext.peek(),
+      lastRequest: getLatestMainRequest(),
+      busy: this.abortController !== null,
     });
   }
 
@@ -977,7 +983,7 @@ export class QueryEngine {
           type: "command",
           kind: "info",
           message:
-            "Commands: /help /clear /config [list|get|set] /cost /model [name|list|default] /mode [default|plan|auto] /think [on|off|<budget>] /effort [low|medium|high|max] /tasks [task|todo|reset] /mcp [tools <name>|reconnect <name>] /plugin [install|enable|disable|marketplace|reload ...] /reload-plugins /skills [reload] /agents /hooks /output-style [name] /history /compact /rewind [n] /status /context /doctor /copy [n] /export [file] /resume [n|id] /diff [n] /init /permissions [allow|deny|remove <rule>] /memory [edit <n>] /<skill-or-command> [args] /exit /quit /bye",
+            "Commands: /help /clear /config [list|get|set] /cost /model [name|list|default] /mode [default|plan|auto] /think [on|off|<budget>] /effort [low|medium|high|max] /tasks [task|todo|reset] /mcp [tools <name>|reconnect <name>] /plugin [install|enable|disable|marketplace|reload ...] /reload-plugins /skills [reload] /agents /hooks /output-style [name] /history /compact /rewind [n] /status /context [details] /doctor /copy [n] /export [file] /resume [n|id] /diff [n] /init /permissions [allow|deny|remove <rule>] /memory [edit <n>] /<skill-or-command> [args] /exit /quit /bye",
         };
         return { handled: true };
       case "config":
@@ -1238,7 +1244,7 @@ export class QueryEngine {
       case "status":
         return yield* handleStatusCommand(this.commandContext());
       case "context":
-        return yield* handleContextCommand(this.commandContext());
+        return yield* handleContextCommand(this.commandContext(), args);
       case "harness":
         return yield* handleHarnessCommand(this.commandContext(), args);
       case "doctor":

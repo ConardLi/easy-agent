@@ -20,7 +20,7 @@ import { toolToApiParam, type ApiToolParam, type Tool } from "../tools/Tool.js";
 import type { ContentBlock, ToolReferenceBlock } from "../types/message.js";
 import { redactUrlForDisplay } from "../config/redaction.js";
 import { debugLog } from "./log.js";
-import { markMessageSource } from "../core/messageSources.js";
+import { copyMessageSource, DEFERRED_TOOLS_PREFIX, markMessageSource } from "../core/messageSources.js";
 import { featureSettingsOf, type FeatureSettings } from "../config/features.js";
 import { activeHarness } from "../harness/active.js";
 import { getContextWindowForModel } from "./tokens.js";
@@ -442,7 +442,7 @@ export function prepareToolSearchRequest(params: PrepareToolSearchRequestParams)
  * caller passes the shaped copy to the API only.
  */
 function prependDeferredToolsAnnouncement(messages: readonly MessageParam[], deferredList: string): MessageParam[] {
-  const announcement = `<available-deferred-tools>\n${deferredList}\n</available-deferred-tools>`;
+  const announcement = `${DEFERRED_TOOLS_PREFIX}\n${deferredList}\n</available-deferred-tools>`;
   const first = messages[0];
   if (!first || first.role !== "user") {
     return [markMessageSource({ role: "user", content: announcement }, "deferred_tools"), ...messages];
@@ -451,10 +451,10 @@ function prependDeferredToolsAnnouncement(messages: readonly MessageParam[], def
     typeof first.content === "string"
       ? [{ type: "text", text: first.content }]
       : (first.content as unknown as ContentBlock[]);
-  const merged: MessageParam = {
+  const merged: MessageParam = copyMessageSource(first, {
     ...first,
     content: [{ type: "text", text: announcement }, ...existing] as unknown as MessageParam["content"],
-  };
+  });
   return [merged, ...messages.slice(1)];
 }
 

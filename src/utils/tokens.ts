@@ -49,6 +49,24 @@ function roughTokenCountEstimation(content: string, charsPerToken = TEXT_CHARS_P
   return Math.max(1, Math.round(content.length / charsPerToken));
 }
 
+/** Split `total` in proportion to `weights`; the parts are integers that add up to `total`. */
+export function distributeTokens(total: number, weights: readonly number[]): number[] {
+  if (weights.length === 0) return [];
+  const sum = weights.reduce((acc, weight) => acc + Math.max(0, weight), 0);
+  if (sum === 0) return weights.map((_, index) => (index === 0 ? total : 0));
+  const exact = weights.map((weight) => (Math.max(0, weight) / sum) * total);
+  const parts = exact.map(Math.floor);
+  let rest = total - parts.reduce((acc, part) => acc + part, 0);
+  const order = exact.map((value, index) => ({ index, remainder: value - Math.floor(value) }));
+  order.sort((a, b) => b.remainder - a.remainder || a.index - b.index);
+  for (const { index } of order) {
+    if (rest <= 0) break;
+    parts[index]! += 1;
+    rest -= 1;
+  }
+  return parts;
+}
+
 /** Estimated tokens of prompt text, zero for empty text. */
 export function estimateTextTokens(text: string): number {
   return Math.max(0, Math.round(text.length / TEXT_CHARS_PER_TOKEN));

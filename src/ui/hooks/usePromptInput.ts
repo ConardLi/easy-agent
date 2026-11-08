@@ -102,7 +102,7 @@ const BUILTIN_COMMANDS: CommandSuggestion[] = [
   { name: "/compact", description: "Compact the conversation context" },
   { name: "/rewind", description: "Restore files to a previous turn (alias: /checkpoint)" },
   { name: "/status", description: "Show a snapshot of the current session config" },
-  { name: "/context", description: "Visualize context window usage by category" },
+  { name: "/context", description: "Context window usage by category; /context details lists every component" },
   { name: "/doctor", description: "Run an environment health check" },
   { name: "/copy", description: "Copy an assistant reply to the clipboard (/copy [n])" },
   { name: "/export", description: "Export the conversation to a Markdown file (/export [file])" },

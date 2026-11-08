@@ -75,7 +75,10 @@ try {
     text: filler(2000, index),
   }));
   const systemText = parts.map((part) => part.text).join("\n\n");
-  describeSystemPrompt(systemText, parts);
+  describeSystemPrompt(
+    systemText,
+    parts.map((part, index) => ({ ...part, text: index < parts.length - 1 ? `${part.text}\n\n` : part.text })),
+  );
 
   const sessionId = createSessionId();
   const scope = createSessionScope();

@@ -9,10 +9,14 @@
 import type { MessageParam } from "@anthropic-ai/sdk/resources/messages.js";
 import type { LoopTerminationReason } from "../core/agenticLoop.js";
 import type {
+  ContextBasis,
   ContextBreakdown,
   ContextCategory,
   ContextCategoryId,
+  ContextComponent,
   ContextItem,
+  ContextPart,
+  ContextRequest,
 } from "../core/queryEngine/contextBreakdown.js";
 import type {
   DiffViewData,
@@ -46,9 +50,13 @@ import type { EffortLevel, ThinkingConfig } from "../utils/thinking.js";
 
 export type {
   BashProgress,
+  ContextBasis,
   ContextCategory,
   ContextCategoryId,
+  ContextComponent,
   ContextItem,
+  ContextPart,
+  ContextRequest,
   DiffViewData,
   EffortLevel,
   LoopTerminationReason,

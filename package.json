@@ -71,6 +71,7 @@
     "test:harness-manage": "node --import tsx src/scripts/test-harness-manage.ts",
     "test:harness-session": "node --import tsx src/scripts/test-harness-session.ts",
     "test:request-trace": "node --import tsx src/scripts/test-request-trace.ts",
+    "test:context-coverage": "node --import tsx src/scripts/test-context-coverage.ts",
     "perf:trace": "node --import tsx src/scripts/perf-request-trace.ts",
     "test:providerstream": "tsx src/scripts/test-providerstream-characterization.ts",
     "test:request-content": "node --import tsx src/scripts/test-request-content-characterization.ts",

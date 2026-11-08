@@ -19,11 +19,17 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash, randomUUID } from "node:crypto";
 import type { MessageParam } from "@anthropic-ai/sdk/resources/messages.js";
 import { harnessSetting } from "../harness/active.js";
-import { markedMessageSource, messageSourceOf, type MessageSource } from "../core/messageSources.js";
+import {
+  hasMixedSources,
+  markedMessageSource,
+  messageParts,
+  messageSourceOf,
+  type MessageSource,
+} from "../core/messageSources.js";
 import { defineSessionState } from "../state/sessionScope.js";
 import type { Usage } from "../types/message.js";
 import { debugLog } from "../utils/log.js";
-import { estimateJsonTokens, estimateMessageTokens, estimateTextTokens } from "../utils/tokens.js";
+import { distributeTokens, estimateJsonTokens, estimateMessageTokens, estimateTextTokens } from "../utils/tokens.js";
 import { appendRequestRecord } from "./traceStore.js";
 
 export type RequestPurpose = "main" | "subagent" | "classifier" | "webFetch" | "webSearch" | "compaction";
@@ -35,6 +41,8 @@ export interface RequestTraceContext {
   requestId?: string;
   agent?: { id: string; type: string };
   turnId?: string;
+  /** The conversation a main-loop request was made from; kept in memory with the latest record, never written. */
+  conversation?: readonly MessageParam[];
 }
 
 export interface TraceSegment {
@@ -52,6 +60,14 @@ export interface MessageTraceSegment extends TraceSegment {
   index: number;
   role: MessageParam["role"];
   source: MessageSource;
+  /**
+   * For a message with more than one source (the deferred tool list in front
+   * of the first prompt, a hook's context before what the user typed): the
+   * message split by source, in order. `hash` is of the part's content (see
+   * `MessagePart`); the bytes add up to the message's, the JSON around the
+   * content counted with the first part of the message's own source.
+   */
+  parts?: Array<{ source: MessageSource; bytes: number; tokens: number; hash: string }>;
 }
 
 export interface TracePart<S extends TraceSegment> {
@@ -109,6 +125,10 @@ export interface RequestRecord {
   params: RequestParamsRecord;
   /** For protocols translated from the Anthropic shape: bytes of the body actually sent. The parts are measured before translation. */
   wireBytes?: number;
+  /** For the Anthropic protocol: bytes of the body sent, the envelope and the three parts. */
+  bodyBytes?: number;
+  /** Bytes of the body outside the system, tools, and messages values: the model, parameters, and keys. */
+  envelopeBytes?: number;
   /** Token figures of segments are estimates; the result's usage is the provider's. */
   estimated: true;
   system: TracePart<TraceSegment>;
@@ -134,6 +154,8 @@ export interface SentRequest {
   sourceMessages: readonly MessageParam[];
   params: RequestParamsRecord;
   wireBytes?: number;
+  /** For the Anthropic protocol: the body sent, of which `system`, `tools`, and `messages` are the fields above. */
+  body?: object;
 }
 
 export type TraceLevel = "off" | "summary";
@@ -170,6 +192,15 @@ export function getLatestRequestRecord(purpose?: RequestPurpose): RequestRecord 
   return (purpose ? state.latestByPurpose.get(purpose) : state.latest) ?? null;
 }
 
+const conversations = new WeakMap<RequestRecord, readonly MessageParam[]>();
+
+/** The latest main-loop request of the active session with the conversation it was made from. */
+export function getLatestMainRequest(): { record: RequestRecord; conversation: readonly MessageParam[] } | null {
+  const record = traceState().latestByPurpose.get("main");
+  const conversation = record && conversations.get(record);
+  return record && conversation ? { record, conversation } : null;
+}
+
 /** `trace.level` of the running Agent; `full` records as `summary` until it exists. */
 export function traceLevel(): TraceLevel {
   return harnessSetting<string>("trace.level") === "off" ? "off" : "summary";
@@ -200,23 +231,15 @@ const layouts = new Map<string, ReadonlyArray<{ component: string; text: string 
 
 /**
  * Say which component each part of a system prompt comes from. `parts` must
- * join to `text` with `separator`; the separator after a part counts toward
- * that part. A request whose system prompt was described gets one segment
- * per part, others one segment for the whole prompt.
+ * join to `text`. A request whose system prompt was described gets one
+ * segment per part, others one segment for the whole prompt.
  */
-export function describeSystemPrompt(
-  text: string,
-  parts: ReadonlyArray<{ component: string; text: string }>,
-  separator = "\n\n",
-): void {
-  if (parts.map((part) => part.text).join(separator) !== text) return;
+export function describeSystemPrompt(text: string, parts: ReadonlyArray<{ component: string; text: string }>): void {
+  if (parts.map((part) => part.text).join("") !== text) return;
   layouts.delete(text);
   layouts.set(
     text,
-    parts.map((part, index) => ({
-      component: part.component,
-      text: index < parts.length - 1 ? part.text + separator : part.text,
-    })),
+    parts.map((part) => ({ component: part.component, text: part.text })),
   );
   if (layouts.size > MAX_LAYOUTS) layouts.delete(layouts.keys().next().value!);
 }
@@ -295,37 +318,102 @@ function measureTools(tools: readonly object[] | undefined): RequestRecord["tool
  * drops thinking-only assistant messages and copies the ones it changes, so
  * walk both lists in order and match by role where the objects differ.
  */
-function sourcesOf(sent: readonly MessageParam[], original: readonly MessageParam[]): MessageSource[] {
+function originalsOf(sent: readonly MessageParam[], original: readonly MessageParam[]): MessageParam[] {
   let next = 0;
   return sent.map((message) => {
     let index = original.indexOf(message, next);
     if (index === -1) {
       // A message made for this request alone, such as the deferred tool list.
-      const marked = markedMessageSource(message);
-      if (marked) return marked;
+      if (markedMessageSource(message)) return message;
       index = next;
       while (index < original.length && original[index]!.role !== message.role) index++;
     }
     const source = original[index];
-    if (!source) return messageSourceOf(message);
+    if (!source) return message;
     next = index + 1;
-    return messageSourceOf(source);
+    return source;
   });
 }
 
+type MessageSplit = NonNullable<MessageTraceSegment["parts"]>;
+/** Splits of sent messages with more than one source; a copy made for one request is split once. */
+const splits = new WeakMap<object, MessageSplit | null>();
+
+/** `message` split by source, or null when one source covers it all. */
+function splitMessage(
+  message: MessageParam,
+  original: MessageParam,
+  bytes: number,
+  tokens: number,
+): MessageSplit | null {
+  if (!hasMixedSources(message, original)) return null;
+  const cached = splits.get(message);
+  if (cached !== undefined) return cached;
+  const parts = messageParts(message, original);
+  let split: MessageSplit | null = null;
+  if (new Set(parts.map((part) => part.source)).size > 1) {
+    const sizes = parts.map((part) => Buffer.byteLength(part.content));
+    const own = messageSourceOf(original);
+    const framed = Math.max(
+      0,
+      parts.findIndex((part) => part.source === own),
+    );
+    sizes[framed]! += bytes - sizes.reduce((sum, size) => sum + size, 0);
+    const shares = distributeTokens(tokens, sizes);
+    split = parts.map((part, index) => ({
+      source: part.source,
+      bytes: sizes[index]!,
+      tokens: shares[index]!,
+      hash: digest(part.content),
+    }));
+  }
+  splits.set(message, split);
+  return split;
+}
+
+/**
+ * Measure one message as a request record does: `original` is the message of
+ * the conversation it was made from, which carries its source.
+ */
+export function measureMessage(
+  message: MessageParam,
+  index: number,
+  original: MessageParam = message,
+): { segment: MessageTraceSegment; marked: boolean } {
+  const { bytes, hash, tokens, marked } = measureJson(message, () => estimateMessageTokens(message));
+  const source = messageSourceOf(original);
+  const parts = splitMessage(message, original, bytes, tokens);
+  return {
+    segment: {
+      index,
+      role: message.role,
+      source,
+      component: `message:${source}`,
+      bytes,
+      tokens,
+      hash,
+      ...(parts ? { parts } : {}),
+    },
+    marked,
+  };
+}
+
 function measureMessages(sent: SentRequest): { part: RequestRecord["messages"]; markers: number } {
-  const sources = sourcesOf(sent.messages, sent.sourceMessages);
+  const originals = originalsOf(sent.messages, sent.sourceMessages);
   let markers = 0;
   const bySource: RequestRecord["messages"]["bySource"] = {};
-  const segments = sent.messages.map((message, index): MessageTraceSegment => {
-    const { bytes, hash, tokens, marked } = measureJson(message, () => estimateMessageTokens(message));
-    if (marked) markers++;
-    const source = sources[index]!;
+  const count = (source: MessageSource, bytes: number, tokens: number) => {
     const total = (bySource[source] ??= { count: 0, bytes: 0, tokens: 0 });
     total.count++;
     total.bytes += bytes;
     total.tokens += tokens;
-    return { index, role: message.role, source, component: `message:${source}`, bytes, tokens, hash };
+  };
+  const segments = sent.messages.map((message, index): MessageTraceSegment => {
+    const { segment, marked } = measureMessage(message, index, originals[index]);
+    if (marked) markers++;
+    if (segment.parts) for (const part of segment.parts) count(part.source, part.bytes, part.tokens);
+    else count(segment.source, segment.bytes, segment.tokens);
+    return segment;
   });
   const bytes = segments.reduce((sum, segment) => sum + segment.bytes, 0) + Math.max(0, segments.length - 1) + 2;
   return {
@@ -339,6 +427,28 @@ function measureMessages(sent: SentRequest): { part: RequestRecord["messages"]; 
     },
     markers,
   };
+}
+
+/**
+ * Bytes of the JSON body and of its envelope, without serializing the parts
+ * again: the body is the envelope's fields plus `"key":value` for each part.
+ */
+function bodySize(
+  body: object,
+  parts: ReadonlyArray<readonly [key: string, bytes: number | undefined]>,
+): { bodyBytes: number; envelopeBytes: number } {
+  const envelope: Record<string, unknown> = { ...body };
+  for (const [key] of parts) delete envelope[key];
+  let entries = Object.values(envelope).filter((value) => value !== undefined && typeof value !== "function").length;
+  let bodyBytes = Buffer.byteLength(JSON.stringify(envelope));
+  let valueBytes = 0;
+  for (const [key, bytes] of parts) {
+    if (bytes === undefined) continue;
+    bodyBytes += (entries > 0 ? 1 : 0) + Buffer.byteLength(JSON.stringify(key)) + 1 + bytes;
+    valueBytes += bytes;
+    entries++;
+  }
+  return { bodyBytes, envelopeBytes: bodyBytes - valueBytes };
 }
 
 function countMarkers(value: unknown): number {
@@ -395,6 +505,15 @@ export class RequestTrace {
     try {
       const purpose = this.#context.purpose;
       const { part: messages, markers } = measureMessages(request);
+      const system = measureSystem(request, purpose);
+      const tools = measureTools(request.tools);
+      const size =
+        request.body &&
+        bodySize(request.body, [
+          ["system", request.system === undefined ? undefined : system.bytes],
+          ["tools", request.tools === undefined ? undefined : request.tools.length > 0 ? tools.bytes : 2],
+          ["messages", messages.bytes],
+        ]);
       const sinkSessionId = this.#sink?.sessionId ?? this.#state.sink?.sessionId();
       this.#record = {
         requestId: this.requestId,
@@ -411,9 +530,10 @@ export class RequestTrace {
           cacheMarkers: countMarkers(request.system) + countMarkers(request.tools) + markers,
         },
         ...(request.wireBytes !== undefined ? { wireBytes: request.wireBytes } : {}),
+        ...(size ?? {}),
         estimated: true,
-        system: measureSystem(request, purpose),
-        tools: measureTools(request.tools),
+        system,
+        tools,
         messages,
       };
     } catch (error) {
@@ -456,6 +576,7 @@ export class RequestTrace {
     };
     this.#state.latest = record;
     this.#state.latestByPurpose.set(record.purpose, record);
+    if (this.#context.conversation) conversations.set(record, this.#context.conversation);
     if (this.#sink) appendRequestRecord(this.#sink, record);
   }
 }

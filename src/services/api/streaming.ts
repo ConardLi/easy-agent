@@ -245,6 +245,7 @@ async function* streamOnce(
     tools: baseParams.tools,
     messages: baseParams.messages,
     sourceMessages: params.messages,
+    body: requestParams,
     params: {
       maxTokens,
       ...(thinkingParam ? { thinking: thinkingParam } : {}),
@@ -674,6 +675,7 @@ async function createMessageTraced(
         tools: prompt.tools,
         messages: prompt.messages,
         sourceMessages: params.messages,
+        body,
         params: {
           maxTokens,
           betas: params.betaHeaders ?? [],

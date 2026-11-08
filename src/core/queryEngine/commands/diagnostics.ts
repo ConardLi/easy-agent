@@ -6,6 +6,7 @@
  * and yields the same QueryEngineEvent stream the original methods produced.
  */
 
+import * as path from "node:path";
 import { getAllTools } from "../../../tools/index.js";
 import {
   getProfileBaseURL,
@@ -36,6 +37,7 @@ import { getActivePluginErrors, getActivePlugins } from "../../../plugins/runtim
 import { loadPluginStateDiagnostics } from "../../../plugins/state.js";
 import { getLastPrivateDataSecurityReport, inspectPrivateDataSecurity } from "../../../utils/privateData.js";
 import type { QueryEngineEvent } from "../types.js";
+import type { ContextBreakdown, ContextCategoryId } from "../contextBreakdown.js";
 import type { CommandContext } from "./context.js";
 
 export async function* handleStatusCommand(
@@ -76,16 +78,39 @@ function formatStatusTokens(usage: Usage): string {
   return `${line} / cache read ${usage.cache_read_input_tokens ?? 0} / cache write ${usage.cache_creation_input_tokens ?? 0} (${Math.round(hitRate * 100)}% cached)`;
 }
 
+const fmt = (n: number): string => n.toLocaleString("en-US");
+
+const CATEGORY_TITLES: Record<ContextCategoryId, string> = {
+  system: "System prompt",
+  tools: "Tools",
+  mcp: "MCP tools",
+  skills: "Skills",
+  plugins: "Plugins",
+  rules: "AGENT.md + memory",
+  messages: "Messages",
+};
+
 /**
  * `/context` — visualize how the context window is currently split across
  * System prompt / AGENT.md + memory / Tool definitions / Conversation history /
  * Free space, each as a proportional bar. The figures come from the session's
- * context breakdown, the same data `AgentSession.getContext()` returns.
+ * context breakdown, the same data `AgentSession.getContext()` returns: the
+ * latest request once there is one, an estimate before. `/context details`
+ * lists every component.
  */
 export async function* handleContextCommand(
   ctx: CommandContext,
+  args: readonly string[] = [],
 ): AsyncGenerator<QueryEngineEvent, { handled: boolean }> {
+  if (args.length > 0 && args[0] !== "details") {
+    yield { type: "command", kind: "error", message: "Usage: /context [details]" };
+    return { handled: true };
+  }
   const breakdown = await ctx.getContextBreakdown();
+  if (args[0] === "details") {
+    yield { type: "command", kind: "info", message: formatContextDetails(breakdown, ctx.cwd) };
+    return { handled: true };
+  }
   const { model, contextWindow, used, free, toolSearch } = breakdown;
   const {
     systemPrompt: systemCoreTokens,
@@ -94,7 +119,6 @@ export async function* handleContextCommand(
     conversation: historyTokens,
   } = breakdown.totals;
 
-  const fmt = (n: number): string => n.toLocaleString("en-US");
   const pct = (n: number): string => `${((n / contextWindow) * 100).toFixed(1)}%`;
   const bar = (n: number): string => {
     const width = 20;
@@ -115,8 +139,23 @@ export async function* handleContextCommand(
     row("Conversation history", historyTokens),
     row("Free space", free),
     "",
-    `Estimated used: ${fmt(used)} / ${fmt(contextWindow)} (${pct(used)})`,
   ];
+  const { request } = breakdown;
+  if (request) {
+    lines.push(
+      `Used: ${fmt(used)} / ${fmt(contextWindow)} (${pct(used)}), read from the last request` +
+        (request.unsent.messages > 0
+          ? ` and ${request.unsent.messages} message(s) since (~${fmt(request.unsent.tokens)} tok)`
+          : ""),
+      `Last request: ${fmt(request.bytes)} bytes to ${request.model}; ` +
+        (request.inputTokens > 0
+          ? `the provider counted ${fmt(request.inputTokens)} input tokens`
+          : "the provider reported no input tokens"),
+      "Token figures are estimated from sizes. /context details lists every component.",
+    );
+  } else {
+    lines.push(`Estimated used: ${fmt(used)} / ${fmt(contextWindow)} (${pct(used)})`);
+  }
   if (toolSearch.enabled) {
     const { loaded, deferred } = toolSearch;
     lines.push(
@@ -138,6 +177,69 @@ export async function* handleContextCommand(
   }
   yield { type: "command", kind: "info", message: lines.join("\n") };
   return { handled: true };
+}
+
+/** A rule file inside the workspace is shown by its relative path. */
+function shortComponentId(id: string, cwd: string): string {
+  if (!id.startsWith("rule:")) return id;
+  const relative = path.relative(cwd, id.slice("rule:".length));
+  return relative && !relative.startsWith("..") && !path.isAbsolute(relative) ? `rule:${relative}` : id;
+}
+
+/** `/context details`: every component of the last request by category, or the estimate's items before one. */
+function formatContextDetails(breakdown: ContextBreakdown, cwd: string): string {
+  const lines = [`Context details (${breakdown.model})`, ""];
+  const row = (label: string, tokens: number, bytes?: number) =>
+    `  ${label.padEnd(44)} ${`${fmt(tokens)} tok`.padStart(12)}` +
+    (bytes === undefined ? "" : `${`${fmt(bytes)} B`.padStart(14)}`);
+  const { request } = breakdown;
+  if (!request) {
+    lines.push(
+      "Estimated: no request has been sent yet, so these are the items the next request would carry.",
+      "Components with their bytes are listed after the first request.",
+    );
+    for (const category of breakdown.categories) {
+      if (category.tokens === 0) continue;
+      lines.push("", `${CATEGORY_TITLES[category.id]} (${fmt(category.tokens)} tok)`);
+      for (const item of category.items) lines.push(row(item.label, item.tokens));
+    }
+    lines.push("", `Total: ${fmt(breakdown.used)} tok`);
+    return lines.join("\n");
+  }
+
+  const attributed = breakdown.components.reduce((sum, component) => sum + component.bytes, 0) - request.unsent.bytes;
+  lines.push(
+    `From the last request (${request.requestId}): ${fmt(request.bytes)} bytes to ${request.model}.`,
+    request.protocol === "anthropic"
+      ? `The components below account for ${fmt(attributed)} of them.`
+      : `The components measure the request before translation to ${request.protocol}: ${fmt(attributed)} bytes.`,
+  );
+  if (request.unsent.messages > 0) {
+    lines.push(
+      `Messages include ${request.unsent.messages} added since the request: ${fmt(request.unsent.bytes)} bytes, ~${fmt(request.unsent.tokens)} tok.`,
+    );
+  }
+  for (const category of breakdown.categories) {
+    const components = breakdown.components.filter((component) => component.category === category.id);
+    if (components.length === 0) continue;
+    lines.push("", `${CATEGORY_TITLES[category.id]} (${fmt(category.tokens)} tok)`);
+    for (const component of components) {
+      const id = shortComponentId(component.id, cwd);
+      const label = component.count > 1 ? `${id} (${component.count})` : id;
+      lines.push(row(label, component.tokens, component.bytes));
+    }
+  }
+  const framing = breakdown.components.filter((component) => component.category === null);
+  if (framing.length > 0) {
+    lines.push("", "Request envelope and JSON framing (no tokens)");
+    for (const component of framing) lines.push(row(component.id, component.tokens, component.bytes));
+  }
+  lines.push(
+    "",
+    `Total: ${fmt(breakdown.used)} tok, ${fmt(attributed + request.unsent.bytes)} B`,
+    "Token figures are estimated from sizes.",
+  );
+  return lines.join("\n");
 }
 
 /** Best-effort reachability probe for the API endpoint (5s timeout). */

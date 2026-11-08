@@ -191,7 +191,7 @@ Run `eagent --help` for every startup option. Useful REPL commands include:
 |---|---|
 | `/help` | List commands and shortcuts |
 | `/model`, `/mode`, `/think`, `/effort` | Control model and reasoning behavior |
-| `/config`, `/status`, `/doctor`, `/context` | Inspect configuration and runtime health |
+| `/config`, `/status`, `/doctor`, `/context [details]` | Inspect configuration, runtime health, and what the last request carried |
 | `/resume`, `/history`, `/export`, `/copy` | Work with sessions and output |
 | `/rewind`, `/diff` | Inspect or restore file changes |
 | `/permissions` | Inspect permission rules |

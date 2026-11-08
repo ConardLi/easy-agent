@@ -8370,6 +8370,13 @@
               "type": "boolean",
               "const": true
             },
+            "basis": {
+              "type": "string",
+              "enum": [
+                "request",
+                "estimate"
+              ]
+            },
             "used": {
               "type": "integer",
               "minimum": 0,
@@ -8507,19 +8514,160 @@
                 "loaded"
               ],
               "additionalProperties": {}
+            },
+            "components": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "part": {
+                    "type": "string",
+                    "enum": [
+                      "system",
+                      "tools",
+                      "messages",
+                      "request"
+                    ]
+                  },
+                  "category": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "system",
+                          "tools",
+                          "mcp",
+                          "skills",
+                          "plugins",
+                          "rules",
+                          "messages"
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "item": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "bytes": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "tokens": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "count": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "id",
+                  "part",
+                  "category",
+                  "item",
+                  "bytes",
+                  "tokens",
+                  "count"
+                ],
+                "additionalProperties": {}
+              }
+            },
+            "request": {
+              "type": "object",
+              "properties": {
+                "requestId": {
+                  "type": "string"
+                },
+                "startedAt": {
+                  "type": "string"
+                },
+                "turnId": {
+                  "type": "string"
+                },
+                "protocol": {
+                  "type": "string"
+                },
+                "model": {
+                  "type": "string"
+                },
+                "bytes": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "inputTokens": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "unsent": {
+                  "type": "object",
+                  "properties": {
+                    "messages": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "bytes": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "tokens": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "messages",
+                    "bytes",
+                    "tokens"
+                  ]
+                }
+              },
+              "required": [
+                "requestId",
+                "startedAt",
+                "protocol",
+                "model",
+                "bytes",
+                "inputTokens",
+                "unsent"
+              ],
+              "additionalProperties": {}
             }
           },
           "required": [
             "model",
             "contextWindow",
             "estimated",
+            "basis",
             "used",
             "free",
             "conversationTokens",
             "autoCompactThreshold",
             "categories",
             "totals",
-            "toolSearch"
+            "toolSearch",
+            "components"
           ],
           "additionalProperties": {}
         },

@@ -276,7 +276,8 @@ function ContextTab({ view }: { view: SessionView }) {
               {breakdown ? (
                 <>
                   每轮固定 <span className="tabular text-fg-2">{tokens(used - conversation)}</span> · 对话{" "}
-                  <span className="tabular text-fg-2">{tokens(conversation)}</span> · 估算
+                  <span className="tabular text-fg-2">{tokens(conversation)}</span> ·{" "}
+                  {breakdown.basis === "request" ? "按上次请求估算" : "估算"}
                 </>
               ) : (
                 "正在计算下一次请求的上下文…"

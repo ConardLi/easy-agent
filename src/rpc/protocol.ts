@@ -300,18 +300,33 @@ const ContextItemSchema = z
   })
   .loose();
 
+const ContextCategoryIdSchema = z.enum(["system", "tools", "mcp", "skills", "plugins", "rules", "messages"]);
+
+const ContextComponentSchema = z
+  .object({
+    id: z.string(),
+    part: z.enum(["system", "tools", "messages", "request"]),
+    category: ContextCategoryIdSchema.nullable(),
+    item: z.string().nullable(),
+    bytes: z.number().int().nonnegative(),
+    tokens: z.number().int().nonnegative(),
+    count: z.number().int().positive(),
+  })
+  .loose();
+
 const SessionContextSchema = z
   .object({
     model: z.string(),
     contextWindow: z.number().int(),
     estimated: z.literal(true),
+    basis: z.enum(["request", "estimate"]),
     used: z.number().int().nonnegative(),
     free: z.number().int().nonnegative(),
     conversationTokens: z.number().int().nonnegative(),
     autoCompactThreshold: z.number().int().nonnegative(),
     categories: z.array(
       z.object({
-        id: z.enum(["system", "tools", "mcp", "skills", "plugins", "rules", "messages"]),
+        id: ContextCategoryIdSchema,
         tokens: z.number().int().nonnegative(),
         items: z.array(ContextItemSchema),
       }),
@@ -323,6 +338,24 @@ const SessionContextSchema = z
       conversation: z.number().int(),
     }),
     toolSearch: z.object({ enabled: z.boolean(), deferred: z.array(z.string()), loaded: z.array(z.string()) }).loose(),
+    components: z.array(ContextComponentSchema),
+    request: z
+      .object({
+        requestId: z.string(),
+        startedAt: z.string(),
+        turnId: z.string().optional(),
+        protocol: z.string(),
+        model: z.string(),
+        bytes: z.number().int().nonnegative(),
+        inputTokens: z.number().int().nonnegative(),
+        unsent: z.object({
+          messages: z.number().int().nonnegative(),
+          bytes: z.number().int().nonnegative(),
+          tokens: z.number().int().nonnegative(),
+        }),
+      })
+      .loose()
+      .optional(),
   })
   .loose();
 
