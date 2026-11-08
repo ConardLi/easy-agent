@@ -96,6 +96,24 @@ async function main(): Promise<void> {
     assert(!one.isError && (await fs.readFile(file, "utf-8")) === "ALPHA beta", "Edit unique match still works");
   });
 
+  // Replacement text must be literal, including JavaScript substitution sequences.
+  for (const replacement of ["$&", "$$", "$`", "$'", "IFS=$'\\n'", "$1", "plain"]) {
+    for (const replaceAll of [false, true]) {
+      for (const multi of [false, true]) {
+        await withTempFile("before\nTARGET\nafter", async (file, cwd) => {
+          const edit = { old_string: "TARGET", new_string: replacement, replace_all: replaceAll };
+          const result = multi
+            ? await multiEditTool.call({ file_path: file, edits: [edit] }, { cwd })
+            : await fileEditTool.call({ file_path: file, ...edit }, { cwd });
+          assert(
+            !result.isError && (await fs.readFile(file, "utf-8")) === `before\n${replacement}\nafter`,
+            `${multi ? "MultiEdit" : "Edit"} writes ${JSON.stringify(replacement)} literally (replace_all=${replaceAll})`,
+          );
+        });
+      }
+    }
+  }
+
   console.log("\n[2] MultiEdit atomicity / chaining / rollback");
   await withTempFile("let a = 1;\nlet b = 2;\n", async (file, cwd) => {
     const ok = await multiEditTool.call(
