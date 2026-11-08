@@ -213,6 +213,8 @@ test("a hook is added to the chosen settings file", async () => {
     await expect
       .poll(() => (userSettings().hooks as Record<string, unknown> | undefined)?.PostToolUse)
       .toEqual([{ matcher: "Edit|Write", hooks: [{ type: "command", command: "echo formatted" }] }]);
+    // The file is written before the dialog closes; until then its textarea holds the same text.
+    await expect(page.getByRole("dialog")).toBeHidden();
     await expect(page.getByText("echo formatted", { exact: true })).toBeVisible();
   } finally {
     await app.close();
