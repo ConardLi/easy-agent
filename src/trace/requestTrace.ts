@@ -10,6 +10,12 @@
  * result adds the stop reason, the usage the provider reported, timing, and
  * retries.
  *
+ * Main-loop requests to a provider with a token-counting endpoint are also
+ * counted: the provider measures the system prompt, the tools, and the
+ * messages of the request as sent (`tokenCount`). Counting runs beside the
+ * request and never delays or fails it; a count that settles after the
+ * request finished is added to the record then.
+ *
  * The latest record of each session stays in memory. A session that saves a
  * transcript also appends records to a file next to it (see traceStore.ts)
  * unless the Agent's `trace.level` is `off`.
@@ -30,7 +36,7 @@ import { defineSessionState } from "../state/sessionScope.js";
 import type { Usage } from "../types/message.js";
 import { debugLog } from "../utils/log.js";
 import { distributeTokens, estimateJsonTokens, estimateMessageTokens, estimateTextTokens } from "../utils/tokens.js";
-import { appendRequestRecord } from "./traceStore.js";
+import { appendRequestRecord, appendTokenCount } from "./traceStore.js";
 
 export type RequestPurpose = "main" | "subagent" | "classifier" | "webFetch" | "webSearch" | "compaction";
 
@@ -112,6 +118,18 @@ export interface RequestResult {
   error?: string;
 }
 
+/**
+ * The provider's count of a request's input tokens by part. `counted` parts
+ * add up to `total`, the count of the whole request. `unsupported`: the
+ * endpoint has no counting (or refuses it for this model), and is not asked
+ * again; `failed`: this count did not succeed. Absent when the request was not
+ * counted (another purpose, a protocol or endpoint without counting, or
+ * records off).
+ */
+export type RequestTokenCount =
+  | { status: "counted"; system: number; tools: number; messages: number; total: number }
+  | { status: "unsupported" | "failed" };
+
 export interface RequestRecord {
   requestId: string;
   purpose: RequestPurpose;
@@ -138,6 +156,7 @@ export interface RequestRecord {
     bySource: Partial<Record<MessageSource, { count: number; bytes: number; tokens: number }>>;
   };
   result?: RequestResult;
+  tokenCount?: RequestTokenCount;
 }
 
 /** The request as it goes out; the shape is the Anthropic Messages body. */
@@ -193,6 +212,26 @@ export function getLatestRequestRecord(purpose?: RequestPurpose): RequestRecord 
 }
 
 const conversations = new WeakMap<RequestRecord, readonly MessageParam[]>();
+/** Finished records whose token count has not settled yet. */
+const pendingCounts = new WeakMap<RequestRecord, Promise<void>>();
+
+/**
+ * Wait up to `timeoutMs` for the token count of `record` to settle. Returns
+ * at once when the record has no count running.
+ */
+export async function settleTokenCount(record: RequestRecord, timeoutMs: number): Promise<void> {
+  const pending = pendingCounts.get(record);
+  if (!pending) return;
+  let timer: NodeJS.Timeout | undefined;
+  await Promise.race([
+    pending,
+    new Promise<void>((resolve) => {
+      timer = setTimeout(resolve, timeoutMs);
+      timer.unref?.();
+    }),
+  ]);
+  clearTimeout(timer);
+}
 
 /** The latest main-loop request of the active session with the conversation it was made from. */
 export function getLatestMainRequest(): { record: RequestRecord; conversation: readonly MessageParam[] } | null {
@@ -478,6 +517,9 @@ export class RequestTrace {
   readonly #retries: RequestRetry[] = [];
   #record: Omit<RequestRecord, "result"> | null = null;
   #done = false;
+  #finished: RequestRecord | null = null;
+  #count: Promise<RequestTokenCount> | null = null;
+  #tokenCount: RequestTokenCount | undefined;
 
   constructor(context: RequestTraceContext | undefined, requestedModel: string | undefined) {
     this.#context = context ?? { purpose: "main" };
@@ -541,6 +583,28 @@ export class RequestTrace {
     }
   }
 
+  /**
+   * Whether the request should be counted: a main-loop request whose first
+   * attempt was measured, while records are kept, and not counted yet.
+   */
+  get wantsTokenCount(): boolean {
+    return this.#context.purpose === "main" && this.#record !== null && this.#count === null && traceLevel() !== "off";
+  }
+
+  /** Attach the provider's count of the request. `count` must not reject. */
+  tokenCount(count: Promise<RequestTokenCount>): void {
+    if (!this.wantsTokenCount) return;
+    this.#count = count;
+    void count.then((result) => {
+      this.#tokenCount = result;
+      const record = this.#finished;
+      if (!record) return;
+      record.tokenCount = result;
+      pendingCounts.delete(record);
+      if (this.#sink) appendTokenCount(this.#sink, record.requestId, result);
+    });
+  }
+
   firstEvent(): void {
     if (this.#firstEventMs === undefined && this.#sentAt !== undefined) {
       this.#firstEventMs = Math.round(performance.now() - this.#sentAt);
@@ -573,7 +637,16 @@ export class RequestTrace {
         retries: this.#retries,
         ...(outcome.error ? { error: outcome.error } : {}),
       },
+      ...(this.#tokenCount ? { tokenCount: this.#tokenCount } : {}),
     };
+    this.#finished = record;
+    if (this.#count && !this.#tokenCount) {
+      const count = this.#count;
+      pendingCounts.set(
+        record,
+        count.then(() => undefined),
+      );
+    }
     this.#state.latest = record;
     this.#state.latestByPurpose.set(record.purpose, record);
     if (this.#context.conversation) conversations.set(record, this.#context.conversation);

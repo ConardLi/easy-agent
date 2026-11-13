@@ -37,7 +37,7 @@ import { getActivePluginErrors, getActivePlugins } from "../../../plugins/runtim
 import { loadPluginStateDiagnostics } from "../../../plugins/state.js";
 import { getLastPrivateDataSecurityReport, inspectPrivateDataSecurity } from "../../../utils/privateData.js";
 import type { QueryEngineEvent } from "../types.js";
-import type { ContextBreakdown, ContextCategoryId } from "../contextBreakdown.js";
+import type { ContextBreakdown, ContextCategoryId, ContextRequest } from "../contextBreakdown.js";
 import type { CommandContext } from "./context.js";
 
 export async function* handleStatusCommand(
@@ -151,7 +151,8 @@ export async function* handleContextCommand(
         (request.inputTokens > 0
           ? `the provider counted ${fmt(request.inputTokens)} input tokens`
           : "the provider reported no input tokens"),
-      "Token figures are estimated from sizes. /context details lists every component.",
+      ...cacheLines(request),
+      `${tokenBasisLine(request)} /context details lists every component.`,
     );
   } else {
     lines.push(`Estimated used: ${fmt(used)} / ${fmt(contextWindow)} (${pct(used)})`);
@@ -237,9 +238,36 @@ function formatContextDetails(breakdown: ContextBreakdown, cwd: string): string 
   lines.push(
     "",
     `Total: ${fmt(breakdown.used)} tok, ${fmt(attributed + request.unsent.bytes)} B`,
-    "Token figures are estimated from sizes.",
+    ...cacheLines(request),
+    tokenBasisLine(request),
   );
   return lines.join("\n");
+}
+
+/** Where the token figures of a request breakdown come from. */
+function tokenBasisLine(request: ContextRequest): string {
+  const { tokens } = request;
+  if (tokens.method === "count") {
+    return (
+      `The provider counted the system prompt (${fmt(tokens.system)} tok), tools (${fmt(tokens.tools)} tok), ` +
+      `and messages (${fmt(tokens.messages)} tok); items within each are split by size` +
+      (request.unsent.messages > 0 ? ", and messages since are estimated." : ".")
+    );
+  }
+  if (tokens.countError === "unsupported")
+    return "Token figures are estimated from sizes: the endpoint does not count tokens.";
+  if (tokens.countError === "failed") return "Token figures are estimated from sizes: the token count failed.";
+  return "Token figures are estimated from sizes.";
+}
+
+/** The prompt cache's share of the request's input, once the provider reports cache activity. */
+function cacheLines(request: ContextRequest): string[] {
+  if (request.cacheReadTokens === undefined && request.cacheWriteTokens === undefined) return [];
+  const read = request.cacheReadTokens ?? 0;
+  const write = request.cacheWriteTokens ?? 0;
+  const share =
+    request.inputTokens > 0 ? ` (${Math.round((read / request.inputTokens) * 100)}% of input read from cache)` : "";
+  return [`Prompt cache: read ${fmt(read)} tok, wrote ${fmt(write)} tok${share}`];
 }
 
 /** Best-effort reachability probe for the API endpoint (5s timeout). */

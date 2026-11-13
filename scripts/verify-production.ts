@@ -35,6 +35,7 @@ const TESTS: TestDefinition[] = [
   { id: "harness-session", group: "core", file: "src/scripts/test-harness-session.ts" },
   { id: "request-trace", group: "core", file: "src/scripts/test-request-trace.ts" },
   { id: "context-coverage", group: "core", file: "src/scripts/test-context-coverage.ts" },
+  { id: "token-count", group: "core", file: "src/scripts/test-token-count.ts" },
   { id: "query-engine", group: "core", file: "src/scripts/test-queryengine-characterization.ts" },
   { id: "interactive-session", group: "core", file: "src/scripts/test-interactive-session-characterization.tsx" },
   { id: "session-sdk", group: "core", file: "src/scripts/test-sdk-session.ts" },

@@ -70,6 +70,10 @@ test("profiles group into providers and write back unchanged", () => {
   expect(providers[0]?.models[0]?.name).toBe("DeepSeek V3.2");
   expect(modelsMapFor(providers, "user")).toEqual(models);
 
+  // Fields the page does not edit survive a save.
+  const counted = { gateway: { protocol: "anthropic", model: "claude-sonnet-4-6", baseURL: "https://gw.example.com", countTokens: true } };
+  expect(modelsMapFor(providersFromConfig(config({ models: counted }), {}), "user")).toEqual(counted);
+
   // A provider whose endpoint changed keeps its identity.
   const moved = providersFromConfig(config({ models: { ...models, "deepseek-v3.2": { ...models["deepseek-v3.2"], baseURL: "http://localhost:9/v1" } } }), {});
   const kept = reconcileProviders(providers, moved);

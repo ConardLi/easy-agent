@@ -38,6 +38,7 @@ import { normalizeToolReferencesForAPI } from "../../utils/toolSearch.js";
 import { classifyAPIError, getUserFacingErrorMessage, toFriendlyError } from "./errors.js";
 import { callWithRetry, decideRetry, getMaxRetries, sleep, type QuerySource } from "./withRetry.js";
 import { applyAnthropicPromptCache, isPromptCachingDisabled } from "./promptCache.js";
+import { countRequestTokens, shouldCountTokens } from "./tokenCount.js";
 import {
   startRequestTrace,
   toolChoiceName,
@@ -264,6 +265,26 @@ async function* streamOnce(
     signal: params.signal,
     ...(Object.keys(requestHeaders).length > 0 ? { headers: requestHeaders } : {}),
   });
+
+  // Count the request as sent, beside it: the count never delays or fails it.
+  if (trace?.wantsTokenCount && shouldCountTokens(profile)) {
+    trace.tokenCount(
+      countRequestTokens(
+        client,
+        profile,
+        {
+          model,
+          system: baseParams.system,
+          tools: baseParams.tools,
+          messages: baseParams.messages,
+          ...(thinkingParam ? { thinking: thinkingParam } : {}),
+          ...(outputConfig ? { outputConfig } : {}),
+          ...(params.toolChoice ? { toolChoice: params.toolChoice } : {}),
+        },
+        requestHeaders,
+      ),
+    );
+  }
 
   // State accumulators — mirrors the pattern in claude.ts.
   //
