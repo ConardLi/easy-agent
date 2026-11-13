@@ -16,6 +16,7 @@
 
 import { harnessSetting } from "../../harness/active.js";
 import type { Skill } from "../../types/types.js";
+import { joinLineParts, joinParts, type PromptPart } from "../../utils/promptParts.js";
 
 export const MAX_LISTING_DESC_CHARS = 250;
 const MIN_DESC_CHARS_PER_SKILL = 20;
@@ -93,15 +94,21 @@ export function formatSkillListingLines(skills: Skill[], budget: number = getSki
  * planning without being treated as a user instruction.
  */
 export function formatSkillsSystemReminder(skills: Skill[]): string {
-  if (skills.length === 0) return "";
-  const listing = formatSkillsWithinBudget(skills);
-  if (!listing) return "";
-  return [
-    "<system-reminder>",
-    "Available skills you can invoke via the `Skill` tool. Each line is `- <name>: <description>`.",
-    'Call `Skill(skill="<name>", args="<optional args>")` when the user\'s request matches one of these.',
-    "",
-    listing,
-    "</system-reminder>",
-  ].join("\n");
+  return joinParts(formatSkillsSystemReminderParts(skills));
+}
+
+/** The same block in parts: the framing, then one part per listed skill. */
+export function formatSkillsSystemReminderParts(skills: Skill[]): PromptPart[] {
+  const lines = formatSkillListingLines(skills);
+  if (lines.length === 0) return [];
+  const framing = (text: string): PromptPart => ({ component: "prompt_section:skills", text });
+  return joinLineParts([
+    framing("<system-reminder>"),
+    framing("Available skills you can invoke via the `Skill` tool. Each line is `- <name>: <description>`."),
+    framing('Call `Skill(skill="<name>", args="<optional args>")` when the user\'s request matches one of these.'),
+    framing(""),
+    // The `skill:` component ids of src/harness/components.ts.
+    ...lines.map((text, index) => ({ component: `skill:${skills[index]!.source}:${skills[index]!.name}`, text })),
+    framing("</system-reminder>"),
+  ]);
 }

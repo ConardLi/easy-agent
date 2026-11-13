@@ -36,7 +36,10 @@ export const BUILTIN_COMMAND_HELP: readonly BuiltinCommandHelp[] = [
   { usage: "/compact", description: "Compact conversation context" },
   { usage: "/rewind [n]", description: "Restore files to a previous turn (alias: /checkpoint)" },
   { usage: "/status", description: "Snapshot of the current session config" },
-  { usage: "/context", description: "Visualize context window usage by category" },
+  {
+    usage: "/context [details]",
+    description: "Context window usage by category; details lists every component of the last request",
+  },
   {
     usage: "/harness [name|diff a b|list|use name]",
     description: "Show an Agent's resolved settings, compare two, list them, or set this workspace's default",

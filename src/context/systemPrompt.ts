@@ -1,7 +1,8 @@
 import * as os from "node:os";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { loadAgentMdContext } from "./claudeMd.js";
+import { formatAgentMdSection, listAgentMdFiles } from "./claudeMd.js";
+import { joinParts, type PromptPart } from "../utils/promptParts.js";
 import {
   buildMemoryPromptInstructions,
   ensureMemoryDirExists,
@@ -16,9 +17,9 @@ import {
   buildMemoryTypeGuidance,
   buildMemoryValidationGuidance,
 } from "./memory/memoryTypes.js";
-import { formatSkillsSystemReminder } from "../services/skills/budget.js";
+import { formatSkillsSystemReminderParts } from "../services/skills/budget.js";
 import { getModelVisibleSkills } from "../services/skills/registry.js";
-import { formatAgentsSystemReminder } from "../agents/promptInjection.js";
+import { formatAgentsSystemReminderParts } from "../agents/promptInjection.js";
 import { formatTeamSystemReminder } from "../agents/teamPromptInjection.js";
 import { getAllAgents } from "../agents/registry.js";
 import { getActiveOutputStyleConfig } from "../styles/registry.js";
@@ -226,14 +227,14 @@ export function assembleSystemPrompt(staticParts: string[], sections: readonly P
 }
 
 /**
- * The component of each part `assembleSystemPrompt(staticParts, sections)`
- * returns, in the same order: the block markers, the identity and coding
- * instructions of the static block, and the non-empty dynamic sections.
+ * The prompt `renderSystemPrompt(assembleSystemPrompt(staticParts, sections))`
+ * in parts with their components, in order: the block markers, the identity
+ * and coding instructions of the static block, and the non-empty dynamic
+ * sections, split further into rule files, the memory index, and the skills
+ * and sub-agents they list. Joined, the parts are the prompt; the blank line
+ * between two parts counts toward the first.
  */
-export function systemPromptLayout(
-  staticParts: readonly string[],
-  sections: readonly PromptSection[],
-): Array<{ component: string; text: string }> {
+export function systemPromptLayout(staticParts: readonly string[], sections: readonly PromptSection[]): PromptPart[] {
   const markers = new Set([
     SYSTEM_PROMPT_STATIC_START,
     SYSTEM_PROMPT_STATIC_END,
@@ -247,14 +248,18 @@ export function systemPromptLayout(
       : instructions.has(text)
         ? "prompt_section:instructions"
         : "prompt_section:identity";
-  return [
-    ...staticParts.map((text) => ({ component: staticComponent(text), text })),
-    { component: "prompt:marker", text: SYSTEM_PROMPT_DYNAMIC_START },
+  const blocks: PromptPart[][] = [
+    ...staticParts.map((text) => [{ component: staticComponent(text), text }]),
+    [{ component: "prompt:marker", text: SYSTEM_PROMPT_DYNAMIC_START }],
     ...sections
       .filter((section) => section.text)
-      .map((section) => ({ component: `prompt_section:${section.name}`, text: section.text })),
-    { component: "prompt:marker", text: SYSTEM_PROMPT_DYNAMIC_END },
+      .map((section) => partsOfSection(section).map((part) => ({ ...part }))),
+    [{ component: "prompt:marker", text: SYSTEM_PROMPT_DYNAMIC_END }],
   ];
+  blocks.forEach((block, index) => {
+    if (index < blocks.length - 1) block.at(-1)!.text += "\n\n";
+  });
+  return blocks.flat();
 }
 
 /**
@@ -292,10 +297,11 @@ export async function collectDynamicSections(options: CollectDynamicSectionsOpti
 
   const withMemory = keepsBuiltInText(harness, "memory");
   const memoryDir = withMemory ? await ensureMemoryDirExists(options.cwd) : "";
-  const [agentMdContext, memoryEntrypoint] = await Promise.all([
-    loads("agent_md") ? loadAgentMdContext(options.cwd) : Promise.resolve(""),
+  const [agentMdFiles, memoryEntrypoint] = await Promise.all([
+    loads("agent_md") ? listAgentMdFiles(options.cwd) : Promise.resolve([]),
     ignoreMemory || !loads("memory") ? Promise.resolve(null) : readMemoryEntrypoint(options.cwd),
   ]);
+  const loadedAgentMd = agentMdFiles.filter((file) => !file.excluded);
   const language = harness ? harnessValue<string | undefined>(harness, "prompt.language") : undefined;
   const activeStyle = getActiveOutputStyleConfig();
 
@@ -309,8 +315,25 @@ export async function collectDynamicSections(options: CollectDynamicSectionsOpti
         ...buildMemoryValidationGuidance(),
         ...buildMemoryPersistenceBoundaryGuidance(),
         ignoreMemory ? "Memory is disabled for this turn because the user asked not to use it." : "",
-        memoryEntrypoint ? `Memory index:\n${memoryEntrypoint}` : "",
       ].filter(Boolean)
+    : [];
+  const memoryParts: PromptPart[] = memorySections.length
+    ? [{ component: "prompt_section:memory", text: memorySections.join("\n\n") }]
+    : [];
+  if (withMemory && memoryEntrypoint) {
+    memoryParts.push(
+      { component: "prompt_section:memory", text: `${memoryParts.length ? "\n\n" : ""}Memory index:\n` },
+      { component: "rule:memory", text: memoryEntrypoint },
+    );
+  }
+  const agentMdParts: PromptPart[] = loadedAgentMd.length
+    ? [
+        { component: "prompt_section:agent_md", text: "Project memory (AGENT.md):\n" },
+        ...loadedAgentMd.map((file, index) => ({
+          component: `rule:${file.filePath}`,
+          text: formatAgentMdSection(file) + (index < loadedAgentMd.length - 1 ? "\n\n" : ""),
+        })),
+      ]
     : [];
 
   // Skill discovery listing — see skills/budget.ts for the budget logic.
@@ -319,12 +342,12 @@ export async function collectDynamicSections(options: CollectDynamicSectionsOpti
   // Conditional skills (frontmatter `paths`) only appear here AFTER they've
   // been promoted in by activateConditionalSkillsForPaths(); see
   // skills/conditional.ts.
-  const skillsReminder = loads("skills") ? formatSkillsSystemReminder(getModelVisibleSkills(harness)) : "";
+  const skillsParts = loads("skills") ? formatSkillsSystemReminderParts(getModelVisibleSkills(harness)) : [];
 
   // Agents discovery listing — same pattern as skills. Tells the model
   // which `subagent_type` values it can pass to the Agent tool. The
   // registry is populated at startup by bootstrapAgents() in cli.ts.
-  const agentsReminder = loads("agents") ? formatAgentsSystemReminder(getAllAgents(harness)) : "";
+  const agentsParts = loads("agents") ? formatAgentsSystemReminderParts(getAllAgents(harness)) : [];
 
   // Agent Teams reminder — appears only when the feature flag
   // is on AND a team is currently active. The model already sees the
@@ -352,17 +375,45 @@ export async function collectDynamicSections(options: CollectDynamicSectionsOpti
     { name: "output_style", text: outputStyleSection },
     { name: "language", text: languageSection },
     { name: "environment", text: formatEnvironmentContext(options.environment, harness) },
-    { name: "agent_md", text: agentMdContext ? "Project memory (AGENT.md):\n" + agentMdContext : "" },
-    { name: "memory", text: memorySections.length > 0 ? memorySections.join("\n\n") : "" },
+    { name: "agent_md", text: withParts(agentMdParts) },
+    { name: "memory", text: withParts(memoryParts) },
     {
       name: "session_instructions",
       text: options.additionalInstructions ? "Session instructions:\n" + options.additionalInstructions : "",
     },
-    { name: "skills", text: skillsReminder },
-    { name: "agents", text: agentsReminder },
+    { name: "skills", text: withParts(skillsParts) },
+    { name: "agents", text: withParts(agentsParts) },
     { name: "team", text: teamReminder },
   ];
   return harness ? arrangePromptSections(builtIn, promptSectionSettings(harness)) : builtIn;
+}
+
+// ─── Section parts ──────────────────────────────────────────────────────
+
+const MAX_SECTION_PARTS = 64;
+const sectionParts = new Map<string, readonly PromptPart[]>();
+
+/** Join `parts` into a section's text and remember them for `systemPromptLayout`. */
+function withParts(parts: readonly PromptPart[]): string {
+  const text = joinParts(parts);
+  if (parts.length > 1) {
+    sectionParts.delete(text);
+    sectionParts.set(text, parts);
+    if (sectionParts.size > MAX_SECTION_PARTS) sectionParts.delete(sectionParts.keys().next().value!);
+  }
+  return text;
+}
+
+/**
+ * The parts of a section: the rule files of the project memory section, the
+ * memory index, one per listed skill or sub-agent. A section whose text is
+ * not the joined parts (the Agent replaced it) is one part.
+ */
+function partsOfSection(section: PromptSection): readonly PromptPart[] {
+  const parts = sectionParts.get(section.text);
+  return parts && joinParts(parts) === section.text
+    ? parts
+    : [{ component: `prompt_section:${section.name}`, text: section.text }];
 }
 
 export function renderSystemPrompt(parts: string[]): string {

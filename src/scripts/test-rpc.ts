@@ -691,9 +691,17 @@ try {
     const before = rpc.events.length;
     await rpc.call("session/command", { sessionId, name: "context" });
     const output = rpc.events.slice(before).find((event) => event.type === "command_output");
+    assert.equal(context.basis, "request", "the session has sent a request");
     assert.match(
       String(output?.message),
-      new RegExp(`Estimated used: ${(context.used as number).toLocaleString("en-US")} `),
+      new RegExp(`Used: ${(context.used as number).toLocaleString("en-US")} / .*, read from the last request`),
+    );
+    const components = context.components as Array<{ bytes: number; part: string }>;
+    const request = context.request as { bytes: number; protocol: string; unsent: { bytes: number } };
+    assert.equal(
+      sum(components.map((component) => component.bytes)) - request.unsent.bytes,
+      request.bytes,
+      "the components account for every byte of the request",
     );
     await rejects(rpc.call("session/context", { sessionId: "nope" }), protocol.RpcErrorCode.SessionNotFound);
   });

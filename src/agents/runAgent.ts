@@ -37,7 +37,7 @@ import { resolveAgentTools } from "./resolveAgentTools.js";
 import type { AgentDefinition, AgentRunResult } from "./types.js";
 import type { ContentBlock, Usage } from "../types/message.js";
 import { drainUnreadMessages, formatMailboxAttachment } from "../utils/teammateMailbox.js";
-import { markMessageSource } from "../core/messageSources.js";
+import { markLeadingSource, markMessageSource } from "../core/messageSources.js";
 import { describeSystemPrompt } from "../trace/requestTrace.js";
 
 export const DEFAULT_AGENT_MAX_TURNS = 30;
@@ -212,10 +212,12 @@ export async function runChildAgent(params: RunChildAgentParams): Promise<AgentR
   if (params.teammateIdentity) {
     const unread = await drainUnreadMessages(params.teammateIdentity.agentName, params.teammateIdentity.teamName);
     if (unread.length > 0) {
+      const mail = `${formatMailboxAttachment(unread)}\n\n`;
       initialMessages.push(
-        markMessageSource(
-          { role: "user", content: `${formatMailboxAttachment(unread)}\n\n${params.prompt}` },
-          "subagent_prompt",
+        markLeadingSource(
+          markMessageSource({ role: "user", content: `${mail}${params.prompt}` }, "subagent_prompt"),
+          "team_message",
+          mail,
         ),
       );
     } else {

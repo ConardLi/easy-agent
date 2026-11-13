@@ -35,6 +35,8 @@ export interface RecordedRequest {
   system?: unknown;
   /** The whole parsed request body. */
   body: Record<string, unknown>;
+  /** Bytes of the body as received. */
+  bodyBytes: number;
   /** Request path, e.g. `/v1/messages`. */
   path: string;
   headers: Record<string, string | string[] | undefined>;
@@ -154,8 +156,9 @@ export function createAnthropicFixture(): AnthropicFixture {
     request.on("data", (chunk: Buffer) => chunks.push(chunk));
     request.on("end", () => {
       let body: Record<string, unknown> & { messages?: unknown[]; system?: unknown };
+      const received = Buffer.concat(chunks);
       try {
-        body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+        body = JSON.parse(received.toString("utf8"));
       } catch {
         // A body cut short (the client went away mid-request) is rejected like
         // the API would, without being recorded or using a scripted reply.
@@ -167,6 +170,7 @@ export function createAnthropicFixture(): AnthropicFixture {
         messages: body.messages ?? [],
         system: body.system,
         body,
+        bodyBytes: received.length,
         path: request.url ?? "",
         headers: { ...request.headers },
       });

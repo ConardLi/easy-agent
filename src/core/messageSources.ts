@@ -46,6 +46,7 @@ export type MessageSource =
   | "search_query";
 
 const marks = new WeakMap<object, MessageSource>();
+const leadingMarks = new WeakMap<object, { source: MessageSource; text: string }>();
 
 /** Record where `message` came from; returns it for use in an expression. */
 export function markMessageSource<T extends MessageParam>(message: T, source: MessageSource): T {
@@ -53,15 +54,70 @@ export function markMessageSource<T extends MessageParam>(message: T, source: Me
   return message;
 }
 
+/**
+ * Record that the first text of `message` starts with `text` from another
+ * source: the context a UserPromptSubmit hook puts before the prompt, or the
+ * mail a teammate's task starts with.
+ */
+export function markLeadingSource<T extends MessageParam>(message: T, source: MessageSource, text: string): T {
+  leadingMarks.set(message, { source, text });
+  return message;
+}
+
+/** Mark `copy`, made from `message` to send, as `message` is marked: its origin and its leading span. */
+export function copyMessageSource<T extends MessageParam>(message: MessageParam, copy: T): T {
+  marks.set(copy, messageSourceOf(message));
+  const leading = leadingMarks.get(message);
+  if (leading) leadingMarks.set(copy, leading);
+  return copy;
+}
+
 /** How `message` was marked when it was created, if it was. */
 export function markedMessageSource(message: MessageParam): MessageSource | undefined {
   return marks.get(message);
 }
 
-function leadingText(message: MessageParam): string {
+/** Context a UserPromptSubmit hook adds starts the prompt with this line. */
+export const USER_CONTEXT_PREFIX = "[user-context]\n";
+/** The deferred tool list ToolSearch puts in front of the first message of a request. */
+export const DEFERRED_TOOLS_PREFIX = "<available-deferred-tools>";
+
+function firstText(message: MessageParam): string {
   if (typeof message.content === "string") return message.content;
   const first = message.content.find((block) => block.type === "text");
   return first && "text" in first ? first.text : "";
+}
+
+/**
+ * Length of the hook context a restored prompt starts with. The transcript
+ * does not keep where the context ends, so the split is the blank line
+ * before a known hidden prefix, or else the last blank line.
+ */
+function restoredLeadingLength(text: string): number | undefined {
+  if (!text.startsWith(USER_CONTEXT_PREFIX)) return undefined;
+  let last = -1;
+  for (let at = text.indexOf("\n\n", USER_CONTEXT_PREFIX.length); at !== -1; at = text.indexOf("\n\n", at + 1)) {
+    const rest = text.slice(at + 2);
+    if (USER_PREFIXES.some(([prefix]) => rest.startsWith(prefix))) return at + 2;
+    last = at;
+  }
+  return last === -1 ? text.length : last + 2;
+}
+
+/** Length of the leading span of `text` that came from another source, with that source. */
+function leadingSpan(message: MessageParam, text: string): { source: MessageSource; length: number } | undefined {
+  const mark = leadingMarks.get(message);
+  if (mark) return text.startsWith(mark.text) ? { source: mark.source, length: mark.text.length } : undefined;
+  const length = restoredLeadingLength(text);
+  return length === undefined ? undefined : { source: "hook_output", length };
+}
+
+/** The first text of `message` without a leading span from another source. */
+function leadingText(message: MessageParam): string {
+  const text = firstText(message);
+  if (message.role !== "user") return text;
+  const span = leadingSpan(message, text);
+  return span ? text.slice(span.length) : text;
 }
 
 /** Prefixes of hidden user messages, checked in order. */
@@ -95,4 +151,61 @@ export function inferMessageSource(message: MessageParam): MessageSource {
 /** Where `message` came from: its mark, or what its shape says. */
 export function messageSourceOf(message: MessageParam): MessageSource {
   return marks.get(message) ?? inferMessageSource(message);
+}
+
+/** A piece of a message from one source. */
+export interface MessagePart {
+  source: MessageSource;
+  /** The text of a text block or of a span of one; the JSON of any other block. */
+  content: string;
+}
+
+/**
+ * Whether `sent` can hold more than one source: a user message that starts
+ * with the deferred tool list or with a span from another source. Cheap, so
+ * other messages skip `messageParts`.
+ */
+export function hasMixedSources(sent: MessageParam, original: MessageParam = sent): boolean {
+  if (sent.role !== "user") return false;
+  const text = firstText(sent);
+  return (
+    (text.startsWith(DEFERRED_TOOLS_PREFIX) && messageSourceOf(original) !== "deferred_tools") ||
+    leadingMarks.has(original) ||
+    text.startsWith(USER_CONTEXT_PREFIX)
+  );
+}
+
+/**
+ * `sent` split by source, in order: one part per content block, with the
+ * deferred tool list and a leading span from another source (see
+ * `markLeadingSource`) as parts of their own. `original` is the message of
+ * the conversation `sent` was made from; sending can copy a message to add a
+ * cache marker or the deferred tool list.
+ */
+export function messageParts(sent: MessageParam, original: MessageParam = sent): MessagePart[] {
+  const primary = messageSourceOf(original);
+  const blocks: ReadonlyArray<{ type: string; text?: string }> =
+    typeof sent.content === "string" ? [{ type: "text", text: sent.content }] : sent.content;
+  const parts: MessagePart[] = [];
+  let spanPending = sent.role === "user";
+  for (const block of blocks) {
+    if (block.type !== "text" || typeof block.text !== "string") {
+      parts.push({ source: block.type === "tool_result" ? "tool_result" : primary, content: JSON.stringify(block) });
+      continue;
+    }
+    const text = block.text;
+    if (sent.role === "user" && text.startsWith(DEFERRED_TOOLS_PREFIX)) {
+      parts.push({ source: "deferred_tools", content: text });
+      continue;
+    }
+    const span = spanPending ? leadingSpan(original, text) : undefined;
+    spanPending = false;
+    if (span && span.length > 0) {
+      parts.push({ source: span.source, content: text.slice(0, span.length) });
+      if (span.length < text.length) parts.push({ source: primary, content: text.slice(span.length) });
+      continue;
+    }
+    parts.push({ source: primary, content: text });
+  }
+  return parts;
 }

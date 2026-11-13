@@ -111,6 +111,7 @@ export class AnthropicApiSearchAdapter implements WebSearchAdapter {
       tools: body.tools as object[],
       messages: body.messages,
       sourceMessages: body.messages,
+      body,
       params: {
         maxTokens: body.max_tokens,
         betas: [],

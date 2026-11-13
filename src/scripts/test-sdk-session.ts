@@ -1109,7 +1109,11 @@ try {
       const output = events.find((event) => event.type === "command_output");
       assert.ok(output?.type === "command_output");
       const fmt = (n: number) => n.toLocaleString("en-US");
-      assert.match(output.message, new RegExp(`Estimated used: ${fmt(context.used)} / ${fmt(context.contextWindow)}`));
+      assert.equal(context.basis, "request", "after a turn the breakdown is read from its request");
+      assert.match(
+        output.message,
+        new RegExp(`Used: ${fmt(context.used)} / ${fmt(context.contextWindow)} .*, read from the last request`),
+      );
       assert.match(output.message, new RegExp(`Tool definitions .* ${fmt(context.totals.tools)} tok`));
       await session.close();
 
