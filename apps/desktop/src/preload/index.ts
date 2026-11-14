@@ -44,7 +44,7 @@ const api: DesktopApi = {
     call: (workspaceId, method, params) => ipcRenderer.invoke(IPC.agentCall, workspaceId, method, params),
     snapshot: (workspaceId, sessionId) => ipcRenderer.invoke(IPC.agentSnapshot, workspaceId, sessionId),
     openSessions: (workspaceId) => ipcRenderer.invoke(IPC.agentOpenSessions, workspaceId),
-    onStatus: (listener) => subscribe<[string, HostStatus]>(IPC.agentStatus, listener),
+    onStatus: (listener) => subscribe<[string, HostStatus, string | null]>(IPC.agentStatus, listener),
     onEvent: (listener) => subscribe<[AgentEventMessage]>(IPC.agentEvent, listener),
     onLog: (listener) => subscribe<[AgentLogMessage]>(IPC.agentLog, listener),
   },

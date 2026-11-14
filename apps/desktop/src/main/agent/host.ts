@@ -12,6 +12,8 @@ export interface LaunchCommand {
 
 export interface HostOptions {
   cwd: string;
+  /** The Agent to run, passed to `initialize`; unset runs the workspace's default Agent. */
+  harness?: string;
   launch(): LaunchCommand;
   clientVersion: string;
   autoRestart(): boolean;
@@ -29,10 +31,10 @@ const RESTART_DELAY_MS = 1000;
 const SHUTDOWN_TIMEOUT_MS = 3000;
 
 /**
- * One `eagent --rpc` process serving one workspace. It initializes the
- * process with the trust mode the user chose, forwards session events, keeps
- * track of the sessions it opened, and restarts a crashed process, reopening
- * those sessions.
+ * One `eagent --rpc` process serving one workspace with one Agent. It
+ * initializes the process with the trust mode the user chose and the Agent,
+ * forwards session events, keeps track of the sessions it opened, and
+ * restarts a crashed process, reopening those sessions.
  */
 export class AgentHost {
   readonly #options: HostOptions;
@@ -42,6 +44,8 @@ export class AgentHost {
   #ready: Promise<void> | null = null;
   #trust: Trust = "persisted";
   #stopping = false;
+  /** Why `initialize` failed; the process is stopped and the host reports it as crashed, without restarting. */
+  #initFailure: string | null = null;
   #crashes: number[] = [];
   readonly #open = new Set<string>();
   /** Last event sequence per session, so a snapshot can say which events it already contains. */
@@ -53,6 +57,10 @@ export class AgentHost {
 
   get status(): HostStatus {
     return this.#status;
+  }
+
+  get trust(): Trust {
+    return this.#trust;
   }
 
   openSessions(): string[] {
@@ -118,6 +126,7 @@ export class AgentHost {
 
   #launch(reopen: string[]): Promise<void> {
     this.#stopping = false;
+    this.#initFailure = null;
     this.#open.clear();
     this.#lastSeq.clear();
     this.#setStatus({ state: "starting" });
@@ -158,6 +167,12 @@ export class AgentHost {
         trust,
         interactions: ["permission", "plan_approval", "question"],
         services: "background",
+        ...(this.#options.harness ? { harness: { name: this.#options.harness } } : {}),
+      });
+      const { name, hash } = await rpc.request<{ name: string; hash: string }>("runtime/harness", {}).catch((error: unknown) => {
+        // An `eagent` older than Agents runs only its default; it cannot run another one.
+        if (this.#options.harness) throw new Error(`这个版本的 eagent 不能按 Agent 启动（${(error as Error).message}）`);
+        return { name: "default", hash: "" };
       });
       // Reopen before reporting ready, straight on the connection: `call()` waits for this very promise.
       for (const sessionId of reopen) {
@@ -168,10 +183,16 @@ export class AgentHost {
           this.#options.onLog("warn", `会话 ${sessionId} 没能恢复：${(error as Error).message}`);
         }
       }
-      this.#setStatus({ state: "ready", init, trust });
+      this.#setStatus({ state: "ready", init, trust, harness: { name, hash } });
     })();
     this.#ready = ready;
-    ready.catch(() => {});
+    ready.catch((error: unknown) => {
+      // A process that did not initialize (an Agent that does not resolve) is no use; stop it and say why.
+      if (child !== this.#child) return;
+      this.#initFailure = error instanceof Error ? error.message : String(error);
+      this.#stopping = true;
+      child.kill();
+    });
     return ready;
   }
 
@@ -194,7 +215,7 @@ export class AgentHost {
     this.#child = null;
     this.#rpc = null;
     if (this.#stopping) {
-      this.#setStatus({ state: "stopped" });
+      this.#setStatus(this.#initFailure ? { state: "crashed", message: this.#initFailure, restarting: false } : { state: "stopped" });
       return;
     }
     const reopen = this.openSessions();

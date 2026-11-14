@@ -12,6 +12,7 @@ import { RewindDialog } from "./features/session/RewindDialog";
 import { Toasts } from "./features/shell/Toasts";
 import { TopBar } from "./features/shell/TopBar";
 import { FirstRun } from "./features/workspace/FirstRun";
+import { AgentNotice } from "./features/composer/AgentNotice";
 import { HostBanner } from "./features/workspace/HostBanner";
 import { Sidebar } from "./features/workspace/Sidebar";
 import { useSessionList } from "./features/workspace/sessionList";
@@ -20,7 +21,7 @@ import { desktop } from "./lib/desktop";
 import { newSession, openFolder } from "./state/actions";
 import { useCustomize } from "./state/customize";
 import { usePrefs } from "./state/prefs";
-import { useActiveView } from "./state/sessions";
+import { useActiveView, useSessions } from "./state/sessions";
 import { useSettings } from "./state/settings";
 import { useUi } from "./state/ui";
 import { useActiveWorkspace } from "./state/workspaces";
@@ -71,13 +72,15 @@ function Main() {
   const workspace = useActiveWorkspace();
   const view = useActiveView();
   const items = useSessionList(workspace?.id);
+  const agentOf = useSessions((s) => (view ? s.agentOf[view.id] : undefined));
   if (!workspace) return <FirstRun />;
   if (!view) return <Welcome workspace={workspace} />;
   return (
     <>
       <Conversation view={view} workspaceName={workspace.name} startedAt={items.find((i) => i.id === view.id)?.startedAt} />
       <div className="mx-auto w-full max-w-[796px] px-8 empty:hidden">
-        <HostBanner workspace={workspace} className="mb-3" />
+        <AgentNotice sessionId={view.id} />
+        <HostBanner workspace={workspace} agent={agentOf} className="mb-3" />
       </div>
       <Composer />
     </>

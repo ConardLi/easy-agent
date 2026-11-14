@@ -1,6 +1,7 @@
-import { Check, ChevronDown, ClipboardList, Cpu, Lightbulb, Search, Settings2, ShieldCheck, Zap } from "lucide-react";
+import { Bot, Check, ChevronDown, ClipboardList, Cpu, Lightbulb, Lock, Search, Settings2, ShieldCheck, Zap } from "lucide-react";
 import { Popover } from "radix-ui";
 import { useMemo, useState } from "react";
+import type { HarnessSummary } from "../../../shared/agent";
 import type { Effort, PermissionMode } from "../../agent/viewModel";
 import { BrandIcon } from "../../design/BrandIcon";
 import { listModels } from "../../lib/modelIndex";
@@ -241,6 +242,86 @@ export function EffortPicker({
             {e.label}
           </MenuItem>
         ))}
+      </MenuContent>
+    </Menu>
+  );
+}
+
+/**
+ * The Agent a session runs with. A new session picks one (hidden while the
+ * workspace has only one Agent); an open session shows its Agent, locked,
+ * when it is not the workspace's default.
+ */
+export function AgentPicker({
+  agents,
+  fallback,
+  agent,
+  locked,
+  onChange,
+}: {
+  agents: HarnessSummary[];
+  /** The workspace's default Agent. */
+  fallback: string;
+  agent: string | undefined;
+  locked: boolean;
+  onChange: (name: string | undefined) => void;
+}) {
+  const current = agent ?? fallback;
+  if (locked) {
+    if (current === fallback) return null;
+    return (
+      <Tooltip content="会话创建时选定 Agent，之后不能更换" side="top">
+        <span className={cn(pill, "cursor-default hover:bg-transparent hover:text-fg-2")}>
+          <Bot />
+          {current}
+          <Lock className="!size-3 text-fg-4" />
+        </span>
+      </Tooltip>
+    );
+  }
+  if (agents.length < 2) return null;
+  return (
+    <Menu>
+      <Tooltip content="这个会话用哪个 Agent" side="top">
+        <MenuTrigger asChild>
+          <button
+            type="button"
+            aria-label={`Agent：${current}`}
+            className={cn(pill, current !== fallback && "!text-accent bg-accent-soft hover:!bg-accent-soft")}
+          >
+            <Bot />
+            {current}
+            <ChevronDown className="!size-3 text-fg-3" />
+          </button>
+        </MenuTrigger>
+      </Tooltip>
+      <MenuContent side="top" className="w-[300px]">
+        <MenuLabel>Agent</MenuLabel>
+        {agents.map((a) => {
+          const broken = a.errors.length > 0;
+          return (
+            <MenuItem
+              key={a.name}
+              disabled={broken}
+              onSelect={() => onChange(a.name === fallback ? undefined : a.name)}
+              className="h-auto items-start py-2 data-[disabled]:opacity-50"
+              icon={<Bot className="mt-0.5" />}
+              hint={a.name === current ? <Check className="mt-0.5 size-3.5 text-accent" /> : undefined}
+            >
+              <span className="flex items-center gap-1.5 font-medium">
+                {a.name}
+                {a.name === fallback && <span className="rounded-md bg-surface-3 px-1.5 py-px text-[10.5px] font-medium text-fg-3">项目默认</span>}
+              </span>
+              {broken ? (
+                <span className="block whitespace-normal text-[12px] text-danger">不可用：{a.errors[0]}</span>
+              ) : (
+                a.description && <span className="block whitespace-normal text-[12px] text-fg-3">{a.description}</span>
+              )}
+            </MenuItem>
+          );
+        })}
+        <MenuSeparator />
+        <div className="px-2 py-1.5 text-[11.5px] text-fg-3">会话创建后不能更换 Agent</div>
       </MenuContent>
     </Menu>
   );

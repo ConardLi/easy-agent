@@ -4,7 +4,7 @@
  * agree on them.
  */
 
-import type { AgentEventMessage, AgentLogMessage, AgentMethod, CallOutcome, HostStatus, ParamsOf, ResultOf, SessionState } from "./agent";
+import type { AgentEventMessage, AgentLogMessage, AgentMethod, CallOutcome, HostStatus, OpenSessionInfo, ParamsOf, ResultOf, SessionState } from "./agent";
 
 export const THEMES = ["system", "dark", "light"] as const;
 export type Theme = (typeof THEMES)[number];
@@ -72,7 +72,7 @@ export interface AppInfo {
 /** Application menu items the renderer acts on. */
 export type MenuCommand = "toggle-sidebar" | "new-session" | "open-folder" | "open-settings" | "open-customize";
 
-/** A folder the user opened; each one gets its own Agent process. */
+/** A folder the user opened; it gets its own Agent processes. */
 export interface WorkspaceInfo {
   id: string;
   path: string;
@@ -189,14 +189,23 @@ export interface DesktopApi {
     files(id: string, query: string): Promise<string[]>;
     onChange(listener: (state: WorkspacesState) => void): () => void;
   };
+  /**
+   * A workspace's Agent processes: one for its default Agent, started with
+   * `start`, and one for each other Agent a session was opened with
+   * (`session/create` or `session/resume` with `agent`). Calls about an open
+   * session go to the process that has it open; the others to the default
+   * Agent's process.
+   */
   agent: {
-    /** Start the workspace's Agent process if needed and return its status. */
+    /** Start the workspace's default-Agent process if needed and return its status. */
     start(workspaceId: string): Promise<HostStatus>;
+    /** Restart every Agent process of the workspace; returns the default-Agent process's status. */
     restart(workspaceId: string, trust: "persisted" | "session"): Promise<HostStatus>;
     call<M extends AgentMethod>(workspaceId: string, method: M, params: ParamsOf<M>): Promise<CallOutcome<ResultOf<M>>>;
     snapshot(workspaceId: string, sessionId: string): Promise<CallOutcome<{ state: SessionState; seq: number }>>;
-    openSessions(workspaceId: string): Promise<string[]>;
-    onStatus(listener: (workspaceId: string, status: HostStatus) => void): () => void;
+    openSessions(workspaceId: string): Promise<OpenSessionInfo[]>;
+    /** `agent` is null for the default-Agent process, otherwise the Agent the process was started for. */
+    onStatus(listener: (workspaceId: string, status: HostStatus, agent: string | null) => void): () => void;
     onEvent(listener: (message: AgentEventMessage) => void): () => void;
     onLog(listener: (message: AgentLogMessage) => void): () => void;
   };

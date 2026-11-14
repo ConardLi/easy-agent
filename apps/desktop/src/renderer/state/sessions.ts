@@ -9,6 +9,8 @@ export interface Draft {
   model?: string;
   mode: PermissionMode;
   effort: Effort;
+  /** Unset means the workspace's default Agent. */
+  agent?: string;
 }
 
 interface SessionsStore {
@@ -21,6 +23,10 @@ interface SessionsStore {
   unread: Record<string, true>;
   /** What this window answered to each request, to show on the resolved card. */
   responses: Record<string, InteractionResponse>;
+  /** The Agent each open session runs with. */
+  agentOf: Record<string, string>;
+  /** Shown above the composer: the session's Agent changed since it last ran, or was deleted. */
+  agentNotices: Record<string, string>;
   applyEvents(events: { workspaceId: string; event: SessionEvent }[]): void;
   setDraft(patch: Partial<Draft>): void;
 }
@@ -31,10 +37,13 @@ export const useSessions = create<SessionsStore>()((set) => ({
   draft: { mode: "default", effort: "default" },
   unread: {},
   responses: {},
+  agentOf: {},
+  agentNotices: {},
   applyEvents: (events) =>
     set((s) => {
       const views = { ...s.views };
       const unread = { ...s.unread };
+      const agentOf = { ...s.agentOf };
       let activeId = s.activeId;
       for (const { workspaceId, event } of events) {
         let view = views[event.sessionId];
@@ -44,6 +53,8 @@ export const useSessions = create<SessionsStore>()((set) => ({
           if (previous) {
             delete views[previous.id];
             if (activeId === previous.id) activeId = event.sessionId;
+            // The same process runs the conversation it switched to.
+            if (agentOf[previous.id]) agentOf[event.sessionId] = agentOf[previous.id]!;
             view = previous;
           }
         }
@@ -56,7 +67,7 @@ export const useSessions = create<SessionsStore>()((set) => ({
         views[next.id] = next;
         if (event.type === "turn_completed" && next.id !== activeId) unread[next.id] = true;
       }
-      return { views, unread, activeId };
+      return { views, unread, activeId, agentOf };
     }),
   setDraft: (patch) => set((s) => ({ draft: { ...s.draft, ...patch } })),
 }));

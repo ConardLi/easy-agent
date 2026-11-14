@@ -12,8 +12,8 @@ import { usePrefs } from "../../state/prefs";
 import { interrupt, runUiAction, sendMessage, setEffort, setMode, setModel } from "../../state/actions";
 import { useActiveView, useSessions } from "../../state/sessions";
 import { useUi } from "../../state/ui";
-import { useActiveWorkspace, useRuntime } from "../../state/workspaces";
-import { EffortPicker, MODES, ModelPicker, ModePicker } from "./Pickers";
+import { defaultAgentOf, hostStatusOf, useActiveWorkspace, useRuntime } from "../../state/workspaces";
+import { AgentPicker, EffortPicker, MODES, ModelPicker, ModePicker } from "./Pickers";
 
 type Suggest = { kind: "slash"; query: string } | { kind: "mention"; query: string; start: number } | null;
 
@@ -63,7 +63,10 @@ export function Composer({ variant = "dock" }: { variant?: "dock" | "hero" }) {
   const input = useRef<HTMLTextAreaElement>(null);
   const imagePicker = useRef<HTMLInputElement>(null);
 
-  const status = runtime.status;
+  const fallbackAgent = defaultAgentOf(runtime);
+  const sessionAgent = useSessions((s) => (view ? s.agentOf[view.id] : s.draft.agent));
+  // Capabilities and readiness come from the process that runs (or will run) this session's Agent.
+  const status = hostStatusOf(runtime, sessionAgent);
   const ready = status.state === "ready";
   const running = view?.busy ?? false;
   const waiting = (view?.pendingRequests.length ?? 0) > 0;
@@ -535,6 +538,13 @@ export function Composer({ variant = "dock" }: { variant?: "dock" | "hero" }) {
               </MenuItem>
             </MenuContent>
           </Menu>
+          <AgentPicker
+            agents={runtime.agents ?? []}
+            fallback={fallbackAgent}
+            agent={sessionAgent}
+            locked={!!view}
+            onChange={(agent) => useSessions.getState().setDraft({ agent })}
+          />
           <ModePicker mode={settings.mode} onChange={(mode) => void setMode(mode)} />
           <ModelPicker
             model={settings.model}
