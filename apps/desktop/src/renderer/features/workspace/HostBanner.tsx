@@ -3,11 +3,11 @@ import type { WorkspaceInfo } from "../../../shared/contract";
 import { Button, cn, Spinner } from "../../design/primitives";
 import { restartAgent, trustWorkspace } from "../../state/actions";
 import { setWorkspaceTrust } from "../../state/settings";
-import { useRuntime } from "../../state/workspaces";
+import { hostStatusOf, useRuntime } from "../../state/workspaces";
 
-/** The workspace's Agent process when it needs attention: untrusted, or stopped. */
-export function HostBanner({ workspace, className }: { workspace: WorkspaceInfo; className?: string }) {
-  const { status } = useRuntime(workspace.id);
+/** An Agent process of the workspace when it needs attention: untrusted, or stopped. `agent` picks the process; unset is the default Agent's. */
+export function HostBanner({ workspace, agent, className }: { workspace: WorkspaceInfo; agent?: string; className?: string }) {
+  const status = hostStatusOf(useRuntime(workspace.id), agent);
 
   if (status.state === "crashed")
     return (

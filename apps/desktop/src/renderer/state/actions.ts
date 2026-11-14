@@ -4,7 +4,7 @@
  * requests and keep the workspace list and saved-session list current.
  */
 
-import type { ImageInput, InteractionResponse, RewindResult, RewindScope, SessionCheckpoint, SessionEvent } from "../../shared/agent";
+import type { ImageInput, InteractionResponse, RewindResult, RewindScope, SessionCheckpoint, SessionEvent, SessionHarnessCheck } from "../../shared/agent";
 import { agent, describeError } from "../agent/client";
 import { exportMarkdown } from "../agent/projector/derive";
 import { promptOf } from "../agent/projector/messages";
@@ -15,7 +15,7 @@ import type { Effort, PermissionMode } from "../agent/viewModel";
 import { desktop } from "../lib/desktop";
 import { useSessions } from "./sessions";
 import { type RewindRequest, useUi } from "./ui";
-import { useWorkspaces } from "./workspaces";
+import { defaultAgentOf, useWorkspaces } from "./workspaces";
 
 const toast = (text: string, tone: "default" | "success" | "danger" = "default") => useUi.getState().toast(text, tone);
 const fail = (error: unknown) => toast(describeError(error), "danger");
@@ -65,10 +65,16 @@ async function notify(sessionId: string, kind: "turn_completed" | "request_opene
 
 export async function bootstrap(): Promise<void> {
   desktop.agent.onEvent(({ workspaceId, event }) => enqueue(workspaceId, event));
-  desktop.agent.onStatus((workspaceId, status) => {
+  desktop.agent.onStatus((workspaceId, status, agentName) => {
+    if (agentName !== null) {
+      const { agentHosts = {} } = useWorkspaces.getState().runtime[workspaceId] ?? {};
+      useWorkspaces.getState().patchRuntime(workspaceId, { agentHosts: { ...agentHosts, [agentName]: status } });
+      return;
+    }
     useWorkspaces.getState().patchRuntime(workspaceId, { status });
     if (status.state === "ready") {
       void refreshSessions(workspaceId);
+      void loadAgents(workspaceId);
       void import("./customize").then((m) => m.loadInventory(workspaceId));
       if (workspaceId === useWorkspaces.getState().activeId) void import("./settings").then((m) => m.loadConfig());
     }
@@ -93,6 +99,7 @@ async function showWorkspace(id: string, { reopenLast = false } = {}): Promise<v
   patchRuntime(id, { status });
   if (status.state !== "ready") return;
   void import("./customize").then((m) => m.loadInventory(id));
+  await loadAgents(id);
   await adoptOpenSessions(id);
   await refreshSessions(id);
   const workspace = useWorkspaces.getState().workspaces.find((w) => w.id === id);
@@ -100,13 +107,16 @@ async function showWorkspace(id: string, { reopenLast = false } = {}): Promise<v
   if (reopenLast && last && useWorkspaces.getState().runtime[id]?.sessions?.some((s) => s.sessionId === last)) await openSession(id, last);
 }
 
-/** Sessions the Agent still has open, e.g. after the window reloaded. */
+/** Sessions the Agent processes still have open, e.g. after the window reloaded. */
 async function adoptOpenSessions(workspaceId: string): Promise<void> {
-  for (const sessionId of await desktop.agent.openSessions(workspaceId)) {
+  for (const { sessionId, agent: agentName } of await desktop.agent.openSessions(workspaceId)) {
     if (useSessions.getState().views[sessionId]) continue;
     try {
       const { state, seq } = await agent.snapshot(workspaceId, sessionId);
-      useSessions.setState((s) => ({ views: { ...s.views, [sessionId]: viewFromState(workspaceId, state, seq) } }));
+      useSessions.setState((s) => ({
+        views: { ...s.views, [sessionId]: viewFromState(workspaceId, state, seq) },
+        agentOf: { ...s.agentOf, [sessionId]: agentName },
+      }));
     } catch {
       // Closed in the meantime.
     }
@@ -122,17 +132,27 @@ export async function refreshSessions(workspaceId: string): Promise<void> {
   }
 }
 
+/** The Agents a new session can pick from. */
+export async function loadAgents(workspaceId: string): Promise<void> {
+  try {
+    const { harnesses } = await agent.call(workspaceId, "harness/list", {});
+    useWorkspaces.getState().patchRuntime(workspaceId, { agents: harnesses });
+  } catch (error) {
+    console.warn(describeError(error));
+  }
+}
+
 export async function openFolder(): Promise<void> {
   const workspace = await desktop.workspaces.openFolder();
   if (!workspace) return;
-  useSessions.setState({ activeId: null });
+  newSession();
   await showWorkspace(workspace.id);
 }
 
 export async function switchWorkspace(id: string): Promise<void> {
   if (useWorkspaces.getState().activeId === id) return newSession();
   await desktop.workspaces.activate(id);
-  useSessions.setState({ activeId: null });
+  newSession();
   await showWorkspace(id, { reopenLast: true });
 }
 
@@ -158,17 +178,58 @@ function remember(workspaceId: string, sessionId: string): void {
   void desktop.workspaces.update(workspaceId, { lastSessionId: sessionId });
 }
 
+/** Show the new-session page; the next session runs with the workspace's default Agent unless one is picked. */
 export function newSession(): void {
-  useSessions.setState({ activeId: null });
+  useSessions.setState((s) => ({ activeId: null, draft: { ...s.draft, agent: undefined } }));
+}
+
+/** What to tell the user when a session continues with an Agent other than the one it last ran with, or a changed one. */
+export function agentNotice(check: SessionHarnessCheck | undefined): string | null {
+  if (!check || check.status === "same") return null;
+  const { recorded, current } = check;
+  if (check.status === "changed") {
+    const listed = check.changed.slice(0, 8).join("、");
+    const more = check.changed.length > 8 ? ` 等 ${check.changed.length} 项` : "";
+    return `Agent「${current.name}」的设置在这个会话上次运行后改过：${listed}${more}`;
+  }
+  if (check.status === "deleted") return `这个会话原来用的 Agent「${recorded.name}」已经删除，改用 ${current.name} 继续`;
+  return `这个会话原来用的 Agent「${recorded.name}」现在用不了，改用 ${current.name} 继续`;
+}
+
+export function dismissAgentNotice(sessionId: string): void {
+  useSessions.setState((s) => {
+    const { [sessionId]: _, ...agentNotices } = s.agentNotices;
+    return { agentNotices };
+  });
+}
+
+/**
+ * The Agent to reopen a saved session with: the one it last ran with, when
+ * that Agent still resolves; otherwise the workspace's default Agent, and
+ * the resume result says what changed.
+ */
+function resumeAgentOf(workspaceId: string, sessionId: string): string | undefined {
+  const runtime = useWorkspaces.getState().runtime[workspaceId];
+  const recorded = runtime?.sessions?.find((s) => s.sessionId === sessionId)?.harness.name;
+  if (!recorded || recorded === defaultAgentOf(runtime)) return undefined;
+  const known = runtime?.agents?.find((a) => a.name === recorded);
+  return known && known.errors.length === 0 ? recorded : undefined;
 }
 
 export async function openSession(workspaceId: string, sessionId: string): Promise<void> {
   const { views } = useSessions.getState();
   if (!views[sessionId]) {
     try {
-      const { state } = await agent.call(workspaceId, "session/resume", { sessionId });
+      const picked = resumeAgentOf(workspaceId, sessionId);
+      const { state, harness } = await agent.call(workspaceId, "session/resume", { sessionId, ...(picked ? { agent: picked } : {}) });
+      const notice = agentNotice(harness);
+      const runsWith = harness?.current.name ?? picked ?? defaultAgentOf(useWorkspaces.getState().runtime[workspaceId]);
       // The snapshot event may still be queued for the next frame; seed the view from the response.
-      useSessions.setState((s) => (s.views[sessionId] ? s : { views: { ...s.views, [sessionId]: viewFromState(workspaceId, state, -1) } }));
+      useSessions.setState((s) => ({
+        views: s.views[sessionId] ? s.views : { ...s.views, [sessionId]: viewFromState(workspaceId, state, -1) },
+        agentOf: { ...s.agentOf, [sessionId]: runsWith },
+        agentNotices: notice ? { ...s.agentNotices, [sessionId]: notice } : s.agentNotices,
+      }));
     } catch (error) {
       return fail(error);
     }
@@ -197,12 +258,15 @@ export async function sendMessage(text: string, images: ImageInput[] = []): Prom
       const created = await agent.call(workspaceId, "session/create", {
         permissionMode: draft.mode,
         ...(draft.model ? { model: draft.model } : {}),
+        ...(draft.agent ? { agent: draft.agent } : {}),
       });
       sessionId = created.sessionId;
       const id = sessionId;
+      const runsWith = draft.agent ?? defaultAgentOf(useWorkspaces.getState().runtime[workspaceId]);
       useSessions.setState((s) => ({
         activeId: id,
         views: s.views[id] ? s.views : { ...s.views, [id]: viewFromState(workspaceId, created.state, -1) },
+        agentOf: { ...s.agentOf, [id]: runsWith },
       }));
       remember(workspaceId, id);
       if (draft.effort !== "default") await applyEffort(workspaceId, id, draft.effort);

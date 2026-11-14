@@ -4,7 +4,7 @@ import { visibleUserText } from "../../agent/projector/messages";
 import { statusOf } from "../../agent/projector/session";
 import type { SessionStatus } from "../../agent/viewModel";
 import { useSessions } from "../../state/sessions";
-import { useWorkspaces } from "../../state/workspaces";
+import { defaultAgentOf, useWorkspaces } from "../../state/workspaces";
 
 export interface SessionListItem {
   id: string;
@@ -14,6 +14,8 @@ export interface SessionListItem {
   status: SessionStatus;
   pinned: boolean;
   unread: boolean;
+  /** The Agent the session runs with (open) or last ran with (saved), when it is not the workspace's default. */
+  agent?: string;
 }
 
 const NEW_TITLE = "新会话";
@@ -37,15 +39,19 @@ export function useSessionList(workspaceId: string | undefined): SessionListItem
   const pinned = useWorkspaces((s) => s.workspaces.find((w) => w.id === workspaceId)?.pinnedSessions);
   const views = useSessions((s) => s.views);
   const unread = useSessions((s) => s.unread);
+  const agentOf = useSessions((s) => s.agentOf);
+  const fallback = useWorkspaces((s) => defaultAgentOf(workspaceId ? s.runtime[workspaceId] : undefined));
 
   return useMemo(() => {
     if (!workspaceId) return [];
     const items: SessionListItem[] = [];
     const seen = new Set<string>();
+    const other = (agent: string | undefined) => (agent && agent !== fallback ? { agent } : {});
     for (const summary of saved ?? []) {
       const view = views[summary.sessionId];
       seen.add(summary.sessionId);
       items.push({
+        ...other(agentOf[summary.sessionId] ?? summary.harness?.name),
         id: summary.sessionId,
         title: summary.title || summary.firstPrompt || (view && firstPrompt(view.messages)) || NEW_TITLE,
         updatedAt: Date.parse(summary.updatedAt) || 0,
@@ -59,6 +65,7 @@ export function useSessionList(workspaceId: string | undefined): SessionListItem
     for (const view of Object.values(views)) {
       if (view.workspaceId !== workspaceId || seen.has(view.id)) continue;
       items.push({
+        ...other(agentOf[view.id]),
         id: view.id,
         title: firstPrompt(view.messages) ?? NEW_TITLE,
         updatedAt: now,
@@ -69,7 +76,7 @@ export function useSessionList(workspaceId: string | undefined): SessionListItem
       });
     }
     return items.sort((a, b) => b.updatedAt - a.updatedAt);
-  }, [workspaceId, saved, pinned, views, unread]);
+  }, [workspaceId, saved, pinned, views, unread, agentOf, fallback]);
 }
 
 /** The title the sidebar shows for an open session. */

@@ -77,7 +77,12 @@ function SessionItem({ item, workspaceId }: { item: SessionListItem; workspaceId
         </button>
       )}
       {!editing && (
-        <span className={cn("relative flex items-center", menuOpen ? "" : "group-hover:hidden")}>
+        <span className={cn("relative flex items-center gap-1.5", menuOpen ? "" : "group-hover:hidden")}>
+          {item.agent && (
+            <span title={`Agent：${item.agent}`} className="max-w-[76px] truncate rounded-[5px] bg-surface-3 px-1.5 text-[10.5px] leading-[17px] text-fg-3">
+              {item.agent}
+            </span>
+          )}
           {item.status === "waiting" ? (
             <span className="text-[11px] font-medium text-warning">待确认</span>
           ) : (

@@ -26,12 +26,16 @@ import type {
   SessionCheckpoint,
   SessionContext,
   SessionEvent,
+  SessionHarnessCheck,
   SessionState,
   StoredSession,
   StoredSessionSummary,
   TurnResult,
   WorkspaceReport,
 } from "eagent/sdk";
+import type { HarnessListing } from "eagent/sdk/experimental";
+
+export type { HarnessListing, HarnessSummary } from "eagent/sdk/experimental";
 
 export type {
   AgentInventoryItem,
@@ -59,6 +63,7 @@ export type {
   RuntimeInventory,
   SessionCheckpoint,
   SessionContext,
+  SessionHarnessCheck,
   SkillInventoryItem,
   TokenCount,
   ToolInventoryItem,
@@ -103,6 +108,12 @@ export interface InitializeResult {
 interface OpenSession {
   model?: string;
   permissionMode?: PermissionMode;
+  /**
+   * The Agent whose process opens the session; unset means the workspace's
+   * default Agent. Read by the main process to pick the process, never sent
+   * to the Agent.
+   */
+  agent?: string;
 }
 
 /** Methods the renderer may call; `initialize` and `shutdown` belong to the host. */
@@ -110,6 +121,7 @@ export interface AgentMethods {
   "runtime/capabilities": { params: Record<string, never>; result: RuntimeCapabilities };
   "runtime/inventory": { params: Record<string, never>; result: RuntimeInventory };
   "runtime/reload": { params: Record<string, never>; result: ReloadResult };
+  "harness/list": { params: Record<string, never>; result: HarnessListing };
   "mcp/approve": { params: { name: string; approved: boolean; scope?: ConfigScope }; result: McpApprovalResult };
   "mcp/reconnect": { params: { name: string }; result: McpReconnectResult };
   "plugins/list": { params: Record<string, never>; result: PluginViewData };
@@ -124,7 +136,11 @@ export interface AgentMethods {
   "marketplace/remove": { params: { name: string }; result: PluginViewData };
   "session/context": { params: { sessionId: string }; result: SessionContext };
   "session/create": { params: OpenSession & { persist?: boolean }; result: { sessionId: string; state: SessionState } };
-  "session/resume": { params: OpenSession & { sessionId?: string }; result: { sessionId: string; state: SessionState } };
+  "session/resume": {
+    params: OpenSession & { sessionId?: string };
+    /** `harness` compares the Agent the session last ran with and the one it continues with. */
+    result: { sessionId: string; state: SessionState; harness?: SessionHarnessCheck };
+  };
   "session/list": { params: { limit?: number }; result: { sessions: StoredSessionSummary[] } };
   "session/read": { params: { sessionId: string }; result: StoredSession };
   "session/rename": { params: { sessionId: string; title: string }; result: { session: StoredSessionSummary } };
@@ -158,6 +174,7 @@ export const AGENT_METHODS = [
   "runtime/capabilities",
   "runtime/inventory",
   "runtime/reload",
+  "harness/list",
   "mcp/approve",
   "mcp/reconnect",
   "plugins/list",
@@ -207,12 +224,25 @@ export interface RpcErrorInfo {
 
 export type CallOutcome<T> = { ok: true; result: T } | { ok: false; error: RpcErrorInfo };
 
-/** The Agent process of one workspace, as the renderer sees it. */
+/** One Agent process of a workspace, as the renderer sees it. */
 export type HostStatus =
   | { state: "starting" }
-  | { state: "ready"; init: InitializeResult; trust: "persisted" | "session" }
+  | {
+      state: "ready";
+      init: InitializeResult;
+      trust: "persisted" | "session";
+      /** The Agent the process runs, and the hash of its settings when it started. */
+      harness: { name: string; hash: string };
+    }
   | { state: "crashed"; message: string; restarting: boolean }
   | { state: "stopped" };
+
+/** A session open in one of a workspace's Agent processes. */
+export interface OpenSessionInfo {
+  sessionId: string;
+  /** The Agent of the process that has it open. */
+  agent: string;
+}
 
 export interface AgentEventMessage {
   workspaceId: string;
