@@ -1124,6 +1124,35 @@ try {
       assert.equal(after.projectDefault.applied, true);
       await first.call("harness/setProjectDefault", { name: null });
       assert.equal(Object.hasOwn(JSON.parse(await readFile(localSettings, "utf8")), "harness"), false);
+
+      const prompt = await first.call<Json>("harness/writePrompt", { name: "reviewer.identity.md", text: "Review." });
+      assert.deepEqual(prompt, {
+        file: "prompts/reviewer.identity.md",
+        path: path.join(home, ".easy-agent", "prompts", "reviewer.identity.md"),
+      });
+      await rejects(
+        first.call("harness/writePrompt", { name: "../x.md", text: "x" }),
+        protocol.RpcErrorCode.AgentError,
+        "invalid_argument",
+      );
+      await first.call("harness/write", {
+        name: "reviewer",
+        spec: { tools: { exclude: ["Bash"] }, prompt: { identity: { file: prompt.file } } },
+      });
+      const inventory = await first.call<{ tools: Json[]; promptSections: Json[]; contextSources: Json[] }>(
+        "runtime/inventory",
+        { harness: { name: "reviewer" } },
+      );
+      assert.equal(inventory.tools.find((tool) => tool.name === "Bash")?.enabled, false);
+      assert.equal(inventory.promptSections.find((section) => section.name === "identity")?.text, "Review.");
+      assert.ok(inventory.contextSources.length > 0);
+      const own = await first.call<{ tools: Json[] }>("runtime/inventory");
+      assert.equal(own.tools.find((tool) => tool.name === "Bash")?.enabled, true);
+      await rejects(
+        first.call("runtime/inventory", { harness: { name: "ghost" } }),
+        protocol.RpcErrorCode.AgentError,
+        "harness",
+      );
     } finally {
       assert.equal(await first.shutdown(), 0);
       assert.equal(await second.shutdown(), 0);

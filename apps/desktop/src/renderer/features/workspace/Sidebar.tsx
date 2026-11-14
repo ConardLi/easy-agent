@@ -1,4 +1,4 @@
-import { Download, Ellipsis, GitFork, PanelLeftClose, Pencil, Pin, PinOff, Search, Settings, SlidersHorizontal, SquarePen, Trash2 } from "lucide-react";
+import { Bot, Download, Ellipsis, GitFork, PanelLeftClose, Pencil, Pin, PinOff, Search, Settings, SlidersHorizontal, SquarePen, Trash2 } from "lucide-react";
 import { motion } from "motion/react";
 import { useMemo, useState } from "react";
 import { cn, IconButton, Kbd, Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger, MOD, Spinner, Tooltip } from "../../design/primitives";
@@ -6,10 +6,11 @@ import { type DayBucket, dayBucket, shortTime } from "../../lib/format";
 import { deleteSession, exportSession, forkSession, newSession, openSession, renameSession, togglePin } from "../../state/actions";
 import { usePrefs } from "../../state/prefs";
 import { useSessions } from "../../state/sessions";
+import { useAgents } from "../../state/agents";
 import { useCustomize } from "../../state/customize";
 import { useSettings } from "../../state/settings";
 import { notYet, useUi } from "../../state/ui";
-import { useActiveWorkspace } from "../../state/workspaces";
+import { useActiveWorkspace, useRuntime } from "../../state/workspaces";
 import { WindowControls } from "../shell/WindowControls";
 import { type SessionListItem, useSessionList } from "./sessionList";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
@@ -204,6 +205,8 @@ export function Sidebar() {
             <Kbd>;</Kbd>
           </span>
         </button>
+        {/* The Agent page needs a workspace; first launch shows only the two entries above. */}
+        {workspace && <AgentsEntry workspaceId={workspace.id} />}
       </div>
 
       <nav className="scroll-thin mt-3 min-h-0 flex-1 overflow-y-auto px-2.5 pb-4">
@@ -234,5 +237,24 @@ export function Sidebar() {
         </div>
       </div>
     </aside>
+  );
+}
+
+function AgentsEntry({ workspaceId }: { workspaceId: string }) {
+  const open = useAgents((s) => s.open);
+  const count = useRuntime(workspaceId).agents?.length;
+  return (
+    <button
+      type="button"
+      onClick={() => useAgents.getState().openAgents()}
+      className={cn(
+        "group flex h-[34px] items-center gap-2.5 rounded-[9px] px-2 text-[13px] font-medium transition-colors hover:bg-fg/[0.06]",
+        open ? "bg-fg/[0.06] text-fg" : "text-fg-2 hover:text-fg",
+      )}
+    >
+      <Bot className="size-[15px]" />
+      <span className="flex-1 text-left">Agent</span>
+      {count !== undefined && <span className="tabular text-[11px] font-normal text-fg-3">{count}</span>}
+    </button>
   );
 }

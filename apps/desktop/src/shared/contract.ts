@@ -126,6 +126,8 @@ export const IPC = {
   agentCall: "agent:call",
   agentSnapshot: "agent:snapshot",
   agentOpenSessions: "agent:open-sessions",
+  agentRestartAgents: "agent:restart-agents",
+  agentPickImport: "agent:pick-import",
   agentStatus: "agent:status",
   agentEvent: "agent:event",
   agentLog: "agent:log",
@@ -204,6 +206,10 @@ export interface DesktopApi {
     call<M extends AgentMethod>(workspaceId: string, method: M, params: ParamsOf<M>): Promise<CallOutcome<ResultOf<M>>>;
     snapshot(workspaceId: string, sessionId: string): Promise<CallOutcome<{ state: SessionState; seq: number }>>;
     openSessions(workspaceId: string): Promise<OpenSessionInfo[]>;
+    /** Restart the workspace's processes that run one of `agents`, reopening their sessions; returns the Agents restarted. */
+    restartAgents(workspaceId: string, agents: string[]): Promise<string[]>;
+    /** Choose an exported Agent file with the system dialog and read it; null when cancelled. */
+    pickImport(): Promise<{ file: string; data: unknown } | null>;
     /** `agent` is null for the default-Agent process, otherwise the Agent the process was started for. */
     onStatus(listener: (workspaceId: string, status: HostStatus, agent: string | null) => void): () => void;
     onEvent(listener: (message: AgentEventMessage) => void): () => void;

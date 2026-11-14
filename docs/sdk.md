@@ -77,7 +77,7 @@ const runtime = await createAgentRuntime({
 | `writeConfig(scope, key, value)` | Set or (with `null`) delete one key in user, project, or local settings, after validation; open sessions pick up permission rules right away |
 | `setWorkspaceTrust(trusted)` | Save or revoke trust for the workspace; it applies to the next runtime |
 | `checkModel(model)`, `listModels(model)` | Send a one-token request through a model handle; list the models its provider offers |
-| `getInventory()` | Everything the runtime has loaded, see [Inventory](#inventory) |
+| `getInventory({ harness? })` | Everything the runtime has loaded, see [Inventory](#inventory) |
 | `getHarness({ name?, spec? })` / `diffHarness(a, b, { prompt? })` | Resolve an Agent; compare two, and with a prompt the first request each sends; see [Agents](#agents). Experimental |
 | `reload()` | Reload skills, commands, sub-agents, output styles, and plugins from disk. Open sessions use the new set from their next turn; returns the registry sizes, plugin MCP servers started and stopped, and plugin errors |
 | `approveMcpServer(name, approved, scope?)` | Approve or reject a server from the project's `.mcp.json`. The decision is saved in `enabledMcpjsonServers` or `disabledMcpjsonServers` of `scope` (default `local`); an approved server connects right away, a rejected one stops. Rejects with `untrusted` in an untrusted workspace |
@@ -89,7 +89,7 @@ const runtime = await createAgentRuntime({
 
 ### Inventory
 
-`getInventory()` returns one list per kind: `skills`, `commands`, `agents`, `outputStyles`, `mcpServers`, `plugins`, `hooks`, `rules` (AGENT.md and AGENTS.md files and the memory index), and `tools`. Every item has:
+`getInventory()` returns one list per kind: `skills`, `commands`, `agents`, `outputStyles`, `mcpServers`, `plugins`, `hooks`, `rules` (AGENT.md and AGENTS.md files and the memory index), `tools`, `promptSections`, and `contextSources`. Every item has:
 
 | Field | Meaning |
 | --- | --- |
@@ -101,6 +101,10 @@ const runtime = await createAgentRuntime({
 | `reason` | Why it is off or limited, such as an untrusted workspace, `claudeMdExcludes`, or hooks turned off |
 
 Items that occupy context carry token counts as `{ value, estimated }`: a skill's line in the skill list and its body, a sub-agent's line, an output style's prompt, a rule file, a tool's schema. Counts come from character lengths, so `estimated` is `true`. MCP servers report `status` (`connected`, `pending`, `failed`, `disabled`, `awaiting_approval`, `rejected`, or `ignored` in an untrusted workspace), their tools, and the error when connecting failed; a server the Agent's `mcpServers` lists leave out is `disabled` with the reason. Tools report whether ToolSearch defers them for the runtime's model, and a tool the Agent's `tools` lists leave out has `enabled: false` with the reason (see [Tools and MCP servers](./configuration.md#tools-and-mcp-servers)), and so do skills and sub-agents its `skills` and `agents` lists leave out (see [Skills and sub-agents](./configuration.md#skills-and-sub-agents)). Project configuration an untrusted workspace ignores still appears, disabled, with the reason.
+
+`promptSections` lists the sections of the system prompt in order: the static `identity` and `instructions` (`block: "static"`), the built-in dynamic sections, and the sections the Agent adds (`source: "user"`, since Agents live in the user settings file). A section `prompt.sections` turns off has `enabled: false` with the reason. `text` is the identity text (the Agent's, or the built-in one) and the text of a section the Agent replaces or adds; the other sections depend on the session and carry none. `file` is the file that text is read from, `after` the section an added or moved one follows, and `specKey` the Agent setting that controls it. `contextSources` lists where dynamic context comes from (`agent_md`, `memory`, `environment`, `git_status`, `skills`, `agents`), each with its `specKey` (`context.agentMd`, …) and `enabled: false` when the Agent turns it off.
+
+Experimental: `getInventory({ harness: { name } })` (or `{ spec }`) lists everything as that Agent has it, for a frontend that shows or edits an Agent this runtime does not run. Nothing about the runtime or its sessions changes. MCP servers are the ones this process started: a running server that Agent leaves out has `enabled: false` with the reason, and a configured server it keeps that this process did not start has status `disabled` and a reason that says so. An Agent that does not resolve rejects with `harness`.
 
 ### Agents
 
@@ -168,6 +172,7 @@ const { harnesses, projectDefault } = await listHarnesses({ cwd });
 | `previewHarnessImport(data, { cwd? })` | What an export would do in the workspace, and the `fingerprint` that confirms it |
 | `importHarness(data, { fingerprint, name?, replace? })` | Write an export into `harnesses` |
 | `setProjectHarness(name \| null, { cwd? })` | Set the workspace's default Agent, or go back to `default` with `null` |
+| `writeHarnessPrompt(name, text)` | Write identity or prompt-section text to `~/.easy-agent/prompts/<name>` and return `{ file, path }`; put `file` (`prompts/<name>`) in a spec's `{ "file": ... }`. `name` ends in `.md` and has no directories; text up to 256 KiB. Agents that already reference the file use the new text from their next request |
 
 - **Writes.** Each change is one locked read-modify-write of the user settings file: only the `harnesses` key changes, concurrent writers (other processes too) keep each other's Agents, and the file is replaced atomically. Before writing, every Agent is resolved against the new definitions; when the change would give one an error it did not have (an invalid spec, an `extends` that names no Agent or forms a cycle, an unreadable `file`), it rejects with `harness` and the file stays as it was. Agents that were already broken do not block other writes. Specs have no credential fields, and the functions return nothing else from the file.
 - **`default`.** `writeHarness("default", spec)` writes `harnesses.default` with only what differs from the built-in default and the top-level user settings; a spec without differences removes the entry, and so does `deleteHarness("default")`. It cannot extend another Agent.

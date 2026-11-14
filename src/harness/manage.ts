@@ -19,16 +19,24 @@
  */
 
 import { createHash } from "node:crypto";
+import { mkdir } from "node:fs/promises";
 import * as path from "node:path";
 import { z } from "zod";
 import { isProjectTrusted } from "../config/globalState.js";
 import { loadSettingSources } from "../config/sources.js";
 import { loadMcpConfigs } from "../services/mcp/config.js";
 import { getLocalSettingsPath, getUserSettingsPath } from "../utils/paths.js";
+import { atomicWriteFile } from "../utils/atomicFile.js";
 import { readJsonSettingsFile, updateLocalSettings, updateUserSettings } from "../utils/settings.js";
 import { listBuiltInComponents } from "./components.js";
 import { HARNESS_KEYS } from "./keys.js";
-import { harnessValue, type ResolvedHarness, resolveHarness, resolveHarnessFromInputs } from "./resolve.js";
+import {
+  harnessValue,
+  MAX_TEXT_BYTES,
+  type ResolvedHarness,
+  resolveHarness,
+  resolveHarnessFromInputs,
+} from "./resolve.js";
 import { selectionOffReason } from "./selection.js";
 import { BUILT_IN_HARNESSES, HARNESS_NAME, type HarnessSpec, HarnessSpecSchema } from "./spec.js";
 
@@ -435,6 +443,38 @@ async function putHarness(name: string, spec: unknown, createOnly: boolean): Pro
       },
     };
   });
+}
+
+/** A prompt file name: letters, digits, `.`, `_`, and `-`, ending in `.md`; no directories. */
+export const PROMPT_FILE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,96}\.md$/;
+
+export interface HarnessPromptFile {
+  /** The reference to put in a spec (`{ "file": ... }`); it resolves against the user settings directory. */
+  file: string;
+  path: string;
+}
+
+/**
+ * Write the text of an identity or prompt section to `prompts/<name>` next to
+ * the user settings file, replacing what is there. The Agents that reference
+ * it read the new text before their next request. Writing the file does not
+ * change any Agent; reference it from a spec with `harness/write`.
+ */
+export async function writeHarnessPrompt(name: string, text: string): Promise<HarnessPromptFile> {
+  if (!PROMPT_FILE_NAME.test(name)) {
+    throw new HarnessManagementError(
+      "invalid_argument",
+      `Not a prompt file name: ${JSON.stringify(name)}. Use letters, digits, ., _, and - ending in .md, without directories.`,
+    );
+  }
+  if (Buffer.byteLength(text, "utf8") > MAX_TEXT_BYTES) {
+    throw new HarnessManagementError("invalid_argument", `Prompt text is larger than ${MAX_TEXT_BYTES} bytes.`);
+  }
+  const dir = path.join(configDir(), "prompts");
+  await mkdir(dir, { recursive: true });
+  const target = path.join(dir, name);
+  await atomicWriteFile(target, text);
+  return { file: `prompts/${name}`, path: target };
 }
 
 /**

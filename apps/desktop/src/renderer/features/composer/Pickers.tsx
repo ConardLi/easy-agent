@@ -321,6 +321,9 @@ export function AgentPicker({
           );
         })}
         <MenuSeparator />
+        <MenuItem icon={<Settings2 />} onSelect={() => void import("../../state/agents").then(({ useAgents }) => useAgents.getState().openAgents(current))}>
+          管理 Agent…
+        </MenuItem>
         <div className="px-2 py-1.5 text-[11.5px] text-fg-3">会话创建后不能更换 Agent</div>
       </MenuContent>
     </Menu>

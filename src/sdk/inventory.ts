@@ -38,15 +38,23 @@ import { getActiveOutputStyleName, getAllOutputStyles } from "../styles/registry
 import { getRegisteredTools, getToolsForMode } from "../tools/index.js";
 import { type Tool, toolToApiParam } from "../tools/Tool.js";
 import type { ScopedMcpServerConfig } from "../types/mcp.js";
-import { activeHarness } from "../harness/active.js";
-import { componentId, toolOffReason } from "../harness/components.js";
-import { contextSourceLoaded, contextSourceOffReason, promptSectionOffReason } from "../harness/prompt.js";
+import { activeHarness, harnessOverridden } from "../harness/active.js";
+import { componentId, listBuiltInComponents, PROMPT_SECTIONS, toolOffReason } from "../harness/components.js";
+import {
+  contextSourceLoaded,
+  contextSourceOffReason,
+  identityText,
+  promptSectionOffReason,
+  promptSectionSettings,
+} from "../harness/prompt.js";
+import { BUILT_IN_IDENTITY_TEXT } from "../context/systemPrompt.js";
 import { estimateJsonTokens, estimateTextTokens } from "../utils/tokens.js";
 import { prepareToolSearchRequest } from "../utils/toolSearch.js";
 import type { WorkspaceReport } from "./bootstrap.js";
 import type {
   AgentInventoryItem,
   CommandInventoryItem,
+  ContextSourceInventoryItem,
   HookInventoryItem,
   InventorySource,
   McpServerInventoryItem,
@@ -54,6 +62,7 @@ import type {
   McpToolInfo,
   OutputStyleInventoryItem,
   PluginInventoryItem,
+  PromptSectionInventoryItem,
   RuleInventoryItem,
   RuntimeInventory,
   SkillInventoryItem,
@@ -103,6 +112,7 @@ export async function buildRuntimeInventory(
     hooks,
     rules,
     tools: listTools(deferred),
+    ...listPromptComponents(),
   };
 }
 
@@ -253,6 +263,15 @@ function pluginOfServer(): Map<string, string> {
   return owners;
 }
 
+const NOT_STARTED = "Not started in this process; a process that runs this Agent starts it.";
+
+/** Listing another Agent: a running server it leaves out is off for it. */
+function offFor(name: string): Partial<Pick<McpServerInventoryItem, "enabled" | "reason">> {
+  if (!harnessOverridden()) return {};
+  const reason = mcpServerOffByAgent(name);
+  return reason ? { enabled: false, reason } : {};
+}
+
 async function listMcpServers(cwd: string, deferred: Set<string>): Promise<McpServerInventoryItem[]> {
   const { servers: configured, projectServers = [] } = await loadMcpConfigs(cwd, { quiet: true });
   const projectFile = getProjectMcpJsonPath(cwd);
@@ -273,6 +292,7 @@ async function listMcpServers(cwd: string, deferred: Set<string>): Promise<McpSe
         ? { path: projectFile }
         : {}),
       enabled: status === "connected" || status === "pending",
+      ...offFor(connection.name),
       ...transportOf(connection.config),
       status,
       ...(connection.type === "failed" ? { error: connection.error } : {}),
@@ -317,8 +337,10 @@ async function listMcpServers(cwd: string, deferred: Set<string>): Promise<McpSe
     ),
   ];
   for (const server of leftOut) {
-    const reason = registered.has(server.name) ? undefined : mcpServerOffByAgent(server.name);
-    if (!reason) continue;
+    if (registered.has(server.name)) continue;
+    const reason = mcpServerOffByAgent(server.name);
+    // Listing another Agent: a server it keeps that this process's Agent did not start.
+    if (!reason && !harnessOverridden()) continue;
     registered.add(server.name);
     items.push({
       kind: "mcp_server",
@@ -329,8 +351,8 @@ async function listMcpServers(cwd: string, deferred: Set<string>): Promise<McpSe
       ...(!server.pluginId && server.config.scope === "project" && fromProjectFile.has(server.name)
         ? { path: projectFile }
         : {}),
-      enabled: false,
-      reason,
+      enabled: !reason,
+      ...(reason ? { reason } : { reason: NOT_STARTED }),
       ...transportOf(server.config),
       status: "disabled",
       tools: [],
@@ -480,6 +502,48 @@ async function listRules(cwd: string): Promise<RuleInventoryItem[]> {
 }
 
 const REPLACED = "The Agent replaces the section that would show it (prompt.sections).";
+
+/** Prompt sections and context sources, on or off for the active Agent. */
+function listPromptComponents(): Pick<RuntimeInventory, "promptSections" | "contextSources"> {
+  const harness = activeHarness();
+  const sections = promptSectionSettings(harness);
+  const blocks = new Map(PROMPT_SECTIONS.map((section) => [section.name, section.block]));
+  const promptSections: PromptSectionInventoryItem[] = [];
+  const contextSources: ContextSourceInventoryItem[] = [];
+  for (const component of listBuiltInComponents(harness)) {
+    const base = {
+      id: component.id,
+      name: component.name,
+      enabled: component.enabled,
+      ...(component.reason ? { reason: component.reason } : {}),
+      description: component.description,
+    };
+    if (component.kind === "context_source") {
+      contextSources.push({ kind: "context_source", ...base, source: "built-in", specKey: component.specKey! });
+      continue;
+    }
+    if (component.kind !== "prompt_section") continue;
+    const setting = sections[component.name];
+    const own = typeof setting === "object" ? setting : undefined;
+    const identity = harness.values["prompt.identity"]?.value as { file?: string } | undefined;
+    const text =
+      component.name === "identity" ? (identityText(harness) ?? BUILT_IN_IDENTITY_TEXT) : (own?.text ?? undefined);
+    const file = component.name === "identity" ? identity?.file : own?.file;
+    promptSections.push({
+      kind: "prompt_section",
+      ...base,
+      // Agents live in the user settings file, so a section an Agent adds comes from there.
+      source: component.source === "harness" ? "user" : "built-in",
+      block: blocks.get(component.name) ?? "dynamic",
+      ...(component.replacedBy ? { replacedBy: component.replacedBy } : {}),
+      ...(text !== undefined ? { text } : {}),
+      ...(file ? { file } : {}),
+      ...(own?.after ? { after: own.after } : {}),
+      ...(component.specKey ? { specKey: component.specKey } : {}),
+    });
+  }
+  return { promptSections, contextSources };
+}
 
 function listTools(deferred: Set<string>): ToolInventoryItem[] {
   const servers = new Map<string, { name: string; source: InventorySource; pluginId?: string }>();

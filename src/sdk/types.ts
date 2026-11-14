@@ -425,6 +425,38 @@ export interface ToolInventoryItem extends InventoryItemBase {
   schema: TokenCount;
 }
 
+/**
+ * A section of the system prompt: built in (`source: "built-in"`) or added by
+ * the Agent (`source: "user"`, since Agents live in the user settings).
+ */
+export interface PromptSectionInventoryItem extends InventoryItemBase {
+  kind: "prompt_section";
+  description: string;
+  /** `static`: identity and coding instructions; `dynamic`: the sections after them. */
+  block: "static" | "dynamic";
+  /** Present when the Agent supplies the text: which setting it comes from, as a sentence. */
+  replacedBy?: string;
+  /** The file the Agent's text is read from, when the spec references one. */
+  file?: string;
+  /** For a dynamic section the Agent places: the section it follows. */
+  after?: string;
+  /**
+   * The section's text when it does not depend on the session: the identity
+   * (built in or the Agent's), and a section the Agent replaces or adds.
+   */
+  text?: string;
+  /** The Agent setting that turns it off or replaces it. */
+  specKey?: string;
+}
+
+/** Where dynamic context comes from: AGENT.md files, memory, the environment, git status, the skill and sub-agent listings. */
+export interface ContextSourceInventoryItem extends InventoryItemBase {
+  kind: "context_source";
+  description: string;
+  /** The Agent setting that turns it off, such as `context.gitStatus`. */
+  specKey: string;
+}
+
 /** Everything the workspace runtime has loaded, with sources and state. */
 export interface RuntimeInventory {
   workspaceTrusted: boolean;
@@ -439,6 +471,8 @@ export interface RuntimeInventory {
   hooks: HookInventoryItem[];
   rules: RuleInventoryItem[];
   tools: ToolInventoryItem[];
+  promptSections: PromptSectionInventoryItem[];
+  contextSources: ContextSourceInventoryItem[];
 }
 
 export interface ReloadResult {

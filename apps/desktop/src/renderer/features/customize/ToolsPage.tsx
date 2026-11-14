@@ -2,13 +2,12 @@ import { Bot, ClipboardList, FileText, Globe, ListTodo, Puzzle, RotateCcw, Squar
 import { useState } from "react";
 import type { ToolInventoryItem } from "../../../shared/agent";
 import { Button, cn, Tooltip } from "../../design/primitives";
+import { changeWorkspaceAgent } from "../../state/agents";
 import { tokens } from "../../lib/format";
 import { useWorkspaceData } from "../../state/customize";
+import { applySelection, offByAgent, setKey } from "../agents/model";
 import { BUILTIN_TOOLS, type ToolGroup, unavailableReason } from "./model";
-import { Chips, DetailDrawer, Field, ItemRow, PageHeader, PendingSwitch, Section, Stat, TokenTag, WriteScopePicker } from "./shared";
-
-// TODO(config): turning built-in tools off needs a `disabledTools` setting in the Agent.
-const SWITCH_PENDING = "关掉内置工具要等 Agent 提供 disabledTools 配置项";
+import { AgentSwitch, AgentTarget, Chips, DetailDrawer, Field, ItemRow, PageHeader, Section, Stat, TokenTag } from "./shared";
 
 const GROUP_ICON: Record<ToolGroup, typeof FileText> = {
   文件: FileText,
@@ -40,6 +39,8 @@ interface ToolRow {
   description: string;
   /** Sent in full with every request. */
   perTurn: number;
+  /** The Agent leaves it out (`tools.include` / `tools.exclude`); the switch turns it back on. */
+  off: boolean;
   unavailable?: string;
 }
 
@@ -50,19 +51,14 @@ function toRow(item: ToolInventoryItem): ToolRow {
     group: known?.group ?? "扩展",
     description: known?.description ?? item.description,
     perTurn: item.enabled && !item.deferred ? item.schema.value : 0,
-    ...(item.enabled ? {} : { unavailable: unavailableReason(item.name) }),
+    off: offByAgent("tools", item.reason),
+    ...(item.enabled || offByAgent("tools", item.reason) ? {} : { unavailable: unavailableReason(item.name) }),
   };
 }
 
-const presetPending = (label: string) => (
-  <Tooltip content={SWITCH_PENDING}>
-    <span>
-      <Button size="sm" variant="outline" disabled>
-        {label}
-      </Button>
-    </span>
-  </Tooltip>
-);
+/** Write the tool lists of the workspace's Agent; `changes` turns tools on or off. */
+const setTools = (changes: [string, boolean][], message: (agent: string) => string) =>
+  void changeWorkspaceAgent((spec, resolved) => applySelection(spec, resolved, "tools", changes), { message });
 
 export function ToolsPage({ query }: { query: string }) {
   const { inventory, config } = useWorkspaceData();
@@ -70,7 +66,8 @@ export function ToolsPage({ query }: { query: string }) {
 
   const all = (inventory?.tools ?? []).filter((t) => !t.mcpServer).map(toRow);
   const rows = all.filter((t) => !query || `${t.item.name} ${t.description}`.toLowerCase().includes(query.toLowerCase()));
-  const available = all.filter((t) => !t.unavailable);
+  const available = all.filter((t) => !t.unavailable && !t.off);
+  const usable = all.filter((t) => !t.unavailable);
   const perTurn = available.reduce((n, t) => n + t.perTurn, 0);
   const tool = all.find((t) => t.item.name === selected);
   const rules = (["allow", "ask", "deny"] as const).flatMap((effect) =>
@@ -87,10 +84,17 @@ export function ToolsPage({ query }: { query: string }) {
         description="Agent 内置的工具。每个启用的工具每轮都要发送完整定义；用不到的关掉，既省上下文，模型也少一个选项。关掉的工具模型看不到，也调用不了。"
         actions={
           <>
-            <WriteScopePicker what="开关" />
-            <Tooltip content={SWITCH_PENDING}>
+            <AgentTarget tab="tools" />
+            <Tooltip content="删掉这个 Agent 自己的 tools.include 和 tools.exclude，回到继承的工具开关">
               <span>
-                <Button variant="secondary" disabled>
+                <Button
+                  variant="secondary"
+                  onClick={() =>
+                    void changeWorkspaceAgent((spec) => setKey(setKey(spec, "tools.include", undefined), "tools.exclude", undefined), {
+                      message: (agent) => `已恢复 Agent「${agent}」的工具开关`,
+                    })
+                  }
+                >
                   <RotateCcw />
                   恢复默认
                 </Button>
@@ -101,13 +105,35 @@ export function ToolsPage({ query }: { query: string }) {
       />
 
       <div className="mb-5 grid grid-cols-3 gap-2.5">
-        <Stat label="已启用" value={`${available.length} / ${all.length}`} sub={`${all.length - available.length} 个当前不可用`} />
+        <Stat label="已启用" value={`${available.length} / ${all.length}`} sub={`${all.length - usable.length} 个当前不可用`} />
         <Stat label="每轮占用" value={`${tokens(perTurn)} tokens`} sub="工具定义随每个请求发送" />
         <div className="rounded-xl border border-line bg-surface px-3 py-2.5">
           <div className="text-[11px] text-fg-3">快速设置</div>
           <div className="mt-1.5 flex gap-1.5">
-            {presetPending("只读")}
-            {presetPending("全部启用")}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() =>
+                setTools(
+                  usable.map((t) => [t.item.name, t.item.readOnly]),
+                  (agent) => `Agent「${agent}」只保留只读工具`,
+                )
+              }
+            >
+              只读
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() =>
+                setTools(
+                  usable.filter((t) => t.off).map((t) => [t.item.name, true]),
+                  (agent) => `Agent「${agent}」的工具已全部打开`,
+                )
+              }
+            >
+              全部启用
+            </Button>
           </div>
         </div>
       </div>
@@ -116,7 +142,7 @@ export function ToolsPage({ query }: { query: string }) {
         const items = rows.filter((t) => t.group === group);
         if (items.length === 0) return null;
         const Icon = GROUP_ICON[group];
-        const on = items.filter((t) => !t.unavailable);
+        const on = items.filter((t) => !t.unavailable && !t.off);
         return (
           <Section key={group} title={group} meta={`${on.length}/${items.length} · ${tokens(on.reduce((n, t) => n + t.perTurn, 0))} tokens`}>
             {items.map((t) => (
@@ -124,7 +150,7 @@ export function ToolsPage({ query }: { query: string }) {
                 key={t.item.name}
                 selected={selected === t.item.name}
                 onClick={() => setSelected(t.item.name)}
-                dimmed={!!t.unavailable}
+                dimmed={!!t.unavailable || t.off}
                 icon={<Icon />}
                 title={<span className="font-mono">{t.item.name}</span>}
                 badges={
@@ -147,7 +173,7 @@ export function ToolsPage({ query }: { query: string }) {
                     {t.unavailable ? (
                       <span className="w-[86px] text-right text-[11px] text-fg-3">{t.unavailable}</span>
                     ) : (
-                      <PendingSwitch checked reason={SWITCH_PENDING} />
+                      <AgentSwitch kind="tools" name={t.item.name} checked={!t.off} />
                     )}
                   </>
                 }
@@ -194,8 +220,8 @@ export function ToolsPage({ query }: { query: string }) {
             </Field>
             <Field label="开关">
               <div className="flex items-center justify-between rounded-lg border border-line bg-surface px-3 py-2">
-                <span className="text-[12.5px] text-fg-2">{tool.unavailable ? tool.unavailable : "默认"}</span>
-                <PendingSwitch checked={!tool.unavailable} reason={SWITCH_PENDING} />
+                <span className="text-[12.5px] text-fg-2">{tool.unavailable ?? (tool.off ? "这个 Agent 关掉了它" : "打开")}</span>
+                {!tool.unavailable && <AgentSwitch kind="tools" name={tool.item.name} checked={!tool.off} />}
               </div>
             </Field>
           </>

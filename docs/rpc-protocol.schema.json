@@ -167,7 +167,24 @@
             },
             "params": {
               "type": "object",
-              "properties": {}
+              "properties": {
+                "harness": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "spec": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {}
+                    }
+                  }
+                }
+              }
             }
           },
           "required": [
@@ -430,6 +447,49 @@
               "required": [
                 "name",
                 "spec"
+              ]
+            }
+          },
+          "required": [
+            "jsonrpc",
+            "method"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "jsonrpc": {
+              "type": "string",
+              "const": "2.0"
+            },
+            "id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "method": {
+              "type": "string",
+              "const": "harness/writePrompt"
+            },
+            "params": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "text": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "text"
               ]
             }
           },
@@ -3823,6 +3883,141 @@
                 ],
                 "additionalProperties": {}
               }
+            },
+            "promptSections": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "prompt_section"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "source": {
+                    "type": "string",
+                    "enum": [
+                      "built-in",
+                      "user",
+                      "project",
+                      "local",
+                      "flag",
+                      "policy",
+                      "plugin"
+                    ]
+                  },
+                  "pluginId": {
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "reason": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "block": {
+                    "type": "string",
+                    "enum": [
+                      "static",
+                      "dynamic"
+                    ]
+                  },
+                  "replacedBy": {
+                    "type": "string"
+                  },
+                  "text": {
+                    "type": "string"
+                  },
+                  "file": {
+                    "type": "string"
+                  },
+                  "after": {
+                    "type": "string"
+                  },
+                  "specKey": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "id",
+                  "name",
+                  "source",
+                  "enabled",
+                  "description",
+                  "block"
+                ],
+                "additionalProperties": {}
+              }
+            },
+            "contextSources": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "context_source"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "source": {
+                    "type": "string",
+                    "enum": [
+                      "built-in",
+                      "user",
+                      "project",
+                      "local",
+                      "flag",
+                      "policy",
+                      "plugin"
+                    ]
+                  },
+                  "pluginId": {
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "reason": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "specKey": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "id",
+                  "name",
+                  "source",
+                  "enabled",
+                  "description",
+                  "specKey"
+                ],
+                "additionalProperties": {}
+              }
             }
           },
           "required": [
@@ -3836,7 +4031,9 @@
             "plugins",
             "hooks",
             "rules",
-            "tools"
+            "tools",
+            "promptSections",
+            "contextSources"
           ],
           "additionalProperties": {}
         },
@@ -4639,6 +4836,21 @@
             "created"
           ],
           "additionalProperties": {}
+        },
+        "harness/writePrompt": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "file",
+            "path"
+          ]
         },
         "harness/delete": {
           "type": "object",
@@ -9344,6 +9556,7 @@
         "harness/list",
         "harness/read",
         "harness/write",
+        "harness/writePrompt",
         "harness/delete",
         "harness/rename",
         "harness/export",

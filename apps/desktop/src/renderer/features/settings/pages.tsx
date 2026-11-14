@@ -9,6 +9,7 @@ import { useUi } from "../../state/ui";
 import { useRuntime, useWorkspaces } from "../../state/workspaces";
 import { MODES } from "../composer/Pickers";
 import type { AgentSettings, RuleEntry, SettingKey } from "./agentSettings";
+import { AgentSettingRow } from "./AgentSettingRow";
 import { Group, ListEditor, NumberInput, PageTitle, Row, ScopeTag, Select, TextInput } from "./controls";
 
 /** Write one or more settings keys to the file being edited. */
@@ -74,7 +75,7 @@ export function BehaviorPage() {
   const agent = useAgent();
   const toolSearch = agent.toolSearch;
   const set = useSetting();
-  const todo = { taskMode: "task", agentTeams: false, maxRetries: 10, promptCaching: true, experimentalBetas: true, mcpConnectTimeout: 30 };
+  const todo = { mcpConnectTimeout: 30 };
   return (
     <>
       <PageTitle
@@ -118,19 +119,27 @@ export function BehaviorPage() {
         <Row title="遵守 .gitignore" hint="Glob 和 Grep 跳过被忽略的文件" k="respectGitignore">
           <Switch checked={agent.respectGitignore} onChange={(respectGitignore) => set(["respectGitignore"], (a) => ({ ...a, respectGitignore }))} />
         </Row>
-        <Row title="任务系统" hint="任务图可以跨会话保存、带依赖；待办清单只在当前会话里有效" k="taskMode">
-          <Segmented
-            value={todo.taskMode}
-            onChange={() => {}}
-            options={[
-              { value: "task", label: "任务图" },
-              { value: "todo", label: "待办清单" },
-            ]}
-          />
-        </Row>
-        <Row title="Agent Teams" hint="允许 Agent 组建团队、派出有名字的队友并互相发消息" k="agentTeams">
-          <Switch checked={todo.agentTeams} onChange={() => {}} />
-        </Row>
+        <AgentSettingRow<"task" | "todo">
+          title="任务系统"
+          hint="任务图可以跨会话保存、带依赖；待办清单只在当前会话里有效"
+          path="features.tasks"
+          render={(value, set) => (
+            <Segmented
+              value={value ?? "task"}
+              onChange={set}
+              options={[
+                { value: "task", label: "任务图" },
+                { value: "todo", label: "待办清单" },
+              ]}
+            />
+          )}
+        />
+        <AgentSettingRow<boolean>
+          title="Agent Teams"
+          hint="允许 Agent 组建团队、派出有名字的队友并互相发消息"
+          path="features.agentTeams"
+          render={(value, set) => <Switch checked={value === true} onChange={set} />}
+        />
       </Group>
       <Group title="工具加载">
         <Row title="ToolSearch" hint="工具多的时候先只给模型看工具名，用到时再加载定义，能省不少上下文" k="toolSearch">
@@ -159,15 +168,24 @@ export function BehaviorPage() {
         </Row>
       </Group>
       <Group title="请求">
-        <Row title="失败重试次数" hint="遇到限流、过载和网络错误时自动重试，间隔逐次加长" k="maxRetries">
-          <NumberInput value={todo.maxRetries} min={0} suffix="次" onChange={() => {}} />
-        </Row>
-        <Row title="提示词缓存" hint="有的兼容接口不认 cache_control 或 prompt_cache_key，会报错，这时关掉" k="promptCaching">
-          <Switch checked={todo.promptCaching} onChange={() => {}} />
-        </Row>
-        <Row title="实验性 beta 头" hint="Anthropic 接口上带上实验功能的 beta 头。网关不认的时候关掉" k="experimentalBetas">
-          <Switch checked={todo.experimentalBetas} onChange={() => {}} />
-        </Row>
+        <AgentSettingRow<number>
+          title="失败重试次数"
+          hint="遇到限流、过载和网络错误时自动重试，间隔逐次加长"
+          path="features.maxRetries"
+          render={(value, set) => <DraftNumber key={value} value={value ?? 10} min={0} suffix="次" onCommit={set} />}
+        />
+        <AgentSettingRow<boolean>
+          title="提示词缓存"
+          hint="有的兼容接口不认 cache_control 或 prompt_cache_key，会报错，这时关掉"
+          path="features.promptCaching"
+          render={(value, set) => <Switch checked={value !== false} onChange={set} />}
+        />
+        <AgentSettingRow<boolean>
+          title="实验性 beta 头"
+          hint="Anthropic 接口上带上实验功能的 beta 头。网关不认的时候关掉"
+          path="features.experimentalBetas"
+          render={(value, set) => <Switch checked={value !== false} onChange={set} />}
+        />
       </Group>
       <Group title="网络搜索" description="WebSearch 工具用的搜索后端。">
         <Row title="后端" k="webSearch.adapter">

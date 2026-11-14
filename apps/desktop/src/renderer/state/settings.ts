@@ -66,6 +66,7 @@ export const useSettings = create<SettingsStore>()((set) => ({
   openSettings: (section) => {
     set((s) => ({ open: true, section: section ?? s.section }));
     void import("./customize").then(({ useCustomize }) => useCustomize.getState().closeCustomize());
+    void import("./agents").then(({ useAgents }) => useAgents.getState().closeAgents());
     void loadConfig();
   },
   closeSettings: () => set({ open: false }),

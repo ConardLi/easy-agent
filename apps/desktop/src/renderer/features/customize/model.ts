@@ -45,6 +45,10 @@ const REASONS: [RegExp, (m: RegExpMatchArray) => string][] = [
   [/^Not approved yet\.$/, () => "还没有批准"],
   [/^Rejected in disabledMcpjsonServers\.$/, () => "已在 disabledMcpjsonServers 里拒绝"],
   [/^Matched by claudeMdExcludes\.$/, () => "被 claudeMdExcludes 排除"],
+  [/^Left out by (\S+) \(Agent "([^"]+)"\)\.$/, (m) => `Agent「${m[2]}」的 ${m[1]} 去掉了它`],
+  [/^Not in (\S+) \(Agent "([^"]+)"\)\.$/, (m) => `不在 Agent「${m[2]}」的 ${m[1]} 里`],
+  [/^Turned off by (\S+) \(Agent "([^"]+)"\)\.$/, (m) => `Agent「${m[2]}」的 ${m[1]} 关掉了它`],
+  [/^Not started in this process/, () => "这个进程没有启动它，用这个 Agent 的进程会启动"],
 ];
 
 /** The Agent's reason for an item being off, in the interface language; unknown reasons stay as they are. */

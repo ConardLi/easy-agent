@@ -103,7 +103,8 @@ export interface HarnessInputs {
 }
 
 const INLINE = "(inline)";
-const MAX_TEXT_BYTES = 256 * 1024;
+/** Largest text file a spec can reference. */
+export const MAX_TEXT_BYTES = 256 * 1024;
 const SETTINGS_REASON = {
   untrusted: "workspace is not trusted",
   userOnly: "only user settings, flags, and managed policy can set this",
