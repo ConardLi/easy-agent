@@ -121,6 +121,8 @@ test("an installed skill is assigned to one Agent and absent from the other Agen
       await page.getByRole("button", { name: "选择文件夹" }).click();
       await page.getByRole("button", { name: "安装", exact: true }).click();
       await expect(usage).toContainText("0 个 Agent", { timeout: 20_000 });
+      // Installation opens the skill details over the row's Agent picker.
+      await page.getByRole("button", { name: "关闭", exact: true }).click();
     });
     await test.step("assign notes only to writer", async () => {
       await usage.click();
@@ -175,6 +177,7 @@ test("a rule file is edited and excluded from the rules page", async () => {
     await page.locator("aside").getByRole("switch").click();
     await expect.poll(() => userSettings().claudeMdExcludes).toEqual([join(world.project, "AGENTS.md")]);
     await expect(page.getByText("已排除", { exact: true }).first()).toBeVisible();
+    await page.getByRole("button", { name: "关闭", exact: true }).click();
     await captureResource(page, "resource-rules");
   } finally {
     await app.close();
