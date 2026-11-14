@@ -365,6 +365,8 @@ await session.close();
 await runtime.dispose();
 globalThis.fetch = realFetch;
 tripwire.close();
-await rm(root, { recursive: true, force: true });
+// Windows cannot remove the directory the process works in.
+process.chdir(os.tmpdir());
+await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
 console.log(`\n${passed} checks passed.`);
 process.exit(0);
