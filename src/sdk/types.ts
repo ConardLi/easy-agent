@@ -158,6 +158,12 @@ export interface HarnessTarget {
   session?: string | true;
 }
 
+/** Experimental. Options of `AgentRuntime.diffHarness()`. */
+export interface DiffHarnessOptions {
+  /** Also render the first request each Agent would send for this input, and compare the two. */
+  prompt?: string;
+}
+
 /** One saved session of the workspace. */
 // ─── Settings ─────────────────────────────────────────────────────────────
 

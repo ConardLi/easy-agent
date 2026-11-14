@@ -1,6 +1,7 @@
 /** Key-by-key comparison of two resolved harnesses. */
 
 import { HARNESS_KEYS } from "./keys.js";
+import type { RequestDiff } from "./requestDiff.js";
 import type { ResolvedHarness, ResolvedHarnessValue } from "./resolve.js";
 
 export interface HarnessDiffSide {
@@ -19,6 +20,8 @@ export interface HarnessDiff {
   a: { name: string; hash: string };
   b: { name: string; hash: string };
   differences: HarnessDifference[];
+  /** With a prompt: the first request each Agent renders for it, compared by component. */
+  request?: RequestDiff;
 }
 
 function sortKeys(value: unknown): unknown {

@@ -40,7 +40,8 @@ import { sendMessageTool } from "./sendMessageTool.js";
 import { toolSearchTool } from "./toolSearchTool.js";
 import { lspTool } from "./lspTool.js";
 import type { PermissionMode } from "../permissions/permissions.js";
-import { activeHarness } from "../harness/active.js";
+import { activeHarness, harnessOverridden } from "../harness/active.js";
+import { getMcpRegistry } from "../services/mcp/registry.js";
 import { selectionOffReason } from "../harness/selection.js";
 
 const BUILTIN_TOOLS: Tool[] = [
@@ -99,7 +100,17 @@ export function clearMcpTools(): void {
 /** Tools the session can use: enabled, and kept by the active Agent's `tools.include` and `tools.exclude`. */
 export function getAllTools(): Tool[] {
   const harness = activeHarness();
-  return getRegisteredTools().filter((tool) => tool.isEnabled() && !selectionOffReason(harness, "tools", tool.name));
+  const kept = getRegisteredTools().filter(
+    (tool) => tool.isEnabled() && !selectionOffReason(harness, "tools", tool.name),
+  );
+  if (!harnessOverridden()) return kept;
+  // Another Agent than the runtime's may leave out a server the runtime connected.
+  const leftOut = new Set(
+    getMcpRegistry()
+      .filter((entry) => selectionOffReason(harness, "mcpServers", entry.connection.name))
+      .flatMap((entry) => entry.tools.map((tool) => tool.name)),
+  );
+  return leftOut.size > 0 ? kept.filter((tool) => !leftOut.has(tool.name)) : kept;
 }
 
 /** Built-in and MCP tools, including the ones `isEnabled()` or the Agent currently turns off. */

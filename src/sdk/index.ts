@@ -23,3 +23,11 @@ export type {
   ResolvedHarnessValue,
 } from "../harness/index.js";
 export type { HarnessDiff, HarnessDifference, HarnessDiffSide } from "../harness/diff.js";
+export type {
+  RenderedRequestSummary,
+  RequestComponentDifference,
+  RequestComponentKind,
+  RequestComponentSide,
+  RequestDiff,
+} from "../harness/requestDiff.js";
+export type { RequestParamsRecord } from "../trace/requestTrace.js";

@@ -237,6 +237,78 @@
             },
             "method": {
               "type": "string",
+              "const": "runtime/diffHarness"
+            },
+            "params": {
+              "type": "object",
+              "properties": {
+                "a": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "spec": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {}
+                    }
+                  }
+                },
+                "b": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "spec": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {}
+                    }
+                  }
+                },
+                "prompt": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "a",
+                "b"
+              ]
+            }
+          },
+          "required": [
+            "jsonrpc",
+            "method"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "jsonrpc": {
+              "type": "string",
+              "const": "2.0"
+            },
+            "id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "method": {
+              "type": "string",
               "const": "runtime/reload"
             },
             "params": {
@@ -3974,6 +4046,412 @@
             "values",
             "issues",
             "hash"
+          ],
+          "additionalProperties": {}
+        },
+        "runtime/diffHarness": {
+          "type": "object",
+          "properties": {
+            "a": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "hash": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "hash"
+              ]
+            },
+            "b": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "hash": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "hash"
+              ]
+            },
+            "differences": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string"
+                  },
+                  "a": {
+                    "type": "object",
+                    "properties": {
+                      "value": {},
+                      "source": {
+                        "type": "string",
+                        "enum": [
+                          "built-in",
+                          "user",
+                          "harness",
+                          "project",
+                          "local",
+                          "environment",
+                          "flag",
+                          "policy"
+                        ]
+                      },
+                      "detail": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "source"
+                    ],
+                    "additionalProperties": {}
+                  },
+                  "b": {
+                    "type": "object",
+                    "properties": {
+                      "value": {},
+                      "source": {
+                        "type": "string",
+                        "enum": [
+                          "built-in",
+                          "user",
+                          "harness",
+                          "project",
+                          "local",
+                          "environment",
+                          "flag",
+                          "policy"
+                        ]
+                      },
+                      "detail": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "source"
+                    ],
+                    "additionalProperties": {}
+                  }
+                },
+                "required": [
+                  "path",
+                  "a",
+                  "b"
+                ],
+                "additionalProperties": {}
+              }
+            },
+            "request": {
+              "type": "object",
+              "properties": {
+                "prompt": {
+                  "type": "string"
+                },
+                "estimated": {
+                  "type": "boolean",
+                  "const": true
+                },
+                "a": {
+                  "type": "object",
+                  "properties": {
+                    "harness": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "hash": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "name",
+                        "hash"
+                      ]
+                    },
+                    "protocol": {
+                      "type": "string"
+                    },
+                    "model": {
+                      "type": "string"
+                    },
+                    "params": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {}
+                    },
+                    "tokens": {
+                      "type": "object",
+                      "properties": {
+                        "system": {
+                          "type": "number"
+                        },
+                        "tools": {
+                          "type": "number"
+                        },
+                        "messages": {
+                          "type": "number"
+                        },
+                        "total": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "system",
+                        "tools",
+                        "messages",
+                        "total"
+                      ],
+                      "additionalProperties": {}
+                    },
+                    "components": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "harness",
+                    "protocol",
+                    "model",
+                    "params",
+                    "tokens",
+                    "components"
+                  ],
+                  "additionalProperties": {}
+                },
+                "b": {
+                  "type": "object",
+                  "properties": {
+                    "harness": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "hash": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "name",
+                        "hash"
+                      ]
+                    },
+                    "protocol": {
+                      "type": "string"
+                    },
+                    "model": {
+                      "type": "string"
+                    },
+                    "params": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {}
+                    },
+                    "tokens": {
+                      "type": "object",
+                      "properties": {
+                        "system": {
+                          "type": "number"
+                        },
+                        "tools": {
+                          "type": "number"
+                        },
+                        "messages": {
+                          "type": "number"
+                        },
+                        "total": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "system",
+                        "tools",
+                        "messages",
+                        "total"
+                      ],
+                      "additionalProperties": {}
+                    },
+                    "components": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "harness",
+                    "protocol",
+                    "model",
+                    "params",
+                    "tokens",
+                    "components"
+                  ],
+                  "additionalProperties": {}
+                },
+                "params": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "key": {
+                        "type": "string"
+                      },
+                      "a": {},
+                      "b": {}
+                    },
+                    "required": [
+                      "key"
+                    ],
+                    "additionalProperties": {}
+                  }
+                },
+                "components": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "prompt_section",
+                          "context_source",
+                          "tool",
+                          "message"
+                        ]
+                      },
+                      "change": {
+                        "type": "string",
+                        "enum": [
+                          "added",
+                          "removed",
+                          "changed"
+                        ]
+                      },
+                      "a": {
+                        "type": "object",
+                        "properties": {
+                          "bytes": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "tokens": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "hash": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "bytes",
+                          "tokens",
+                          "hash"
+                        ],
+                        "additionalProperties": {}
+                      },
+                      "b": {
+                        "type": "object",
+                        "properties": {
+                          "bytes": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "tokens": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "hash": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "bytes",
+                          "tokens",
+                          "hash"
+                        ],
+                        "additionalProperties": {}
+                      },
+                      "tokens": {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      "lines": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "op": {
+                              "type": "string",
+                              "enum": [
+                                "-",
+                                "+"
+                              ]
+                            },
+                            "text": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "op",
+                            "text"
+                          ]
+                        }
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "kind",
+                      "change",
+                      "tokens"
+                    ],
+                    "additionalProperties": {}
+                  }
+                },
+                "unchanged": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "prompt",
+                "estimated",
+                "a",
+                "b",
+                "params",
+                "components",
+                "unchanged"
+              ],
+              "additionalProperties": {}
+            }
+          },
+          "required": [
+            "a",
+            "b",
+            "differences"
           ],
           "additionalProperties": {}
         },
@@ -8862,6 +9340,7 @@
         "runtime/capabilities",
         "runtime/inventory",
         "runtime/harness",
+        "runtime/diffHarness",
         "harness/list",
         "harness/read",
         "harness/write",

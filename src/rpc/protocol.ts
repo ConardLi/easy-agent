@@ -450,6 +450,57 @@ const ResolvedHarnessSchema = z
   })
   .loose();
 
+const HarnessDiffSideSchema = z
+  .object({ value: z.unknown().optional(), source: HarnessLayerSchema, detail: z.string().optional() })
+  .loose();
+const RequestComponentSideSchema = z
+  .object({ bytes: z.number().int().nonnegative(), tokens: z.number().int().nonnegative(), hash: z.string() })
+  .loose();
+const RenderedRequestSummarySchema = z
+  .object({
+    harness: z.object({ name: z.string(), hash: z.string() }),
+    protocol: z.string(),
+    model: z.string(),
+    params: z.record(z.string(), z.unknown()),
+    tokens: z.object({ system: z.number(), tools: z.number(), messages: z.number(), total: z.number() }).loose(),
+    components: z.number().int().nonnegative(),
+  })
+  .loose();
+
+/** Experimental: two Agents compared key by key, and with a prompt their first requests by component. */
+const HarnessDiffSchema = z
+  .object({
+    a: z.object({ name: z.string(), hash: z.string() }),
+    b: z.object({ name: z.string(), hash: z.string() }),
+    differences: z.array(z.object({ path: z.string(), a: HarnessDiffSideSchema, b: HarnessDiffSideSchema }).loose()),
+    request: z
+      .object({
+        prompt: z.string(),
+        /** Token figures are estimated from sizes; nothing was sent. */
+        estimated: z.literal(true),
+        a: RenderedRequestSummarySchema,
+        b: RenderedRequestSummarySchema,
+        params: z.array(z.object({ key: z.string(), a: z.unknown().optional(), b: z.unknown().optional() }).loose()),
+        components: z.array(
+          z
+            .object({
+              id: z.string(),
+              kind: z.enum(["prompt_section", "context_source", "tool", "message"]),
+              change: z.enum(["added", "removed", "changed"]),
+              a: RequestComponentSideSchema.optional(),
+              b: RequestComponentSideSchema.optional(),
+              tokens: z.number().int(),
+              lines: z.array(z.object({ op: z.enum(["-", "+"]), text: z.string() })).optional(),
+            })
+            .loose(),
+        ),
+        unchanged: z.number().int().nonnegative(),
+      })
+      .loose()
+      .optional(),
+  })
+  .loose();
+
 // ─── Client → server ──────────────────────────────────────────────────────
 
 const OpenSessionOptions = {
@@ -493,6 +544,17 @@ export const MethodParams = {
   "runtime/harness": z.object({
     name: z.string().min(1).optional(),
     spec: z.record(z.string(), z.unknown()).optional(),
+  }),
+  /**
+   * Experimental. Compares two Agents (a name, default `default`, or a spec) like
+   * `diffHarness()`. With `prompt`, also renders the first request a new session of
+   * each would send for it and compares them by component; calls no model, runs no
+   * tool or hook, saves nothing.
+   */
+  "runtime/diffHarness": z.object({
+    a: z.object({ name: z.string().min(1).optional(), spec: z.record(z.string(), z.unknown()).optional() }),
+    b: z.object({ name: z.string().min(1).optional(), spec: z.record(z.string(), z.unknown()).optional() }),
+    prompt: z.string().min(1).optional(),
   }),
   /** Reloads skills, commands, sub-agents, output styles, and plugins; open sessions use them from their next turn. */
   "runtime/reload": z.object({}),
@@ -636,6 +698,7 @@ export const MethodResults = {
   "runtime/capabilities": z.object({ builtinCommands: z.array(z.string()) }).loose(),
   "runtime/inventory": RuntimeInventorySchema,
   "runtime/harness": ResolvedHarnessSchema,
+  "runtime/diffHarness": HarnessDiffSchema,
   "harness/list": z
     .object({
       harnesses: z.array(HarnessSummarySchema),

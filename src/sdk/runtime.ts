@@ -43,20 +43,23 @@ import { createSessionScope } from "../state/sessionScope.js";
 import { getActiveOutputStyleName } from "../styles/registry.js";
 import { logWarn } from "../utils/log.js";
 import type { McpServerConfig } from "../types/mcp.js";
-import { activateWorkspace, consoleLogger, loadWorkspace, type WorkspaceReport } from "./bootstrap.js";
+import { activateWorkspace, agentErrors, consoleLogger, loadWorkspace, type WorkspaceReport } from "./bootstrap.js";
 import { checkModel, listModels, readConfig, setWorkspaceTrust, writeConfig } from "./config.js";
 import { AgentSdkError } from "./errors.js";
 import { approveMcpServer, reconnectMcpServer, reloadExtensions } from "./extensions.js";
 import { buildRuntimeInventory } from "./inventory.js";
 import { activeHarness, refreshHarness, uninstallHarness } from "../harness/active.js";
 import { diffHarnesses, type HarnessDiff } from "../harness/diff.js";
+import { diffRenderedRequests } from "../harness/requestDiff.js";
 import { harnessValue, type ResolvedHarness, resolveHarness } from "../harness/resolve.js";
 import { bindSessionHarness, type SessionHarnessCheck, sessionHarnessRecord } from "../harness/session.js";
 import { listPlugins, mutatePlugins, previewPlugin } from "./plugins.js";
+import { renderFirstRequest } from "./renderRequest.js";
 import { AgentSession, reloadSettingsOf } from "./session.js";
 import { SessionController } from "./session/controller.js";
 import type {
   AgentRuntimeOptions,
+  DiffHarnessOptions,
   HarnessTarget,
   AgentSessionOptions,
   ConfigScope,
@@ -441,10 +444,35 @@ export class AgentRuntime {
     });
   }
 
-  /** Experimental. Compare the resolved settings of two Agents, key by key. */
-  async diffHarness(a: HarnessTarget, b: HarnessTarget): Promise<HarnessDiff> {
+  /**
+   * Experimental. Compare the resolved settings of two Agents, key by key.
+   * With `prompt`, also render the first request a new session of each Agent
+   * would send for it and compare the two by component (`request`). Rendering
+   * calls no model, runs no tool or hook, and saves nothing; token figures
+   * are estimated from sizes. Rejects with `harness` when either Agent does
+   * not resolve, and with `invalid_argument` when the prompt makes no model
+   * request (a local command).
+   */
+  async diffHarness(a: HarnessTarget, b: HarnessTarget, options: DiffHarnessOptions = {}): Promise<HarnessDiff> {
     const [left, right] = await Promise.all([this.getHarness(a), this.getHarness(b)]);
-    return diffHarnesses(left, right);
+    const diff = diffHarnesses(left, right);
+    if (options.prompt === undefined) return diff;
+    for (const harness of [left, right]) {
+      const errors = agentErrors(harness);
+      if (errors) throw new AgentSdkError("harness", `Agent "${harness.name}" does not resolve: ${errors}`);
+    }
+    const prompt = options.prompt;
+    // One after the other: each rendering runs a turn, and the output must not depend on timing.
+    const renderedA = await renderFirstRequest(this.cwd, left, prompt);
+    const renderedB = await renderFirstRequest(this.cwd, right, prompt);
+    return {
+      ...diff,
+      request: diffRenderedRequests(
+        prompt,
+        { harness: diff.a, request: renderedA },
+        { harness: diff.b, request: renderedB },
+      ),
+    };
   }
 
   /** Reload skills, commands, sub-agents, output styles, and plugins; open sessions use them from their next turn. */

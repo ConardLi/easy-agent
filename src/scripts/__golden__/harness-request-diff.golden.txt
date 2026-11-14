@@ -1,0 +1,291 @@
+### text: default → reviewer, prompt "Review the change in src/app.ts"
+default → reviewer
+  tools.exclude
+    - unset (built-in)
+    + ["Write","Edit","MultiEdit","WebFetch"] (Agent "reviewer")
+  prompt.identity
+    - unset (built-in)
+    + 88 chars (Agent "reviewer")
+  prompt.sections
+    - unset (built-in)
+    + {"review-rules":{"text":"Name the file and line of every problem.\nSay what t… (Agent "reviewer")
+  skills.exclude
+    - unset (built-in)
+    + ["release-notes"] (Agent "reviewer")
+4 differences.
+
+First request for "Review the change in src/app.ts": default → reviewer
+  model: claude-sonnet-4-20250514 (anthropic)
+  tokens            default  reviewer    change
+  system prompt         <n>       <n>      -128
+  tools                 <n>       <n>    -1,137
+  messages              <n>       <n>         0
+  total                 <n>       <n>    -1,265
+  Token figures are estimated from sizes; nothing was sent.
+
+Prompt sections
+  ~ prompt_section:identity  93 → 23 tokens (-70)
+      - You are Easy Agent, a terminal-native local coding assistant running inside the user's workspace.
+      + You are a code reviewer. You read the change and report problems; you do not edit files.
+      - Treat the current working directory and explicitly configured additional directories as the file-tool boundary. Easy Agent exposes its plans directory when a p…
+      - 
+  - prompt_section:skills  58 tokens, only in default
+  + prompt_section:review-rules  16 tokens, only in reviewer
+
+Context sources
+  - skill:user:release-notes  16 tokens, only in default
+
+Tools
+  - tool:Write  161 tokens, only in default
+  - tool:Edit  328 tokens, only in default
+  - tool:MultiEdit  387 tokens, only in default
+  - tool:WebFetch  261 tokens, only in default
+
+8 components differ; 25 are the same.
+
+### json
+{
+  "a": {
+    "name": "default",
+    "hash": "605da62280ec0263"
+  },
+  "b": {
+    "name": "reviewer",
+    "hash": "fb51ec8f9efcc98d"
+  },
+  "differences": [
+    {
+      "path": "tools.exclude",
+      "a": {
+        "source": "built-in"
+      },
+      "b": {
+        "value": [
+          "Write",
+          "Edit",
+          "MultiEdit",
+          "WebFetch"
+        ],
+        "source": "harness",
+        "detail": "reviewer"
+      }
+    },
+    {
+      "path": "prompt.identity",
+      "a": {
+        "source": "built-in"
+      },
+      "b": {
+        "value": {
+          "text": "You are a code reviewer. You read the change and report problems; you do not edit files."
+        },
+        "source": "harness",
+        "detail": "reviewer"
+      }
+    },
+    {
+      "path": "prompt.sections",
+      "a": {
+        "source": "built-in"
+      },
+      "b": {
+        "value": {
+          "review-rules": {
+            "text": "Name the file and line of every problem.\nSay what to change.",
+            "after": "agent_md"
+          }
+        },
+        "source": "harness",
+        "detail": "reviewer"
+      }
+    },
+    {
+      "path": "skills.exclude",
+      "a": {
+        "source": "built-in"
+      },
+      "b": {
+        "value": [
+          "release-notes"
+        ],
+        "source": "harness",
+        "detail": "reviewer"
+      }
+    }
+  ],
+  "request": {
+    "prompt": "Review the change in src/app.ts",
+    "estimated": true,
+    "a": {
+      "harness": {
+        "name": "default",
+        "hash": "605da62280ec0263"
+      },
+      "protocol": "anthropic",
+      "model": "claude-sonnet-4-20250514",
+      "params": {
+        "maxTokens": 8000,
+        "thinking": {
+          "type": "adaptive"
+        },
+        "betas": [
+          "interleaved-thinking-2025-05-14"
+        ],
+        "toolSearch": false,
+        "promptCaching": true,
+        "cacheMarkers": 3,
+        "promptCacheKey": false
+      },
+      "tokens": {
+        "system": "<n>",
+        "tools": "<n>",
+        "messages": "<n>",
+        "total": "<n>"
+      },
+      "components": 32
+    },
+    "b": {
+      "harness": {
+        "name": "reviewer",
+        "hash": "fb51ec8f9efcc98d"
+      },
+      "protocol": "anthropic",
+      "model": "claude-sonnet-4-20250514",
+      "params": {
+        "maxTokens": 8000,
+        "thinking": {
+          "type": "adaptive"
+        },
+        "betas": [
+          "interleaved-thinking-2025-05-14"
+        ],
+        "toolSearch": false,
+        "promptCaching": true,
+        "cacheMarkers": 3,
+        "promptCacheKey": false
+      },
+      "tokens": {
+        "system": "<n>",
+        "tools": "<n>",
+        "messages": "<n>",
+        "total": "<n>"
+      },
+      "components": 27
+    },
+    "params": [],
+    "components": [
+      {
+        "id": "prompt_section:identity",
+        "kind": "prompt_section",
+        "change": "changed",
+        "a": {
+          "bytes": 372,
+          "tokens": 93,
+          "hash": "38cd2bda5e662663"
+        },
+        "b": {
+          "bytes": 90,
+          "tokens": 23,
+          "hash": "53e333b61e1afe41"
+        },
+        "tokens": -70,
+        "lines": [
+          {
+            "op": "-",
+            "text": "You are Easy Agent, a terminal-native local coding assistant running inside the user's workspace."
+          },
+          {
+            "op": "+",
+            "text": "You are a code reviewer. You read the change and report problems; you do not edit files."
+          },
+          {
+            "op": "-",
+            "text": "Treat the current working directory and explicitly configured additional directories as the file-tool boundary. Easy Agent exposes its plans directory when a plan file is required; memory, sessions, and other internal state are managed through dedicated runtime features."
+          },
+          {
+            "op": "-",
+            "text": ""
+          }
+        ]
+      },
+      {
+        "id": "prompt_section:skills",
+        "kind": "prompt_section",
+        "change": "removed",
+        "a": {
+          "bytes": 232,
+          "tokens": 58,
+          "hash": "f4a33eb31ff73a11"
+        },
+        "tokens": -58
+      },
+      {
+        "id": "prompt_section:review-rules",
+        "kind": "prompt_section",
+        "change": "added",
+        "b": {
+          "bytes": 62,
+          "tokens": 16,
+          "hash": "de9ef6241ad94fb5"
+        },
+        "tokens": 16
+      },
+      {
+        "id": "skill:user:release-notes",
+        "kind": "context_source",
+        "change": "removed",
+        "a": {
+          "bytes": 62,
+          "tokens": 16,
+          "hash": "1011d8e05d5afc2c"
+        },
+        "tokens": -16
+      },
+      {
+        "id": "tool:Write",
+        "kind": "tool",
+        "change": "removed",
+        "a": {
+          "bytes": 322,
+          "tokens": 161,
+          "hash": "65236fd04785567f"
+        },
+        "tokens": -161
+      },
+      {
+        "id": "tool:Edit",
+        "kind": "tool",
+        "change": "removed",
+        "a": {
+          "bytes": 655,
+          "tokens": 328,
+          "hash": "daf730019834882e"
+        },
+        "tokens": -328
+      },
+      {
+        "id": "tool:MultiEdit",
+        "kind": "tool",
+        "change": "removed",
+        "a": {
+          "bytes": 774,
+          "tokens": 387,
+          "hash": "5e8fca0a45fe4293"
+        },
+        "tokens": -387
+      },
+      {
+        "id": "tool:WebFetch",
+        "kind": "tool",
+        "change": "removed",
+        "a": {
+          "bytes": 524,
+          "tokens": 261,
+          "hash": "269713c8009d896b"
+        },
+        "tokens": -261
+      }
+    ],
+    "unchanged": 25
+  }
+}

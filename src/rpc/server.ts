@@ -71,6 +71,8 @@ export class RpcServer {
     "runtime/inventory": async () => this.#requireRuntime().getInventory(),
     "runtime/harness": async ({ name, spec }) =>
       this.#requireRuntime().getHarness(spec !== undefined ? { spec } : name !== undefined ? { name } : {}),
+    "runtime/diffHarness": async ({ a, b, prompt }) =>
+      this.#requireRuntime().diffHarness(targetOf(a), targetOf(b), prompt !== undefined ? { prompt } : {}),
     "runtime/reload": async () => this.#requireRuntime().reload(),
     "harness/list": async () => harnesses.listHarnesses(this.#workspace()),
     "harness/read": async ({ name }) => harnesses.readHarness(this.#agentName(name)),
@@ -369,6 +371,12 @@ export class RpcServer {
   #notify(method: string, params: unknown): void {
     this.#peer.notify(method, params);
   }
+}
+
+/** A `name` or `spec` target as the runtime takes it; neither is `default`. */
+function targetOf(target: { name?: string; spec?: Record<string, unknown> }): HarnessTarget {
+  if (target.spec !== undefined) return { spec: target.spec };
+  return target.name !== undefined ? { name: target.name } : {};
 }
 
 /** `{ harness }` for a target that names an Agent, carries a spec, or names a session. */

@@ -76,7 +76,7 @@ function describeIssue(issue: HarnessIssue): string {
 }
 
 /** The errors of a resolved Agent as one line, or undefined when it has none. */
-function agentErrors(resolved: ResolvedHarness): string | undefined {
+export function agentErrors(resolved: ResolvedHarness): string | undefined {
   const errors = resolved.issues.filter((issue) => issue.level === "error");
   return errors.length > 0 ? errors.map(describeIssue).join("; ") : undefined;
 }

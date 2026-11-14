@@ -606,6 +606,37 @@ try {
     await rejects(rpc.call("runtime/harness", { name: "" }, { valid: false }), protocol.RpcErrorCode.InvalidParams);
   });
 
+  await check("runtime/diffHarness compares settings, and with a prompt the rendered first requests", async () => {
+    const spec = { tools: { exclude: ["Write"] }, prompt: { identity: "You review code." } };
+    const plain = await rpc.call<Json>("runtime/diffHarness", { a: {}, b: { spec } });
+    assert.equal(plain.request, undefined);
+    assert.deepEqual(
+      (plain.differences as Json[]).map((difference) => difference.path),
+      ["tools.exclude", "prompt.identity"],
+    );
+
+    const sent = fixture.requests.length;
+    const diff = await rpc.call<Json>("runtime/diffHarness", { a: {}, b: { spec }, prompt: "Look at app.ts" });
+    assert.equal(fixture.requests.length, sent, "rendering sent nothing");
+    const request = diff.request as Json;
+    assert.equal(request.estimated, true);
+    const changes = Object.fromEntries(
+      (request.components as Json[]).map((component) => [component.id, component.change]),
+    );
+    assert.equal(changes["tool:Write"], "removed");
+    assert.equal(changes["prompt_section:identity"], "changed");
+
+    await rejects(
+      rpc.call("runtime/diffHarness", { a: {}, b: { name: "ghost" }, prompt: "x" }),
+      protocol.RpcErrorCode.AgentError,
+      "harness",
+    );
+    await rejects(
+      rpc.call("runtime/diffHarness", { a: {}, b: {}, prompt: "" }, { valid: false }),
+      protocol.RpcErrorCode.InvalidParams,
+    );
+  });
+
   await check("plugins and marketplaces: preview, confirmed install, enable, disable, uninstall", async () => {
     const market = path.join(root, "rpc-market");
     const kit = path.join(market, "plugins", "kit");

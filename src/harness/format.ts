@@ -4,6 +4,7 @@ import type { BuiltInComponent } from "./components.js";
 import type { HarnessDiff, HarnessDiffSide } from "./diff.js";
 import { HARNESS_KEYS } from "./keys.js";
 import type { HarnessListing } from "./manage.js";
+import type { RequestComponentKind, RequestDiff } from "./requestDiff.js";
 import type { HarnessContribution, ResolvedHarness } from "./resolve.js";
 
 const LAYER_LABEL: Record<HarnessContribution["source"], string> = {
@@ -169,5 +170,82 @@ export function formatHarnessDiff(diff: HarnessDiff): string {
     lines.push(`  ${difference.path}`, `    - ${sideText(difference.a)}`, `    + ${sideText(difference.b)}`);
   }
   lines.push(`${diff.differences.length} difference${diff.differences.length === 1 ? "" : "s"}.`);
+  return lines.join("\n");
+}
+
+const KIND_TITLES: Record<RequestComponentKind, string> = {
+  prompt_section: "Prompt sections",
+  context_source: "Context sources",
+  tool: "Tools",
+  message: "Messages",
+};
+/** Changed lines shown per component; the JSON output has them all. */
+const MAX_CHANGED_LINES = 12;
+const MAX_LINE_LENGTH = 160;
+
+const count = (n: number) => n.toLocaleString("en-US");
+const signed = (n: number) => (n > 0 ? `+${count(n)}` : n < 0 ? `-${count(-n)}` : "0");
+const clip = (text: string) => (text.length > MAX_LINE_LENGTH ? `${text.slice(0, MAX_LINE_LENGTH - 1)}…` : text);
+const paramText = (value: unknown) => (value === undefined ? "unset" : JSON.stringify(value));
+
+/** The first requests two Agents render for one input, compared by component. */
+export function formatRequestDiff(diff: RequestDiff): string {
+  const { a, b } = diff;
+  const lines = [`First request for ${JSON.stringify(diff.prompt)}: ${a.harness.name} → ${b.harness.name}`];
+  const model = (side: typeof a) => `${side.model} (${side.protocol})`;
+  lines.push(`  model: ${model(a) === model(b) ? model(a) : `${model(a)} → ${model(b)}`}`);
+
+  const rows: Array<[string, number, number]> = [
+    ["system prompt", a.tokens.system, b.tokens.system],
+    ["tools", a.tokens.tools, b.tokens.tools],
+    ["messages", a.tokens.messages, b.tokens.messages],
+    ["total", a.tokens.total, b.tokens.total],
+  ];
+  const labelWidth = Math.max(...rows.map(([label]) => label.length)) + 2;
+  const columns = [a.harness.name, b.harness.name, "change"];
+  const width = Math.max(
+    10,
+    ...columns.map((column) => column.length + 2),
+    ...rows.map(([, x]) => count(x).length + 2),
+  );
+  lines.push(`  ${"tokens".padEnd(labelWidth)}${columns.map((column) => column.padStart(width)).join("")}`);
+  for (const [label, x, y] of rows) {
+    lines.push(
+      `  ${label.padEnd(labelWidth)}${[count(x), count(y), signed(y - x)].map((v) => v.padStart(width)).join("")}`,
+    );
+  }
+  lines.push("  Token figures are estimated from sizes; nothing was sent.");
+
+  if (diff.params.length > 0) {
+    lines.push("", "Request parameters");
+    for (const param of diff.params) lines.push(`  ${param.key}: ${paramText(param.a)} → ${paramText(param.b)}`);
+  }
+
+  for (const kind of Object.keys(KIND_TITLES) as RequestComponentKind[]) {
+    const group = diff.components.filter((component) => component.kind === kind);
+    if (group.length === 0) continue;
+    lines.push("", KIND_TITLES[kind]);
+    for (const component of group) {
+      const mark = component.change === "added" ? "+" : component.change === "removed" ? "-" : "~";
+      const tokens =
+        component.change === "changed"
+          ? `${count(component.a!.tokens)} → ${count(component.b!.tokens)} tokens (${signed(component.tokens)})`
+          : `${count((component.a ?? component.b)!.tokens)} tokens, only in ${component.change === "added" ? b.harness.name : a.harness.name}`;
+      lines.push(`  ${mark} ${component.id}  ${tokens}`);
+      const changed = component.lines ?? [];
+      for (const line of changed.slice(0, MAX_CHANGED_LINES)) lines.push(`      ${line.op} ${clip(line.text)}`);
+      if (changed.length > MAX_CHANGED_LINES) {
+        lines.push(`      … ${changed.length - MAX_CHANGED_LINES} more changed lines (--json shows all)`);
+      }
+    }
+  }
+
+  const differing = diff.components.length;
+  lines.push(
+    "",
+    differing === 0 && diff.params.length === 0
+      ? `The two requests carry the same content (${count(diff.unchanged)} components).`
+      : `${differing === 1 ? "1 component differs" : `${differing} components differ`}; ${count(diff.unchanged)} ${diff.unchanged === 1 ? "is" : "are"} the same.`,
+  );
   return lines.join("\n");
 }

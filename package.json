@@ -70,6 +70,7 @@
     "test:harness-features": "node --import tsx src/scripts/test-harness-features.ts",
     "test:harness-manage": "node --import tsx src/scripts/test-harness-manage.ts",
     "test:harness-session": "node --import tsx src/scripts/test-harness-session.ts",
+    "test:harness-request-diff": "node --import tsx src/scripts/test-harness-request-diff.ts",
     "test:request-trace": "node --import tsx src/scripts/test-request-trace.ts",
     "test:context-coverage": "node --import tsx src/scripts/test-context-coverage.ts",
     "test:token-count": "node --import tsx src/scripts/test-token-count.ts",

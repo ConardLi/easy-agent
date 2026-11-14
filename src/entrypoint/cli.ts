@@ -80,8 +80,10 @@ Agents:
   eagent harness show [name|file] [--json]
                               Show every setting an Agent resolves to and where
                               each comes from
-  eagent harness diff <a> <b> [--json]
-                              Compare the resolved settings of two Agents
+  eagent harness diff <a> <b> [--prompt <text>] [--json]
+                              Compare the resolved settings of two Agents; with
+                              --prompt, also the first request each renders for
+                              the text (no model call, no tool runs)
 
 Commands (in REPL):
 ${formatBuiltinCommandHelpColumns()}
