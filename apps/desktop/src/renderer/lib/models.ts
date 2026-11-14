@@ -4,7 +4,7 @@
  *
  * Today Easy Agent stores one flat profile per model:
  *
- *   "models": { "<handle>": { protocol, model, baseURL, apiKey, maxTokens, headers, promptCacheKey } }
+ *   "models": { "<handle>": { protocol, model, baseURL, apiKey, maxTokens, headers, promptCacheKey, countTokens } }
  *   "defaultModel": "<handle>",
  *   "modelRoles": { background, think, longContext }
  *
@@ -89,6 +89,8 @@ export interface ProviderConfig {
   enabled: boolean;
   headers: { name: string; value: string }[];
   promptCacheKey?: boolean;
+  /** Anthropic protocol: count requests with the token-counting endpoint; kept as the settings file has it. */
+  countTokens?: boolean;
   models: ModelEntry[];
   /** Settings file the provider's profiles are written to. */
   scope: WriteScope;
@@ -473,6 +475,7 @@ export function profileEntryLines(p: ProviderConfig): string[] {
     if (x.maxOutput) entry.maxTokens = x.maxOutput;
     if (p.headers.length) entry.headers = Object.fromEntries(p.headers.filter((h) => h.name).map((h) => [h.name, h.value]));
     if (p.promptCacheKey !== undefined && p.protocol.startsWith("openai")) entry.promptCacheKey = p.promptCacheKey;
+    if (p.countTokens !== undefined && p.protocol === "anthropic") entry.countTokens = p.countTokens;
     const body = JSON.stringify(entry, null, 2)
       .split("\n")
       .slice(1, -1)

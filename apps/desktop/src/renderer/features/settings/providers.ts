@@ -22,6 +22,7 @@ interface RawProfile {
   maxTokens?: number;
   headers?: Record<string, string>;
   promptCacheKey?: boolean;
+  countTokens?: boolean;
 }
 
 const ENV_REFERENCE = /^\$\{([A-Z0-9_]+)\}$/i;
@@ -63,7 +64,7 @@ export function providersFromConfig(config: ConfigSnapshot, secrets: Record<stri
       const protocol = (raw.protocol ?? "anthropic") as Protocol;
       const baseURL = raw.baseURL ?? "";
       const headers = Object.entries(raw.headers ?? {}).map(([name, value]) => ({ name, value: String(value) }));
-      const groupKey = JSON.stringify([protocol, trimSlash(baseURL), raw.apiKey ?? "", headers, raw.promptCacheKey]);
+      const groupKey = JSON.stringify([protocol, trimSlash(baseURL), raw.apiKey ?? "", headers, raw.promptCacheKey, raw.countTokens]);
       let provider = groups.get(groupKey);
       if (!provider) {
         const t = templateFor(protocol, baseURL);
@@ -82,6 +83,7 @@ export function providersFromConfig(config: ConfigSnapshot, secrets: Record<stri
           enabled: true,
           headers,
           ...(raw.promptCacheKey !== undefined ? { promptCacheKey: raw.promptCacheKey } : {}),
+          ...(raw.countTokens !== undefined ? { countTokens: raw.countTokens } : {}),
           models: [],
           scope,
         };
@@ -120,6 +122,7 @@ export function modelsMapFor(providers: ProviderConfig[], scope: WriteScope): Re
       const headers = p.headers.filter((h) => h.name.trim());
       if (headers.length) entry.headers = Object.fromEntries(headers.map((h) => [h.name.trim(), h.value]));
       if (p.promptCacheKey !== undefined && p.protocol.startsWith("openai")) entry.promptCacheKey = p.promptCacheKey;
+      if (p.countTokens !== undefined && p.protocol === "anthropic") entry.countTokens = p.countTokens;
       out[m.handle] = entry;
     }
   }

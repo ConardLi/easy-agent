@@ -318,7 +318,7 @@ const SessionContextSchema = z
   .object({
     model: z.string(),
     contextWindow: z.number().int(),
-    estimated: z.literal(true),
+    estimated: z.boolean(),
     basis: z.enum(["request", "estimate"]),
     used: z.number().int().nonnegative(),
     free: z.number().int().nonnegative(),
@@ -348,6 +348,18 @@ const SessionContextSchema = z
         model: z.string(),
         bytes: z.number().int().nonnegative(),
         inputTokens: z.number().int().nonnegative(),
+        outputTokens: z.number().int().nonnegative(),
+        cacheReadTokens: z.number().int().nonnegative().optional(),
+        cacheWriteTokens: z.number().int().nonnegative().optional(),
+        tokens: z
+          .object({
+            method: z.enum(["count", "estimate"]),
+            countError: z.enum(["unsupported", "failed"]).optional(),
+            system: z.number().int().nonnegative(),
+            tools: z.number().int().nonnegative(),
+            messages: z.number().int().nonnegative(),
+          })
+          .loose(),
         unsent: z.object({
           messages: z.number().int().nonnegative(),
           bytes: z.number().int().nonnegative(),

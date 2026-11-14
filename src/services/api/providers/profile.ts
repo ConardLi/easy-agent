@@ -52,6 +52,12 @@ export interface ModelProfile {
    * on for api.openai.com and off for other endpoints.
    */
   promptCacheKey?: boolean;
+  /**
+   * Anthropic protocol: count each main-loop request's input tokens by part
+   * with the token-counting endpoint. Defaults to on for api.anthropic.com
+   * and off for other endpoints.
+   */
+  countTokens?: boolean;
 }
 
 export const DEFAULT_PROVIDER_BASE_URLS: Readonly<Record<ModelProtocol, string>> = {
@@ -81,6 +87,7 @@ interface RawProfile {
   maxTokens?: unknown;
   headers?: unknown;
   promptCacheKey?: unknown;
+  countTokens?: unknown;
 }
 
 const VALID_PROTOCOLS: ReadonlySet<string> = new Set<ModelProtocol>([
@@ -198,6 +205,7 @@ function buildProfile(id: string, raw: RawProfile, warnings: string[]): ModelPro
     if (Object.keys(out).length > 0) profile.headers = out;
   }
   if (typeof raw.promptCacheKey === "boolean") profile.promptCacheKey = raw.promptCacheKey;
+  if (typeof raw.countTokens === "boolean") profile.countTokens = raw.countTokens;
 
   return profile;
 }

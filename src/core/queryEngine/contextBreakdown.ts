@@ -6,7 +6,10 @@
  * record of the latest main-loop request (`basis: "request"`): every system
  * prompt section, rule file, listed skill and sub-agent, tool schema, and
  * message source the request carried is a component with its bytes and
- * estimated tokens, and the bytes add up to the request body. Messages the
+ * tokens, and the bytes add up to the request body. When the provider counted
+ * the request, the system prompt, the tools, and the messages carry its
+ * counts, each split over its components by size; otherwise every figure is
+ * estimated from sizes. Messages the
  * conversation gained since that request (the reply to it, at least) are
  * added under their sources. When the conversation no longer starts with the
  * request's (after /clear, compaction, rewind, or resume), or before the
@@ -44,7 +47,16 @@ import {
 import { prepareToolSearchRequest } from "../../utils/toolSearch.js";
 import { getGlobalAgentMdPath } from "../../utils/paths.js";
 import type { MessageSource } from "../messageSources.js";
-import { measureMessage, type MessageTraceSegment, type RequestRecord } from "../../trace/requestTrace.js";
+import {
+  measureMessage,
+  settleTokenCount,
+  type MessageTraceSegment,
+  type RequestRecord,
+  type TraceSegment,
+} from "../../trace/requestTrace.js";
+
+/** How long the breakdown waits for the token count of a request that just finished. */
+const TOKEN_COUNT_WAIT_MS = 2_000;
 
 export type ContextCategoryId = "system" | "tools" | "mcp" | "skills" | "plugins" | "rules" | "messages";
 
@@ -85,7 +97,7 @@ export interface ContextComponent {
   item: string | null;
   /** UTF-8 bytes: of the text for system prompt parts, of the JSON otherwise. */
   bytes: number;
-  /** Estimated from the size. */
+  /** Estimated from the size; for a counted request, its part's count split by size. */
   tokens: number;
   /** Messages, or parts of messages, a `message:` component folds; 1 otherwise. */
   count: number;
@@ -106,6 +118,25 @@ export interface ContextRequest {
   bytes: number;
   /** Input tokens the provider reported for the request: uncached, cache reads, and cache writes. */
   inputTokens: number;
+  /** Output tokens the provider reported. */
+  outputTokens: number;
+  /** Input tokens read from and written to the prompt cache; absent when the provider reported none. */
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
+  /**
+   * Input tokens of the request's three parts. `count`: the provider's
+   * token-counting endpoint measured them, and they add up to its count of
+   * the request; `estimate`: the sum of the components' estimates.
+   * `countError` says why a request that was to be counted was not: the
+   * endpoint has no counting, or the count failed.
+   */
+  tokens: {
+    method: "count" | "estimate";
+    countError?: "unsupported" | "failed";
+    system: number;
+    tools: number;
+    messages: number;
+  };
   /** Messages added since the request, counted under their sources; their bytes are not part of `bytes`. */
   unsent: { messages: number; bytes: number; tokens: number };
 }
@@ -113,8 +144,13 @@ export interface ContextRequest {
 export interface ContextBreakdown {
   model: string;
   contextWindow: number;
-  /** Token figures are estimates from sizes; `request.inputTokens` is the provider's count. */
-  estimated: true;
+  /**
+   * False when the provider counted the latest request: the system prompt,
+   * tools, and messages it carried are the provider's counts. Component and
+   * item figures within a part are split by size, and the messages added
+   * since the request (`request.unsent`) are estimated, either way.
+   */
+  estimated: boolean;
   basis: ContextBasis;
   /** Sum of the categories. */
   used: number;
@@ -435,9 +471,46 @@ interface RequestComponents {
   pieces: Piece[];
 }
 
+interface RequestSegments {
+  system: readonly TraceSegment[];
+  tools: readonly TraceSegment[];
+  messages: readonly MessageTraceSegment[];
+}
+
+/**
+ * The record's segments with the provider's counts: each part's count spread
+ * over its segments (for messages, over their parts) by the estimates. A
+ * request that was not counted keeps its estimates.
+ */
+function countedSegments(record: RequestRecord): RequestSegments {
+  const count = record.tokenCount;
+  const segments = { system: record.system.segments, tools: record.tools.segments, messages: record.messages.segments };
+  if (count?.status !== "counted") return segments;
+  const spread = <S extends TraceSegment>(total: number, list: readonly S[]): S[] => {
+    const shares = distributeTokens(
+      total,
+      list.map((segment) => segment.tokens),
+    );
+    return list.map((segment, index) => ({ ...segment, tokens: shares[index] ?? 0 }));
+  };
+  const units = segments.messages.flatMap((segment) => segment.parts ?? [segment]);
+  const shares = distributeTokens(
+    count.messages,
+    units.map((unit) => unit.tokens),
+  );
+  let next = 0;
+  const messages = segments.messages.map((segment) => {
+    if (!segment.parts) return { ...segment, tokens: shares[next++] ?? 0 };
+    const parts = segment.parts.map((part) => ({ ...part, tokens: shares[next++] ?? 0 }));
+    return { ...segment, parts, tokens: parts.reduce((sum, part) => sum + part.tokens, 0) };
+  });
+  return { system: spread(count.system, segments.system), tools: spread(count.tools, segments.tools), messages };
+}
+
 /** The components of a request record, with the messages since then added under their sources. */
 function requestComponents(
   record: RequestRecord,
+  segments: RequestSegments,
   unsent: readonly MessageParam[],
   pluginNames: Map<string, string>,
 ): RequestComponents {
@@ -464,11 +537,11 @@ function requestComponents(
   };
 
   const placeSystem = systemPlacer(pluginNames);
-  for (const segment of record.system.segments) {
+  for (const segment of segments.system) {
     add(segment.component, "system", placeSystem(segment.component), segment.bytes, segment.tokens);
   }
   const placeTool = toolPlacer(pluginNames);
-  for (const segment of record.tools.segments) {
+  for (const segment of segments.tools) {
     const name = segment.component.slice("tool:".length);
     add(segment.component, "tools", placeTool(name), segment.bytes, segment.tokens);
   }
@@ -483,7 +556,7 @@ function requestComponents(
       );
     }
   };
-  for (const segment of record.messages.segments) addMessage(segment);
+  for (const segment of segments.messages) addMessage(segment);
   for (const [index, message] of unsent.entries()) addMessage(measureMessage(message, index).segment);
 
   const sum = (segments: readonly { bytes: number }[]) => segments.reduce((total, segment) => total + segment.bytes, 0);
@@ -500,13 +573,17 @@ function requestComponents(
 }
 
 function fromRequest(
-  base: Omit<ContextBreakdown, "basis" | "categories" | "totals" | "components" | "used" | "free" | "toolSearch">,
+  base: Omit<
+    ContextBreakdown,
+    "estimated" | "basis" | "categories" | "totals" | "components" | "used" | "free" | "toolSearch"
+  >,
   record: RequestRecord,
   unsent: readonly MessageParam[],
   shaped: { enabled: boolean; deferredToolNames: Set<string> },
 ): ContextBreakdown {
   const pluginNames = new Map(getActivePlugins().map((plugin) => [plugin.pluginId, plugin.name]));
-  const { components, pieces } = requestComponents(record, unsent, pluginNames);
+  const segments = countedSegments(record);
+  const { components, pieces } = requestComponents(record, segments, unsent, pluginNames);
   const categories = assemble([
     {
       total: pieces.reduce((sum, piece) => sum + piece.weight, 0),
@@ -523,7 +600,7 @@ function fromRequest(
     conversation: tokensOf((c) => c.part === "messages"),
   };
   const used = totals.systemPrompt + totals.memory + totals.tools + totals.conversation;
-  const sentTools = record.tools.segments.map((segment) => ({
+  const sentTools = segments.tools.map((segment) => ({
     name: segment.component.slice("tool:".length),
     tokens: segment.tokens,
   }));
@@ -531,8 +608,11 @@ function fromRequest(
   const usage = record.result?.usage;
   const unsentSegments = unsent.map((message, index) => measureMessage(message, index).segment);
   const partBytes = record.system.bytes + record.tools.bytes + record.messages.bytes;
+  const count = record.tokenCount;
+  const partTokens = (list: readonly { tokens: number }[]) => list.reduce((sum, segment) => sum + segment.tokens, 0);
   return {
     ...base,
+    estimated: count?.status !== "counted",
     basis: "request",
     used,
     free: Math.max(0, base.contextWindow - used),
@@ -559,6 +639,18 @@ function fromRequest(
       inputTokens: usage
         ? usage.input_tokens + (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0)
         : 0,
+      outputTokens: usage?.output_tokens ?? 0,
+      ...(usage?.cache_read_input_tokens !== undefined ? { cacheReadTokens: usage.cache_read_input_tokens } : {}),
+      ...(usage?.cache_creation_input_tokens !== undefined
+        ? { cacheWriteTokens: usage.cache_creation_input_tokens }
+        : {}),
+      tokens: {
+        method: count?.status === "counted" ? "count" : "estimate",
+        ...(count && count.status !== "counted" ? { countError: count.status } : {}),
+        system: partTokens(segments.system),
+        tools: partTokens(segments.tools),
+        messages: partTokens(segments.messages),
+      },
       unsent: {
         messages: unsent.length,
         bytes: unsentSegments.reduce((sum, segment) => sum + segment.bytes, 0),
@@ -593,13 +685,15 @@ export async function computeContextBreakdown(input: ContextBreakdownInput): Pro
   const base = {
     model,
     contextWindow,
-    estimated: true as const,
     conversationTokens: snapshot.estimatedConversationTokens,
     autoCompactThreshold: snapshot.autoCompactThreshold,
   };
   const last = input.lastRequest;
   const unsent = last && messagesSince(last.conversation, messages, input.busy === true);
-  if (last && unsent) return fromRequest(base, last.record, unsent, shaped);
+  if (last && unsent) {
+    await settleTokenCount(last.record, TOKEN_COUNT_WAIT_MS);
+    return fromRequest(base, last.record, unsent, shaped);
+  }
 
   // Rule files and the memory index count only when the pinned prompt carries
   // them: the Agent can leave either source or its section out.
@@ -652,6 +746,7 @@ export async function computeContextBreakdown(input: ContextBreakdownInput): Pro
   const loaded = [...shaped.deferredToolNames].filter((name) => shaped.discoveredToolNames.has(name));
   return {
     ...base,
+    estimated: true,
     basis: "estimate",
     used,
     free: Math.max(0, contextWindow - used),

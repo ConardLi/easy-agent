@@ -7,8 +7,9 @@
  * the EASY_AGENT_DISABLE_PROMPT_CACHING compatibility switch.
  *
  * OpenAI / Gemini: cached prompt tokens are reported as
- * `cache_read_input_tokens`, and `prompt_cache_key` is sent only where it is
- * documented or explicitly enabled.
+ * `cache_read_input_tokens`, in the request's record too, and
+ * `prompt_cache_key` is sent only where it is documented or explicitly
+ * enabled.
  *
  * Run: node --import tsx src/scripts/test-prompt-caching.ts
  */
@@ -37,6 +38,7 @@ const {
 const { streamMessage, createMessage } = await import("../services/api/streaming.js");
 const { streamViaProvider, shouldSendPromptCacheKey } = await import("../services/api/providers/providerStream.js");
 const { formatSessionUsage, getCacheHitRate } = await import("../utils/tokens.js");
+const { getLatestRequestRecord, startRequestTrace } = await import("../trace/requestTrace.js");
 const { SYSTEM_PROMPT_STATIC_END, SYSTEM_PROMPT_STATIC_START, SYSTEM_PROMPT_DYNAMIC_START, SYSTEM_PROMPT_DYNAMIC_END } =
   await import("../context/systemPrompt.js");
 type ModelProfile = import("../services/api/providers/profile.js").ModelProfile;
@@ -350,14 +352,25 @@ globalThis.fetch = (async (_url: string, init: { body?: string }) => {
 
 async function runProvider(profile: ModelProfile, chunks: string[], promptCacheKey?: string) {
   providerChunks = chunks;
-  const generator = streamViaProvider(profile, {
-    messages: [{ role: "user", content: "hi" }],
-    system: SYSTEM,
-    thinking: { type: "disabled" },
-    ...(promptCacheKey ? { promptCacheKey } : {}),
-  });
+  const trace = startRequestTrace({ purpose: "main" }, profile.model);
+  const generator = streamViaProvider(
+    profile,
+    {
+      messages: [{ role: "user", content: "hi" }],
+      system: SYSTEM,
+      thinking: { type: "disabled" },
+      ...(promptCacheKey ? { promptCacheKey } : {}),
+    },
+    trace,
+  );
   let step = await generator.next();
   while (!step.done) step = await generator.next();
+  trace.complete(step.value);
+  const record = getLatestRequestRecord();
+  assert.equal(record?.requestId, trace.requestId);
+  // The request's record carries the same usage, cache reads included; these protocols are not counted.
+  assert.deepEqual(record.result?.usage, step.value.usage);
+  assert.equal(record.tokenCount, undefined);
   return { body: providerBody, usage: step.value.usage };
 }
 

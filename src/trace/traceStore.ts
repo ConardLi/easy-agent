@@ -10,6 +10,9 @@
  *   lists only the segments that differ from the previous request of the
  *   same chain (the main loop, or one sub-agent): `reused` names that
  *   request and how many leading messages are the same.
+ * - `token_count`: the provider's count of a request (see
+ *   `RequestTokenCount`) that settled after the request line was written.
+ *   A request counted in time carries it as `tokenCount` instead.
  *
  * Writes are queued per file and never awaited by a request. The file name
  * does not end in `.jsonl`, so versions that read every `*.jsonl` in the
@@ -20,7 +23,7 @@ import * as fs from "node:fs/promises";
 import { getTracePath, isSessionPersistenceEnabled } from "../session/storage.js";
 import { appendPrivateFile } from "../utils/privateData.js";
 import { debugLog } from "../utils/log.js";
-import type { MessageTraceSegment, RequestRecord } from "./requestTrace.js";
+import type { MessageTraceSegment, RequestRecord, RequestTokenCount } from "./requestTrace.js";
 
 export const TRACE_FORMAT_VERSION = 1;
 const MAX_CHAINS = 64;
@@ -89,6 +92,19 @@ function linesFor(state: FileState, record: RequestRecord, sessionId: string): s
 
 /** Queue `record` for the session's file. Does nothing while persistence is off. */
 export function appendRequestRecord(target: { cwd: string; sessionId: string }, record: RequestRecord): void {
+  enqueue(target, (state) => linesFor(state, record, target.sessionId));
+}
+
+/** Queue the token count of a request already written to the session's file. */
+export function appendTokenCount(
+  target: { cwd: string; sessionId: string },
+  requestId: string,
+  count: RequestTokenCount,
+): void {
+  enqueue(target, () => [JSON.stringify({ type: "token_count", requestId, ...count })]);
+}
+
+function enqueue(target: { cwd: string; sessionId: string }, lines: (state: FileState) => string[]): void {
   if (!isSessionPersistenceEnabled()) return;
   const key = `${target.cwd}\u0000${target.sessionId}`;
   const previous = queues.get(key) ?? Promise.resolve();
@@ -104,7 +120,7 @@ export function appendRequestRecord(target: { cwd: string; sessionId: string }, 
           () => false,
         );
       }
-      await appendPrivateFile(filePath, `${linesFor(state, record, target.sessionId).join("\n")}\n`);
+      await appendPrivateFile(filePath, `${lines(state).join("\n")}\n`);
     })
     .catch((error: unknown) => {
       debugLog("requestTrace", "write_failed", { message: error instanceof Error ? error.message : String(error) });

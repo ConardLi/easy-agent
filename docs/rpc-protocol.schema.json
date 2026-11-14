@@ -8367,8 +8367,7 @@
               "maximum": 9007199254740991
             },
             "estimated": {
-              "type": "boolean",
-              "const": true
+              "type": "boolean"
             },
             "basis": {
               "type": "string",
@@ -8617,6 +8616,62 @@
                   "minimum": 0,
                   "maximum": 9007199254740991
                 },
+                "outputTokens": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "cacheReadTokens": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "cacheWriteTokens": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "tokens": {
+                  "type": "object",
+                  "properties": {
+                    "method": {
+                      "type": "string",
+                      "enum": [
+                        "count",
+                        "estimate"
+                      ]
+                    },
+                    "countError": {
+                      "type": "string",
+                      "enum": [
+                        "unsupported",
+                        "failed"
+                      ]
+                    },
+                    "system": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "tools": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "messages": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "method",
+                    "system",
+                    "tools",
+                    "messages"
+                  ],
+                  "additionalProperties": {}
+                },
                 "unsent": {
                   "type": "object",
                   "properties": {
@@ -8650,6 +8705,8 @@
                 "model",
                 "bytes",
                 "inputTokens",
+                "outputTokens",
+                "tokens",
                 "unsent"
               ],
               "additionalProperties": {}
