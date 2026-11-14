@@ -59,6 +59,11 @@ interface ResultMessage {
   duration_ms: number;
   total_cost_usd: number | null;
   usage: Usage;
+  /**
+   * The Agent the run used: its name (`(inline)` for a spec file) and the
+   * hash of its resolved settings when the session started.
+   */
+  harness: { name: string; hash: string };
 }
 
 const EMPTY_USAGE: Usage = { input_tokens: 0, output_tokens: 0 };
@@ -191,6 +196,8 @@ export async function runHeadless(options: RunHeadlessOptions): Promise<void> {
   });
   const initial = session.getState();
   const sessionId = session.id;
+  const { name: harnessName, hash: harnessHash } = await runtime.getHarness();
+  const harness = { name: harnessName, hash: harnessHash };
 
   const format = options.outputFormat ?? "text";
   const startedAt = Date.now();
@@ -266,6 +273,7 @@ export async function runHeadless(options: RunHeadlessOptions): Promise<void> {
         duration_ms: Date.now() - startedAt,
         total_cost_usd: null,
         usage: totalUsage,
+        harness,
       };
       writeJsonLine(errResult);
     } else {
@@ -289,6 +297,7 @@ export async function runHeadless(options: RunHeadlessOptions): Promise<void> {
       // from a measured zero while preserving the established field name.
       total_cost_usd: null,
       usage: totalUsage,
+      harness,
     };
     writeJsonLine(result);
     process.exit(exitCodeForReason(reason));

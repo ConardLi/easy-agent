@@ -55,6 +55,14 @@
             "cache_creation_input_tokens": {"type": "integer", "minimum": 0},
             "cache_read_input_tokens": {"type": "integer", "minimum": 0}
           }
+        },
+        "harness": {
+          "type": "object",
+          "required": ["name", "hash"],
+          "properties": {
+            "name": {"type": "string", "minLength": 1},
+            "hash": {"type": "string", "pattern": "^[0-9a-f]{16}$"}
+          }
         }
       },
       "required": ["subtype", "is_error", "result", "num_turns", "duration_ms", "total_cost_usd", "usage"]

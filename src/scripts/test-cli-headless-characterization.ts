@@ -130,6 +130,8 @@ function normalizedStructuredLines(stdout: string): string {
       if ("session_id" in parsed) parsed.session_id = "<SESSION>";
       if ("duration_ms" in parsed) parsed.duration_ms = "<DURATION>";
       if ("cwd" in parsed) parsed.cwd = "<CWD>";
+      const harness = parsed.harness as { hash?: unknown } | undefined;
+      if (harness && typeof harness.hash === "string" && /^[0-9a-f]{16}$/.test(harness.hash)) harness.hash = "<HASH>";
       if (parsed.type === "system" && parsed.subtype === "init" && Array.isArray(parsed.tools)) {
         parsed.tools = parsed.tools.filter((tool) => tool !== "PowerShell");
       }
@@ -258,6 +260,14 @@ async function buildRecording(): Promise<string> {
     for (const field of ["type", "subtype", "is_error", "result", "session_id", "num_turns", "duration_ms", "usage"]) {
       assert.ok(field in jsonPayload, `JSON result preserves compatibility field ${field}`);
     }
+    const shown = await runCli(cwd, home, baseURL, ["harness", "show", "--json"]);
+    assert.equal(shown.code, 0, shown.stderr);
+    const shownHarness = (JSON.parse(shown.stdout) as { harness: { name: string; hash: string } }).harness;
+    assert.deepEqual(
+      jsonPayload.harness,
+      { name: "default", hash: shownHarness.hash },
+      "the result names the Agent the run used, with the hash harness show reports",
+    );
     sections.push(
       `### json\n${normalizedStructuredLines(jsonResult.stdout)}\nrequest: ${requestSummary(requests.at(-1)!)}`,
     );

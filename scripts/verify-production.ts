@@ -41,6 +41,7 @@ const TESTS: TestDefinition[] = [
   { id: "interactive-session", group: "core", file: "src/scripts/test-interactive-session-characterization.tsx" },
   { id: "session-sdk", group: "core", file: "src/scripts/test-sdk-session.ts" },
   { id: "headless-session", group: "core", file: "src/scripts/test-headless-session.ts" },
+  { id: "headless-harness", group: "core", file: "src/scripts/test-headless-harness.ts" },
   { id: "rpc", group: "core", file: "src/scripts/test-rpc.ts" },
   { id: "acp", group: "core", file: "src/scripts/test-acp.ts" },
   { id: "provider-stream", group: "core", file: "src/scripts/test-providerstream-characterization.ts" },

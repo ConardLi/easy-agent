@@ -58,6 +58,7 @@
     "test:rpc": "node --import tsx src/scripts/test-rpc.ts",
     "test:acp": "node --import tsx src/scripts/test-acp.ts",
     "test:headless-session": "node --import tsx src/scripts/test-headless-session.ts",
+    "test:headless-harness": "node --import tsx src/scripts/test-headless-harness.ts",
     "test:cli-headless": "node --import tsx src/scripts/test-cli-headless-characterization.ts",
     "test:user-output": "node --import tsx src/scripts/test-user-output-contract.ts",
     "test:config-session": "node --import tsx src/scripts/test-config-session-characterization.ts",

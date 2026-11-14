@@ -28,6 +28,18 @@ Both structured formats end with a `type: "result"` object. Its stable fields ar
 
 `total_cost_usd` is `null` when cost accounting is unavailable. Consumers must distinguish `null` (unknown) from `0` (measured zero cost).
 
+Optional fields, which older releases omit:
+
+- `harness`: the Agent the run used, `{ "name": ..., "hash": ... }`. `name` is the Agent selected with `--harness <name>`, the workspace's default Agent, or `default`; a spec file passed with `--harness <file>` is named `(inline)`. `hash` is the hash of the Agent's resolved settings when the session started, the same value `eagent harness show [name|file] --json` prints for the same settings, flags, and environment. Two runs with the same hash ran with the same Agent settings. Settings files edited while the run is in progress apply to its later model requests but do not change this field.
+
+Select the Agent for a CI run with a spec file, which needs no user settings on the machine:
+
+```sh
+eagent -p "Review the change" --harness ./ci/reviewer.json --output-format json
+```
+
+A `--harness` name that no Agent has, a file that cannot be read or is not JSON, or a spec that does not resolve is a startup failure: exit code 1, the reason on stderr, and no result message.
+
 ## Stream messages
 
 After input and configuration initialization succeeds, `stream-json` starts with `type: "system", subtype: "init"`, may contain `assistant` and `user` messages, and ends with a `result` message on normal completion or a handled execution failure. Each line is independently parseable JSON and carries the same schema version.
