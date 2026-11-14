@@ -270,7 +270,14 @@ const RuntimeInventorySchema = z
         errors: z.array(z.string()),
       }),
     ),
-    hooks: z.array(inventoryItem("hook", { event: z.string(), command: z.string(), timeout: z.number() })),
+    hooks: z.array(
+      inventoryItem("hook", {
+        event: z.string(),
+        command: z.string(),
+        timeout: z.number(),
+        selectionKey: z.string().optional(),
+      }),
+    ),
     rules: z.array(
       inventoryItem("rule", {
         scope: z.enum(["global", "ancestor", "project", "memory"]),

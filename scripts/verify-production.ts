@@ -29,6 +29,7 @@ const TESTS: TestDefinition[] = [
   { id: "feature-config", group: "core", file: "src/scripts/test-feature-config.ts" },
   { id: "harness-resolve", group: "core", file: "src/scripts/test-harness-resolve.ts" },
   { id: "harness-tools", group: "core", file: "src/scripts/test-harness-tools.ts" },
+  { id: "harness-resources", group: "core", file: "src/scripts/test-harness-resources.ts" },
   { id: "harness-prompt", group: "core", file: "src/scripts/test-harness-prompt.ts" },
   { id: "harness-features", group: "core", file: "src/scripts/test-harness-features.ts" },
   { id: "harness-manage", group: "core", file: "src/scripts/test-harness-manage.ts" },

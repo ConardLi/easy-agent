@@ -24,6 +24,8 @@
  * to become active.
  */
 
+import { pluginOffByAgent } from "../harness/resources.js";
+
 export type OutputStyleSource = "built-in" | "user" | "project" | "plugin";
 
 export interface OutputStyleConfig {
@@ -146,7 +148,8 @@ export function isOutputStylesInitialized(): boolean {
 
 /** Exact-name lookup; returns undefined when the style isn't registered. */
 export function getOutputStyle(name: string): OutputStyleConfig | undefined {
-  return registry.get(name);
+  const style = registry.get(name);
+  return style && !pluginOffByAgent(style.pluginId) ? style : undefined;
 }
 
 /**
@@ -155,18 +158,18 @@ export function getOutputStyle(name: string): OutputStyleConfig | undefined {
  * `Explanatory`). Returns undefined when nothing matches.
  */
 export function resolveOutputStyle(name: string): OutputStyleConfig | undefined {
-  const exact = registry.get(name);
+  const exact = getOutputStyle(name);
   if (exact) return exact;
   const lower = name.toLowerCase();
   for (const style of registry.values()) {
-    if (style.name.toLowerCase() === lower) return style;
+    if (style.name.toLowerCase() === lower && !pluginOffByAgent(style.pluginId)) return style;
   }
   return undefined;
 }
 
 /** Every registered style (built-in + custom), built-ins first. */
 export function getAllOutputStyles(): OutputStyleConfig[] {
-  return [...registry.values()];
+  return [...registry.values()].filter((style) => !pluginOffByAgent(style.pluginId));
 }
 
 export function getActiveOutputStyleName(): string {
@@ -203,7 +206,7 @@ export function ensureActiveOutputStyleAvailable(): boolean {
  * output-style section and keep the normal coding instructions".
  */
 export function getActiveOutputStyleConfig(): OutputStyleConfig | null {
-  const style = registry.get(activeStyleName);
+  const style = getOutputStyle(activeStyleName);
   if (!style || style.prompt.trim().length === 0) return null;
   return style;
 }

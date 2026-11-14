@@ -124,7 +124,8 @@ export const HarnessSpecSchema = z.strictObject({
     })
     .optional(),
   sandbox: z.strictObject({ enabled: z.boolean().optional() }).optional(),
-  hooks: z.strictObject({ enabled: z.boolean().optional() }).optional(),
+  hooks: z.strictObject({ ...Selection, enabled: z.boolean().optional() }).optional(),
+  rules: z.strictObject(Selection).optional(),
   skills: z.strictObject({ ...Selection, listingBudgetChars: z.number().int().positive().optional() }).optional(),
   agents: z.strictObject(Selection).optional(),
   commands: z.strictObject(Selection).optional(),

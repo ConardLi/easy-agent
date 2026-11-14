@@ -5,7 +5,6 @@ import { describeError } from "../../agent/client";
 import { Button, cn, Segmented, Spinner } from "../../design/primitives";
 import { desktop } from "../../lib/desktop";
 import { tokens } from "../../lib/format";
-import { offByAgent } from "../agents/model";
 import { SCOPE_FILE, type WriteScope } from "../../lib/scopes";
 import {
   approveMcpServer,
@@ -296,11 +295,7 @@ export function McpPage({ query }: { query: string }) {
                 {server.tools.length} 个工具{deferred && server.status === "connected" ? " · 延迟" : ""}
               </span>
             </span>
-            {server.source === "plugin" ? (
-              <span className="w-[34px] text-center text-[11px] text-fg-3">插件</span>
-            ) : (
-              <AgentSwitch kind="mcpServers" name={server.name} checked={!offByAgent("mcpServers", server.reason)} />
-            )}
+            <AgentSwitch kind="mcpServers" name={server.name} />
           </>
         }
       />

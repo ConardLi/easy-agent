@@ -209,6 +209,31 @@ export function MenuLabel({ children }: { children: ReactNode }) {
   return <DropdownMenu.Label className="px-2 pb-1 pt-2 text-[11px] font-medium text-fg-3">{children}</DropdownMenu.Label>;
 }
 
+export function MenuCheckboxItem({
+  children,
+  checked,
+  disabled,
+  onChange,
+}: {
+  children: ReactNode;
+  checked: boolean;
+  disabled?: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <DropdownMenu.CheckboxItem
+      checked={checked}
+      disabled={disabled}
+      onCheckedChange={onChange}
+      onSelect={(event) => event.preventDefault()}
+      className="flex cursor-default select-none items-center gap-2 rounded-lg px-2 py-2 text-[13px] text-fg outline-none data-[highlighted]:bg-surface-2 data-[disabled]:opacity-45"
+    >
+      <span aria-hidden className={cn("size-3 shrink-0 rounded border", checked ? "border-accent bg-accent" : "border-line-strong")} />
+      <span className="min-w-0 flex-1">{children}</span>
+    </DropdownMenu.CheckboxItem>
+  );
+}
+
 export function MenuSeparator() {
   return <DropdownMenu.Separator className="mx-1 my-1 h-px bg-line" />;
 }

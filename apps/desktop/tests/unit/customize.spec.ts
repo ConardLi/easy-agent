@@ -231,6 +231,17 @@ test("slash entries carry their source and argument hint from the inventory", ()
   expect(entries.some((e) => e.name === "help")).toBe(false);
 });
 
+test("an Agent's disabled skills and commands never fall back to startup capabilities", () => {
+  const filtered = {
+    ...inventory,
+    skills: inventory.skills.map((skill) => ({ ...skill, enabled: false })),
+    commands: inventory.commands.map((command) => ({ ...command, enabled: false })),
+  };
+  const entries = listSlash({ skills: [{ name: "review", description: "stale" }], userCommands: [] }, filtered);
+  expect(entries.filter((entry) => entry.group === "skill" || entry.group === "command")).toEqual([]);
+  expect(entries.some((entry) => entry.name === "compact")).toBe(true);
+});
+
 test("context groups get labels, colors, and readable item names", () => {
   const context = {
     model: "m",

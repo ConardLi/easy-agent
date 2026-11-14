@@ -162,7 +162,7 @@ export function HarnessView({ summary, data, onDialog }: { summary: HarnessSumma
   const write = (path: string, value: unknown) => void writeSpec(name, (spec) => setKey(spec, path, value), { message: `已写入 harnesses.${name}.${path}` });
   const select = (kind: SelectionKind, item: string, on: boolean) =>
     void writeSpec(name, (spec, current) => toggleSelection(spec, current.resolved, kind, item, on), {
-      mcp: kind === "mcpServers",
+      mcp: kind === "mcpServers" || kind === "plugins",
       message: `已写入 harnesses.${name}.${kind}`,
     });
 
@@ -198,16 +198,17 @@ export function HarnessView({ summary, data, onDialog }: { summary: HarnessSumma
 
   const selectionRow = (
     kind: SelectionKind,
-    item: { name: string; description: string; enabled: boolean; reason?: string },
+    item: { name: string; selectionKey?: string; description: string; enabled: boolean; reason?: string },
     extra?: ReactNode,
     unavailable?: string,
   ) => {
-    const st = selectionState(resolved, kind, item.name);
+    const selectionKey = item.selectionKey ?? item.name;
+    const st = selectionState(resolved, kind, selectionKey);
     const off = unavailable ?? (st.on && !item.enabled ? reasonText(item.reason) : undefined);
     return (
       <Row
-        key={`${kind}:${item.name}`}
-        testId={`${kind}:${item.name}`}
+        key={`${kind}:${selectionKey}`}
+        testId={`${kind}:${selectionKey}`}
         title={<span className="font-mono text-[13px]">{item.name}</span>}
         hint={item.description}
         tag={st.from ? <SourceTag v={st.from} agent={name} path={`${kind}.${st.reason?.includes("include") ? "include" : "exclude"}`} /> : extra}
@@ -217,7 +218,7 @@ export function HarnessView({ summary, data, onDialog }: { summary: HarnessSumma
         {unavailable && st.on ? (
           <span className="text-[12px] text-fg-4">不可用</span>
         ) : (
-          <Switch checked={st.on} onChange={(on) => select(kind, item.name, on)} />
+          <Switch checked={st.on} onChange={(on) => select(kind, selectionKey, on)} />
         )}
       </Row>
     );
@@ -531,7 +532,7 @@ export function HarnessView({ summary, data, onDialog }: { summary: HarnessSumma
             <p className="px-1 text-[11.5px] text-fg-3">MCP 服务器的工具在「MCP」里按服务器开关。关掉的工具模型看不到，也调用不了。</p>
           </>
         ) : tab === "skills" ? (
-          <Group title="技能" description="关掉的技能不进技能清单，模型和 /名称 都调用不了。安装和删除在「自定义」里。">
+          <Group title="技能" description="关掉的技能不进技能清单，模型和 /名称 都调用不了。安装和删除在「资源库」里。">
             {skills.length === 0 ? <p className="py-4 text-[12.5px] text-fg-3">还没有技能</p> : skills.map((s) => selectionRow("skills", s))}
           </Group>
         ) : tab === "agents" ? (
@@ -561,6 +562,30 @@ export function HarnessView({ summary, data, onDialog }: { summary: HarnessSumma
                     <span className="text-[11px] text-fg-3">{m.tools.length} 个工具</span>,
                   ),
                 )
+              )}
+            </Group>
+          </>
+        ) : tab === "resources" ? (
+          <>
+            <Group title="插件" description="选择整个插件及其技能、命令、子 Agent、Hook、MCP 和 LSP。服务器改动重启进程后生效。">
+              {(inventory?.plugins ?? []).map((p) =>
+                selectionRow("plugins", { ...p, selectionKey: p.pluginId, description: p.description ?? p.pluginId ?? p.name }),
+              )}
+            </Group>
+            <Group title="Hooks" description="从资源库选择命令。全局停用和工作区信任限制仍然生效，托管策略的 Hook 不能移除。">
+              {boolRow("hooks.enabled", "启用 Hooks", "只影响这个 Agent 的非托管 Hook")}
+              {(inventory?.hooks ?? []).map((h) =>
+                selectionRow(
+                  "hooks",
+                  { ...h, selectionKey: h.selectionKey ?? h.id, description: h.command },
+                  undefined,
+                  h.source === "policy" ? "托管策略" : undefined,
+                ),
+              )}
+            </Group>
+            <Group title="规则文件" description="选择发送给这个 Agent 的规则文件。上下文来源开关和全局排除列表继续生效。">
+              {(inventory?.rules ?? []).map((r) =>
+                selectionRow("rules", { ...r, selectionKey: r.scope === "memory" ? "memory" : (r.path ?? r.id), description: r.path ?? r.name }),
               )}
             </Group>
           </>

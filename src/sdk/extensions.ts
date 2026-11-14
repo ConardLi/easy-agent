@@ -6,6 +6,7 @@
  */
 
 import { getAllAgents } from "../agents/registry.js";
+import { refreshHarness } from "../harness/active.js";
 import { getAllUserCommands } from "../commands/userCommands/registry.js";
 import { isProjectTrusted } from "../config/globalState.js";
 import { loadSettingSources } from "../config/sources.js";
@@ -30,6 +31,7 @@ import type { ConfigScope, McpApprovalResult, McpReconnectResult, McpServerStatu
  * their next turn, through the context update the session prompt sends.
  */
 export async function reloadExtensions(cwd: string): Promise<ReloadResult> {
+  await refreshHarness();
   const result = await refreshActivePlugins(cwd);
   await refreshHookDisableFromSettings(cwd);
   return {

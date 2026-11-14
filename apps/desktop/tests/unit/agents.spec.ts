@@ -58,6 +58,11 @@ test("setKey writes one leaf and drops the objects a removal leaves empty", () =
   expect(spec).toEqual({ a: 1 });
 });
 
+test("enabling one resource cannot remove a wildcard that excludes its siblings", () => {
+  const r = resolved("limited", { "skills.exclude": { value: ["kit:*"] } });
+  expect(() => toggleSelection({}, r, "skills", "kit:notes", true)).toThrow("排除模式");
+});
+
 test("prompt sections go back to spec form, and turning one on writes true so a parent cannot turn it off", () => {
   const value = { language: false, rules: { text: "Be brief.", file: "/home/u/.easy-agent/prompts/x.md", after: "agent_md" }, notes: { text: "inline" } };
   const r = resolved("x", { "prompt.sections": { value, detail: "base" } });

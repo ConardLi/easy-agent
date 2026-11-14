@@ -8,6 +8,7 @@
  */
 
 import type Anthropic from "@anthropic-ai/sdk";
+import { pluginMcpOffByAgent } from "../harness/resources.js";
 import type { Tool } from "./Tool.js";
 import { toolToApiParam } from "./Tool.js";
 import { hasValidToolInputSchema } from "./inputValidation.js";
@@ -103,11 +104,16 @@ export function getAllTools(): Tool[] {
   const kept = getRegisteredTools().filter(
     (tool) => tool.isEnabled() && !selectionOffReason(harness, "tools", tool.name),
   );
-  if (!harnessOverridden()) return kept;
+  if (!harnessOverridden() && !harness.values["plugins.include"]?.value && !harness.values["plugins.exclude"]?.value)
+    return kept;
   // Another Agent than the runtime's may leave out a server the runtime connected.
   const leftOut = new Set(
     getMcpRegistry()
-      .filter((entry) => selectionOffReason(harness, "mcpServers", entry.connection.name))
+      .filter(
+        (entry) =>
+          selectionOffReason(harness, "mcpServers", entry.connection.name) ||
+          pluginMcpOffByAgent(entry.connection.name, harness),
+      )
       .flatMap((entry) => entry.tools.map((tool) => tool.name)),
   );
   return leftOut.size > 0 ? kept.filter((tool) => !leftOut.has(tool.name)) : kept;
@@ -121,13 +127,17 @@ export function getRegisteredTools(): Tool[] {
 /** A registered tool the active Agent keeps. */
 export function findToolByName(name: string): Tool | undefined {
   const tool = getRegisteredTools().find((candidate) => candidate.name === name);
-  return tool && !selectionOffReason(activeHarness(), "tools", name) ? tool : undefined;
+  return tool && !toolOffByAgent(name) ? tool : undefined;
 }
 
 /** Why the active Agent leaves out a registered tool, or undefined when it keeps it or no such tool exists. */
 export function toolOffByAgent(name: string): string | undefined {
   if (!getRegisteredTools().some((tool) => tool.name === name)) return undefined;
-  return selectionOffReason(activeHarness(), "tools", name);
+  const server = getMcpRegistry().find((entry) => entry.tools.some((tool) => tool.name === name));
+  return (
+    (server ? pluginMcpOffByAgent(server.connection.name) : undefined) ??
+    selectionOffReason(activeHarness(), "tools", name)
+  );
 }
 
 /**

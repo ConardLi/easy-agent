@@ -12,6 +12,7 @@ import { useUi } from "../../state/ui";
 import { useActiveWorkspace } from "../../state/workspaces";
 import { displayPath } from "./model";
 import { DetailDrawer, Field, PageHeader, Stat, TokenTag, WriteScopePicker } from "./shared";
+import { ResourceUsage } from "./ResourceUsage";
 
 const KIND_LABEL: Record<RuleInventoryItem["scope"], string> = { global: "全局", ancestor: "上级目录", project: "项目", memory: "自动记忆" };
 const GLOBAL_RULE = "~/.easy-agent/AGENT.md";
@@ -145,6 +146,7 @@ export function RulesPage({ query }: { query: string }) {
         {/* biome-ignore lint/a11y/noStaticElementInteractions: keeps the switch from opening the editor */}
         <div className="flex items-center gap-3" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
           <TokenTag value={rule.excluded ? 0 : rule.tokens.value} per="/轮" />
+          <ResourceUsage kind="rules" name={rule.scope === "memory" ? "memory" : (rule.path ?? rule.id)} />
           {rule.scope === "memory" ? <span className="w-[34px]" /> : <Switch checked={!rule.excluded} onChange={(v) => void setExcluded(rule, !v)} />}
         </div>
       </div>

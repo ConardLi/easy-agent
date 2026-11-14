@@ -25,8 +25,8 @@ test.afterEach(async () => {
 });
 
 async function openCustomize(page: Page, tab?: string): Promise<void> {
-  await page.getByRole("button", { name: /^自定义/ }).click();
-  await expect(page.getByRole("heading", { name: "自定义", exact: true })).toBeVisible({ timeout: 20_000 });
+  await page.getByRole("button", { name: /^资源库/ }).click();
+  await expect(page.getByRole("heading", { name: "资源库", exact: true })).toBeVisible({ timeout: 20_000 });
   if (tab)
     await page
       .locator("nav")
@@ -86,6 +86,57 @@ test("skills come from the Agent, and an uploaded skill is offered after the rel
     const menu = page.getByRole("listbox", { name: "技能与命令" });
     await expect(menu.getByRole("option", { name: /\/pdf/ })).toBeVisible();
     await expect(menu.getByRole("option", { name: /\/pdf/ })).toContainText("项目");
+  } finally {
+    await app.close();
+  }
+});
+
+test("an installed skill is assigned to one Agent and absent from the other Agent's slash menu", async () => {
+  const testInfo = test.info();
+  writeFileSync(
+    join(world.home, ".easy-agent", "settings.json"),
+    JSON.stringify({
+      harnesses: { default: { skills: { include: [] } }, writer: { skills: { include: [] } } },
+    }),
+  );
+  const source = join(world.home, "downloads", "notes");
+  mkdirSync(source, { recursive: true });
+  writeFileSync(join(source, "SKILL.md"), "---\nname: notes\ndescription: Draft notes\n---\n\nWrite release notes.\n");
+  const { app, page } = await openProject();
+  try {
+    await openCustomize(page);
+    await answerFolderDialog(app, source);
+    await page.getByRole("button", { name: "上传技能" }).click();
+    await page.getByRole("button", { name: "选择文件夹" }).click();
+    await page.getByRole("button", { name: "安装", exact: true }).click();
+    const usage = page.locator('[data-resource="skills:notes"]');
+    await expect(usage).toContainText("0 个 Agent", { timeout: 20_000 });
+    await usage.click();
+    await page.getByRole("menuitemcheckbox", { name: /^writer/ }).click();
+    await expect(usage).toContainText("writer");
+    expect((userSettings().harnesses as Record<string, unknown>).default).toEqual({ skills: { include: [] } });
+    await testInfo.attach("resource-agent-picker", { body: await page.screenshot(), contentType: "image/png" });
+    await page.keyboard.press("Escape");
+    await testInfo.attach("resource-library", { body: await page.screenshot(), contentType: "image/png" });
+
+    await page.getByRole("button", { name: "返回对话" }).click();
+    const input = page.getByRole("textbox", { name: "消息" });
+    await input.fill("/not");
+    await expect(page.getByRole("option", { name: /\/notes/ })).toHaveCount(0);
+    await input.fill("");
+    await page.getByRole("button", { name: /^Agent：/ }).click();
+    await page.getByRole("menuitem", { name: /^writer/ }).click();
+    await input.fill("/not");
+    await expect(page.getByRole("option", { name: /\/notes/ })).toBeVisible();
+    await input.fill("");
+    await openCustomize(page);
+    await usage.click();
+    await page.getByRole("menuitemcheckbox", { name: /^writer/ }).click();
+    await expect(usage).toContainText("0 个 Agent");
+    await page.keyboard.press("Escape");
+    await page.getByRole("button", { name: "返回对话" }).click();
+    await input.fill("/not");
+    await expect(page.getByRole("option", { name: /\/notes/ })).toHaveCount(0);
   } finally {
     await app.close();
   }
@@ -236,7 +287,7 @@ test("the context panel splits the next request by category", async () => {
     await expect(panel.getByText(/· 按上次请求估算/)).toBeVisible();
     await panel.getByRole("button", { name: /^规则/ }).click();
     await expect(panel.getByText("AGENTS.md", { exact: true })).toBeVisible();
-    await panel.getByRole("button", { name: "在自定义中管理" }).click();
+    await panel.getByRole("button", { name: "在资源库中管理" }).click();
     await expect(page.getByRole("heading", { name: /规则/ })).toBeVisible();
   } finally {
     await app.close();

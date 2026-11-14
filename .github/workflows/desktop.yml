@@ -66,7 +66,7 @@ jobs:
       # Visual baselines depend on the macOS version's CJK system fonts, so they are compared on
       # the machine that captured them (tests/visual/README.md), not on CI runners.
       - run: npx playwright test --project=e2e
-      - if: failure()
+      - if: always()
         uses: actions/upload-artifact@v4
         with:
           name: desktop-test-results

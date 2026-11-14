@@ -75,12 +75,12 @@ export const UI_ACTIONS: SlashEntry[] = (
     ["copy", ["copy"], "复制最后一条回复", "消息下方的复制按钮"],
     ["rewind", ["rewind", "checkpoint"], "回退", "在你的消息上悬停，点回退按钮"],
     ["resume", ["resume", "history", "continue"], "历史会话", "左侧会话列表"],
-    ["skills", ["skills"], "管理技能", "自定义 · 技能"],
-    ["mcp", ["mcp"], "管理 MCP 服务器", "自定义 · MCP"],
-    ["plugins", ["plugin", "plugins", "marketplace", "reload-plugins"], "管理插件", "自定义 · 插件"],
-    ["hooks", ["hooks"], "管理 Hooks", "自定义 · Hooks"],
-    ["rules", ["memory", "rules"], "AGENTS.md 和记忆", "自定义 · 规则"],
-    ["tools", ["tools"], "开关内置工具", "自定义 · 工具"],
+    ["skills", ["skills"], "管理技能", "资源库 · 技能"],
+    ["mcp", ["mcp"], "管理 MCP 服务器", "资源库 · MCP"],
+    ["plugins", ["plugin", "plugins", "marketplace", "reload-plugins"], "管理插件", "资源库 · 插件"],
+    ["hooks", ["hooks"], "管理 Hooks", "资源库 · Hooks"],
+    ["rules", ["memory", "rules"], "AGENTS.md 和记忆", "资源库 · 规则"],
+    ["tools", ["tools"], "选择内置工具", "资源库 · 工具"],
     ["permissions", ["permissions", "allowed-tools"], "权限规则", "设置 · 权限"],
     ["output-style", ["output-style"], "输出风格", "设置 · 行为"],
     ["settings", ["config", "settings"], "设置", "⌘,"],
@@ -106,18 +106,20 @@ export function listSlash(
       const name = inventory.plugins.find((p) => p.pluginId === item.pluginId)?.name ?? item.pluginId?.split("@")[0];
       return name ? `插件 ${name}` : "插件";
     };
-    const skills: SlashEntry[] = inventory.skills.map((s) => {
-      const label = source(s);
-      return {
-        group: "skill",
-        name: s.name,
-        description: s.description,
-        ...(s.argumentHint ? { args: s.argumentHint } : {}),
-        ...(label ? { source: label } : {}),
-      };
-    });
+    const skills: SlashEntry[] = inventory.skills
+      .filter((s) => s.enabled)
+      .map((s) => {
+        const label = source(s);
+        return {
+          group: "skill",
+          name: s.name,
+          description: s.description,
+          ...(s.argumentHint ? { args: s.argumentHint } : {}),
+          ...(label ? { source: label } : {}),
+        };
+      });
     const commands: SlashEntry[] = inventory.commands
-      .filter((c) => c.source !== "built-in")
+      .filter((c) => c.source !== "built-in" && c.enabled)
       .map((c) => {
         const label = source(c);
         return {

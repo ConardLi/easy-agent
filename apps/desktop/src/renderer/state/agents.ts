@@ -13,7 +13,7 @@
 import { create } from "zustand";
 import type { HarnessDefinition, HarnessImportPreview, ResolvedHarness, RuntimeInventory } from "../../shared/agent";
 import { AgentCallError, agent, describeError } from "../agent/client";
-import type { HarnessTab } from "../features/agents/model";
+import { type HarnessTab, type SelectionKind, toggleSelection } from "../features/agents/model";
 import { desktop } from "../lib/desktop";
 import { loadAgents } from "./actions";
 import { useUi } from "./ui";
@@ -70,21 +70,52 @@ export const useAgents = create<AgentsStore>()((set) => ({
 const toast = (text: string, tone: "default" | "success" | "danger" = "default") => useUi.getState().toast(text, tone);
 const fail = (error: unknown) => toast(describeError(error), "danger");
 const activeId = () => useWorkspaces.getState().activeId;
+const readVersions = new Map<string, number>();
 
 /** Read one Agent: its stored spec, its resolved settings, and its components. */
 export async function loadAgent(workspaceId: string, name: string): Promise<void> {
   const key = keyOf(workspaceId, name);
+  const version = (readVersions.get(key) ?? 0) + 1;
+  readVersions.set(key, version);
   try {
     const [definition, resolved] = await Promise.all([agent.call(workspaceId, "harness/read", { name }), agent.call(workspaceId, "runtime/harness", { name })]);
     const broken = resolved.issues.some((issue) => issue.level === "error");
     const inventory = broken ? null : await agent.call(workspaceId, "runtime/inventory", { harness: { name } });
+    if (readVersions.get(key) !== version) return;
     useAgents.setState((s) => {
       const { [key]: _, ...errors } = s.errors;
       return { data: { ...s.data, [key]: { definition, resolved, inventory } }, errors };
     });
   } catch (error) {
+    if (readVersions.get(key) !== version) return;
     useAgents.setState((s) => ({ errors: { ...s.errors, [key]: describeError(error) } }));
   }
+}
+
+/** Read every definition's usage without starting an extra Agent process. */
+export async function loadResourceAgents(workspaceId: string): Promise<void> {
+  await loadAgents(workspaceId);
+  const agents = useWorkspaces.getState().runtime[workspaceId]?.agents ?? [];
+  await Promise.all(agents.map(({ name }) => loadAgent(workspaceId, name)));
+}
+
+let resourceWrites = Promise.resolve();
+
+/** Serialize read/modify/write across resource rows so quick changes cannot lose a selection. */
+export function changeResource(name: string, kind: SelectionKind, resource: string, on: boolean): Promise<void> {
+  const workspaceId = activeId();
+  resourceWrites = resourceWrites
+    .catch(() => {})
+    .then(async () => {
+      if (!workspaceId || activeId() !== workspaceId) return;
+      await loadAgent(workspaceId, name);
+      if (useAgents.getState().errors[keyOf(workspaceId, name)] || activeId() !== workspaceId) return;
+      await writeSpec(name, (spec, data) => toggleSelection(spec, data.resolved, kind, resource, on), {
+        mcp: kind === "mcpServers" || kind === "plugins",
+        message: `${on ? "已加入" : "已移出"} Agent「${name}」`,
+      });
+    });
+  return resourceWrites;
 }
 
 /** After a change: the list, every affected Agent the page has read, and the customize data. */
@@ -116,9 +147,10 @@ export async function writeSpec(
   { mcp = false, message }: { mcp?: boolean; message?: string } = {},
 ): Promise<boolean> {
   const workspaceId = activeId();
-  const current = workspaceId ? useAgents.getState().data[keyOf(workspaceId, name)] : undefined;
-  if (!workspaceId || !current) return false;
+  if (!workspaceId) return false;
   try {
+    const [definition, resolved] = await Promise.all([agent.call(workspaceId, "harness/read", { name }), agent.call(workspaceId, "runtime/harness", { name })]);
+    const current: AgentData = { definition, resolved, inventory: useAgents.getState().data[keyOf(workspaceId, name)]?.inventory ?? null };
     const result = await agent.call(workspaceId, "harness/write", { name, spec: build(current.definition.spec, current) });
     if (mcp) {
       const stale = runningAgents(workspaceId, result.affected);
@@ -158,8 +190,9 @@ export async function restartStaleAgents(): Promise<void> {
   if (!workspaceId) return;
   const names = useAgents.getState().staleMcp[workspaceId] ?? [];
   const restarted = await desktop.agent.restartAgents(workspaceId, names);
-  useAgents.setState((s) => ({ staleMcp: { ...s.staleMcp, [workspaceId]: [] } }));
+  useAgents.setState((s) => ({ staleMcp: { ...s.staleMcp, [workspaceId]: names.filter((name) => !restarted.includes(name)) } }));
   toast(restarted.length > 0 ? `已重启 ${restarted.join("、")} 的进程` : "这些 Agent 的进程已经停了，下次用时会按新设置启动");
+  await refresh(workspaceId, names);
 }
 
 /** Create an Agent; `spec` is its whole definition. */
