@@ -304,6 +304,14 @@ test("turning an MCP server off marks the processes that started it, and restart
   ]);
   const { app, page } = await openProject(world);
   try {
+    // Servers connect in the background after the Agent is ready; the first request needs echo connected.
+    const echoStatus = () =>
+      page.evaluate(async () => {
+        const { activeId } = await window.easyAgent.workspaces.get();
+        const outcome = await window.easyAgent.agent.call(activeId ?? "", "runtime/inventory", {});
+        return outcome.ok ? outcome.result.mcpServers.find((server) => server.name === "echo")?.status : undefined;
+      });
+    await expect.poll(echoStatus, { timeout: 30_000 }).toBe("connected");
     await send(page, "第一次");
     await expect(page.getByText("有 echo。")).toBeVisible({ timeout: 30_000 });
     expect(toolNames(requestFor("第一次"))).toContain("mcp__echo__echo");
