@@ -362,6 +362,9 @@ await check("a server the other Agent leaves out drops out of its rendering, not
 });
 
 await session.close();
+// The runtime leaves MCP servers running; stop the echo server, whose working directory is the workspace.
+const { getMcpRegistry } = await import("../services/mcp/registry.js");
+for (const { connection } of getMcpRegistry()) if (connection.type === "connected") await connection.cleanup();
 await runtime.dispose();
 globalThis.fetch = realFetch;
 tripwire.close();
