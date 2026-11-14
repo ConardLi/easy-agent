@@ -5,7 +5,8 @@ import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import type { AgentMethod } from "../shared/agent";
 import { type AppInfo, IPC, type Prefs, type WorkspacePatch } from "../shared/contract";
 import type { HostManager } from "./agent/hosts";
-import { writeFile } from "node:fs/promises";
+import { readFile, stat, writeFile } from "node:fs/promises";
+import { basename } from "node:path";
 import { captureScreenRegion } from "./services/capture";
 import { installSkill, listFiles, previewSkill, readText, setMcpJsonServer, skillFolderToRemove, writeText } from "./services/customize";
 import { searchFiles } from "./services/files";
@@ -29,6 +30,9 @@ function appInfo(): AppInfo {
 }
 
 const asString = (value: unknown) => (typeof value === "string" ? value : "");
+
+/** An export inlines its prompt files (256 KiB each at most); anything far larger is not one. */
+const MAX_IMPORT_BYTES = 4 * 1024 * 1024;
 
 export function registerIpc({
   prefs,
@@ -102,6 +106,22 @@ export function registerIpc({
   );
   ipcMain.handle(IPC.agentSnapshot, (_event, id: unknown, sessionId: unknown) => hosts.snapshot(asString(id), asString(sessionId)));
   ipcMain.handle(IPC.agentOpenSessions, (_event, id: unknown) => hosts.openSessions(asString(id)));
+  ipcMain.handle(IPC.agentRestartAgents, (_event, id: unknown, agents: unknown) =>
+    hosts.restartAgents(asString(id), Array.isArray(agents) ? agents.filter((a): a is string => typeof a === "string") : []),
+  );
+  ipcMain.handle(IPC.agentPickImport, async (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    const options = { title: "导入 Agent", properties: ["openFile"] as "openFile"[], filters: [{ name: "Agent", extensions: ["json"] }] };
+    const picked = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options);
+    const path = picked.filePaths[0];
+    if (picked.canceled || !path) return null;
+    if ((await stat(path)).size > MAX_IMPORT_BYTES) throw new Error("文件太大，不像是导出的 Agent");
+    try {
+      return { file: basename(path), data: JSON.parse(await readFile(path, "utf8")) as unknown };
+    } catch {
+      throw new Error(`${basename(path)} 不是 JSON 文件`);
+    }
+  });
 
   const workspacePath = (id: unknown): string => {
     const workspace = workspaces.find(asString(id));

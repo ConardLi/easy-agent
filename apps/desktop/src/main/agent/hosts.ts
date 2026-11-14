@@ -79,6 +79,19 @@ export class HostManager {
     return primary.status;
   }
 
+  /**
+   * Restart the processes that run one of `agents` (the default-Agent process
+   * included), reopening their sessions; other processes keep running.
+   */
+  async restartAgents(workspaceId: string, agents: readonly string[]): Promise<string[]> {
+    const restarting = this.#entries(workspaceId).filter(({ host }) => {
+      const status = host.status;
+      return status.state === "ready" && agents.includes(status.harness.name);
+    });
+    await Promise.all(restarting.map(({ host }) => host.restart(host.trust).catch(() => {})));
+    return restarting.map(({ host, agent }) => (host.status.state === "ready" ? host.status.harness.name : (agent ?? "")));
+  }
+
   call<M extends AgentMethod>(workspaceId: string, method: M, params: ParamsOf<M>): Promise<CallOutcome<ResultOf<M>>> {
     return outcome(async () => {
       // Only session methods are open to the renderer; the host owns initialize and shutdown.

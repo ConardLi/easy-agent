@@ -287,6 +287,18 @@ const RuntimeInventorySchema = z
         schema: TokenCountSchema,
       }),
     ),
+    promptSections: z.array(
+      inventoryItem("prompt_section", {
+        description: z.string(),
+        block: z.enum(["static", "dynamic"]),
+        replacedBy: z.string().optional(),
+        text: z.string().optional(),
+        file: z.string().optional(),
+        after: z.string().optional(),
+        specKey: z.string().optional(),
+      }),
+    ),
+    contextSources: z.array(inventoryItem("context_source", { description: z.string(), specKey: z.string() })),
   })
   .loose();
 
@@ -539,7 +551,12 @@ export const MethodParams = {
       .optional(),
   }),
   "runtime/capabilities": z.object({}),
-  "runtime/inventory": z.object({}),
+  /** Experimental `harness`: list the components as that Agent (a name or a spec) would have them. */
+  "runtime/inventory": z.object({
+    harness: z
+      .object({ name: z.string().min(1).optional(), spec: z.record(z.string(), z.unknown()).optional() })
+      .optional(),
+  }),
   /** Experimental. Resolves an Agent by name (default `default`), or `spec` over its `extends`. */
   "runtime/harness": z.object({
     name: z.string().min(1).optional(),
@@ -563,6 +580,8 @@ export const MethodParams = {
   "harness/read": z.object({ name: HarnessName }),
   /** Validated against the spec schema and every Agent's `extends` chain before anything is written. */
   "harness/write": z.object({ name: HarnessName, spec: z.record(z.string(), z.unknown()) }),
+  /** Writes `prompts/<name>` (ending in `.md`) next to the user settings file; reference it from a spec. */
+  "harness/writePrompt": z.object({ name: z.string().min(1), text: z.string() }),
   "harness/delete": z.object({ name: HarnessName }),
   "harness/rename": z.object({ from: HarnessName, to: HarnessName }),
   "harness/export": z.object({ name: HarnessName }),
@@ -714,6 +733,7 @@ export const MethodResults = {
     path: z.string(),
   }),
   "harness/write": HarnessChangeSchema.extend({ created: z.boolean() }),
+  "harness/writePrompt": z.object({ file: z.string(), path: z.string() }),
   "harness/delete": HarnessChangeSchema.extend({ deleted: z.boolean() }),
   "harness/rename": HarnessChangeSchema.extend({
     from: z.string(),

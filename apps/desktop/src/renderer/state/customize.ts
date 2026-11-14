@@ -47,6 +47,7 @@ export const useCustomize = create<CustomizeStore>()((set) => ({
   openCustomize: (tab) => {
     set((s) => ({ open: true, tab: tab ?? s.tab }));
     void import("./settings").then(({ useSettings }) => useSettings.getState().closeSettings());
+    void import("./agents").then(({ useAgents }) => useAgents.getState().closeAgents());
     void loadInventory();
   },
   closeCustomize: () => set({ open: false }),

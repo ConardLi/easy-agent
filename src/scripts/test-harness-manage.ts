@@ -529,6 +529,112 @@ try {
     }
   });
 
+  await check("a prompt file goes to prompts/ and a spec that references it uses its text", async () => {
+    await reset();
+    const written = await experimental.writeHarnessPrompt("reviewer.identity.md", "You review code.\n");
+    assert.equal(written.file, "prompts/reviewer.identity.md");
+    assert.equal(written.path, path.join(home, ".easy-agent", "prompts", "reviewer.identity.md"));
+    assert.equal(await readFile(written.path, "utf8"), "You review code.\n");
+    await experimental.writeHarness("reviewer", { prompt: { identity: { file: written.file } } });
+    const identity = (await resolveHarness({ cwd, name: "reviewer" })).values["prompt.identity"]?.value;
+    assert.deepEqual(identity, { text: "You review code.\n", file: written.path });
+
+    await experimental.writeHarnessPrompt("reviewer.identity.md", "You review diffs.");
+    const again = (await resolveHarness({ cwd, name: "reviewer" })).values["prompt.identity"]?.value;
+    assert.equal((again as { text: string }).text, "You review diffs.", "rewriting the file changes the Agent");
+
+    for (const name of ["../escape.md", "nested/x.md", "notes.txt", ".hidden.md", "x.md/"]) {
+      await rejectsWith(experimental.writeHarnessPrompt(name, "x"), "invalid_argument", /Not a prompt file name/);
+    }
+    await rejectsWith(
+      experimental.writeHarnessPrompt("big.md", "x".repeat(256 * 1024 + 1)),
+      "invalid_argument",
+      /larger than/,
+    );
+    await assert.rejects(readFile(path.join(home, ".easy-agent", "escape.md")), { code: "ENOENT" });
+  });
+
+  await check(
+    "the inventory lists components as another Agent has them, and leaves the runtime as it was",
+    async () => {
+      const skillDir = path.join(home, ".easy-agent", "skills", "review");
+      await mkdir(skillDir, { recursive: true });
+      await writeFile(
+        path.join(skillDir, "SKILL.md"),
+        "---\nname: review\ndescription: Review a diff.\n---\nReview it.\n",
+      );
+      await mkdir(path.join(home, ".easy-agent", "agents"), { recursive: true });
+      await writeFile(
+        path.join(home, ".easy-agent", "agents", "scout.md"),
+        "---\nname: scout\ndescription: Look around.\n---\nLook around.\n",
+      );
+      await reset({
+        quiet: {
+          tools: { exclude: ["Bash"] },
+          skills: { exclude: ["review"] },
+          agents: { exclude: ["scout"] },
+          prompt: {
+            identity: "You are quiet.",
+            sections: { language: false, rules: { text: "Be brief.", after: "environment" } },
+          },
+          context: { gitStatus: false },
+        },
+      });
+      const runtime = await startRuntime();
+      try {
+        const session = await runtime.createSession({ persist: false });
+        const own = await runtime.getInventory();
+        const other = await runtime.getInventory({ harness: { name: "quiet" } });
+        const tool = (inventory: typeof own) => inventory.tools.find((item) => item.name === "Bash");
+        assert.equal(tool(own)?.enabled, true);
+        assert.equal(tool(other)?.enabled, false);
+        assert.match(tool(other)?.reason ?? "", /tools\.exclude \(Agent "quiet"\)/);
+        assert.equal(other.skills.find((item) => item.name === "review")?.enabled, false);
+        assert.equal(own.skills.find((item) => item.name === "review")?.enabled, true);
+        assert.equal(other.agents.find((item) => item.name === "scout")?.enabled, false);
+
+        const section = (inventory: typeof own, name: string) =>
+          inventory.promptSections.find((item) => item.name === name);
+        assert.match(section(own, "identity")?.text ?? "", /^You are Easy Agent/, "the built-in identity text");
+        assert.equal(section(own, "identity")?.block, "static");
+        assert.equal(section(other, "identity")?.text, "You are quiet.");
+        assert.equal(section(other, "identity")?.specKey, "prompt.identity");
+        assert.equal(section(other, "language")?.enabled, false);
+        assert.equal(section(own, "language")?.enabled, true);
+        assert.deepEqual(
+          { ...section(other, "rules"), id: undefined },
+          {
+            kind: "prompt_section",
+            id: undefined,
+            name: "rules",
+            enabled: true,
+            description: "Added by the Agent (9 chars).",
+            source: "user",
+            block: "dynamic",
+            replacedBy: 'Text from Agent "quiet".',
+            text: "Be brief.",
+            after: "environment",
+            specKey: "prompt.sections",
+          },
+        );
+        assert.equal(section(own, "rules"), undefined);
+        const git = other.contextSources.find((item) => item.name === "git_status");
+        assert.equal(git?.enabled, false);
+        assert.equal(git?.specKey, "context.gitStatus");
+        assert.equal(own.contextSources.find((item) => item.name === "git_status")?.enabled, true);
+
+        assert.equal(activeHarness().name, "default", "the runtime keeps its Agent");
+        assert.equal(tool(await runtime.getInventory())?.enabled, true);
+        await rejectsWith(runtime.getInventory({ harness: { name: "ghost" } }), "harness", /does not resolve/);
+        await session.close();
+      } finally {
+        await runtime.dispose();
+        await rm(skillDir, { recursive: true, force: true });
+        await rm(path.join(home, ".easy-agent", "agents"), { recursive: true, force: true });
+      }
+    },
+  );
+
   await check("eagent harness list and /harness list|use show and set the same data", async () => {
     await reset({ reviewer: { description: "Reviews code" } });
     let out = "";

@@ -5,6 +5,7 @@ import { describeError } from "../../agent/client";
 import { Button, cn, Segmented, Spinner } from "../../design/primitives";
 import { desktop } from "../../lib/desktop";
 import { tokens } from "../../lib/format";
+import { offByAgent } from "../agents/model";
 import { SCOPE_FILE, type WriteScope } from "../../lib/scopes";
 import {
   approveMcpServer,
@@ -27,6 +28,8 @@ import {
   ItemRow,
   Modal,
   PageHeader,
+  AgentSwitch,
+  AgentTarget,
   PendingSwitch,
   ScopeBadge,
   ScopeCards,
@@ -37,8 +40,7 @@ import {
   WriteScopePicker,
 } from "./shared";
 
-// TODO(config): turning one server on or off, and `alwaysLoad`, need settings keys in the Agent.
-const SWITCH_PENDING = "单个服务器的开关要等 Agent 提供对应的配置项";
+// TODO(config): `alwaysLoad` needs a settings key in the Agent.
 
 const STATUS: Record<McpServerStatus, [string, string]> = {
   connected: ["bg-success", "已连接"],
@@ -297,7 +299,7 @@ export function McpPage({ query }: { query: string }) {
             {server.source === "plugin" ? (
               <span className="w-[34px] text-center text-[11px] text-fg-3">插件</span>
             ) : (
-              <PendingSwitch checked={server.enabled} reason={SWITCH_PENDING} />
+              <AgentSwitch kind="mcpServers" name={server.name} checked={!offByAgent("mcpServers", server.reason)} />
             )}
           </>
         }
@@ -321,7 +323,8 @@ export function McpPage({ query }: { query: string }) {
         description="通过 Model Context Protocol 接入外部工具和数据。全局服务器写在 settings.json 的 mcpServers 里；项目的 .mcp.json 跟着仓库走，第一次需要你批准才会启动。"
         actions={
           <>
-            <WriteScopePicker what="开关" />
+            <AgentTarget tab="mcp" />
+            <WriteScopePicker what="ToolSearch " />
             <Button variant="primary" onClick={() => setAdding(true)}>
               <Plus />
               添加服务器

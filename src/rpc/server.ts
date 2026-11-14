@@ -68,7 +68,8 @@ export class RpcServer {
   readonly #handlers: { [M in MethodName]: (params: ParamsOf<M>) => Promise<unknown> } = {
     initialize: (params) => this.#initialize(params),
     "runtime/capabilities": async () => this.#requireRuntime().getCapabilities(),
-    "runtime/inventory": async () => this.#requireRuntime().getInventory(),
+    "runtime/inventory": async ({ harness }) =>
+      this.#requireRuntime().getInventory(harness !== undefined ? { harness: targetOf(harness) } : {}),
     "runtime/harness": async ({ name, spec }) =>
       this.#requireRuntime().getHarness(spec !== undefined ? { spec } : name !== undefined ? { name } : {}),
     "runtime/diffHarness": async ({ a, b, prompt }) =>
@@ -77,6 +78,7 @@ export class RpcServer {
     "harness/list": async () => harnesses.listHarnesses(this.#workspace()),
     "harness/read": async ({ name }) => harnesses.readHarness(this.#agentName(name)),
     "harness/write": async ({ name, spec }) => harnesses.writeHarness(this.#agentName(name), spec),
+    "harness/writePrompt": async ({ name, text }) => harnesses.writeHarnessPrompt(name, text),
     "harness/delete": async ({ name }) => harnesses.deleteHarness(this.#agentName(name)),
     "harness/rename": async ({ from, to }) => harnesses.renameHarness(from, to, this.#workspace()),
     "harness/export": async ({ name }) => harnesses.exportHarness(this.#agentName(name)),

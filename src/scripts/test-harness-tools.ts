@@ -472,6 +472,35 @@ await server.connect(new StdioServerTransport());
     }
   });
 
+  await check("the inventory of another Agent marks servers by that Agent, not by this process's", async () => {
+    await writeJson(userSettings, { harnesses: mcpHarnesses, mcpServers: { echo } });
+    const runtime = await start(undefined, [], true);
+    try {
+      assert.equal(getMcpRegistryEntry("echo")?.connection.type, "connected");
+      const other = await runtime.getInventory({ harness: { name: "noEcho" } });
+      const server = other.mcpServers.find((item) => item.name === "echo");
+      assert.equal(server?.enabled, false);
+      assert.equal(server?.status, "connected", "the status is this process's");
+      assert.match(server?.reason ?? "", /mcpServers\.exclude \(Agent "noEcho"\)/);
+      const own = (await runtime.getInventory()).mcpServers.find((item) => item.name === "echo");
+      assert.equal(own?.enabled, true, "this runtime's inventory is unchanged");
+      assert.equal(own?.reason, undefined);
+    } finally {
+      await runtime.dispose();
+    }
+    const excluding = await start("noEcho", [], true);
+    try {
+      const kept = (await excluding.getInventory({ harness: { name: "default" } })).mcpServers.find(
+        (item) => item.name === "echo",
+      );
+      assert.equal(kept?.enabled, true, "default keeps the server this process did not start");
+      assert.equal(kept?.status, "disabled");
+      assert.match(kept?.reason ?? "", /Not started in this process/);
+    } finally {
+      await excluding.dispose();
+    }
+  });
+
   await check("tools.exclude turns off a connected server's tools; without a selection it runs", async () => {
     for (const [name, offered] of [
       [undefined, true],

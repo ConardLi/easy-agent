@@ -24,6 +24,7 @@ import { useUi } from "../../state/ui";
 import { CodeBlock } from "../session/Markdown";
 import { type AgentSettings, type SettingKey, TODO_SETTINGS } from "./agentSettings";
 import { keyName } from "./providers";
+import { AgentSettingRow } from "./AgentSettingRow";
 import { NumberInput, ScopeTag, Select } from "./controls";
 
 /* ------------------------------------------------------------------ */
@@ -299,21 +300,23 @@ function DefaultsPane() {
             ]}
           />
         </div>
-        <div className="flex items-center justify-between gap-6 px-4 py-4">
-          <div>
-            <div className="flex items-center gap-2 text-[13.5px] font-medium text-fg">
-              思考预算
-              {todo("thinkingBudget")}
-            </div>
-            <div className="mt-0.5 text-[12.5px] text-fg-3">不支持自适应思考的模型，每次最多用这么多 token 思考</div>
-          </div>
-          <span className="pointer-events-none opacity-45">
-            <NumberInput value={10_000} min={1024} step={1024} suffix="tokens" width={160} onChange={() => {}} />
-          </span>
+        <div className="px-4">
+          <AgentSettingRow<number>
+            title="思考预算"
+            hint="不支持自适应思考的模型，每次最多用这么多 token 思考；没设时由模型决定"
+            path="features.thinkingBudget"
+            render={(value, set) => <BudgetInput key={value} value={value ?? 10_000} onCommit={set} />}
+          />
         </div>
       </div>
     </div>
   );
+}
+
+/** A token budget written when the field loses focus. */
+function BudgetInput({ value, onCommit }: { value: number; onCommit: (v: number) => void }) {
+  const [draft, setDraft] = useState(value);
+  return <NumberInput value={draft} min={1024} step={1024} suffix="tokens" width={160} onChange={setDraft} onBlur={() => draft !== value && onCommit(draft)} />;
 }
 
 /* ------------------------------------------------------------------ */

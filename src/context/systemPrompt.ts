@@ -122,6 +122,9 @@ const CODING_INSTRUCTION_SECTIONS = [
   "Keep answers structured and practical. Summarize what you changed or found, and avoid unnecessary narration.",
 ];
 
+/** The built-in identity text, as one block; the prompt sends its paragraphs as separate parts. */
+export const BUILT_IN_IDENTITY_TEXT = IDENTITY_SECTIONS.join("\n\n");
+
 function getStaticPromptSections(keepCodingInstructions: boolean, identity: string | undefined): string[] {
   const identitySections = identity === undefined ? IDENTITY_SECTIONS : identity ? [identity] : [];
   return keepCodingInstructions ? [...identitySections, ...CODING_INSTRUCTION_SECTIONS] : [...identitySections];

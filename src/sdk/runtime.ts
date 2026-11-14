@@ -48,7 +48,7 @@ import { checkModel, listModels, readConfig, setWorkspaceTrust, writeConfig } fr
 import { AgentSdkError } from "./errors.js";
 import { approveMcpServer, reconnectMcpServer, reloadExtensions } from "./extensions.js";
 import { buildRuntimeInventory } from "./inventory.js";
-import { activeHarness, refreshHarness, uninstallHarness } from "../harness/active.js";
+import { activeHarness, refreshHarness, uninstallHarness, withHarness } from "../harness/active.js";
 import { diffHarnesses, type HarnessDiff } from "../harness/diff.js";
 import { diffRenderedRequests } from "../harness/requestDiff.js";
 import { harnessValue, type ResolvedHarness, resolveHarness } from "../harness/resolve.js";
@@ -421,11 +421,22 @@ export class AgentRuntime {
 
   /**
    * Skills, commands, sub-agents, output styles, MCP servers, plugins, hooks,
-   * rule files, and tools, each with its source, state, and token estimate.
+   * rule files, tools, prompt sections, and context sources, each with its
+   * source, state, and token estimate.
+   *
+   * Experimental: `harness` lists them as another Agent would have them (a
+   * name, or a spec over its `extends`), without changing this runtime's
+   * sessions. MCP servers are the ones this process started; a server that
+   * Agent keeps but this process did not start has status `disabled`.
+   * Rejects with `harness` when that Agent does not resolve.
    */
-  async getInventory(): Promise<RuntimeInventory> {
+  async getInventory(options: { harness?: HarnessTarget } = {}): Promise<RuntimeInventory> {
     this.#assertActive();
-    return buildRuntimeInventory(this.cwd, this.report, await this.resolveModel());
+    if (options.harness === undefined) return buildRuntimeInventory(this.cwd, this.report, await this.resolveModel());
+    const harness = await this.getHarness(options.harness);
+    const errors = agentErrors(harness);
+    if (errors) throw new AgentSdkError("harness", `Agent "${harness.name}" does not resolve: ${errors}`);
+    return withHarness(harness, async () => buildRuntimeInventory(this.cwd, this.report, await this.resolveModel()));
   }
 
   /**

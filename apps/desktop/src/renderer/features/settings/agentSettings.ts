@@ -75,13 +75,7 @@ export type SettingSources = Partial<Record<SettingKey, SettingLayer>>;
 
 /** Settings that only exist as environment variables or command-line flags today, and how to set them now. */
 export const TODO_SETTINGS: Record<string, string> = {
-  agentTeams: "--agent-teams 或 EASY_AGENT_TEAMS=1",
-  taskMode: "会话里的 /tasks 命令，不会保存",
-  maxRetries: "EASY_AGENT_MAX_RETRIES",
-  promptCaching: "EASY_AGENT_DISABLE_PROMPT_CACHING=1",
-  experimentalBetas: "EASY_AGENT_DISABLE_EXPERIMENTAL_BETAS=1",
   mcpConnectTimeout: "MCP_CONNECT_TIMEOUT",
-  thinkingBudget: "MAX_THINKING_TOKENS",
   autoModeModel: "EASY_AGENT_AUTO_MODE_MODEL",
   "webSearch.adapter": "WEB_SEARCH_ADAPTER",
   "webSearch.apiKey": "WEB_SEARCH_API_KEY",
