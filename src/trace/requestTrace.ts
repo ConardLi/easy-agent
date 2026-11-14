@@ -36,6 +36,7 @@ import { defineSessionState } from "../state/sessionScope.js";
 import type { Usage } from "../types/message.js";
 import { debugLog } from "../utils/log.js";
 import { distributeTokens, estimateJsonTokens, estimateMessageTokens, estimateTextTokens } from "../utils/tokens.js";
+import { type RenderedContent, renderCapture, RequestNotSent } from "./requestRender.js";
 import { appendRequestRecord, appendTokenCount } from "./traceStore.js";
 
 export type RequestPurpose = "main" | "subagent" | "classifier" | "webFetch" | "webSearch" | "compaction";
@@ -495,11 +496,35 @@ function countMarkers(value: unknown): number {
   return value.filter((item) => item && typeof item === "object" && "cache_control" in item).length;
 }
 
+/** The text of each component of a request, for comparing two renderings. Cache markers are left out. */
+function renderedContents(sent: SentRequest, purpose: RequestPurpose): RenderedContent[] {
+  const contents: RenderedContent[] = [];
+  if (sent.system !== undefined) {
+    const text = sent.systemText ?? (typeof sent.system === "string" ? sent.system : JSON.stringify(sent.system));
+    for (const part of layouts.get(text) ?? [{ component: undescribedSystem(purpose), text }]) {
+      contents.push({ component: part.component, part: "system", text: part.text });
+    }
+  }
+  for (const tool of sent.tools ?? []) {
+    const { cache_control: _marker, ...rest } = tool as { cache_control?: unknown; name?: unknown };
+    const name = typeof rest.name === "string" ? rest.name : "unnamed";
+    contents.push({ component: `tool:${name}`, part: "tools", text: JSON.stringify(rest) });
+  }
+  const originals = originalsOf(sent.messages, sent.sourceMessages);
+  sent.messages.forEach((message, index) => {
+    for (const part of messageParts(message, originals[index])) {
+      contents.push({ component: `message:${part.source}`, part: "messages", text: part.content });
+    }
+  });
+  return contents;
+}
+
 // ─── The handle ─────────────────────────────────────────────────────────
 
 /**
- * One request's record. Never throws: a failure to measure drops the record
- * and leaves the request alone.
+ * One request's record. Never throws, except `sent` while requests are
+ * rendered: a failure to measure drops the record and leaves the request
+ * alone.
  */
 export class RequestTrace {
   readonly requestId: string;
@@ -539,10 +564,31 @@ export class RequestTrace {
     this.#sink = file;
   }
 
-  /** The request went out. The first attempt is measured; later ones are counted. */
+  /**
+   * The request goes out. The first attempt is measured; later ones are
+   * counted. While requests are rendered (see requestRender.ts), hands the
+   * request to the capture and throws `RequestNotSent` instead, so the caller
+   * never sends it.
+   */
   sent(request: SentRequest): void {
     this.#attempts++;
     this.#sentAt = performance.now();
+    const capture = renderCapture();
+    if (capture) {
+      this.#measure(request);
+      if (this.#record) {
+        capture({
+          purpose: this.#context.purpose,
+          record: this.#record,
+          contents: renderedContents(request, this.#context.purpose),
+        });
+      }
+      throw new RequestNotSent();
+    }
+    this.#measure(request);
+  }
+
+  #measure(request: SentRequest): void {
     if (this.#record) return;
     try {
       const purpose = this.#context.purpose;

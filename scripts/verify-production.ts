@@ -33,6 +33,7 @@ const TESTS: TestDefinition[] = [
   { id: "harness-features", group: "core", file: "src/scripts/test-harness-features.ts" },
   { id: "harness-manage", group: "core", file: "src/scripts/test-harness-manage.ts" },
   { id: "harness-session", group: "core", file: "src/scripts/test-harness-session.ts" },
+  { id: "harness-request-diff", group: "core", file: "src/scripts/test-harness-request-diff.ts" },
   { id: "request-trace", group: "core", file: "src/scripts/test-request-trace.ts" },
   { id: "context-coverage", group: "core", file: "src/scripts/test-context-coverage.ts" },
   { id: "token-count", group: "core", file: "src/scripts/test-token-count.ts" },

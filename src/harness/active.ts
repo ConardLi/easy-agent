@@ -23,6 +23,7 @@
  * settings files, so no caller ends up with a harness that leaves them out.
  */
 
+import { AsyncLocalStorage } from "node:async_hooks";
 import * as path from "node:path";
 import { harnessValue, type ResolvedHarness, resolveHarness, resolveProcessHarness } from "./resolve.js";
 
@@ -58,17 +59,38 @@ export function uninstallHarness(): void {
   installHarness(null);
 }
 
+/** A harness that replaces the installed one for the work started inside `withHarness`. */
+const overrides = new AsyncLocalStorage<ResolvedHarness>();
+
+/**
+ * Run `fn` with `harness` in place of the installed one: every read inside
+ * it, and inside the work it starts, sees `harness`, and refreshing returns
+ * it unchanged. Work outside, such as the runtime's open sessions, keeps the
+ * installed harness. Used to render a request with another Agent.
+ */
+export function withHarness<T>(harness: ResolvedHarness, fn: () => T): T {
+  return overrides.run(harness, fn);
+}
+
+/** Whether the current work runs with a harness given to `withHarness`. */
+export function harnessOverridden(): boolean {
+  return overrides.getStore() !== undefined;
+}
+
 /** The installed harness, or the process default when no runtime installed one. */
 export function activeHarness(): ResolvedHarness {
-  return installed ?? resolveProcessHarness();
+  return overrides.getStore() ?? installed ?? resolveProcessHarness();
 }
 
 /**
  * Resolve the installed Agent again from the current settings files and
  * install the result. Keeps the current snapshot when resolution fails, and
- * returns the active harness either way.
+ * returns the active harness either way. Inside `withHarness`, returns the
+ * harness given to it and resolves nothing.
  */
 export async function refreshHarness(): Promise<ResolvedHarness> {
+  const override = overrides.getStore();
+  if (override) return override;
   const how = resolver;
   if (!how) return activeHarness();
   const startedAt = installation;
@@ -105,9 +127,12 @@ export interface HarnessForOptions {
  * Agent is resolved from that directory's settings files and the process
  * environment. When the runtime's own Agent cannot be resolved again, its
  * installed snapshot is returned; otherwise a failure throws, so a caller
- * never falls back to defaults it did not ask for.
+ * never falls back to defaults it did not ask for. Inside `withHarness`, the
+ * harness given to it, for any directory.
  */
 export async function harnessFor(cwd: string, options: HarnessForOptions = {}): Promise<ResolvedHarness> {
+  const override = overrides.getStore();
+  if (override) return override;
   const how = resolver;
   const dir = path.resolve(cwd);
   if (!how) return resolveHarness({ cwd: dir });

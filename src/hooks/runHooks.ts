@@ -7,6 +7,7 @@ import {
 } from "./settings.js";
 import { executeHookCommand, newHookCorrelationId } from "./executor.js";
 import { getActivePluginHooks } from "../plugins/runtime.js";
+import { renderingRequests } from "../trace/requestRender.js";
 import { HOOK_EVENTS } from "./types.js";
 import type { AggregatedHookOutcome, HookEvent, HookInput, HookResult, HooksSettings } from "./types.js";
 
@@ -94,6 +95,8 @@ async function runHooksForEvent(params: {
   cwd: string;
   signal?: AbortSignal;
 }): Promise<AggregatedHookOutcome> {
+  // Rendering a request (`harness diff --prompt`) runs no configured command.
+  if (renderingRequests()) return { results: [] };
   await refreshHookDisableFromSettings(params.cwd);
   if (hooksGloballyDisabled(params.cwd)) {
     return { results: [] };
