@@ -18,6 +18,7 @@ import type {
   PluginInstallPreview,
   PluginViewData,
   ReloadResult,
+  ResolvedHarness,
   RespondOutcome,
   RewindResult,
   RewindScope,
@@ -33,15 +34,38 @@ import type {
   TurnResult,
   WorkspaceReport,
 } from "eagent/sdk";
-import type { HarnessListing } from "eagent/sdk/experimental";
+import type {
+  HarnessChange,
+  HarnessDefinition,
+  HarnessExport,
+  HarnessImportPreview,
+  HarnessListing,
+  HarnessPromptFile,
+  HarnessRenameResult,
+  HarnessWriteResult,
+} from "eagent/sdk/experimental";
 
-export type { HarnessListing, HarnessSummary } from "eagent/sdk/experimental";
+export type {
+  HarnessChange,
+  HarnessDefinition,
+  HarnessExport,
+  HarnessImportPreview,
+  HarnessListing,
+  HarnessPromptFile,
+  HarnessRenameResult,
+  HarnessSummary,
+  HarnessWriteResult,
+} from "eagent/sdk/experimental";
 
 export type {
   AgentInventoryItem,
   BackgroundAgentInfo,
   CommandInventoryItem,
   ContextCategory,
+  ContextSourceInventoryItem,
+  HarnessContribution,
+  HarnessIssue,
+  HarnessLayerSource,
   ContextCategoryId,
   ContextItem,
   HookInventoryItem,
@@ -56,7 +80,10 @@ export type {
   PluginInventoryItem,
   PluginMarketplaceRow,
   PluginViewData,
+  PromptSectionInventoryItem,
   ReloadResult,
+  ResolvedHarness,
+  ResolvedHarnessValue,
   RewindResult,
   RewindScope,
   RuleInventoryItem,
@@ -119,9 +146,23 @@ interface OpenSession {
 /** Methods the renderer may call; `initialize` and `shutdown` belong to the host. */
 export interface AgentMethods {
   "runtime/capabilities": { params: Record<string, never>; result: RuntimeCapabilities };
-  "runtime/inventory": { params: Record<string, never>; result: RuntimeInventory };
+  /** With `harness`, the components as that Agent has them (the Agent page shows Agents no process runs). */
+  "runtime/inventory": { params: { harness?: { name: string } }; result: RuntimeInventory };
+  "runtime/harness": { params: { name?: string }; result: ResolvedHarness };
   "runtime/reload": { params: Record<string, never>; result: ReloadResult };
   "harness/list": { params: Record<string, never>; result: HarnessListing };
+  "harness/read": { params: { name: string }; result: HarnessDefinition };
+  "harness/write": { params: { name: string; spec: Record<string, unknown> }; result: HarnessWriteResult & HarnessReload };
+  "harness/writePrompt": { params: { name: string; text: string }; result: HarnessPromptFile };
+  "harness/delete": { params: { name: string }; result: HarnessChange & { deleted: boolean } & HarnessReload };
+  "harness/rename": { params: { from: string; to: string }; result: HarnessRenameResult & HarnessReload };
+  "harness/export": { params: { name: string }; result: HarnessExport };
+  "harness/previewImport": { params: { data: unknown }; result: HarnessImportPreview };
+  "harness/import": {
+    params: { data: unknown; fingerprint: string; name?: string; replace?: boolean };
+    result: HarnessWriteResult & HarnessReload;
+  };
+  "harness/setProjectDefault": { params: { name: string | null }; result: { name: string; path: string } };
   "mcp/approve": { params: { name: string; approved: boolean; scope?: ConfigScope }; result: McpApprovalResult };
   "mcp/reconnect": { params: { name: string }; result: McpReconnectResult };
   "plugins/list": { params: Record<string, never>; result: PluginViewData };
@@ -166,6 +207,11 @@ export interface AgentMethods {
   "models/list": { params: { model: string }; result: { models: string[] } };
 }
 
+/** The process that handled an Agent change uses an affected Agent and reloaded it. */
+interface HarnessReload {
+  reloaded: boolean;
+}
+
 export type AgentMethod = keyof AgentMethods;
 export type ParamsOf<M extends AgentMethod> = AgentMethods[M]["params"];
 export type ResultOf<M extends AgentMethod> = AgentMethods[M]["result"];
@@ -173,8 +219,18 @@ export type ResultOf<M extends AgentMethod> = AgentMethods[M]["result"];
 export const AGENT_METHODS = [
   "runtime/capabilities",
   "runtime/inventory",
+  "runtime/harness",
   "runtime/reload",
   "harness/list",
+  "harness/read",
+  "harness/write",
+  "harness/writePrompt",
+  "harness/delete",
+  "harness/rename",
+  "harness/export",
+  "harness/previewImport",
+  "harness/import",
+  "harness/setProjectDefault",
   "mcp/approve",
   "mcp/reconnect",
   "plugins/list",

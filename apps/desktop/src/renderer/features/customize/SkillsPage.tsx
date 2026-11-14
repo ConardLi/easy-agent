@@ -19,18 +19,15 @@ import {
   ItemRow,
   Modal,
   PageHeader,
-  PendingSwitch,
+  AgentSwitch,
+  AgentTarget,
   ScopeBadge,
   ScopeCards,
   ScopeChoice,
   Section,
   Stat,
   TokenTag,
-  WriteScopePicker,
 } from "./shared";
-
-// TODO(config): turning one skill on or off needs a settings key for it in the Agent.
-const SWITCH_PENDING = "单个技能的开关要等 Agent 提供对应的配置项";
 
 function InvocationBadge({ skill }: { skill: SkillInventoryItem }) {
   if (skill.invocation === "manual")
@@ -416,7 +413,7 @@ export function SkillsPage({ query }: { query: string }) {
           {skill.source === "plugin" ? (
             <span className="w-[34px] text-center text-[11px] text-fg-3">插件</span>
           ) : (
-            <PendingSwitch checked={skill.enabled} reason={SWITCH_PENDING} />
+            <AgentSwitch kind="skills" name={skill.name} checked={skill.enabled} />
           )}
         </>
       }
@@ -438,7 +435,7 @@ export function SkillsPage({ query }: { query: string }) {
         description="把一类任务的做法写成 SKILL.md，Agent 判断需要时自己调用，你也可以用 /名称 直接触发。项目里的同名技能会覆盖全局的。"
         actions={
           <>
-            <WriteScopePicker what="开关" />
+            <AgentTarget tab="skills" />
             <Button variant="primary" onClick={() => setUploading(true)}>
               <Upload />
               上传技能

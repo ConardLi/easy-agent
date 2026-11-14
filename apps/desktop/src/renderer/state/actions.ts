@@ -15,7 +15,7 @@ import type { Effort, PermissionMode } from "../agent/viewModel";
 import { desktop } from "../lib/desktop";
 import { useSessions } from "./sessions";
 import { type RewindRequest, useUi } from "./ui";
-import { defaultAgentOf, useWorkspaces } from "./workspaces";
+import { defaultAgentOf, primaryAgentOf, useWorkspaces } from "./workspaces";
 
 const toast = (text: string, tone: "default" | "success" | "danger" = "default") => useUi.getState().toast(text, tone);
 const fail = (error: unknown) => toast(describeError(error), "danger");
@@ -211,7 +211,7 @@ export function dismissAgentNotice(sessionId: string): void {
 function resumeAgentOf(workspaceId: string, sessionId: string): string | undefined {
   const runtime = useWorkspaces.getState().runtime[workspaceId];
   const recorded = runtime?.sessions?.find((s) => s.sessionId === sessionId)?.harness.name;
-  if (!recorded || recorded === defaultAgentOf(runtime)) return undefined;
+  if (!recorded || recorded === primaryAgentOf(runtime)) return undefined;
   const known = runtime?.agents?.find((a) => a.name === recorded);
   return known && known.errors.length === 0 ? recorded : undefined;
 }
@@ -223,7 +223,7 @@ export async function openSession(workspaceId: string, sessionId: string): Promi
       const picked = resumeAgentOf(workspaceId, sessionId);
       const { state, harness } = await agent.call(workspaceId, "session/resume", { sessionId, ...(picked ? { agent: picked } : {}) });
       const notice = agentNotice(harness);
-      const runsWith = harness?.current.name ?? picked ?? defaultAgentOf(useWorkspaces.getState().runtime[workspaceId]);
+      const runsWith = harness?.current.name ?? picked ?? primaryAgentOf(useWorkspaces.getState().runtime[workspaceId]);
       // The snapshot event may still be queued for the next frame; seed the view from the response.
       useSessions.setState((s) => ({
         views: s.views[sessionId] ? s.views : { ...s.views, [sessionId]: viewFromState(workspaceId, state, -1) },
@@ -255,14 +255,15 @@ export async function sendMessage(text: string, images: ImageInput[] = []): Prom
   try {
     if (!sessionId) {
       const { draft } = useSessions.getState();
+      const runtime = useWorkspaces.getState().runtime[workspaceId];
+      const runsWith = draft.agent ?? defaultAgentOf(runtime);
       const created = await agent.call(workspaceId, "session/create", {
         permissionMode: draft.mode,
         ...(draft.model ? { model: draft.model } : {}),
-        ...(draft.agent ? { agent: draft.agent } : {}),
+        ...(runsWith !== primaryAgentOf(runtime) ? { agent: runsWith } : {}),
       });
       sessionId = created.sessionId;
       const id = sessionId;
-      const runsWith = draft.agent ?? defaultAgentOf(useWorkspaces.getState().runtime[workspaceId]);
       useSessions.setState((s) => ({
         activeId: id,
         views: s.views[id] ? s.views : { ...s.views, [id]: viewFromState(workspaceId, created.state, -1) },

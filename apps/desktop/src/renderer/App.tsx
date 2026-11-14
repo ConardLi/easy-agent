@@ -3,6 +3,7 @@ import { Tooltip } from "radix-ui";
 import { useEffect, useLayoutEffect } from "react";
 import { useShallow } from "zustand/react/shallow";
 import type { MenuCommand, Theme } from "../shared/contract";
+import { AgentsView } from "./features/agents/AgentsView";
 import { Composer } from "./features/composer/Composer";
 import { CustomizeView } from "./features/customize/CustomizeView";
 import { RightPanel } from "./features/panels/RightPanel";
@@ -19,6 +20,7 @@ import { useSessionList } from "./features/workspace/sessionList";
 import { Welcome } from "./features/workspace/Welcome";
 import { desktop } from "./lib/desktop";
 import { newSession, openFolder } from "./state/actions";
+import { useAgents } from "./state/agents";
 import { useCustomize } from "./state/customize";
 import { usePrefs } from "./state/prefs";
 import { useActiveView, useSessions } from "./state/sessions";
@@ -110,6 +112,9 @@ export function App() {
   const hasSession = !!useActiveView();
   const settingsOpen = useSettings((s) => s.open);
   const customizeOpen = useCustomize((s) => s.open);
+  const hasWorkspace = !!useActiveWorkspace();
+  const agentsOpen = useAgents((s) => s.open) && hasWorkspace;
+  const fullPage = settingsOpen || customizeOpen || agentsOpen;
 
   return (
     <Tooltip.Provider delayDuration={350} skipDelayDuration={200}>
@@ -135,6 +140,8 @@ export function App() {
               <SettingsView />
             ) : customizeOpen ? (
               <CustomizeView />
+            ) : agentsOpen ? (
+              <AgentsView />
             ) : (
               <section className="flex min-w-0 flex-1 flex-col">
                 <TopBar />
@@ -142,7 +149,7 @@ export function App() {
               </section>
             )}
             <AnimatePresence initial={false}>
-              {rightPanel && hasSession && !settingsOpen && !customizeOpen && (
+              {rightPanel && hasSession && !fullPage && (
                 <motion.div
                   key="right"
                   initial={{ width: 0, opacity: 0 }}

@@ -18,4 +18,5 @@ export const {
   renameHarness,
   setProjectHarness,
   writeHarness,
+  writeHarnessPrompt,
 } = __experimental;

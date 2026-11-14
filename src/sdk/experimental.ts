@@ -21,6 +21,7 @@ import {
   type HarnessImportPreview,
   type HarnessListing,
   HarnessManagementError,
+  type HarnessPromptFile,
   type HarnessRenameResult,
   type HarnessSummary,
   type HarnessWriteResult,
@@ -31,6 +32,7 @@ import {
   renameHarness as renameDefinition,
   setProjectHarness as setProjectDefinition,
   writeHarness as writeDefinition,
+  writeHarnessPrompt as writePromptFile,
 } from "../harness/manage.js";
 import { PersistentDataError } from "../utils/atomicFile.js";
 import { AgentSdkError } from "./errors.js";
@@ -43,6 +45,7 @@ export type {
   HarnessImportOptions,
   HarnessImportPreview,
   HarnessListing,
+  HarnessPromptFile,
   HarnessRenameResult,
   HarnessSummary,
   HarnessWriteResult,
@@ -94,6 +97,16 @@ export function readHarness(name: string): Promise<HarnessDefinition> {
  */
 export function writeHarness(name: string, spec: unknown): Promise<HarnessWriteResult & HarnessReload> {
   return withReload(() => writeDefinition(name, spec));
+}
+
+/**
+ * Write the text of an identity or prompt section to `~/.easy-agent/prompts/<name>`
+ * (`name` ends in `.md`, no directories) and return the `file` reference for a
+ * spec. Agents that already reference the file use the new text from their
+ * next request.
+ */
+export function writeHarnessPrompt(name: string, text: string): Promise<HarnessPromptFile> {
+  return sdkCall(() => writePromptFile(name, text));
 }
 
 /** Delete an Agent; `default` goes back to the built-in default. An Agent others extend is refused. */
