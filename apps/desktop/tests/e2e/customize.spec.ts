@@ -134,6 +134,9 @@ test("an installed skill is assigned to one Agent and absent from the other Agen
     await page.getByRole("menuitemcheckbox", { name: /^writer/ }).click();
     await expect(usage).toContainText("0 个 Agent");
     await page.keyboard.press("Escape");
+    await page.locator("nav").getByRole("button", { name: /^工具/ }).click();
+    await expect(page.locator('[data-resource="tools:Read"]')).toBeVisible();
+    await testInfo.attach("resource-tools", { body: await page.screenshot(), contentType: "image/png" });
     await page.getByRole("button", { name: "返回对话" }).click();
     await input.fill("/not");
     await expect(page.getByRole("option", { name: /\/notes/ })).toHaveCount(0);
@@ -156,6 +159,7 @@ test("a rule file is edited and excluded from the rules page", async () => {
     await page.locator("aside").getByRole("switch").click();
     await expect.poll(() => userSettings().claudeMdExcludes).toEqual([join(world.project, "AGENTS.md")]);
     await expect(page.getByText("已排除", { exact: true }).first()).toBeVisible();
+    await test.info().attach("resource-rules", { body: await page.screenshot(), contentType: "image/png" });
   } finally {
     await app.close();
   }
@@ -172,6 +176,7 @@ test("a .mcp.json server is approved, connects, and shows in the details panel",
     await page.getByRole("button", { name: "批准", exact: true }).click();
     await expect(page.getByText("已连接", { exact: true }).first()).toBeVisible({ timeout: 20_000 });
     expect(readJson(join(world.project, ".easy-agent", "settings.local.json"))).toEqual({ enabledMcpjsonServers: ["echo"] });
+    await test.info().attach("resource-mcp", { body: await page.screenshot(), contentType: "image/png" });
 
     await page.getByRole("button", { name: "返回对话" }).click();
     await send(page, "你好");
@@ -236,6 +241,7 @@ test("a plugin is installed from a marketplace after its preview, then disabled 
 
     await page.getByRole("button", { name: /^已安装 \d+$/ }).click();
     await expect(page.getByText("由全局设置")).toBeVisible();
+    await test.info().attach("resource-plugins", { body: await page.screenshot(), contentType: "image/png" });
     await page.getByRole("button", { name: "返回对话" }).click();
     await page.getByRole("textbox", { name: "消息" }).fill("/kit");
     await expect(page.getByRole("listbox", { name: "技能与命令" }).getByRole("option", { name: /\/kit:notes/ })).toContainText("插件 kit");
@@ -267,6 +273,7 @@ test("a hook is added to the chosen settings file", async () => {
     // The file is written before the dialog closes; until then its textarea holds the same text.
     await expect(page.getByRole("dialog")).toBeHidden();
     await expect(page.getByText("echo formatted", { exact: true })).toBeVisible();
+    await test.info().attach("resource-hooks", { body: await page.screenshot(), contentType: "image/png" });
   } finally {
     await app.close();
   }

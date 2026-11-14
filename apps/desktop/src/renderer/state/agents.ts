@@ -190,7 +190,8 @@ export async function restartStaleAgents(): Promise<void> {
   if (!workspaceId) return;
   const names = useAgents.getState().staleMcp[workspaceId] ?? [];
   const restarted = await desktop.agent.restartAgents(workspaceId, names);
-  useAgents.setState((s) => ({ staleMcp: { ...s.staleMcp, [workspaceId]: names.filter((name) => !restarted.includes(name)) } }));
+  // A stopped process also has no stale connections; its next launch reads the new settings.
+  useAgents.setState((s) => ({ staleMcp: { ...s.staleMcp, [workspaceId]: [] } }));
   toast(restarted.length > 0 ? `已重启 ${restarted.join("、")} 的进程` : "这些 Agent 的进程已经停了，下次用时会按新设置启动");
   await refresh(workspaceId, names);
 }

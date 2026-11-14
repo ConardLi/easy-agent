@@ -59,8 +59,11 @@ test("setKey writes one leaf and drops the objects a removal leaves empty", () =
 });
 
 test("enabling one resource cannot remove a wildcard that excludes its siblings", () => {
-  const r = resolved("limited", { "skills.exclude": { value: ["kit:*"] } });
+  const r = resolved("limited", { "skills.exclude": { value: ["kit:*", "notes"] } });
+  expect(selectionState(r, "skills", "kit:notes").exclusionPattern).toBe("kit:*");
+  expect(selectionState(r, "skills", "notes").exclusionPattern).toBeUndefined();
   expect(() => toggleSelection({}, r, "skills", "kit:notes", true)).toThrow("排除模式");
+  expect(toggleSelection({}, r, "skills", "notes", true)).toEqual({ skills: { exclude: ["kit:*"] } });
 });
 
 test("prompt sections go back to spec form, and turning one on writes true so a parent cannot turn it off", () => {

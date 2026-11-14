@@ -127,11 +127,16 @@ const listAt = (resolved: ResolvedHarness, path: string) => {
 const whose = (v: ResolvedHarnessValue, agent: string) => (v.detail === agent ? "这个 Agent 的" : `从 ${v.detail} 继承的`);
 
 /** Whether the Agent keeps an item by its include and exclude lists, and why not. */
-export function selectionState(resolved: ResolvedHarness, kind: SelectionKind, name: string): { on: boolean; reason?: string; from?: ResolvedHarnessValue } {
+export function selectionState(
+  resolved: ResolvedHarness,
+  kind: SelectionKind,
+  name: string,
+): { on: boolean; reason?: string; from?: ResolvedHarnessValue; exclusionPattern?: string } {
   const agent = resolved.name;
   const exclude = resolved.values[`${kind}.exclude`];
   if (exclude && listAt(resolved, `${kind}.exclude`)?.some((entry) => matches(entry, name))) {
-    return { on: false, reason: `${whose(exclude, agent)} ${kind}.exclude 去掉了它`, from: exclude };
+    const exclusionPattern = listAt(resolved, `${kind}.exclude`)?.find((entry) => entry.includes("*") && matches(entry, name));
+    return { on: false, reason: `${whose(exclude, agent)} ${kind}.exclude 去掉了它`, from: exclude, ...(exclusionPattern ? { exclusionPattern } : {}) };
   }
   const include = resolved.values[`${kind}.include`];
   const kept = listAt(resolved, `${kind}.include`);

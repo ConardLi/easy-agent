@@ -26,14 +26,13 @@ export function ResourceUsage({ kind, name }: { kind: SelectionKind; name: strin
     const loaded = data[key];
     const item = loaded?.inventory?.[kind].find((item) => resourceKey(kind, item) === name);
     const selected = loaded ? selectionState(loaded.resolved, kind, name) : undefined;
-    const wildcard =
-      !selected?.on &&
-      selected?.reason?.includes("exclude") &&
-      selected?.from &&
-      Array.isArray(selected.from.value) &&
-      selected.from.value.some((v: unknown) => typeof v === "string" && v.includes("*"));
     const error = errors[key] ?? loaded?.resolved.issues.find((issue) => issue.level === "error")?.message;
-    const lock = item?.source === "policy" ? "托管策略的 Hook 不能由 Agent 移除" : wildcard ? "排除模式覆盖了多项资源，请到 Agent 页调整列表" : undefined;
+    const lock =
+      item?.source === "policy"
+        ? "托管策略的 Hook 不能由 Agent 移除"
+        : selected?.exclusionPattern
+          ? "排除模式覆盖了多项资源，请到 Agent 页调整列表"
+          : undefined;
     return { agent, item, selected, error, lock, loaded };
   });
   const users = rows.filter((row) => row.item?.enabled && !row.error).map((row) => row.agent);
