@@ -30,6 +30,7 @@ interface CustomizeStore {
   plugins: Record<string, PluginViewData>;
   /** Context breakdown of each open session, from its latest read. */
   contexts: Record<string, SessionContext>;
+  contextErrors: Record<string, string | undefined>;
   openCustomize(tab?: CustomizeTab): void;
   closeCustomize(): void;
   setWriteScope(scope: WriteScope): void;
@@ -44,6 +45,7 @@ export const useCustomize = create<CustomizeStore>()((set) => ({
   errors: {},
   plugins: {},
   contexts: {},
+  contextErrors: {},
   openCustomize: (tab) => {
     set((s) => ({ open: true, tab: tab ?? s.tab }));
     void import("./settings").then(({ useSettings }) => useSettings.getState().closeSettings());
@@ -177,13 +179,20 @@ export async function restartForMcp(workspaceId = activeId()): Promise<void> {
   await loadInventory(workspaceId);
 }
 
-/** Read how the session's next request fills the context window. */
+const contextVersions = new Map<string, number>();
+
+/** Refresh the recorded request plus unsent messages; ignore older concurrent reads. */
 export async function loadContext(workspaceId: string, sessionId: string): Promise<void> {
+  const key = `${workspaceId}\0${sessionId}`;
+  const version = (contextVersions.get(key) ?? 0) + 1;
+  contextVersions.set(key, version);
   try {
     const context = await agent.call(workspaceId, "session/context", { sessionId });
-    useCustomize.setState((s) => ({ contexts: { ...s.contexts, [sessionId]: context } }));
-  } catch {
-    // The session closed or the Agent restarted; the panel keeps the last reading.
+    if (contextVersions.get(key) !== version) return;
+    useCustomize.setState((s) => ({ contexts: { ...s.contexts, [sessionId]: context }, contextErrors: { ...s.contextErrors, [sessionId]: undefined } }));
+  } catch (error) {
+    if (contextVersions.get(key) !== version) return;
+    useCustomize.setState((s) => ({ contextErrors: { ...s.contextErrors, [sessionId]: describeError(error) } }));
   }
 }
 

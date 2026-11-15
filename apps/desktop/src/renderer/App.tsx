@@ -7,6 +7,7 @@ import { AgentsView } from "./features/agents/AgentsView";
 import { Composer } from "./features/composer/Composer";
 import { CustomizeView } from "./features/customize/CustomizeView";
 import { RightPanel } from "./features/panels/RightPanel";
+import { ComparisonDialog } from "./features/requests/ComparisonDialog";
 import { SettingsView } from "./features/settings/SettingsView";
 import { Conversation } from "./features/session/Conversation";
 import { RewindDialog } from "./features/session/RewindDialog";
@@ -167,6 +168,7 @@ export function App() {
       </div>
       <Toasts />
       <RewindDialog />
+      <ComparisonDialog />
     </Tooltip.Provider>
   );
 }

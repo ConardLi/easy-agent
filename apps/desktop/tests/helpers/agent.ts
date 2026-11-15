@@ -5,6 +5,7 @@ import { expect, type Page } from "@playwright/test";
 // The repository's scripted Anthropic API; the Agent the app starts talks to it instead of a real provider.
 import { type AnthropicFixture, createAnthropicFixture, FIXTURE_MODEL } from "../../../../src/scripts/fixtures/anthropicFixture";
 import { answerFolderDialog, type LaunchedApp, launchApp } from "./app";
+import type { Prefs } from "../../src/shared/contract";
 
 export interface AgentWorld {
   fixture: AnthropicFixture;
@@ -44,8 +45,8 @@ export async function createAgentWorld(): Promise<AgentWorld> {
 }
 
 /** Launch the app on the world's project and wait until its Agent is ready. */
-export async function openProject(world: AgentWorld): Promise<LaunchedApp> {
-  const launched = await launchApp({ prefs: { theme: "dark" }, env: world.env });
+export async function openProject(world: AgentWorld, prefs: Partial<Prefs> = { theme: "dark" }): Promise<LaunchedApp> {
+  const launched = await launchApp({ prefs, env: world.env });
   await answerFolderDialog(launched.app, world.project);
   await launched.page.getByRole("button", { name: /^打开文件夹/ }).click();
   await expect(launched.page.getByPlaceholder("在 demo-project 里想做点什么？")).toBeVisible({ timeout: 20_000 });

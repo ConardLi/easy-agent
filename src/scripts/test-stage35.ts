@@ -652,7 +652,7 @@ async function main(): Promise<void> {
   // [10] uninstall + delete safety
   section("[10] uninstall + delete safety");
   const installPathBefore = (await readInstalledPlugins()).plugins["demo@testmp"].installPath;
-  await uninstallPlugin("demo@testmp", { scope: "project" });
+  await uninstallPlugin("demo@testmp", { scope: "project", cwd: projectCwd });
   assert(
     (await readInstalledPlugins()).plugins["demo@testmp"] !== undefined,
     "project uninstall preserves a user-scope installation",
@@ -662,7 +662,7 @@ async function main(): Promise<void> {
     .then(() => true)
     .catch(() => false);
   assert(cacheStillPresent, "shared cache remains while another scope owns the install");
-  await uninstallPlugin("demo@testmp", { scope: "user" });
+  await uninstallPlugin("demo@testmp", { scope: "user", cwd: projectCwd });
   assert(
     (await readInstalledPlugins()).plugins["demo@testmp"] === undefined,
     "last-scope uninstall drops the install record",

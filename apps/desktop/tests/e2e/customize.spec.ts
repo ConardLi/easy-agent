@@ -298,7 +298,7 @@ test("a hook is added to the chosen settings file", async () => {
   }
 });
 
-test("the context panel splits the next request by category", async () => {
+test("the context panel shows recorded sources and links rules to the session Agent", async () => {
   world.fixture.script([{ kind: "text", text: "收到。" }]);
   const { app, page } = await openProject();
   try {
@@ -308,13 +308,17 @@ test("the context panel splits the next request by category", async () => {
     await page.getByRole("tab", { name: "上下文" }).click();
     const panel = page.getByLabel("详情面板");
     for (const label of ["系统提示词", "内置工具", "技能", "规则", "对话消息"]) {
-      await expect(panel.getByText(label, { exact: true })).toBeVisible({ timeout: 20_000 });
+      await expect(panel.getByRole("button", { name: new RegExp(`^${label}`) })).toBeVisible({ timeout: 20_000 });
     }
-    await expect(panel.getByText(/· 按上次请求估算/)).toBeVisible();
+    await expect(panel.getByText("最近实际请求")).toBeVisible();
+    await expect(panel.getByText("Token 估算 · 组件按大小计算")).toBeVisible();
     await panel.getByRole("button", { name: /^规则/ }).click();
     await expect(panel.getByText("AGENTS.md", { exact: true })).toBeVisible();
-    await panel.getByRole("button", { name: "在资源库中管理" }).click();
-    await expect(page.getByRole("heading", { name: /规则/ })).toBeVisible();
+    const rule = panel.locator("[data-component]").filter({ hasText: "AGENTS.md" });
+    await rule.getByRole("button", { name: /AGENTS.md/ }).click();
+    await expect(rule).toContainText("来源：");
+    await rule.getByRole("button", { name: "在 Harness 中配置" }).click();
+    await expect(page.locator('[data-harness="default"] [data-row]').filter({ hasText: "AGENTS.md" })).toBeFocused();
   } finally {
     await app.close();
   }

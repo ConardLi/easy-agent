@@ -321,50 +321,49 @@ try {
     assert.ok(warnings.some((message) => /prompt\.sections\.rules\.after names no section: nowhere/.test(message)));
   });
 
-  await check(
-    "a section edit reaches the model as a context update; an identity edit rebuilds the prompt",
-    async () => {
-      const runtime = await start("focused");
-      const session = await runtime.createSession({ persist: false });
-      try {
-        fixture.requests.length = 0;
-        fixture.script([
-          { kind: "text", text: "one" },
-          { kind: "text", text: "two" },
-          { kind: "text", text: "three" },
-        ]);
-        await session.send("first");
-        const first = systemText(fixture.requests[0]);
-        assert.doesNotMatch(first, /Keep it small|file-based project memory/);
+  await check("explicit section, source, and identity edits rebuild the prompt before the next request", async () => {
+    const runtime = await start("focused");
+    const session = await runtime.createSession({ persist: false });
+    try {
+      fixture.requests.length = 0;
+      fixture.script([
+        { kind: "text", text: "one" },
+        { kind: "text", text: "two" },
+        { kind: "text", text: "three" },
+      ]);
+      await session.send("first");
+      const first = systemText(fixture.requests[0]);
+      assert.doesNotMatch(first, /Keep it small|file-based project memory/);
 
-        await writeJson(userSettings, {
-          harnesses: {
-            ...harnesses,
-            focused: { prompt: { sections: { memory: false, notes: { text: "Be brief." } } } },
-          },
-        });
-        await session.send("second");
-        assert.equal(systemText(fixture.requests[1]), first, "the cached prompt stays");
-        const update = contextUpdate(fixture.requests[1]);
-        assert.match(update, /## Project memory \(AGENT\.md\)/, "the AGENTS.md source came back");
-        assert.match(update, /## notes\\nBe brief\./, "the added section is titled by its name");
+      await writeJson(userSettings, {
+        harnesses: {
+          ...harnesses,
+          focused: { prompt: { sections: { memory: false, notes: { text: "Be brief." } } } },
+        },
+      });
+      await session.send("second");
+      const second = systemText(fixture.requests[1]);
+      assert.notEqual(second, first, "an explicit composition edit invalidates the cached prefix");
+      assert.match(second, /Keep it small\./, "the AGENTS.md source came back");
+      assert.match(second, /Be brief\./, "the added section is included in the prompt");
+      assert.doesNotMatch(second, /file-based project memory/, "the disabled section stays excluded");
+      assert.equal(contextUpdate(fixture.requests[1]), "", "the rebuilt prompt already carries the changes");
 
-        await writeJson(userSettings, {
-          harnesses: { ...harnesses, focused: { prompt: { identity: "You are terse." } } },
-        });
-        await session.send("third");
-        const third = systemText(fixture.requests[2]);
-        assert.match(third, /You are terse\./);
-        assert.doesNotMatch(third, /You are Easy Agent/);
-        assert.match(third, /file-based project memory/, "the rebuilt prompt has the memory section again");
-        assert.doesNotMatch(third, /Be brief\./, "and no longer the removed section");
-      } finally {
-        await session.close();
-        await writeJson(userSettings, { harnesses });
-        await runtime.dispose();
-      }
-    },
-  );
+      await writeJson(userSettings, {
+        harnesses: { ...harnesses, focused: { prompt: { identity: "You are terse." } } },
+      });
+      await session.send("third");
+      const third = systemText(fixture.requests[2]);
+      assert.match(third, /You are terse\./);
+      assert.doesNotMatch(third, /You are Easy Agent/);
+      assert.match(third, /file-based project memory/, "the rebuilt prompt has the memory section again");
+      assert.doesNotMatch(third, /Be brief\./, "and no longer the removed section");
+    } finally {
+      await session.close();
+      await writeJson(userSettings, { harnesses });
+      await runtime.dispose();
+    }
+  });
 
   await check("/context and the inventory leave out what the Agent does not load", async () => {
     const plain = await start(undefined);

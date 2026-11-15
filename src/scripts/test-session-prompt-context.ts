@@ -190,6 +190,30 @@ try {
     assert.equal(isInternalMessage({ role: "user", content: "context_update is a normal word" }), false);
   });
 
+  await check("explicit Harness exclusions rebuild the prefix; unrelated settings preserve it", async () => {
+    await writeFile(USER_SETTINGS, "{}");
+    await writeFile(AGENT_MD, "A rule that must disappear when excluded.\n");
+    const configured = createSessionPromptContext({ cwd, now });
+    const before = renderSystemPrompt((await configured.prepareTurn()).systemParts);
+    assert.match(before, /A rule that must disappear/);
+    await writeFile(USER_SETTINGS, JSON.stringify({ harnesses: { default: { rules: { exclude: [AGENT_MD] } } } }));
+    // Merely inspecting context does not rewrite the already-recorded request.
+    assert.equal(renderSystemPrompt(await configured.peekSystemParts()), before);
+    const after = await configured.prepareTurn();
+    const excluded = renderSystemPrompt(after.systemParts);
+    assert.doesNotMatch(excluded, /A rule that must disappear/);
+    assert.equal(after.update, null);
+    await writeFile(
+      USER_SETTINGS,
+      JSON.stringify({ harnesses: { default: { rules: { exclude: [AGENT_MD] }, tools: { exclude: ["Bash"] } } } }),
+    );
+    assert.equal(renderSystemPrompt((await configured.prepareTurn()).systemParts), excluded);
+    await writeFile(USER_SETTINGS, JSON.stringify({ harnesses: { default: { context: { agentMd: false } } } }));
+    assert.doesNotMatch(renderSystemPrompt((await configured.prepareTurn()).systemParts), /A rule that must disappear/);
+    await writeFile(USER_SETTINGS, "{}");
+    assert.match(renderSystemPrompt((await configured.prepareTurn()).systemParts), /A rule that must disappear/);
+  });
+
   console.log("\n[2] QueryEngine");
 
   await writeFile(USER_SETTINGS, "{}");
