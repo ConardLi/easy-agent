@@ -86,6 +86,8 @@ export async function loadInventory(workspaceId = activeId()): Promise<void> {
       const { [workspaceId]: _, ...errors } = s.errors;
       return { inventories: { ...s.inventories, [workspaceId]: inventory }, configs: { ...s.configs, [workspaceId]: config }, errors };
     });
+    const { loadResourceAgents } = await import("./agents");
+    await loadResourceAgents(workspaceId);
     const poll = pendingPolls.get(workspaceId);
     clearTimeout(poll?.timer);
     const left = poll ? poll.left - 1 : PENDING_POLL_LIMIT;
@@ -243,6 +245,6 @@ export async function changePlugins<M extends PluginChange>(
     toast(pluginError(error), "danger");
     return false;
   } finally {
-    await loadInventory(workspaceId);
+    await reloadExtensions(workspaceId);
   }
 }

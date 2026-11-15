@@ -96,6 +96,20 @@ export class HostManager {
     return outcome(async () => {
       // Only session methods are open to the renderer; the host owns initialize and shutdown.
       if (!(AGENT_METHODS as readonly string[]).includes(method)) throw new RpcError({ code: -32601, message: `Method not allowed: ${method}` });
+      if (method === "runtime/reload") {
+        const primary = this.#existing(workspaceId);
+        const result = await primary.call("runtime/reload", {});
+        for (const { host, agent } of this.#entries(workspaceId)) {
+          if (host === primary || host.status.state !== "ready") continue;
+          try {
+            const other = await host.call("runtime/reload", {});
+            result.errors.push(...other.errors.map((error) => `${agent}: ${error}`));
+          } catch (error) {
+            result.errors.push(`${agent}: ${error instanceof Error ? error.message : String(error)}`);
+          }
+        }
+        return result as ResultOf<M>;
+      }
       if (OPENING.has(method)) {
         const { agent, ...rest } = params as ParamsOf<"session/create"> & { sessionId?: string };
         const sessionId = rest.sessionId;

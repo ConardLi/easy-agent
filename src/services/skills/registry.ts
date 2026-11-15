@@ -22,6 +22,7 @@
 import { activeHarness } from "../../harness/active.js";
 import type { ResolvedHarness } from "../../harness/resolve.js";
 import { selectionOffReason } from "../../harness/selection.js";
+import { pluginOffByAgent } from "../../harness/resources.js";
 import type { Skill } from "../../types/types.js";
 
 const dynamic = new Map<string, Skill>();
@@ -53,7 +54,8 @@ export function isSkillsInitialized(): boolean {
 
 /** Why the Agent leaves out the skill `name`, or undefined when it keeps it. */
 export function skillOffByAgent(name: string, resolved: ResolvedHarness = activeHarness()): string | undefined {
-  return selectionOffReason(resolved, "skills", name);
+  const skill = dynamic.get(name) ?? conditional.get(name);
+  return pluginOffByAgent(skill?.pluginId, resolved) ?? selectionOffReason(resolved, "skills", name);
 }
 
 const kept = (skills: Iterable<Skill>, resolved: ResolvedHarness): Skill[] =>

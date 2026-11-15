@@ -17,6 +17,7 @@
 import { activeHarness } from "../harness/active.js";
 import type { ResolvedHarness } from "../harness/resolve.js";
 import { selectionOffReason } from "../harness/selection.js";
+import { pluginOffByAgent } from "../harness/resources.js";
 import type { AgentDefinition } from "./types.js";
 
 const agents = new Map<string, AgentDefinition>();
@@ -40,7 +41,9 @@ export function isAgentsInitialized(): boolean {
 
 /** Why the Agent leaves out the sub-agent `agentType`, or undefined when it keeps it. */
 export function subAgentOffByAgent(agentType: string, resolved: ResolvedHarness = activeHarness()): string | undefined {
-  return selectionOffReason(resolved, "agents", agentType);
+  return (
+    pluginOffByAgent(agents.get(agentType)?.pluginId, resolved) ?? selectionOffReason(resolved, "agents", agentType)
+  );
 }
 
 /** A loaded sub-agent the Agent keeps. */

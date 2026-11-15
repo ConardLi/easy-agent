@@ -221,7 +221,7 @@ function ContextGroupRow({ group, windowSize, open, onToggle }: { group: Context
                   onClick={() => openCustomize(group.tab)}
                   className="mt-2 flex h-7 items-center gap-1 rounded-md px-2 text-[12px] font-medium text-fg-2 transition-colors hover:bg-surface-2 hover:text-fg"
                 >
-                  在自定义中管理
+                  在资源库中管理
                   <ArrowRight className="size-3" />
                 </button>
               )}

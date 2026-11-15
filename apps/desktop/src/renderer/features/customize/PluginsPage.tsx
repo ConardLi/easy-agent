@@ -7,6 +7,7 @@ import { changePlugins, loadPlugins, previewPlugin, useCustomize, useWorkspaceDa
 import { useWorkspaces } from "../../state/workspaces";
 import { pluginTokens } from "./model";
 import { Chips, DetailDrawer, Field, inputClass, ItemRow, Modal, PageHeader, SCOPE_ICON, Section, Stat, TokenTag, WriteScopePicker } from "./shared";
+import { ResourceUsage } from "./ResourceUsage";
 
 type Components = PluginInstalledRow["components"];
 
@@ -317,6 +318,7 @@ export function PluginsPage({ query }: { query: string }) {
                       <TokenTag value={tokensOf(p)} per="/轮" />
                       <span className="block text-[10.5px] text-fg-3">{p.scope ? `由${SCOPE_LABEL[p.scope]}设置` : "未启用"}</span>
                     </span>
+                    <ResourceUsage kind="plugins" name={p.pluginId} />
                     <Switch checked={p.enabled} onChange={(v) => toggle(p, v)} />
                   </>
                 }

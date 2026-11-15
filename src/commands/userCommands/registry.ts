@@ -7,6 +7,7 @@
  */
 
 import type { UserCommand } from "./types.js";
+import { pluginOffByAgent } from "../../harness/resources.js";
 
 const commands = new Map<string, UserCommand>();
 let initialized = false;
@@ -26,11 +27,17 @@ export function isUserCommandsInitialized(): boolean {
 
 /** Look up a command by name (case-sensitive). */
 export function findUserCommand(name: string): UserCommand | undefined {
-  return commands.get(name);
+  const command = commands.get(name);
+  return command && !pluginOffByAgent(command.pluginId) ? command : undefined;
 }
 
 /** All loaded commands, for the suggestion list + `/help`. */
 export function getAllUserCommands(): UserCommand[] {
+  return getRegisteredUserCommands().filter((command) => !pluginOffByAgent(command.pluginId));
+}
+
+/** Every loaded command, including plugin commands the current Agent leaves out. */
+export function getRegisteredUserCommands(): UserCommand[] {
   return [...commands.values()];
 }
 

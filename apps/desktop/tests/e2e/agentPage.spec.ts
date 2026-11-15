@@ -242,20 +242,22 @@ test("settings a layer above the Agent decides are locked and name the file or v
   }
 });
 
-test("the customize and settings switches that were waiting for Agent settings write the workspace's Agent", async () => {
+test("resource assignment and settings write the explicitly selected Agent", async () => {
   world.fixture.script([{ kind: "text", text: "关掉 Glob 以后。" }]);
   const { app, page } = await openProject(world);
   try {
     await page
       .locator("aside")
-      .getByRole("button", { name: /^自定义/ })
+      .getByRole("button", { name: /^资源库/ })
       .click();
     await page.getByRole("button", { name: /^工具/ }).first().click();
-    const glob = page.locator('[data-agent-switch="tools:Glob"]').getByRole("switch");
+    await page.locator('[data-resource="tools:Glob"]').click();
+    const glob = page.getByRole("menuitemcheckbox", { name: /^default/ });
     await expect(glob).toHaveAttribute("aria-checked", "true", { timeout: 20_000 });
     await glob.click();
     await expect(glob).toHaveAttribute("aria-checked", "false", { timeout: 20_000 });
     expect(harnesses().default).toEqual({ tools: { exclude: ["Glob"] } });
+    await page.keyboard.press("Escape");
 
     await page.getByRole("button", { name: "返回对话" }).click();
     await send(page, "没有 Glob");

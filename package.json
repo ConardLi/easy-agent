@@ -37,6 +37,7 @@
   },
   "scripts": {
     "dev": "tsx src/entrypoint/cli.ts",
+    "dev:desktop": "npm run build && npm --prefix apps/desktop run dev",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx scripts/verify-production.ts",
     "lint": "biome lint --error-on-warnings .",
@@ -67,6 +68,7 @@
     "test:feature-config": "node --import tsx src/scripts/test-feature-config.ts",
     "test:harness": "node --import tsx src/scripts/test-harness-resolve.ts",
     "test:harness-tools": "node --import tsx src/scripts/test-harness-tools.ts",
+    "test:harness-resources": "node --import tsx src/scripts/test-harness-resources.ts",
     "test:harness-prompt": "node --import tsx src/scripts/test-harness-prompt.ts",
     "test:harness-features": "node --import tsx src/scripts/test-harness-features.ts",
     "test:harness-manage": "node --import tsx src/scripts/test-harness-manage.ts",

@@ -12,6 +12,8 @@ Every switch that changes how Easy Agent behaves: settings keys, environment var
 
 ## Settings keys
 
+Agent resource selectors (`plugins.include`/`exclude`, `hooks.include`/`exclude`, `rules.include`/`exclude`, and `hooks.enabled`) belong to the **agent** category inside user-owned `harnesses`. They can restrict available resources; trust, global disables, and managed hooks still apply. See [resource-library.md](./resource-library.md) for identifiers and reload behavior.
+
 Layers are user (`~/.easy-agent/settings.json`), project (`.easy-agent/settings.json`), local (`.easy-agent/settings.local.json`), flag (CLI flags and `--settings`), and policy (managed settings).
 
 | Key | Category | Security | Read from layers | Takes effect | Default | Summary |

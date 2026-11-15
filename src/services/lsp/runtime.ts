@@ -1,11 +1,13 @@
 import { extname } from "node:path";
 import { LspClient } from "./client.js";
 import type { LspServerConfig } from "./schema.js";
+import { pluginOffByAgent } from "../../harness/resources.js";
 
 export interface LspRegistration {
   name: string;
   config: LspServerConfig;
   cwd: string;
+  pluginId?: string;
 }
 let active = new Map<string, { registration: LspRegistration; client: LspClient }>();
 let queue = Promise.resolve();
@@ -61,7 +63,11 @@ export function getLspStatus(): { name: string; status: string; error?: string }
 }
 export function findLspServer(file: string) {
   const extension = extname(file);
-  return [...active.values()].find((entry) => Object.hasOwn(entry.registration.config.extensionToLanguage, extension));
+  return [...active.values()].find(
+    (entry) =>
+      !pluginOffByAgent(entry.registration.pluginId) &&
+      Object.hasOwn(entry.registration.config.extensionToLanguage, extension),
+  );
 }
 export async function stopAllLspServers(): Promise<void> {
   await queue.catch(() => {});

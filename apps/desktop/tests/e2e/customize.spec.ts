@@ -10,6 +10,13 @@ const openProject = () => open(world);
 const readJson = (path: string): Record<string, unknown> => (existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) : {});
 const userSettings = () => readJson(join(world.home, ".easy-agent", "settings.json"));
 
+/** Persist screenshots even with the list reporter, which keeps buffer attachments only in memory. */
+async function captureResource(page: Page, name: string): Promise<void> {
+  const path = test.info().outputPath(`${name}.png`);
+  await page.screenshot({ path, animations: "disabled" });
+  await test.info().attach(name, { path, contentType: "image/png" });
+}
+
 test.beforeEach(async () => {
   world = await createAgentWorld();
   mkdirSync(join(world.project, ".easy-agent", "skills", "review"), { recursive: true });
@@ -25,8 +32,8 @@ test.afterEach(async () => {
 });
 
 async function openCustomize(page: Page, tab?: string): Promise<void> {
-  await page.getByRole("button", { name: /^自定义/ }).click();
-  await expect(page.getByRole("heading", { name: "自定义", exact: true })).toBeVisible({ timeout: 20_000 });
+  await page.getByRole("button", { name: /^资源库/ }).click();
+  await expect(page.getByRole("heading", { name: "资源库", exact: true })).toBeVisible({ timeout: 20_000 });
   if (tab)
     await page
       .locator("nav")
@@ -91,6 +98,71 @@ test("skills come from the Agent, and an uploaded skill is offered after the rel
   }
 });
 
+test("an installed skill is assigned to one Agent and absent from the other Agent's slash menu", async () => {
+  const testInfo = test.info();
+  writeFileSync(
+    join(world.home, ".easy-agent", "settings.json"),
+    JSON.stringify({
+      harnesses: { default: { skills: { include: [] } }, writer: { skills: { include: [] } } },
+    }),
+  );
+  const source = join(world.home, "downloads", "notes");
+  mkdirSync(source, { recursive: true });
+  writeFileSync(join(source, "SKILL.md"), "---\nname: notes\ndescription: Draft notes\n---\n\nWrite release notes.\n");
+  const { app, page } = await openProject();
+  await app.context().tracing.start({ screenshots: true, snapshots: true });
+  try {
+    const usage = page.locator('[data-resource="skills:notes"]');
+    const input = page.getByRole("textbox", { name: "消息" });
+    await test.step("install notes into the library", async () => {
+      await openCustomize(page);
+      await answerFolderDialog(app, source);
+      await page.getByRole("button", { name: "上传技能" }).click();
+      await page.getByRole("button", { name: "选择文件夹" }).click();
+      await page.getByRole("button", { name: "安装", exact: true }).click();
+      await expect(usage).toContainText("0 个 Agent", { timeout: 20_000 });
+      // Installation opens the skill details over the row's Agent picker.
+      await page.getByRole("button", { name: "关闭", exact: true }).click();
+    });
+    await test.step("assign notes only to writer", async () => {
+      await usage.click();
+      await page.getByRole("menuitemcheckbox", { name: /^writer/ }).click();
+      await expect(usage).toContainText("writer");
+      expect((userSettings().harnesses as Record<string, unknown>).default).toEqual({ skills: { include: [] } });
+      await captureResource(page, "resource-agent-picker");
+      await page.keyboard.press("Escape");
+      await captureResource(page, "resource-library");
+    });
+    await test.step("only writer offers notes in its slash menu", async () => {
+      await page.getByRole("button", { name: "返回对话" }).click();
+      await input.fill("/not");
+      await expect(page.getByRole("option", { name: /\/notes/ })).toHaveCount(0);
+      await input.fill("");
+      await page.getByRole("button", { name: /^Agent：/ }).click();
+      await page.getByRole("menuitem", { name: /^writer/ }).click();
+      await input.fill("/not");
+      await expect(page.getByRole("option", { name: /\/notes/ })).toBeVisible();
+      await input.fill("");
+    });
+    await test.step("removing notes also removes writer's slash entry", async () => {
+      await openCustomize(page);
+      await usage.click();
+      await page.getByRole("menuitemcheckbox", { name: /^writer/ }).click();
+      await expect(usage).toContainText("0 个 Agent");
+      await page.keyboard.press("Escape");
+      await page.locator("nav").getByRole("button", { name: /^工具/ }).click();
+      await expect(page.locator('[data-resource="tools:Read"]')).toBeVisible();
+      await captureResource(page, "resource-tools");
+      await page.getByRole("button", { name: "返回对话" }).click();
+      await input.fill("/not");
+      await expect(page.getByRole("option", { name: /\/notes/ })).toHaveCount(0);
+    });
+  } finally {
+    await app.context().tracing.stop({ path: testInfo.outputPath("resource-assignment-trace.zip") });
+    await app.close();
+  }
+});
+
 test("a rule file is edited and excluded from the rules page", async () => {
   const { app, page } = await openProject();
   try {
@@ -105,6 +177,8 @@ test("a rule file is edited and excluded from the rules page", async () => {
     await page.locator("aside").getByRole("switch").click();
     await expect.poll(() => userSettings().claudeMdExcludes).toEqual([join(world.project, "AGENTS.md")]);
     await expect(page.getByText("已排除", { exact: true }).first()).toBeVisible();
+    await page.getByRole("button", { name: "关闭", exact: true }).click();
+    await captureResource(page, "resource-rules");
   } finally {
     await app.close();
   }
@@ -121,6 +195,7 @@ test("a .mcp.json server is approved, connects, and shows in the details panel",
     await page.getByRole("button", { name: "批准", exact: true }).click();
     await expect(page.getByText("已连接", { exact: true }).first()).toBeVisible({ timeout: 20_000 });
     expect(readJson(join(world.project, ".easy-agent", "settings.local.json"))).toEqual({ enabledMcpjsonServers: ["echo"] });
+    await captureResource(page, "resource-mcp");
 
     await page.getByRole("button", { name: "返回对话" }).click();
     await send(page, "你好");
@@ -185,6 +260,7 @@ test("a plugin is installed from a marketplace after its preview, then disabled 
 
     await page.getByRole("button", { name: /^已安装 \d+$/ }).click();
     await expect(page.getByText("由全局设置")).toBeVisible();
+    await captureResource(page, "resource-plugins");
     await page.getByRole("button", { name: "返回对话" }).click();
     await page.getByRole("textbox", { name: "消息" }).fill("/kit");
     await expect(page.getByRole("listbox", { name: "技能与命令" }).getByRole("option", { name: /\/kit:notes/ })).toContainText("插件 kit");
@@ -216,6 +292,7 @@ test("a hook is added to the chosen settings file", async () => {
     // The file is written before the dialog closes; until then its textarea holds the same text.
     await expect(page.getByRole("dialog")).toBeHidden();
     await expect(page.getByText("echo formatted", { exact: true })).toBeVisible();
+    await captureResource(page, "resource-hooks");
   } finally {
     await app.close();
   }
@@ -236,7 +313,7 @@ test("the context panel splits the next request by category", async () => {
     await expect(panel.getByText(/· 按上次请求估算/)).toBeVisible();
     await panel.getByRole("button", { name: /^规则/ }).click();
     await expect(panel.getByText("AGENTS.md", { exact: true })).toBeVisible();
-    await panel.getByRole("button", { name: "在自定义中管理" }).click();
+    await panel.getByRole("button", { name: "在资源库中管理" }).click();
     await expect(page.getByRole("heading", { name: /规则/ })).toBeVisible();
   } finally {
     await app.close();

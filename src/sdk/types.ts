@@ -396,6 +396,8 @@ export interface PluginInventoryItem extends InventoryItemBase {
 
 export interface HookInventoryItem extends InventoryItemBase {
   kind: "hook";
+  /** Stable key for hooks.include/exclude; independent of array position. */
+  selectionKey?: string;
   event: string;
   matcher?: string;
   command: string;

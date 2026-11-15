@@ -410,11 +410,7 @@ export function SkillsPage({ query }: { query: string }) {
               <TokenTag value={skill.listing.value} per="/轮" />
             </span>
           </Tooltip>
-          {skill.source === "plugin" ? (
-            <span className="w-[34px] text-center text-[11px] text-fg-3">插件</span>
-          ) : (
-            <AgentSwitch kind="skills" name={skill.name} checked={skill.enabled} />
-          )}
+          <AgentSwitch kind="skills" name={skill.name} />
         </>
       }
     />

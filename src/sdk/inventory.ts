@@ -13,7 +13,8 @@ import { formatAgentListingLine } from "../agents/promptInjection.js";
 import { getRegisteredAgents, subAgentOffByAgent } from "../agents/registry.js";
 import { BUILTIN_COMMAND_HELP } from "../commands/builtinCommandHelp.js";
 import { BUILTIN_COMMAND_NAMES } from "../commands/builtinCommandNames.js";
-import { getAllUserCommands } from "../commands/userCommands/registry.js";
+import { getRegisteredUserCommands } from "../commands/userCommands/registry.js";
+import { hookOffByAgent, hookSelectionKey, pluginOffByAgent, ruleOffByAgent } from "../harness/resources.js";
 import { loadFeatureSettings } from "../config/features.js";
 import { isProjectTrusted } from "../config/globalState.js";
 import { redactUrlForDisplay } from "../config/redaction.js";
@@ -186,7 +187,7 @@ function listCommands(): CommandInventoryItem[] {
       description: help(name),
     }),
   );
-  const custom = getAllUserCommands().map(
+  const custom = getRegisteredUserCommands().map(
     (command): CommandInventoryItem => ({
       kind: "command",
       id: componentId.command(command.source, command.name),
@@ -194,7 +195,8 @@ function listCommands(): CommandInventoryItem[] {
       source: command.source,
       ...(command.pluginId ? { pluginId: command.pluginId } : {}),
       path: command.filePath,
-      enabled: true,
+      enabled: !pluginOffByAgent(command.pluginId),
+      ...(pluginOffByAgent(command.pluginId) ? { reason: pluginOffByAgent(command.pluginId) } : {}),
       description: command.description,
       ...(command.argumentHint ? { argumentHint: command.argumentHint } : {}),
     }),
@@ -366,14 +368,17 @@ type PluginView = Awaited<ReturnType<typeof buildPluginView>>;
 function listPlugins(view: PluginView): PluginInventoryItem[] {
   return view.installed.map((row) => {
     const limited = row.enabled && row.hasExecutableComponents && !row.executablesTrusted;
+    const reason =
+      pluginOffByAgent(row.pluginId) ??
+      (limited ? `${UNTRUSTED} Its hooks, MCP servers, and LSP servers do not run.` : undefined);
     return {
       kind: "plugin",
       id: componentId.plugin(row.pluginId),
       name: row.name,
       source: row.scope ?? "user",
       pluginId: row.pluginId,
-      enabled: row.enabled,
-      ...(limited ? { reason: `${UNTRUSTED} Its hooks, MCP servers, and LSP servers do not run.` } : {}),
+      enabled: row.enabled && !pluginOffByAgent(row.pluginId),
+      ...(reason ? { reason } : {}),
       marketplace: row.marketplace,
       version: row.version,
       ...(row.description ? { description: row.description } : {}),
@@ -414,9 +419,17 @@ async function listHooks(
 
   for (const entry of await listConfiguredHooks(cwd)) {
     const applies = isTrustedScopeForSensitiveKeys(entry.source) || workspaceTrusted;
-    const reason = globallyDisabled ? off : applies ? undefined : UNTRUSTED;
+    const selectionKey = hookSelectionKey(entry.source, entry.event, entry.matcher, entry.hook);
+    const reason = globallyDisabled
+      ? off
+      : !applies
+        ? UNTRUSTED
+        : entry.source === "policy"
+          ? undefined
+          : hookOffByAgent(selectionKey);
     items.push({
       kind: "hook",
+      selectionKey,
       id: nextId(componentId.hookPrefix(entry.source, entry.event)),
       name: entry.matcher ? `${entry.event} ${entry.matcher}` : entry.event,
       source: entry.source,
@@ -433,11 +446,17 @@ async function listHooks(
 
   const trustedPlugins = new Map(plugins.map((row) => [row.pluginId, row.executablesTrusted]));
   for (const plugin of getActivePlugins()) {
-    const reason = globallyDisabled ? off : trustedPlugins.get(plugin.pluginId) === false ? UNTRUSTED : undefined;
     for (const entry of plugin.hooks) {
       for (const hook of entry.hooks) {
+        const selectionKey = hookSelectionKey(`plugin:${plugin.pluginId}`, entry.event, entry.matcher, hook);
+        const reason = globallyDisabled
+          ? off
+          : trustedPlugins.get(plugin.pluginId) === false
+            ? UNTRUSTED
+            : (pluginOffByAgent(plugin.pluginId) ?? hookOffByAgent(selectionKey));
         items.push({
           kind: "hook",
+          selectionKey,
           id: nextId(componentId.pluginHookPrefix(plugin.pluginId, entry.event)),
           name: entry.matcher ? `${entry.event} ${entry.matcher}` : entry.event,
           source: "plugin",
@@ -464,7 +483,9 @@ async function listRules(cwd: string): Promise<RuleInventoryItem[]> {
     ? undefined
     : (contextSourceOffReason(harness, "agent_md") ?? promptSectionOffReason(harness, "agent_md") ?? REPLACED);
   const items: RuleInventoryItem[] = (await listAgentMdFiles(cwd)).map((file) => {
-    const reason = file.excluded ? "Matched by claudeMdExcludes." : agentMdOff;
+    const reason = file.excluded
+      ? "Matched by claudeMdExcludes."
+      : (agentMdOff ?? ruleOffByAgent(file.filePath, harness));
     return {
       kind: "rule",
       id: componentId.rule(file.filePath),
@@ -482,7 +503,7 @@ async function listRules(cwd: string): Promise<RuleInventoryItem[]> {
   const memory = await readMemoryEntrypoint(cwd).catch(() => null);
   if (memory) {
     const reason = contextSourceLoaded(harness, "memory")
-      ? undefined
+      ? ruleOffByAgent("memory", harness)
       : (contextSourceOffReason(harness, "memory") ?? promptSectionOffReason(harness, "memory") ?? REPLACED);
     items.push({
       kind: "rule",
@@ -561,7 +582,7 @@ function listTools(deferred: Set<string>): ToolInventoryItem[] {
   const harness = activeHarness();
   return getRegisteredTools().map((tool) => {
     const server = servers.get(tool.name);
-    const reason = toolOffReason(tool, harness);
+    const reason = pluginOffByAgent(server?.pluginId, harness) ?? toolOffReason(tool, harness);
     return {
       kind: "tool",
       id: componentId.tool(tool.name),

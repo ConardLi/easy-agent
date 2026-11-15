@@ -22,6 +22,7 @@
  */
 
 import * as path from "node:path";
+import { hookOffByAgent, hookSelectionKey, pluginOffByAgent, setPluginMcpOwners } from "../harness/resources.js";
 import { applyLspServers } from "../services/lsp/runtime.js";
 import { loadAllSkills } from "../services/skills/loadSkillsDir.js";
 import { setSkills } from "../services/skills/registry.js";
@@ -93,11 +94,23 @@ export function getActivePluginErrors(): PluginError[] {
 
 /** Plugin-contributed hooks, in the same shape the hook executor consumes. */
 export function getActivePluginHooks(): HooksSettings {
-  return activeHooks;
+  const settings: HooksSettings = {};
+  for (const [event, groups] of Object.entries(activeHooks)) {
+    const kept = groups.flatMap((group) => {
+      if (pluginOffByAgent(group.pluginId)) return [];
+      const hooks = group.hooks.filter(
+        (hook) => !hookOffByAgent(hookSelectionKey(`plugin:${group.pluginId}`, event, group.matcher, hook)),
+      );
+      return hooks.length > 0 ? [{ ...group, hooks }] : [];
+    });
+    if (kept.length > 0) settings[event as keyof HooksSettings] = kept;
+  }
+  return settings;
 }
 
 /** Test seam: forget all applied plugin state (does NOT touch registries). */
 export function _resetPluginRuntimeForTesting(): void {
+  setPluginMcpOwners([]);
   activePlugins = [];
   activeErrors = [];
   activeHooks = {};
@@ -293,9 +306,12 @@ async function performRefresh(cwd: string, opts: RefreshOptions): Promise<{ comp
   // ── Executable components (trust-gated) ──
   const nextHooks = buildPluginHooksSettings(plugins, trustedById);
 
+  setPluginMcpOwners(
+    plugins.flatMap((plugin) => plugin.mcpServers.map((server) => [server.namespacedName, plugin.pluginId] as const)),
+  );
   const desiredMcp = new Map<string, ScopedMcpServerConfig>();
   for (const p of plugins) {
-    if (!trustedById.get(p.pluginId)) continue;
+    if (!trustedById.get(p.pluginId) || pluginOffByAgent(p.pluginId)) continue;
     for (const server of p.mcpServers) {
       if (mcpServerOffByAgent(server.namespacedName)) continue;
       desiredMcp.set(server.namespacedName, server.config);
@@ -341,8 +357,10 @@ async function performRefresh(cwd: string, opts: RefreshOptions): Promise<{ comp
   if (opts.applyMcp !== false) {
     const lspErrors = await applyLspServers(
       plugins
-        .filter((plugin) => trustedById.get(plugin.pluginId))
-        .flatMap((plugin) => (plugin.lspServers ?? []).map((server) => ({ ...server, cwd }))),
+        .filter((plugin) => trustedById.get(plugin.pluginId) && !pluginOffByAgent(plugin.pluginId))
+        .flatMap((plugin) =>
+          (plugin.lspServers ?? []).map((server) => ({ ...server, cwd, pluginId: plugin.pluginId })),
+        ),
     );
     nextErrors.push(...lspErrors.map((message) => ({ pluginId: "lsp", scope: "io" as const, message })));
     activeErrors = nextErrors;

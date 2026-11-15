@@ -8,6 +8,7 @@ import { useActiveWorkspace, useWorkspaces } from "../../state/workspaces";
 import { CodeBlock } from "../session/Markdown";
 import { addHook, type HookDraft, type HooksBlock, hookIndex, originOf, removeHook, reasonText } from "./model";
 import { Chips, DetailDrawer, Field, inputClass, ItemRow, Modal, PageHeader, ScopeBadge, ScopeCards, ScopeChoice, Section, Stat } from "./shared";
+import { ResourceUsage } from "./ResourceUsage";
 
 const HOOK_EVENTS: { id: string; label: string; hint: string; matcher?: { label: string; placeholder: string }; context: boolean }[] = [
   {
@@ -327,7 +328,12 @@ export function HooksPage({ query }: { query: string }) {
                       {!h.enabled && h.reason && <span>{reasonText(h.reason)}</span>}
                     </span>
                   }
-                  right={<ScopeBadge origin={originOf(h, inventory)} />}
+                  right={
+                    <>
+                      <ScopeBadge origin={originOf(h, inventory)} />
+                      <ResourceUsage kind="hooks" name={h.selectionKey ?? h.id} />
+                    </>
+                  }
                 />
               ))
             )}

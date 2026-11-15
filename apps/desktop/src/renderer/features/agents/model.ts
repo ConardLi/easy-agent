@@ -11,7 +11,7 @@
 
 import type { HarnessLayerSource, ResolvedHarness, ResolvedHarnessValue } from "../../../shared/agent";
 
-export type HarnessTab = "prompt" | "context" | "tools" | "skills" | "agents" | "mcp" | "compaction" | "features" | "other";
+export type HarnessTab = "prompt" | "context" | "tools" | "skills" | "agents" | "mcp" | "resources" | "compaction" | "features" | "other";
 
 export const HARNESS_TABS: { id: HarnessTab; label: string }[] = [
   { id: "prompt", label: "提示词" },
@@ -20,6 +20,7 @@ export const HARNESS_TABS: { id: HarnessTab; label: string }[] = [
   { id: "skills", label: "技能" },
   { id: "agents", label: "子 Agent" },
   { id: "mcp", label: "MCP" },
+  { id: "resources", label: "插件与规则" },
   { id: "compaction", label: "压缩" },
   { id: "features", label: "功能" },
   { id: "other", label: "其他" },
@@ -105,7 +106,7 @@ export function sourceTitle(v: Pick<ResolvedHarnessValue, "source" | "detail">, 
   return lockedBy(v) ?? `${LAYER_FILE[v.source] ?? LAYER_LABEL[v.source]}${v.detail ? ` 的 ${v.detail}` : ""}`;
 }
 
-export type SelectionKind = "tools" | "skills" | "agents" | "mcpServers";
+export type SelectionKind = "tools" | "skills" | "agents" | "mcpServers" | "plugins" | "hooks" | "rules";
 
 function matches(entry: string, name: string): boolean {
   if (!entry.includes("*")) return entry === name;
@@ -126,11 +127,16 @@ const listAt = (resolved: ResolvedHarness, path: string) => {
 const whose = (v: ResolvedHarnessValue, agent: string) => (v.detail === agent ? "这个 Agent 的" : `从 ${v.detail} 继承的`);
 
 /** Whether the Agent keeps an item by its include and exclude lists, and why not. */
-export function selectionState(resolved: ResolvedHarness, kind: SelectionKind, name: string): { on: boolean; reason?: string; from?: ResolvedHarnessValue } {
+export function selectionState(
+  resolved: ResolvedHarness,
+  kind: SelectionKind,
+  name: string,
+): { on: boolean; reason?: string; from?: ResolvedHarnessValue; exclusionPattern?: string } {
   const agent = resolved.name;
   const exclude = resolved.values[`${kind}.exclude`];
   if (exclude && listAt(resolved, `${kind}.exclude`)?.some((entry) => matches(entry, name))) {
-    return { on: false, reason: `${whose(exclude, agent)} ${kind}.exclude 去掉了它`, from: exclude };
+    const exclusionPattern = listAt(resolved, `${kind}.exclude`)?.find((entry) => entry.includes("*") && matches(entry, name));
+    return { on: false, reason: `${whose(exclude, agent)} ${kind}.exclude 去掉了它`, from: exclude, ...(exclusionPattern ? { exclusionPattern } : {}) };
   }
   const include = resolved.values[`${kind}.include`];
   const kept = listAt(resolved, `${kind}.include`);
@@ -174,6 +180,9 @@ export function applySelection(
   let exclude = before.exclude;
   for (const [name, on] of changes) {
     if (on) {
+      if (exclude.some((entry) => entry.includes("*") && matches(entry, name))) {
+        throw new Error("排除模式覆盖了多项资源，请先调整 Agent 的 exclude 列表，避免同时启用其他资源");
+      }
       if (exclude.some((entry) => matches(entry, name))) exclude = exclude.filter((entry) => !matches(entry, name));
       if (include && !include.some((entry) => matches(entry, name))) include = [...include, name];
     } else if (include?.includes(name)) include = include.filter((entry) => entry !== name);
@@ -246,7 +255,6 @@ export const OTHER_KEYS = [
   "permissions.ask",
   "permissions.deny",
   "sandbox.enabled",
-  "hooks.enabled",
   "outputStyle",
   "prompt.language",
   "tools.respectGitignore",

@@ -7,6 +7,7 @@ import { cn, Kbd, Menu, MenuContent, MenuItem, MenuTrigger, MOD, Tooltip } from 
 import { desktop } from "../../lib/desktop";
 import { basename, dirname, uid } from "../../lib/format";
 import { aliasFor, GROUP_LABEL, listSlash, matchSlash, type SlashEntry, type SlashGroup } from "../../lib/slash";
+import { keyOf, loadAgent, useAgents } from "../../state/agents";
 import { useCustomize } from "../../state/customize";
 import { usePrefs } from "../../state/prefs";
 import { interrupt, runUiAction, sendMessage, setEffort, setMode, setModel } from "../../state/actions";
@@ -108,8 +109,15 @@ export function Composer({ variant = "dock" }: { variant?: "dock" | "hero" }) {
     });
   }, [inject]);
 
-  const inventory = useCustomize((s) => (workspace ? s.inventories[workspace.id] : undefined));
-  const entries = useMemo(() => listSlash(status.state === "ready" ? status.init.capabilities : undefined, inventory), [status, inventory]);
+  const agentName = sessionAgent ?? fallbackAgent;
+  const inventory = useAgents((s) => {
+    const key = workspace ? keyOf(workspace.id, agentName) : "";
+    return s.errors[key] ? undefined : s.data[key]?.inventory;
+  });
+  useEffect(() => {
+    if (workspace && runtime.status.state === "ready") void loadAgent(workspace.id, agentName);
+  }, [workspace, runtime.status, agentName]);
+  const entries = useMemo(() => listSlash(undefined, inventory ?? undefined), [inventory]);
   const commands = useMemo(() => (suggest?.kind === "slash" ? matchSlash(entries, suggest.query) : []), [suggest, entries]);
   /** The skill or command the message starts with, shown above the text. */
   const invoked = useMemo(() => {

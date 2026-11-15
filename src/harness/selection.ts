@@ -13,7 +13,7 @@ import { describeSource } from "./format.js";
 import type { ResolvedHarness, ResolvedHarnessValue } from "./resolve.js";
 import { SHELL_TOOLS, type ToolConfig } from "./spec.js";
 
-export type HarnessSelection = "tools" | "mcpServers" | "skills" | "agents";
+export type HarnessSelection = "tools" | "mcpServers" | "skills" | "agents" | "plugins" | "hooks" | "rules";
 
 const patterns = new Map<string, RegExp>();
 

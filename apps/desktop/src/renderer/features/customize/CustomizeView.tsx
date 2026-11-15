@@ -1,12 +1,13 @@
 import { FileJson, FileText, Package, PanelLeftOpen, Plug, ScrollText, Search, Sparkles, Webhook, Wrench, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useState } from "react";
-import { cn, IconButton, MOD, Spinner, Tooltip } from "../../design/primitives";
+import { Button, cn, IconButton, MOD, Spinner, Tooltip } from "../../design/primitives";
 import { desktop } from "../../lib/desktop";
 import { tokens } from "../../lib/format";
 import { type CustomizeTab, loadInventory, useCustomize, useWorkspaceData } from "../../state/customize";
+import { restartStaleAgents, useAgents } from "../../state/agents";
 import { usePrefs } from "../../state/prefs";
-import { useActiveView } from "../../state/sessions";
+import { useSessions } from "../../state/sessions";
 import { useActiveWorkspace, useRuntime } from "../../state/workspaces";
 import { WindowControls } from "../shell/WindowControls";
 import { WorkspaceAvatar } from "../workspace/WorkspaceAvatar";
@@ -31,12 +32,12 @@ export function CustomizeView() {
   const tab = useCustomize((s) => s.tab);
   const openCustomize = useCustomize((s) => s.openCustomize);
   const closeCustomize = useCustomize((s) => s.closeCustomize);
-  const contexts = useCustomize((s) => s.contexts);
   const sidebarOpen = usePrefs((s) => s.sidebarOpen);
   const toggleSidebar = usePrefs((s) => s.toggleSidebar);
   const workspace = useActiveWorkspace();
   const status = useRuntime(workspace?.id).status;
-  const view = useActiveView();
+  const stale = useAgents((s) => (workspace ? s.staleMcp[workspace.id] : undefined));
+  const busy = useSessions((s) => Object.values(s.views).some((view) => view.workspaceId === workspace?.id && view.busy));
   const { inventory, error } = useWorkspaceData();
   const [query, setQuery] = useState("");
 
@@ -46,13 +47,7 @@ export function CustomizeView() {
   }, [status, workspace?.id]);
 
   const cost = fixedCost(inventory);
-  // The system prompt is only measured for a running session; take it from the open one when there is one.
-  const context = view && view.workspaceId === workspace?.id ? contexts[view.id] : undefined;
-  const system = context?.categories.find((c) => c.id === "system")?.tokens ?? 0;
-  const groups = [
-    ...(system ? [{ id: "system", tokens: system, color: GROUP_COLORS.system }] : []),
-    ...(Object.keys(cost) as FixedGroup[]).map((id) => ({ id, tokens: cost[id], color: GROUP_COLORS[id] })),
-  ];
+  const groups = (Object.keys(cost) as FixedGroup[]).map((id) => ({ id, tokens: cost[id], color: GROUP_COLORS[id] }));
   const fixed = groups.reduce((n, g) => n + g.tokens, 0);
 
   const counts: Record<CustomizeTab, number> = {
@@ -61,7 +56,7 @@ export function CustomizeView() {
     plugins: inventory?.plugins.length ?? 0,
     hooks: inventory?.hooks.length ?? 0,
     rules: inventory?.rules.length ?? 0,
-    tools: inventory?.tools.filter((t) => !t.mcpServer && t.enabled).length ?? 0,
+    tools: inventory?.tools.filter((t) => !t.mcpServer).length ?? 0,
   };
 
   const files = [
@@ -88,14 +83,14 @@ export function CustomizeView() {
           </div>
         )}
         <div className="flex min-w-0 flex-1 items-center gap-2.5 pl-1.5">
-          <h1 className="text-[13.5px] font-semibold tracking-[-0.01em] text-fg">自定义</h1>
+          <h1 className="text-[13.5px] font-semibold tracking-[-0.01em] text-fg">资源库</h1>
           {workspace && (
             <span className="no-drag flex items-center gap-1.5 rounded-md border border-line px-1.5 py-0.5 text-[11.5px] text-fg-2">
               <WorkspaceAvatar name={workspace.name} color={workspace.color} size={14} />
               {workspace.name}
             </span>
           )}
-          <span className="hidden text-[11.5px] text-fg-3 md:inline">项目配置作用于这个工作区，全局配置作用于所有工作区</span>
+          <span className="hidden text-[11.5px] text-fg-3 md:inline">安装资源，选择使用它们的 Agent</span>
         </div>
         <div className="no-drag relative">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-fg-3" />
@@ -112,6 +107,14 @@ export function CustomizeView() {
           </IconButton>
         </Tooltip>
       </header>
+      {!!stale?.length && (
+        <div className="flex items-center gap-3 border-b border-warning/30 bg-warning/10 px-4 py-2 text-[12px] text-fg-2">
+          <span className="flex-1">{stale.join("、")} 的 MCP 或插件服务器配置已改变，重启进程后全部生效。</span>
+          <Button size="sm" disabled={busy} onClick={() => void restartStaleAgents()}>
+            {busy ? "回合结束后可重启" : "重启受影响的 Agent"}
+          </Button>
+        </div>
+      )}
 
       <div className="flex min-h-0 flex-1">
         <nav className="flex w-[236px] shrink-0 flex-col border-r border-line bg-surface/40 px-2.5 py-3">
@@ -148,7 +151,7 @@ export function CustomizeView() {
                   </span>
                   <span className="relative min-w-0 flex-1">
                     <span className="block text-[13px] font-medium leading-tight">{t.label}</span>
-                    <span className="tabular block text-[11px] leading-tight text-fg-3">{t.group ? `${tokens(cost[t.group])} tokens/轮` : t.en}</span>
+                    <span className="tabular block text-[11px] leading-tight text-fg-3">{t.en}</span>
                   </span>
                   <span className="tabular relative text-[11.5px] text-fg-3">{counts[t.id]}</span>
                 </button>
@@ -157,7 +160,7 @@ export function CustomizeView() {
           </div>
 
           <div className="mt-5 rounded-xl border border-line bg-canvas p-3">
-            <div className="text-[11px] text-fg-3">每轮固定开销</div>
+            <div className="text-[11px] text-fg-3">Agent「{status.state === "ready" ? status.harness.name : "default"}」的资源开销</div>
             <div className="tabular mt-0.5 text-[17px] font-semibold tracking-[-0.02em] text-fg">
               {tokens(fixed)}
               <span className="ml-1 text-[11.5px] font-normal text-fg-3">tokens</span>
@@ -170,9 +173,7 @@ export function CustomizeView() {
                 ))}
             </div>
             <div className="mt-2 text-[11px] leading-[1.5] text-fg-3">
-              {system
-                ? "系统提示词、工具、MCP、技能清单、插件和规则加起来，对话还没开始就已经占用的部分"
-                : "工具、MCP、技能清单、插件和规则加起来，对话还没开始就已经占用的部分；系统提示词要开始会话后才算得出"}
+              页面内的用量与连接状态以这个 Agent 为参考。每行的 Agent 菜单显示各自的使用情况，实际用量请在会话的上下文面板查看。
             </div>
           </div>
 

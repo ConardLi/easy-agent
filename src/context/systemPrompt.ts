@@ -2,6 +2,7 @@ import * as os from "node:os";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { formatAgentMdSection, listAgentMdFiles } from "./claudeMd.js";
+import { ruleOffByAgent } from "../harness/resources.js";
 import { joinParts, type PromptPart } from "../utils/promptParts.js";
 import {
   buildMemoryPromptInstructions,
@@ -302,9 +303,13 @@ export async function collectDynamicSections(options: CollectDynamicSectionsOpti
   const memoryDir = withMemory ? await ensureMemoryDirExists(options.cwd) : "";
   const [agentMdFiles, memoryEntrypoint] = await Promise.all([
     loads("agent_md") ? listAgentMdFiles(options.cwd) : Promise.resolve([]),
-    ignoreMemory || !loads("memory") ? Promise.resolve(null) : readMemoryEntrypoint(options.cwd),
+    ignoreMemory || !loads("memory") || (harness && ruleOffByAgent("memory", harness))
+      ? Promise.resolve(null)
+      : readMemoryEntrypoint(options.cwd),
   ]);
-  const loadedAgentMd = agentMdFiles.filter((file) => !file.excluded);
+  const loadedAgentMd = agentMdFiles.filter(
+    (file) => !file.excluded && !(harness && ruleOffByAgent(file.filePath, harness)),
+  );
   const language = harness ? harnessValue<string | undefined>(harness, "prompt.language") : undefined;
   const activeStyle = getActiveOutputStyleConfig();
 

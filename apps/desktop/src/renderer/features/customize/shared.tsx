@@ -1,13 +1,14 @@
 import { Bot, ChevronDown, FolderOpen, Globe, HardDrive, Package, Settings2, Shield } from "lucide-react";
 import type { ReactNode } from "react";
-import { cn, Menu, MenuContent, MenuItem, MenuLabel, MenuTrigger, Switch, Tooltip } from "../../design/primitives";
+import { cn, Menu, MenuContent, MenuItem, MenuLabel, MenuTrigger, Tooltip } from "../../design/primitives";
 import { desktop } from "../../lib/desktop";
 import { tokens as fmt } from "../../lib/format";
 import { SCOPE_FILE, SCOPE_HINT, SCOPE_LABEL, WRITE_SCOPES } from "../../lib/scopes";
-import { changeWorkspaceAgent, useAgents } from "../../state/agents";
+import { useAgents } from "../../state/agents";
 import { useCustomize } from "../../state/customize";
 import { primaryAgentOf, useWorkspaces } from "../../state/workspaces";
-import { type HarnessTab, type SelectionKind, toggleSelection } from "../agents/model";
+import type { HarnessTab, SelectionKind } from "../agents/model";
+import { ResourceUsage } from "./ResourceUsage";
 import type { Origin } from "./model";
 
 export { DetailDrawer, Modal } from "../../design/Overlays";
@@ -345,43 +346,28 @@ export function PendingSwitch({ checked, reason }: { checked: boolean; reason: s
   );
 }
 
-/** The Agent the workspace's default process runs: the one these pages show and their switches write to. */
+/** The Agent whose live process supplies the library's cost and connection reference. */
 export const useWorkspaceAgent = () => useWorkspaces((s) => primaryAgentOf(s.activeId ? s.runtime[s.activeId] : undefined));
 
 /**
- * Turns one tool, skill, or MCP server on or off for the workspace's Agent:
- * the switch writes that Agent's `include`/`exclude` list (`harnesses.<name>`).
+ * Pick the Agents that use a resource. Kept as a wrapper for the existing
+ * detail views; each row now explicitly chooses the definition it changes.
  */
-export function AgentSwitch({ kind, name, checked }: { kind: SelectionKind; name: string; checked: boolean }) {
-  const agent = useWorkspaceAgent();
-  return (
-    <Tooltip content={`写进 Agent「${agent}」的 ${kind}.exclude`}>
-      <span className="inline-flex" data-agent-switch={`${kind}:${name}`}>
-        <Switch
-          checked={checked}
-          onChange={(on) =>
-            void changeWorkspaceAgent((spec, resolved) => toggleSelection(spec, resolved, kind, name, on), {
-              mcp: kind === "mcpServers",
-              message: (a) => `已写入 harnesses.${a}.${kind}：${on ? "打开" : "关掉"} ${name}`,
-            })
-          }
-        />
-      </span>
-    </Tooltip>
-  );
+export function AgentSwitch({ kind, name }: { kind: SelectionKind; name: string; checked?: boolean }) {
+  return <ResourceUsage kind={kind} name={name} />;
 }
 
-/** Says which Agent the page's switches write to, and opens it on the Agent page. */
+/** Opens the reference Agent's full definition. Assignment happens in each resource row. */
 export function AgentTarget({ tab }: { tab: HarnessTab }) {
   const agent = useWorkspaceAgent();
   return (
-    <Tooltip content="开关写进这个 Agent 的配置；在 Agent 页可以看每一项的来源">
+    <Tooltip content="打开 Agent 页查看完整配置和继承来源">
       <button
         type="button"
         onClick={() => useAgents.getState().openAgents(agent, tab)}
         className="inline-flex h-8 items-center gap-1.5 rounded-[9px] border border-line bg-canvas pl-2.5 pr-2.5 text-[12.5px] text-fg-2 transition-colors hover:border-line-strong hover:text-fg"
       >
-        <span className="text-fg-3">开关写入</span>
+        <span className="text-fg-3">配置 Agent</span>
         <Bot className="size-3.5 text-fg-3" />
         <span className="font-medium text-fg">{agent}</span>
       </button>

@@ -381,7 +381,9 @@ export const HARNESS_KEYS: readonly HarnessKey[] = [
   },
 
   specOnly("sandbox.enabled", "sandbox", "Run shell commands in the sandbox."),
-  specOnly("hooks.enabled", "hooks", "Run command hooks.", true),
+  { ...specOnly("hooks.enabled", "hooks", "Run command hooks.", true), applied: true },
+  ...selection("hooks", "hook selection keys", true),
+  ...selection("rules", "rule file paths (memory for the memory index)", true),
 
   ...selection("skills", "skills", true),
   {
@@ -411,7 +413,7 @@ export const HARNESS_KEYS: readonly HarnessKey[] = [
     applied: true,
   },
   ...selection("mcpServers", "MCP servers", true),
-  ...selection("plugins", "plugins"),
+  ...selection("plugins", "plugins", true),
 
   {
     path: "features.agentTeams",

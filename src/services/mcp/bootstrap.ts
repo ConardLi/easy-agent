@@ -15,6 +15,7 @@ import {
 import { debugLog, logWarn } from "../../utils/log.js";
 import { activeHarness } from "../../harness/active.js";
 import { selectionOffReason } from "../../harness/selection.js";
+import { pluginMcpOffByAgent } from "../../harness/resources.js";
 
 export interface McpBootstrapResult {
   connections: McpServerConnection[];
@@ -79,7 +80,7 @@ function scheduleReconnect(name: string, config: PendingMcpServer["config"], imm
 
 /** Why the active Agent does not start an MCP server (`mcpServers.include`, `mcpServers.exclude`), or undefined. */
 export function mcpServerOffByAgent(name: string): string | undefined {
-  return selectionOffReason(activeHarness(), "mcpServers", name);
+  return pluginMcpOffByAgent(name) ?? selectionOffReason(activeHarness(), "mcpServers", name);
 }
 
 /** Connect the configured servers the Agent keeps, in parallel, and publish each result as it arrives. */

@@ -170,11 +170,8 @@ export function ToolsPage({ query }: { query: string }) {
                 right={
                   <>
                     <TokenTag value={t.perTurn} per="/轮" />
-                    {t.unavailable ? (
-                      <span className="w-[86px] text-right text-[11px] text-fg-3">{t.unavailable}</span>
-                    ) : (
-                      <AgentSwitch kind="tools" name={t.item.name} checked={!t.off} />
-                    )}
+                    {t.unavailable && <span className="text-right text-[11px] text-fg-3">{t.unavailable}</span>}
+                    <AgentSwitch kind="tools" name={t.item.name} />
                   </>
                 }
               />

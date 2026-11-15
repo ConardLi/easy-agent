@@ -400,7 +400,12 @@ try {
 
       const slow = await shell.call({ command: `node -e "setTimeout(() => {}, 20000)"` }, { cwd });
       assert.equal(slow.content, "Command timed out after 1500ms");
-      const loud = await shell.call({ command: `node -e "process.stdout.write('y'.repeat(500))"` }, { cwd });
+      // Output truncation is independent of the short timeout checked above.
+      // Give a cold PowerShell process enough time to launch Node on Windows runners.
+      const loud = await shell.call(
+        { command: `node -e "process.stdout.write('y'.repeat(500))"`, timeout: 10_000 },
+        { cwd },
+      );
       // PowerShell may add a line break to a native command's output, so the counts are bounds.
       const kept = String(loud.content);
       assert.match(kept, /\n\.\.\.\[truncated 4[56]\d bytes\]\r?\n/, `output is cut to 40 bytes: ${kept}`);

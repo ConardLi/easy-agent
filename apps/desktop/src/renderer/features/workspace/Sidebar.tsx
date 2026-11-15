@@ -198,7 +198,7 @@ export function Sidebar() {
           className="group flex h-[34px] items-center gap-2.5 rounded-[9px] px-2 text-[13px] font-medium text-fg-2 transition-colors hover:bg-fg/[0.06] hover:text-fg"
         >
           <SlidersHorizontal className="size-[15px]" />
-          <span className="flex-1 text-left">自定义</span>
+          <span className="flex-1 text-left">资源库</span>
           <span className="text-[11px] font-normal text-fg-3 group-hover:hidden">技能 · MCP · 插件</span>
           <span className="hidden items-center gap-0.5 group-hover:flex">
             <Kbd>{MOD}</Kbd>

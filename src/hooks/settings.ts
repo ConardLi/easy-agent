@@ -1,5 +1,6 @@
 import { getSettingsPaths } from "../utils/paths.js";
 import { logWarn } from "../utils/log.js";
+import { hookOffByAgent, hookSelectionKey } from "../harness/resources.js";
 import { loadTrustedSettingSources, loadSettingSources, type LoadedSource } from "../config/sources.js";
 import {
   HOOK_EVENTS,
@@ -155,14 +156,20 @@ function sourceHooks(src: LoadedSource): HooksSettings {
  */
 export async function loadHooksSettings(cwd: string): Promise<HooksSettings> {
   const sources = await loadTrustedSettingSources(cwd);
-  const perSource = sources.map(sourceHooks);
+  const perSource = sources.map((source) => ({ source: source.source, hooks: sourceHooks(source) }));
 
   const merged: HooksSettings = {};
   for (const event of HOOK_EVENTS) {
     const groups: HookMatcherGroup[] = [];
-    for (const hooks of perSource) {
+    for (const { source, hooks } of perSource) {
       const g = hooks[event];
-      if (g && g.length > 0) groups.push(...g);
+      for (const group of g ?? []) {
+        // Managed hooks are mandatory and cannot be removed by an Agent.
+        const kept = group.hooks.filter(
+          (hook) => source === "policy" || !hookOffByAgent(hookSelectionKey(source, event, group.matcher, hook)),
+        );
+        if (kept.length > 0) groups.push({ ...group, hooks: kept });
+      }
     }
     if (groups.length > 0) merged[event] = groups;
   }
