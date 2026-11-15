@@ -17,6 +17,13 @@ import { debugLog, logWarn } from "../../utils/log.js";
 import { CLIENT_NAME, USER_AGENT, VERSION } from "../../version.js";
 import { createMcpAuthSession, type McpAuthSession } from "./oauth.js";
 import { createMcpFetch } from "./remoteHeaders.js";
+import {
+  bindRuntimeScope,
+  currentRuntimeScope,
+  defineRuntimeState,
+  runInRuntimeScope,
+  runtimeScopeClosed,
+} from "../../state/runtimeScope.js";
 
 // ─── Connect timeout ─────────────────────────────────────────────────
 
@@ -49,27 +56,65 @@ function getCacheKey(name: string, config: ScopedMcpServerConfig): string {
   })}`;
 }
 
-const connectionCache = new Map<string, Promise<McpServerConnection>>();
-
-/** Track active connections for shutdown cleanup. */
-const activeConnections = new Map<string, ConnectedMcpServer>();
-const pendingAuthorizations = new Map<string, McpAuthSession>();
-let unexpectedCloseListener: ((name: string, config: ScopedMcpServerConfig) => void) | undefined;
-let authorizedListener: ((name: string, config: ScopedMcpServerConfig) => void) | undefined;
-let reconnectHandler: ((name: string) => Promise<McpServerConnection | null>) | undefined;
-
-export function setMcpConnectionListeners(listeners: {
+interface ConnectionListeners {
   onUnexpectedClose?: (name: string, config: ScopedMcpServerConfig) => void;
   onAuthorized?: (name: string, config: ScopedMcpServerConfig) => void;
   onReconnectRequested?: (name: string) => Promise<McpServerConnection | null>;
-}): void {
-  unexpectedCloseListener = listeners.onUnexpectedClose;
-  authorizedListener = listeners.onAuthorized;
-  reconnectHandler = listeners.onReconnectRequested;
+}
+
+interface McpClientState {
+  connectionCache: Map<string, Promise<McpServerConnection>>;
+  activeConnections: Map<string, ConnectedMcpServer>;
+  pendingAuthorizations: Map<string, McpAuthSession>;
+  attempts: Map<string, AbortController>;
+  listeners: ConnectionListeners;
+  processCleanup?: () => Promise<void>;
+}
+
+const state = defineRuntimeState<McpClientState>(
+  "mcpClient",
+  () => ({
+    connectionCache: new Map<string, Promise<McpServerConnection>>(),
+    activeConnections: new Map<string, ConnectedMcpServer>(),
+    pendingAuthorizations: new Map<string, McpAuthSession>(),
+    attempts: new Map<string, AbortController>(),
+    listeners: {} as ConnectionListeners,
+    processCleanup: undefined as (() => Promise<void>) | undefined,
+  }),
+  closeConnections,
+);
+
+async function closeConnections(owner: McpClientState): Promise<void> {
+  owner.listeners = {};
+  for (const attempt of owner.attempts.values()) attempt.abort();
+  const pending = [...owner.connectionCache.values()];
+  const connected = [...owner.activeConnections.values()];
+  owner.connectionCache.clear();
+  owner.activeConnections.clear();
+  owner.attempts.clear();
+  for (const auth of owner.pendingAuthorizations.values()) auth.close();
+  owner.pendingAuthorizations.clear();
+  if (owner.processCleanup) processCleanups.delete(owner.processCleanup);
+  owner.processCleanup = undefined;
+  await Promise.allSettled([
+    ...connected.map((connection) => connection.cleanup()),
+    ...pending.map(async (attempt) => {
+      const connection = await attempt;
+      if (connection.type === "connected") await connection.cleanup();
+    }),
+  ]);
+}
+
+export function setMcpConnectionListeners(listeners: ConnectionListeners): void {
+  state().listeners = {
+    onUnexpectedClose: listeners.onUnexpectedClose && bindRuntimeScope(listeners.onUnexpectedClose),
+    onAuthorized: listeners.onAuthorized && bindRuntimeScope(listeners.onAuthorized),
+    onReconnectRequested: listeners.onReconnectRequested && bindRuntimeScope(listeners.onReconnectRequested),
+  };
 }
 
 export async function requestMcpReconnect(name: string): Promise<McpServerConnection | null> {
-  return reconnectHandler ? reconnectHandler(name) : null;
+  return runtimeScopeClosed() ? null : (state().listeners.onReconnectRequested?.(name) ?? null);
 }
 
 // ─── Cleanup helpers ─────────────────────────────────────────────────
@@ -120,18 +165,29 @@ async function escalatedKill(name: string, pid: number | undefined): Promise<voi
 
 /** Share concurrent connection attempts for the same server configuration. */
 export function connectToServer(name: string, config: ScopedMcpServerConfig): Promise<McpServerConnection> {
+  if (runtimeScopeClosed()) return Promise.resolve({ name, config, type: "failed", error: "The runtime is closed." });
+  registerMcpProcessCleanup();
+  const owner = state();
+  const { connectionCache, activeConnections } = owner;
   const key = getCacheKey(name, config);
   const cached = connectionCache.get(key);
   if (cached) return cached;
 
-  const promise = doConnect(name, config);
+  const abort = new AbortController();
+  owner.attempts.set(key, abort);
+  const promise = runInRuntimeScope(currentRuntimeScope(), () => doConnect(name, config, abort.signal));
   connectionCache.set(key, promise);
 
-  void promise.then((conn) => {
-    if (conn.type === "connected" && connectionCache.get(key) === promise) {
-      activeConnections.set(name, conn);
-    }
-  });
+  void promise
+    .then(async (conn) => {
+      if (owner.attempts.get(key) === abort) owner.attempts.delete(key);
+      if (conn.type === "connected" && !abort.signal.aborted && connectionCache.get(key) === promise) {
+        activeConnections.set(name, conn);
+      } else if (conn.type === "connected") {
+        await conn.cleanup();
+      }
+    })
+    .catch((error) => debugLog("mcp", `[${name}] connection cleanup failed: ${(error as Error).message}`));
 
   return promise;
 }
@@ -224,7 +280,13 @@ async function createSseTransport(
   };
 }
 
-async function doConnect(name: string, config: ScopedMcpServerConfig): Promise<McpServerConnection> {
+async function doConnect(
+  name: string,
+  config: ScopedMcpServerConfig,
+  signal: AbortSignal,
+): Promise<McpServerConnection> {
+  const owner = state();
+  const { activeConnections, connectionCache, pendingAuthorizations } = owner;
   const summary =
     config.type === "http" || config.type === "sse"
       ? `${config.type} ${config.url}`
@@ -247,11 +309,17 @@ async function doConnect(name: string, config: ScopedMcpServerConfig): Promise<M
   }
 
   const client = new Client({ name: CLIENT_NAME, version: VERSION }, { capabilities: {} });
-
-  const connectPromise = client.connect(bundle.transport);
   const timeoutMs = getConnectTimeoutMs();
 
   let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+  let cancel!: () => void;
+  const cancelled = new Promise<never>((_resolve, reject) => {
+    cancel = () => reject(new Error("MCP connection cancelled."));
+    signal.addEventListener("abort", cancel, { once: true });
+    if (signal.aborted) cancel();
+  });
+  // A transport may finish initializing after its owner closed.
+  const connectPromise = signal.aborted ? cancelled : client.connect(bundle.transport);
   const timeoutPromise = new Promise<never>((_resolve, reject) => {
     timeoutHandle = setTimeout(() => {
       reject(new Error(`MCP server '${name}' connection timed out after ${timeoutMs}ms`));
@@ -259,12 +327,14 @@ async function doConnect(name: string, config: ScopedMcpServerConfig): Promise<M
   });
 
   try {
-    await Promise.race([connectPromise, timeoutPromise]);
+    await Promise.race([connectPromise, timeoutPromise, cancelled]);
   } catch (error) {
+    signal.removeEventListener("abort", cancel);
     if (timeoutHandle) clearTimeout(timeoutHandle);
     const errMsg = (error as Error).message;
     const interactive = bundle.auth?.interactive;
-    const authorizationUrl = error instanceof UnauthorizedError ? interactive?.pendingAuthorizationUrl : undefined;
+    const authorizationUrl =
+      !signal.aborted && error instanceof UnauthorizedError ? interactive?.pendingAuthorizationUrl : undefined;
     if (authorizationUrl && interactive && "finishAuth" in bundle.transport) {
       const key = getCacheKey(name, config);
       if (bundle.auth) pendingAuthorizations.set(key, bundle.auth);
@@ -273,10 +343,12 @@ async function doConnect(name: string, config: ScopedMcpServerConfig): Promise<M
       void interactive
         .waitForCode()
         .then(async (code) => {
+          if (pendingAuthorizations.get(key) !== bundle.auth) return;
           await transport.finishAuth(code);
+          if (pendingAuthorizations.get(key) !== bundle.auth) return;
           if (pendingAuthorizations.get(key) === bundle.auth) pendingAuthorizations.delete(key);
           bundle.auth?.close();
-          authorizedListener?.(name, config);
+          owner.listeners.onAuthorized?.(name, config);
         })
         .catch((authError) => {
           logWarn(`MCP server '${name}' authorization failed: ${(authError as Error).message}`);
@@ -288,7 +360,7 @@ async function doConnect(name: string, config: ScopedMcpServerConfig): Promise<M
     }
     const stderrTail = bundle.collectStderrTail();
     const detail = stderrTail ? `${errMsg} (stderr: ${stderrTail.slice(0, 200).trim()})` : errMsg;
-    if (!authorizationUrl) logWarn(`MCP server '${name}' failed to connect: ${detail}`);
+    if (!authorizationUrl && !signal.aborted) logWarn(`MCP server '${name}' failed to connect: ${detail}`);
     try {
       await bundle.transport.close();
     } catch {
@@ -301,6 +373,7 @@ async function doConnect(name: string, config: ScopedMcpServerConfig): Promise<M
       error: authorizationUrl ? `Authorization required: ${authorizationUrl}` : detail,
     };
   }
+  signal.removeEventListener("abort", cancel);
   if (timeoutHandle) clearTimeout(timeoutHandle);
 
   const capabilities = client.getServerCapabilities();
@@ -325,13 +398,13 @@ async function doConnect(name: string, config: ScopedMcpServerConfig): Promise<M
       .then(async (code) => {
         if (cleaned) return;
         await transport.finishAuth(code);
-        authorizedListener?.(name, config);
+        if (!cleaned) owner.listeners.onAuthorized?.(name, config);
       })
       .catch((error) => {
         logWarn(`MCP server '${name}' authorization failed: ${(error as Error).message}`);
       });
   }
-  client.onclose = () => {
+  client.onclose = bindRuntimeScope(() => {
     if (cleaned) return;
     if (activeConnections.get(name)?.client !== client) return;
     connectionCache.delete(getCacheKey(name, config));
@@ -339,14 +412,15 @@ async function doConnect(name: string, config: ScopedMcpServerConfig): Promise<M
     void cleanup().catch((error) =>
       debugLog("mcp", `[${name}] cleanup after disconnect failed: ${(error as Error).message}`),
     );
-    unexpectedCloseListener?.(name, config);
-  };
+    owner.listeners.onUnexpectedClose?.(name, config);
+  });
   const cleanup = async (): Promise<void> => {
     if (cleaned) return;
     cleaned = true;
     // A stale connection must not unregister its replacement.
     if (activeConnections.get(name)?.client === client) {
       activeConnections.delete(name);
+      connectionCache.delete(getCacheKey(name, config));
     }
     await bundle.preCleanup();
     try {
@@ -376,9 +450,12 @@ async function doConnect(name: string, config: ScopedMcpServerConfig): Promise<M
  * so the next `connectToServer` call re-spawns. Used by `/mcp reconnect`.
  */
 export async function clearServerCache(name: string, config: ScopedMcpServerConfig): Promise<void> {
+  const { connectionCache, activeConnections, pendingAuthorizations, attempts } = state();
   const key = getCacheKey(name, config);
   const pending = connectionCache.get(key);
   connectionCache.delete(key);
+  attempts.get(key)?.abort();
+  attempts.delete(key);
   pendingAuthorizations.get(key)?.close();
   pendingAuthorizations.delete(key);
   const existing = activeConnections.get(name);
@@ -411,6 +488,7 @@ export async function clearServerCache(name: string, config: ScopedMcpServerConf
 // ─── Process-level cleanup ──────────────────────────────────────────
 
 let cleanupRegistered = false;
+const processCleanups = new Set<() => Promise<void>>();
 
 /**
  * Register a single SIGINT/SIGTERM/exit handler that cleans up every MCP
@@ -418,15 +496,17 @@ let cleanupRegistered = false;
  * `npx @mcp/server-foo` processes running.
  */
 export function registerMcpProcessCleanup(): void {
+  if (runtimeScopeClosed()) return;
+  const owner = state();
+  if (!owner.processCleanup) {
+    owner.processCleanup = () => closeConnections(owner);
+    processCleanups.add(owner.processCleanup);
+  }
   if (cleanupRegistered) return;
   cleanupRegistered = true;
 
   const runCleanup = async (): Promise<void> => {
-    const conns = Array.from(activeConnections.values());
-    activeConnections.clear();
-    for (const auth of pendingAuthorizations.values()) auth.close();
-    pendingAuthorizations.clear();
-    await Promise.allSettled(conns.map((c) => c.cleanup()));
+    await Promise.allSettled([...processCleanups].map((cleanup) => cleanup()));
   };
 
   // Fire-and-forget: SIGINT/SIGTERM listeners must be sync, but we still
@@ -445,7 +525,7 @@ export function registerMcpProcessCleanup(): void {
 
 /** Public for tests + `/mcp` command. */
 export function getActiveMcpConnections(): readonly ConnectedMcpServer[] {
-  return Array.from(activeConnections.values());
+  return Array.from(state().activeConnections.values());
 }
 
 /**
@@ -457,13 +537,15 @@ export function getActiveMcpConnections(): readonly ConnectedMcpServer[] {
  * `clearServerCache(name, config)` per server.
  */
 export function _resetMcpClientForTesting(): void {
+  const owner = state();
+  const { connectionCache, activeConnections, pendingAuthorizations } = owner;
+  for (const attempt of owner.attempts.values()) attempt.abort();
+  owner.attempts.clear();
   connectionCache.clear();
   activeConnections.clear();
   for (const auth of pendingAuthorizations.values()) auth.close();
   pendingAuthorizations.clear();
-  unexpectedCloseListener = undefined;
-  authorizedListener = undefined;
-  reconnectHandler = undefined;
+  owner.listeners = {};
 }
 
 // (Batch-connect helper removed — bootstrap.ts now drives parallelism

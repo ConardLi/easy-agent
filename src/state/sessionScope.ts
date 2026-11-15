@@ -24,6 +24,7 @@
 
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
+import { currentRuntimeScope, runInRuntimeScope, type RuntimeScope } from "./runtimeScope.js";
 
 export interface SessionScope {
   /** Stable identity of the scope. Survives an in-place `/resume` switch. */
@@ -32,7 +33,10 @@ export interface SessionScope {
 
 class Scope implements SessionScope {
   readonly values = new Map<symbol, unknown>();
-  constructor(readonly id: string) {}
+  constructor(
+    readonly id: string,
+    readonly runtime?: RuntimeScope,
+  ) {}
 }
 
 const storage = new AsyncLocalStorage<Scope>();
@@ -40,7 +44,7 @@ const defaultScope = new Scope("process");
 
 /** Create an isolated scope. Its state starts from each module's initializer. */
 export function createSessionScope(): SessionScope {
-  return new Scope(randomUUID());
+  return new Scope(randomUUID(), currentRuntimeScope());
 }
 
 /** The scope used when no session is active. */
@@ -56,7 +60,8 @@ export function currentSessionScope(): SessionScope {
 /** Run `fn` with `scope` active for it and everything it schedules. */
 export function runInSessionScope<T>(scope: SessionScope, fn: () => T): T {
   if (!(scope instanceof Scope)) throw new TypeError("Not a session scope created by createSessionScope().");
-  return storage.run(scope, fn);
+  const run = () => storage.run(scope, fn);
+  return scope.runtime ? runInRuntimeScope(scope.runtime, run) : run();
 }
 
 /**

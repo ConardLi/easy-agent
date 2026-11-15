@@ -21,6 +21,8 @@ The code is organized into five broad layers:
 
 The numbered roadmap is complete through **Stage 36**. The `eagent` package is published on npm, and the post-publication registry cold check passes.
 
+Workspace registries and resource lifecycles belong to a runtime (`src/state/runtimeScope.ts`), while conversation state stays in `sessionScope.ts`. Declare new workspace caches with `defineRuntimeState`; resource owners also supply cleanup and check `runtimeScopeClosed()` before publishing asynchronous results or starting services. SDK runtime methods and transport callbacks bind their owner, and sessions carry it through `runInSessionScope`. Direct module callers retain a default scope for compatibility. This does not remove `runtime_active`: environment variables, credentials, execution flags, provider caches, and sandbox initialization still affect the process. `npm run test:runtime-registries` checks ownership, reload, failure cleanup, delayed connections/refreshes, and MCP/LSP process disposal.
+
 ## Commands (the non-obvious ones)
 
 Tests are smoke/characterization scripts listed in `scripts/verify-production.ts`; the release workflow runs the Stage 36 verification before publishing.

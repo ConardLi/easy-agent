@@ -19,56 +19,58 @@ import type { ResolvedHarness } from "../harness/resolve.js";
 import { selectionOffReason } from "../harness/selection.js";
 import { pluginOffByAgent } from "../harness/resources.js";
 import type { AgentDefinition } from "./types.js";
+import { defineRuntimeState } from "../state/runtimeScope.js";
 
-const agents = new Map<string, AgentDefinition>();
-let initialized = false;
+const state = defineRuntimeState("agents", () => ({ agents: new Map<string, AgentDefinition>(), initialized: false }));
 
 /**
  * Replace the registry with a fresh set. Called once at startup by
  * bootstrapAgents(). Overwrites the previous contents entirely.
  */
 export function setAgents(definitions: AgentDefinition[]): void {
+  const { agents } = state();
   agents.clear();
   for (const def of definitions) {
     agents.set(def.agentType, def);
   }
-  initialized = true;
+  state().initialized = true;
 }
 
 export function isAgentsInitialized(): boolean {
-  return initialized;
+  return state().initialized;
 }
 
 /** Why the Agent leaves out the sub-agent `agentType`, or undefined when it keeps it. */
 export function subAgentOffByAgent(agentType: string, resolved: ResolvedHarness = activeHarness()): string | undefined {
   return (
-    pluginOffByAgent(agents.get(agentType)?.pluginId, resolved) ?? selectionOffReason(resolved, "agents", agentType)
+    pluginOffByAgent(state().agents.get(agentType)?.pluginId, resolved) ??
+    selectionOffReason(resolved, "agents", agentType)
   );
 }
 
 /** A loaded sub-agent the Agent keeps. */
 export function findAgent(agentType: string): AgentDefinition | undefined {
-  const def = agents.get(agentType);
+  const def = state().agents.get(agentType);
   return def && !subAgentOffByAgent(agentType) ? def : undefined;
 }
 
 /** Why a loaded sub-agent is left out by the Agent; undefined when it is kept or no such sub-agent is loaded. */
 export function loadedSubAgentOffByAgent(agentType: string): string | undefined {
-  return agents.has(agentType) ? subAgentOffByAgent(agentType) : undefined;
+  return state().agents.has(agentType) ? subAgentOffByAgent(agentType) : undefined;
 }
 
 /** The loaded sub-agents the Agent keeps. */
 export function getAllAgents(resolved: ResolvedHarness = activeHarness()): AgentDefinition[] {
-  return [...agents.values()].filter((def) => !subAgentOffByAgent(def.agentType, resolved));
+  return [...state().agents.values()].filter((def) => !subAgentOffByAgent(def.agentType, resolved));
 }
 
 /** Every loaded sub-agent, including the ones the Agent leaves out. */
 export function getRegisteredAgents(): AgentDefinition[] {
-  return [...agents.values()];
+  return [...state().agents.values()];
 }
 
 /** Drop everything — only used by tests / hot reload. */
 export function clearAgents(): void {
-  agents.clear();
-  initialized = false;
+  state().agents.clear();
+  state().initialized = false;
 }

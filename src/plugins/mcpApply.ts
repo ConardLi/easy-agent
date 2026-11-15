@@ -21,6 +21,7 @@ import { cancelMcpReconnect } from "../services/mcp/bootstrap.js";
 import { deleteMcpRegistryEntry, getMcpRegistry, setMcpRegistryEntry } from "../services/mcp/registry.js";
 import { registerMcpTools } from "../tools/index.js";
 import { debugLog } from "../utils/log.js";
+import { runtimeScopeClosed } from "../state/runtimeScope.js";
 
 export interface McpDiff {
   /** In desired but not applied. */
@@ -73,7 +74,7 @@ export async function applyPluginMcpDiff(
 ): Promise<{ started: string[]; stopped: string[] }> {
   const { added, removed, changed } = diffMcpServers(applied, desired);
   const generation = options.generation ?? 0;
-  const isCurrent = (): boolean => options.isCurrent?.(generation) ?? true;
+  const isCurrent = (): boolean => !runtimeScopeClosed() && (options.isCurrent?.(generation) ?? true);
 
   const stopNames = [...removed, ...changed];
   const stopResults = await Promise.all(
@@ -99,6 +100,7 @@ export async function applyPluginMcpDiff(
   const startNames = [...added, ...changed];
   const startResults = await Promise.all(
     startNames.map(async (name) => {
+      if (!isCurrent()) return false;
       const cfg = desired.get(name);
       if (!cfg) return false;
       try {

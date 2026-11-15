@@ -44,6 +44,7 @@ import type { PermissionMode } from "../permissions/permissions.js";
 import { activeHarness, harnessOverridden } from "../harness/active.js";
 import { getMcpRegistry } from "../services/mcp/registry.js";
 import { selectionOffReason } from "../harness/selection.js";
+import { defineRuntimeState } from "../state/runtimeScope.js";
 
 const BUILTIN_TOOLS: Tool[] = [
   fileReadTool,
@@ -83,19 +84,19 @@ const BUILTIN_TOOLS: Tool[] = [
 ];
 const VALID_BUILTIN_TOOLS = BUILTIN_TOOLS.filter(hasValidToolInputSchema);
 
-let mcpTools: Tool[] = [];
+const toolState = defineRuntimeState("tools", () => ({ mcpTools: [] as Tool[] }));
 
 /**
  * Replace the registry of MCP-provided tools. Called once at startup after
  * connecting to all MCP servers, and again after `/mcp reconnect`.
  */
 export function registerMcpTools(tools: Tool[]): void {
-  mcpTools = tools.filter(hasValidToolInputSchema);
+  toolState().mcpTools = tools.filter(hasValidToolInputSchema);
 }
 
 /** Drop the MCP-provided tools — used before re-registering after reconnect. */
 export function clearMcpTools(): void {
-  mcpTools = [];
+  toolState().mcpTools = [];
 }
 
 /** Tools the session can use: enabled, and kept by the active Agent's `tools.include` and `tools.exclude`. */
@@ -121,7 +122,7 @@ export function getAllTools(): Tool[] {
 
 /** Built-in and MCP tools, including the ones `isEnabled()` or the Agent currently turns off. */
 export function getRegisteredTools(): Tool[] {
-  return [...VALID_BUILTIN_TOOLS, ...mcpTools];
+  return [...VALID_BUILTIN_TOOLS, ...toolState().mcpTools];
 }
 
 /** A registered tool the active Agent keeps. */

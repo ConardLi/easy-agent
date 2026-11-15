@@ -10,6 +10,7 @@ import { adaptMcpToolResult } from "./resultContent.js";
 import { getMcpRegistryEntry } from "./registry.js";
 import { requestMcpReconnect } from "./client.js";
 import { setMcpProgress, clearMcpProgress } from "../../state/mcpProgressStore.js";
+import { bindRuntimeScope, runtimeScopeClosed } from "../../state/runtimeScope.js";
 
 /** Bound tool descriptions before they enter the model request. */
 const MAX_MCP_DESCRIPTION_LENGTH = 2048;
@@ -45,7 +46,8 @@ function buildToolAdapter(connection: ConnectedMcpServer, mcpTool: McpTool): Too
     ...(alwaysLoad ? { alwaysLoad: true } : {}),
     isReadOnly: () => isReadOnly,
     isEnabled: () => true,
-    async call(rawInput: Record<string, unknown>, context: ToolContext): Promise<ToolResult> {
+    call: bindRuntimeScope(async (rawInput: Record<string, unknown>, context: ToolContext): Promise<ToolResult> => {
+      if (runtimeScopeClosed()) return { content: "The MCP tool's runtime is closed.", isError: true };
       const current = getMcpRegistryEntry(connection.name)?.connection;
       const active = current?.type === "connected" ? current : connection;
       const invoke = async (server: ConnectedMcpServer): Promise<ToolResult> => {
@@ -92,7 +94,7 @@ function buildToolAdapter(connection: ConnectedMcpServer, mcpTool: McpTool): Too
       } finally {
         if (context.toolUseId) clearMcpProgress(context.toolUseId);
       }
-    },
+    }),
   };
 }
 

@@ -5,7 +5,7 @@
  * together with a way to resolve the same Agent again. Code that needs an
  * Agent setting reads it through `harnessSetting` rather than reading
  * settings files or environment variables. One runtime is active per
- * process, so the installed harness is process-wide.
+ * process; the snapshot and resolver belong to that runtime.
  *
  * Environment variables and flags are taken when the runtime starts. Settings
  * files can change while it runs: the runtime calls `refreshHarness` before
@@ -25,6 +25,7 @@
 
 import { AsyncLocalStorage } from "node:async_hooks";
 import * as path from "node:path";
+import { defineRuntimeState, runtimeScopeClosed } from "../state/runtimeScope.js";
 import { harnessValue, type ResolvedHarness, resolveHarness, resolveProcessHarness } from "./resolve.js";
 
 /** How a runtime resolves its Agent, for its own workspace or another directory. */
@@ -35,13 +36,13 @@ export interface HarnessResolver {
   resolve: (cwd: string) => Promise<ResolvedHarness>;
 }
 
-let installed: ResolvedHarness | null = null;
-let resolver: HarnessResolver | null = null;
-/** Changes on every install and uninstall, so a refresh that started before one cannot overwrite it. */
-let installation = 0;
-/** Refreshes started and the newest one applied; an older refresh that finishes late is dropped. */
-let refreshesStarted = 0;
-let refreshApplied = 0;
+const state = defineRuntimeState("harness", () => ({
+  installed: null as ResolvedHarness | null,
+  resolver: null as HarnessResolver | null,
+  installation: 0,
+  refreshesStarted: 0,
+  refreshApplied: 0,
+}));
 
 /**
  * Install the runtime's harness and how to resolve its Agent. `resolved` may
@@ -49,9 +50,9 @@ let refreshApplied = 0;
  * default until a refresh succeeds.
  */
 export function installHarness(resolved: ResolvedHarness | null, how?: HarnessResolver): void {
-  installed = resolved;
-  resolver = how ? { cwd: path.resolve(how.cwd), resolve: how.resolve } : null;
-  installation += 1;
+  state().installed = resolved;
+  state().resolver = how ? { cwd: path.resolve(how.cwd), resolve: how.resolve } : null;
+  state().installation += 1;
 }
 
 /** Remove the runtime's harness when the runtime is disposed or fails to start. */
@@ -79,7 +80,7 @@ export function harnessOverridden(): boolean {
 
 /** The installed harness, or the process default when no runtime installed one. */
 export function activeHarness(): ResolvedHarness {
-  return overrides.getStore() ?? installed ?? resolveProcessHarness();
+  return overrides.getStore() ?? state().installed ?? resolveProcessHarness();
 }
 
 /**
@@ -91,15 +92,16 @@ export function activeHarness(): ResolvedHarness {
 export async function refreshHarness(): Promise<ResolvedHarness> {
   const override = overrides.getStore();
   if (override) return override;
-  const how = resolver;
+  const owner = state();
+  const how = owner.resolver;
   if (!how) return activeHarness();
-  const startedAt = installation;
-  const ticket = ++refreshesStarted;
+  const startedAt = owner.installation;
+  const ticket = ++owner.refreshesStarted;
   try {
     const next = await how.resolve(how.cwd);
-    if (installation === startedAt && ticket > refreshApplied) {
-      installed = next;
-      refreshApplied = ticket;
+    if (!runtimeScopeClosed() && owner.installation === startedAt && ticket > owner.refreshApplied) {
+      owner.installed = next;
+      owner.refreshApplied = ticket;
     }
   } catch {
     // The previous snapshot stays in place; the next refresh tries again.
@@ -133,7 +135,7 @@ export interface HarnessForOptions {
 export async function harnessFor(cwd: string, options: HarnessForOptions = {}): Promise<ResolvedHarness> {
   const override = overrides.getStore();
   if (override) return override;
-  const how = resolver;
+  const { resolver: how, installed } = state();
   const dir = path.resolve(cwd);
   if (!how) return resolveHarness({ cwd: dir });
   if (dir !== how.cwd) return how.resolve(dir);

@@ -1,5 +1,6 @@
 import { getSettingsPaths } from "../utils/paths.js";
 import { logWarn } from "../utils/log.js";
+import { defineRuntimeState, runtimeScopeClosed } from "../state/runtimeScope.js";
 import { hookOffByAgent, hookSelectionKey } from "../harness/resources.js";
 import { loadTrustedSettingSources, loadSettingSources, type LoadedSource } from "../config/sources.js";
 import {
@@ -71,18 +72,25 @@ function hooksFromSource(src: LoadedSource): HooksSettings {
   return normalizeHooksBlock((src.raw as RawSettingsBlock).hooks);
 }
 
-const lastValidHooks = new Map<string, HooksSettings>();
-const reportedErrors = new Map<string, string>();
+const state = defineRuntimeState("hookSettings", () => ({
+  lastValidHooks: new Map<string, HooksSettings>(),
+  reportedErrors: new Map<string, string>(),
+  disableBySource: new Map<string, boolean>(),
+  disabledByCwd: new Map<string, boolean>(),
+  lastRefreshedCwd: undefined as string | undefined,
+}));
 
 export function resetHooksSettingsSnapshot(): void {
+  const { lastValidHooks, reportedErrors, disableBySource, disabledByCwd } = state();
   lastValidHooks.clear();
   reportedErrors.clear();
   disableBySource.clear();
   disabledByCwd.clear();
-  lastRefreshedCwd = undefined;
+  state().lastRefreshedCwd = undefined;
 }
 
 function reportSettingError(key: string, error: string): void {
+  const { reportedErrors } = state();
   if (reportedErrors.get(key) === error) return;
   logWarn(`Hooks settings in ${key} could not be updated: ${error}. Keeping the last valid configuration.`);
   reportedErrors.set(key, error);
@@ -130,6 +138,7 @@ function hooksShapeError(raw: unknown): string | undefined {
 }
 
 function sourceHooks(src: LoadedSource): HooksSettings {
+  const { lastValidHooks, reportedErrors } = state();
   const key = src.path ?? src.source;
   const hookValidationError = src.validationErrors?.find(
     (error) => error.includes('field "hooks"') || error.includes("settings root must be"),
@@ -156,6 +165,7 @@ function sourceHooks(src: LoadedSource): HooksSettings {
  */
 export async function loadHooksSettings(cwd: string): Promise<HooksSettings> {
   const sources = await loadTrustedSettingSources(cwd);
+  if (runtimeScopeClosed()) return {};
   const perSource = sources.map((source) => ({ source: source.source, hooks: sourceHooks(source) }));
 
   const merged: HooksSettings = {};
@@ -300,14 +310,12 @@ export function hasHookForEvent(settings: HooksSettings, event: HookEvent, match
 
 // ─── Toggle / introspection helpers ───────────────────────────────────
 
-const disableBySource = new Map<string, boolean>();
-const disabledByCwd = new Map<string, boolean>();
-let lastRefreshedCwd: string | undefined;
-
 /** Refresh the per-directory disable state from current settings. */
 export async function refreshHookDisableFromSettings(cwd: string): Promise<void> {
   try {
     const sources = await loadSettingSources(cwd);
+    if (runtimeScopeClosed()) return;
+    const { disableBySource, disabledByCwd, reportedErrors } = state();
     let disabled = false;
     for (const src of sources) {
       const key = src.path ?? src.source;
@@ -321,7 +329,7 @@ export async function refreshHookDisableFromSettings(cwd: string): Promise<void>
       if (disableBySource.get(key)) disabled = true;
     }
     disabledByCwd.set(cwd, disabled);
-    lastRefreshedCwd = cwd;
+    state().lastRefreshedCwd = cwd;
   } catch {
     // Keep the last effective value on read failure.
   }
@@ -329,6 +337,8 @@ export async function refreshHookDisableFromSettings(cwd: string): Promise<void>
 
 /** Environment and settings kill switch for command hooks. */
 export function hooksGloballyDisabled(cwd?: string): boolean {
+  if (runtimeScopeClosed()) return true;
+  const { disabledByCwd, lastRefreshedCwd } = state();
   if (disabledByCwd.get(cwd ?? lastRefreshedCwd ?? "")) return true;
   const v = process.env.EASY_AGENT_DISABLE_HOOKS;
   if (!v) return false;

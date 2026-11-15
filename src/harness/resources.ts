@@ -3,16 +3,17 @@ import { createHash } from "node:crypto";
 import { activeHarness } from "./active.js";
 import type { ResolvedHarness } from "./resolve.js";
 import { selectionOffReason } from "./selection.js";
+import { defineRuntimeState } from "../state/runtimeScope.js";
 
-let mcpOwners = new Map<string, string>();
+const state = defineRuntimeState("pluginMcpOwners", () => ({ owners: new Map<string, string>() }));
 
 /** Installed plugin ownership, kept even when an Agent leaves a plugin out. */
 export function setPluginMcpOwners(owners: Iterable<readonly [string, string]>): void {
-  mcpOwners = new Map(owners);
+  state().owners = new Map(owners);
 }
 
 export function pluginMcpOffByAgent(name: string, resolved: ResolvedHarness = activeHarness()): string | undefined {
-  return pluginOffByAgent(mcpOwners.get(name), resolved);
+  return pluginOffByAgent(state().owners.get(name), resolved);
 }
 
 export function pluginOffByAgent(

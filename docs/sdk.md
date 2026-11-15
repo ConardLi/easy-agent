@@ -39,7 +39,11 @@ A **turn** is one input and all the work that follows it: model requests, tool c
 
 ### Process model
 
-Settings layers, the workspace `.env`, and the extension registries are process-wide, so a process runs **one runtime at a time**; `createAgentRuntime()` rejects with `runtime_active` otherwise. A runtime can hold **several sessions at once**: each keeps its conversation state (file checkpoints, plan file, background notifications, `/think` and `/effort`, task mode, progress of running tools) separate from the others. An application that works with several workspaces runs one process per workspace.
+A process runs **one runtime at a time**; `createAgentRuntime()` rejects with `runtime_active` otherwise. Environment variables, credentials, execution flags, and provider caches still affect the process. An application that works with several workspaces runs one process per workspace.
+
+Each runtime owns its skills, sub-agents, commands, output styles, plugins, tool registry, MCP connections and reconnect tasks, plugin LSP clients, and Hook/settings snapshots. A runtime can hold **several sessions at once**: they share those workspace resources, while keeping conversation state (file checkpoints, plan file, background notifications, `/think` and `/effort`, task mode, progress of running tools) separate. `reload()` updates the shared registries. Background work and transport callbacks retain their runtime.
+
+Await `dispose()` before creating another runtime. It closes sessions, cancels pending connections and reconnects, stops MCP/LSP services, and releases registry state. Concurrent or repeated calls join the same cleanup. Creation failures also release the resources already initialized; a late connection or plugin refresh cannot refill a disposed runtime or change its successor.
 
 Only one session in a process can lead an Agent Team at a time.
 
@@ -85,7 +89,7 @@ const runtime = await createAgentRuntime({
 | `listPlugins()` | Installed plugins (version, whether enabled and in which scope, components, whether their hooks and servers may run here, warnings), what the registered marketplaces offer, the marketplaces, and plugin load errors |
 | `previewPlugin(pluginId)` | Fetch and validate `name@marketplace` without installing it: version, components, whether it runs local processes (hooks, MCP, LSP), warnings, errors, and a content `fingerprint` |
 | `mutatePlugin(action)` | `install` and `update` (with the confirmed preview's `fingerprint` as `expectedFingerprint` and `confirmedExecutableComponents: true`), `enable`, `disable`, `uninstall` (`keepData?`) in `user`, `project`, or `local` scope, and `marketplace-add` (local path, Git URL, or `owner/repo`), `marketplace-update`, `marketplace-remove`. Registries reload right away and open sessions use the change from their next turn; returns the new `listPlugins()` view. Content that changed since the preview fails with `plugin`; the `project` and `local` scopes fail with `untrusted` in an untrusted workspace, except `uninstall` |
-| `dispose()` | Close every session and free the process for another runtime |
+| `dispose()` | Close sessions, cancel pending connections and reconnects, stop MCP/LSP services, and release the runtime |
 
 ### Inventory
 

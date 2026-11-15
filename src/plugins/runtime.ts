@@ -43,6 +43,7 @@ import { applyPluginMcpDiff } from "./mcpApply.js";
 import { mcpServerOffByAgent } from "../services/mcp/bootstrap.js";
 import type { LoadedPlugin } from "./loadedTypes.js";
 import type { PluginError } from "./schemas.js";
+import { bindRuntimeScope, defineRuntimeState, runtimeScopeClosed } from "../state/runtimeScope.js";
 
 export interface RefreshOptions {
   /** Extra dev plugin roots from `--plugin-dir` (lenient, always trusted). */
@@ -72,30 +73,28 @@ export interface RefreshResult {
   };
 }
 
-// ─── module state ─────────────────────────────────────────────────────
-
-let activePlugins: LoadedPlugin[] = [];
-let activeErrors: PluginError[] = [];
-let activeHooks: HooksSettings = {};
-let sessionPluginDirs: string[] = [];
-let refreshGeneration = 0;
-let refreshQueue: Promise<void> = Promise.resolve();
-
-/** Snapshot of the plugin MCP configs currently applied (namespaced name → cfg). */
-let appliedMcp = new Map<string, ScopedMcpServerConfig>();
+const state = defineRuntimeState("plugins", () => ({
+  activePlugins: [] as LoadedPlugin[],
+  activeErrors: [] as PluginError[],
+  activeHooks: {} as HooksSettings,
+  sessionPluginDirs: [] as string[],
+  refreshGeneration: 0,
+  refreshQueue: Promise.resolve(),
+  appliedMcp: new Map<string, ScopedMcpServerConfig>(),
+}));
 
 export function getActivePlugins(): LoadedPlugin[] {
-  return activePlugins;
+  return state().activePlugins;
 }
 
 export function getActivePluginErrors(): PluginError[] {
-  return activeErrors;
+  return state().activeErrors;
 }
 
 /** Plugin-contributed hooks, in the same shape the hook executor consumes. */
 export function getActivePluginHooks(): HooksSettings {
   const settings: HooksSettings = {};
-  for (const [event, groups] of Object.entries(activeHooks)) {
+  for (const [event, groups] of Object.entries(state().activeHooks)) {
     const kept = groups.flatMap((group) => {
       if (pluginOffByAgent(group.pluginId)) return [];
       const hooks = group.hooks.filter(
@@ -111,13 +110,14 @@ export function getActivePluginHooks(): HooksSettings {
 /** Test seam: forget all applied plugin state (does NOT touch registries). */
 export function _resetPluginRuntimeForTesting(): void {
   setPluginMcpOwners([]);
-  activePlugins = [];
-  activeErrors = [];
-  activeHooks = {};
-  appliedMcp = new Map();
-  sessionPluginDirs = [];
-  refreshGeneration = 0;
-  refreshQueue = Promise.resolve();
+  const owner = state();
+  owner.activePlugins = [];
+  owner.activeErrors = [];
+  owner.activeHooks = {};
+  owner.appliedMcp = new Map();
+  owner.sessionPluginDirs = [];
+  owner.refreshGeneration++;
+  owner.refreshQueue = Promise.resolve();
 }
 
 // ─── discovery ────────────────────────────────────────────────────────
@@ -242,12 +242,14 @@ function devName(dir: string): string {
  * call repeatedly. Returns the loaded plugins + a summary of MCP churn.
  */
 export async function refreshActivePlugins(cwd: string, opts: RefreshOptions = {}): Promise<RefreshResult> {
+  if (runtimeScopeClosed()) throw new Error("The runtime is closed.");
+  const owner = state();
   if (opts.pluginDirs !== undefined) {
-    sessionPluginDirs = [...new Set(opts.pluginDirs.map((dir) => path.resolve(cwd, dir)))];
+    owner.sessionPluginDirs = [...new Set(opts.pluginDirs.map((dir) => path.resolve(cwd, dir)))];
   }
   const effectiveOptions: RefreshOptions = {
     ...opts,
-    pluginDirs: [...sessionPluginDirs],
+    pluginDirs: [...owner.sessionPluginDirs],
   };
 
   // Serialize refreshes. Install/enable UI actions can arrive close together;
@@ -258,18 +260,21 @@ export async function refreshActivePlugins(cwd: string, opts: RefreshOptions = {
     resolveRun = resolve;
     rejectRun = reject;
   });
-  refreshQueue = refreshQueue
+  owner.refreshQueue = owner.refreshQueue
     .catch(() => undefined)
-    .then(async () => {
-      try {
-        const prepared = await performRefresh(cwd, effectiveOptions);
-        // Release the snapshot mutex before MCP handshakes finish. A newer
-        // refresh can now advance the generation and cancel late old results.
-        void prepared.completion.then(resolveRun, rejectRun);
-      } catch (error) {
-        rejectRun(error);
-      }
-    });
+    .then(
+      bindRuntimeScope(async () => {
+        try {
+          if (runtimeScopeClosed()) throw new Error("The runtime is closed.");
+          const prepared = await performRefresh(cwd, effectiveOptions);
+          // Release the snapshot mutex before MCP handshakes finish. A newer
+          // refresh can now advance the generation and cancel late old results.
+          void prepared.completion.then(resolveRun, rejectRun);
+        } catch (error) {
+          rejectRun(error);
+        }
+      }),
+    );
   return result;
 }
 
@@ -292,6 +297,8 @@ async function performRefresh(cwd: string, opts: RefreshOptions): Promise<{ comp
     loadAllUserCommands(cwd),
     loadAllOutputStyles(cwd),
   ]);
+  if (runtimeScopeClosed()) throw new Error("The runtime is closed.");
+  const owner = state();
 
   // ── Merge plugin components on top (namespaced → no real collisions) ──
   const pluginSkills = plugins.flatMap((p) => p.skills);
@@ -331,9 +338,9 @@ async function performRefresh(cwd: string, opts: RefreshOptions): Promise<{ comp
       message: "The active output style disappeared during reload; reset to default.",
     });
   }
-  activePlugins = plugins;
-  activeErrors = nextErrors;
-  activeHooks = nextHooks;
+  owner.activePlugins = plugins;
+  owner.activeErrors = nextErrors;
+  owner.activeHooks = nextHooks;
 
   const makeResult = (mcpStarted: string[] = [], mcpStopped: string[] = []): RefreshResult => ({
     plugins: [...plugins],
@@ -363,15 +370,16 @@ async function performRefresh(cwd: string, opts: RefreshOptions): Promise<{ comp
         ),
     );
     nextErrors.push(...lspErrors.map((message) => ({ pluginId: "lsp", scope: "io" as const, message })));
-    activeErrors = nextErrors;
-    const generation = ++refreshGeneration;
-    const previousMcp = appliedMcp;
+    if (runtimeScopeClosed()) throw new Error("The runtime is closed.");
+    owner.activeErrors = nextErrors;
+    const generation = ++owner.refreshGeneration;
+    const previousMcp = owner.appliedMcp;
     // Publish intent before connecting so a newer generation diffs against the
     // desired state and can tear down this generation's in-flight servers.
-    appliedMcp = desiredMcp;
+    owner.appliedMcp = desiredMcp;
     const completion = applyPluginMcpDiff(previousMcp, desiredMcp, {
       generation,
-      isCurrent: (candidate) => candidate === refreshGeneration,
+      isCurrent: (candidate) => !runtimeScopeClosed() && candidate === owner.refreshGeneration,
     }).then((churn) => makeResult(churn.started, churn.stopped));
     return { completion };
   }
