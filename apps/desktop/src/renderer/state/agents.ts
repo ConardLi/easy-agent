@@ -37,13 +37,14 @@ interface AgentsStore {
   open: boolean;
   name: string;
   tab: HarnessTab;
+  focusRow?: string;
   /** By `workspaceId \0 name`. */
   data: Record<string, AgentData>;
   errors: Record<string, string>;
   /** Agents whose running processes started before a change to their MCP servers, per workspace. */
   staleMcp: Record<string, string[]>;
   pendingImport: PendingImport | null;
-  openAgents(name?: string, tab?: HarnessTab): void;
+  openAgents(name?: string, tab?: HarnessTab, focusRow?: string): void;
   closeAgents(): void;
 }
 
@@ -57,8 +58,8 @@ export const useAgents = create<AgentsStore>()((set) => ({
   errors: {},
   staleMcp: {},
   pendingImport: null,
-  openAgents: (name, tab) => {
-    set((s) => ({ open: true, name: name ?? s.name, tab: tab ?? s.tab }));
+  openAgents: (name, tab, focusRow) => {
+    set((s) => ({ open: true, name: name ?? s.name, tab: tab ?? s.tab, focusRow }));
     void import("./settings").then(({ useSettings }) => useSettings.getState().closeSettings());
     void import("./customize").then(({ useCustomize }) => useCustomize.getState().closeCustomize());
     const workspaceId = useWorkspaces.getState().activeId;

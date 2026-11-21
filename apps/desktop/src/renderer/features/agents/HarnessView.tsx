@@ -16,7 +16,7 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import type { HarnessSummary, ResolvedHarnessValue } from "../../../shared/agent";
 import { Button, cn, IconButton, Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger, Segmented, Switch, Tooltip } from "../../design/primitives";
 import { newSession } from "../../state/actions";
@@ -92,7 +92,11 @@ function Row({
   testId?: string;
 }) {
   return (
-    <div data-row={testId} className="group/row flex items-center justify-between gap-6 border-b border-line py-3 last:border-b-0">
+    <div
+      data-row={testId}
+      tabIndex={-1}
+      className="group/row flex items-center justify-between gap-6 border-b border-line py-3 last:border-b-0 focus:outline-accent focus:outline-offset-4"
+    >
       <div className={cn("min-w-0", dimmed && "opacity-60")}>
         <div className="flex items-center gap-2">
           <span className="text-[13.5px] font-medium text-fg">{title}</span>
@@ -150,6 +154,16 @@ const TOOL_GROUPS: ToolGroup[] = ["文件", "执行", "网络", "协作", "规�
 
 export function HarnessView({ summary, data, onDialog }: { summary: HarnessSummary; data: AgentData; onDialog: (d: AgentDialog) => void }) {
   const tab = useAgents((s) => s.tab);
+  const focusRow = useAgents((s) => s.focusRow);
+  const root = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!focusRow) return;
+    const row = [...(root.current?.querySelectorAll<HTMLElement>("[data-row]") ?? [])].find((el) => el.dataset.row === focusRow);
+    if (row) {
+      row.scrollIntoView({ block: "center" });
+      row.focus({ preventScroll: true });
+    }
+  }, [focusRow, tab, summary.name, data.inventory]);
   const openAgents = useAgents((s) => s.openAgents);
   const workspace = useActiveWorkspace();
   const stale = useAgents((s) => (workspace ? s.staleMcp[workspace.id] : undefined)) ?? NO_AGENTS;
@@ -262,7 +276,7 @@ export function HarnessView({ summary, data, onDialog }: { summary: HarnessSumma
   const dynamic = (inventory?.promptSections ?? []).filter((s) => s.block === "dynamic");
 
   return (
-    <div className="scroll-thin h-full overflow-y-auto" data-harness={name}>
+    <div ref={root} className="scroll-thin h-full overflow-y-auto" data-harness={name}>
       <div className="mx-auto max-w-[880px] px-8 pb-16 pt-7">
         <div className="mb-5 flex items-start gap-4">
           <span
@@ -396,7 +410,7 @@ export function HarnessView({ summary, data, onDialog }: { summary: HarnessSumma
         {broken ? null : tab === "prompt" ? (
           <>
             <Group title="身份" description="系统提示词最前面的一段，说明 Agent 是谁。改过的文字写进 prompts/ 目录下的文件。">
-              <div className="py-3.5" data-row="prompt.identity">
+              <div className="py-3.5 focus:outline-accent focus:outline-offset-4" data-row="prompt.identity" tabIndex={-1}>
                 <div className="mb-2 flex items-center gap-2">
                   <SourceTag v={identityValue} agent={name} path="prompt.identity" />
                   {identity?.file && (
