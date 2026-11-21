@@ -65,7 +65,9 @@ export function applyEditToContent(content: string, edit: SingleEdit): { content
     );
   }
 
-  const updated = edit.replace_all ? content.split(oldString).join(newString) : content.replace(oldString, newString);
+  const updated = edit.replace_all
+    ? content.split(oldString).join(newString)
+    : content.replace(oldString, () => newString);
 
   return { content: updated, replacements: edit.replace_all ? occurrences : 1 };
 }
