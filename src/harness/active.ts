@@ -25,7 +25,7 @@
 
 import { AsyncLocalStorage } from "node:async_hooks";
 import * as path from "node:path";
-import { defineRuntimeState, runtimeScopeClosed } from "../state/runtimeScope.js";
+import { defineRuntimeState, runtimeScopeClosed, withRuntimeScope } from "../state/runtimeScope.js";
 import { harnessValue, type ResolvedHarness, resolveHarness, resolveProcessHarness } from "./resolve.js";
 
 /** How a runtime resolves its Agent, for its own workspace or another directory. */
@@ -89,7 +89,7 @@ export function activeHarness(): ResolvedHarness {
  * returns the active harness either way. Inside `withHarness`, returns the
  * harness given to it and resolves nothing.
  */
-export async function refreshHarness(): Promise<ResolvedHarness> {
+export const refreshHarness = withRuntimeScope(async (): Promise<ResolvedHarness> => {
   const override = overrides.getStore();
   if (override) return override;
   const owner = state();
@@ -107,7 +107,7 @@ export async function refreshHarness(): Promise<ResolvedHarness> {
     // The previous snapshot stays in place; the next refresh tries again.
   }
   return activeHarness();
-}
+});
 
 export interface HarnessForOptions {
   /**
@@ -132,22 +132,24 @@ export interface HarnessForOptions {
  * never falls back to defaults it did not ask for. Inside `withHarness`, the
  * harness given to it, for any directory.
  */
-export async function harnessFor(cwd: string, options: HarnessForOptions = {}): Promise<ResolvedHarness> {
-  const override = overrides.getStore();
-  if (override) return override;
-  const { resolver: how, installed } = state();
-  const dir = path.resolve(cwd);
-  if (!how) return resolveHarness({ cwd: dir });
-  if (dir !== how.cwd) return how.resolve(dir);
-  if (installed && !options.current) return installed;
-  try {
-    return await how.resolve(dir);
-  } catch (error) {
-    // The last snapshot the runtime installed, never a default.
-    if (installed) return installed;
-    throw error;
-  }
-}
+export const harnessFor = withRuntimeScope(
+  async (cwd: string, options: HarnessForOptions = {}): Promise<ResolvedHarness> => {
+    const override = overrides.getStore();
+    if (override) return override;
+    const { resolver: how, installed } = state();
+    const dir = path.resolve(cwd);
+    if (!how) return resolveHarness({ cwd: dir });
+    if (dir !== how.cwd) return how.resolve(dir);
+    if (installed && !options.current) return installed;
+    try {
+      return await how.resolve(dir);
+    } catch (error) {
+      // The last snapshot the runtime installed, never a default.
+      if (installed) return installed;
+      throw error;
+    }
+  },
+);
 
 /** The value of one Harness key in `harnessFor(cwd, options)`. */
 export async function harnessSettingFor<T>(cwd: string, keyPath: string, options?: HarnessForOptions): Promise<T> {

@@ -1,6 +1,6 @@
 import { getSettingsPaths } from "../utils/paths.js";
 import { logWarn } from "../utils/log.js";
-import { defineRuntimeState, runtimeScopeClosed } from "../state/runtimeScope.js";
+import { defineRuntimeState, runtimeScopeClosed, withRuntimeScope } from "../state/runtimeScope.js";
 import { hookOffByAgent, hookSelectionKey } from "../harness/resources.js";
 import { loadTrustedSettingSources, loadSettingSources, type LoadedSource } from "../config/sources.js";
 import {
@@ -163,7 +163,7 @@ function sourceHooks(src: LoadedSource): HooksSettings {
  *
  * Project and local hooks are excluded until the project is trusted.
  */
-export async function loadHooksSettings(cwd: string): Promise<HooksSettings> {
+export const loadHooksSettings = withRuntimeScope(async (cwd: string): Promise<HooksSettings> => {
   const sources = await loadTrustedSettingSources(cwd);
   if (runtimeScopeClosed()) return {};
   const perSource = sources.map((source) => ({ source: source.source, hooks: sourceHooks(source) }));
@@ -184,7 +184,7 @@ export async function loadHooksSettings(cwd: string): Promise<HooksSettings> {
     if (groups.length > 0) merged[event] = groups;
   }
   return merged;
-}
+});
 
 /** Current user and project Hook configuration for `/hooks`. */
 export interface HooksDiagnosticReport {
@@ -196,7 +196,7 @@ export interface HooksDiagnosticReport {
   globallyDisabled: boolean;
 }
 
-export async function loadHooksDiagnosticReport(cwd: string): Promise<HooksDiagnosticReport> {
+export const loadHooksDiagnosticReport = withRuntimeScope(async (cwd: string): Promise<HooksDiagnosticReport> => {
   await refreshHookDisableFromSettings(cwd);
   const { user: userPath, project: projectPath } = getSettingsPaths(cwd);
   const sources = await loadSettingSources(cwd);
@@ -219,7 +219,7 @@ export async function loadHooksDiagnosticReport(cwd: string): Promise<HooksDiagn
     errors,
     globallyDisabled: hooksGloballyDisabled(cwd),
   };
-}
+});
 
 /** One hook command and the settings layer that declares it. */
 export interface ConfiguredHook {
@@ -311,7 +311,7 @@ export function hasHookForEvent(settings: HooksSettings, event: HookEvent, match
 // ─── Toggle / introspection helpers ───────────────────────────────────
 
 /** Refresh the per-directory disable state from current settings. */
-export async function refreshHookDisableFromSettings(cwd: string): Promise<void> {
+export const refreshHookDisableFromSettings = withRuntimeScope(async (cwd: string): Promise<void> => {
   try {
     const sources = await loadSettingSources(cwd);
     if (runtimeScopeClosed()) return;
@@ -333,7 +333,7 @@ export async function refreshHookDisableFromSettings(cwd: string): Promise<void>
   } catch {
     // Keep the last effective value on read failure.
   }
-}
+});
 
 /** Environment and settings kill switch for command hooks. */
 export function hooksGloballyDisabled(cwd?: string): boolean {

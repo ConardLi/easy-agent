@@ -12,6 +12,7 @@
 
 import { harnessSettingFor } from "../harness/active.js";
 import { loadAllOutputStyles } from "./loadOutputStylesDir.js";
+import { withRuntimeScope } from "../state/runtimeScope.js";
 import {
   getActiveOutputStyleName,
   resolveOutputStyle,
@@ -29,7 +30,7 @@ export interface OutputStylesBootstrapResult {
   warnings: string[];
 }
 
-export async function bootstrapOutputStyles(cwd: string): Promise<OutputStylesBootstrapResult> {
+export const bootstrapOutputStyles = withRuntimeScope(async (cwd: string): Promise<OutputStylesBootstrapResult> => {
   const { styles, warnings } = await loadAllOutputStyles(cwd);
   setCustomOutputStyles(styles);
 
@@ -53,4 +54,4 @@ export async function bootstrapOutputStyles(cwd: string): Promise<OutputStylesBo
     activeStyle: getActiveOutputStyleName(),
     warnings,
   };
-}
+});

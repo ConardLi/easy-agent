@@ -10,7 +10,7 @@ import { adaptMcpToolResult } from "./resultContent.js";
 import { getMcpRegistryEntry } from "./registry.js";
 import { requestMcpReconnect } from "./client.js";
 import { setMcpProgress, clearMcpProgress } from "../../state/mcpProgressStore.js";
-import { bindRuntimeScope, runtimeScopeClosed } from "../../state/runtimeScope.js";
+import { bindRuntimeScope, runtimeScopeClosed, withRuntimeScope } from "../../state/runtimeScope.js";
 
 /** Bound tool descriptions before they enter the model request. */
 const MAX_MCP_DESCRIPTION_LENGTH = 2048;
@@ -103,7 +103,7 @@ function buildToolAdapter(connection: ConnectedMcpServer, mcpTool: McpTool): Too
  * our local Tool interface. Returns `[]` if the server doesn't declare the
  * `tools` capability or if the request fails (logged).
  */
-export async function fetchToolsForConnection(connection: ConnectedMcpServer): Promise<Tool[]> {
+export const fetchToolsForConnection = withRuntimeScope(async (connection: ConnectedMcpServer): Promise<Tool[]> => {
   if (!connection.capabilities?.tools) {
     debugLog("mcp", `[${connection.name}] no 'tools' capability declared, skipping tools/list`);
     return [];
@@ -127,4 +127,4 @@ export async function fetchToolsForConnection(connection: ConnectedMcpServer): P
   }
   debugLog("mcp", `[${connection.name}] discovered ${tools.length} tool(s)`);
   return tools;
-}
+});

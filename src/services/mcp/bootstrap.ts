@@ -16,7 +16,12 @@ import { debugLog, logWarn } from "../../utils/log.js";
 import { activeHarness } from "../../harness/active.js";
 import { selectionOffReason } from "../../harness/selection.js";
 import { pluginMcpOffByAgent } from "../../harness/resources.js";
-import { bindRuntimeScope, defineRuntimeState, runtimeScopeClosed } from "../../state/runtimeScope.js";
+import {
+  bindRuntimeScope,
+  defineRuntimeState,
+  runtimeScopeClosed,
+  withRuntimeScope,
+} from "../../state/runtimeScope.js";
 
 export interface McpBootstrapResult {
   connections: McpServerConnection[];
@@ -104,7 +109,7 @@ export function mcpServerOffByAgent(name: string): string | undefined {
 }
 
 /** Connect the configured servers the Agent keeps, in parallel, and publish each result as it arrives. */
-export async function bootstrapMcp(cwd: string): Promise<McpBootstrapResult> {
+export const bootstrapMcp = withRuntimeScope(async (cwd: string): Promise<McpBootstrapResult> => {
   const { servers: configured, errors: configErrors } = await loadMcpConfigs(cwd);
   if (runtimeScopeClosed()) return { connections: [], toolCount: 0, configErrors };
   const { reconnectTimers } = state();
@@ -156,7 +161,7 @@ export async function bootstrapMcp(cwd: string): Promise<McpBootstrapResult> {
   }
 
   return { connections, toolCount, configErrors };
-}
+});
 
 async function connectAndRegister(
   name: string,
@@ -191,31 +196,31 @@ async function connectAndRegister(
  * the Agent leaves out is not started; both are reported as skipped. Call
  * after `bootstrapMcp`, which resets the registry.
  */
-export async function connectAdditionalMcpServers(
-  servers: Record<string, PendingMcpServer["config"]>,
-): Promise<{ added: string[]; skipped: string[] }> {
-  if (runtimeScopeClosed()) return { added: [], skipped: Object.keys(servers) };
-  registerMcpProcessCleanup();
-  const added: string[] = [];
-  const skipped: string[] = [];
-  const startedAt = Date.now();
-  for (const [name, config] of Object.entries(servers)) {
-    const off = mcpServerOffByAgent(name);
-    if (off) logWarn(`MCP server "${name}" is not started: ${off}`);
-    if (off || getMcpRegistryEntry(name)) {
-      skipped.push(name);
-      continue;
+export const connectAdditionalMcpServers = withRuntimeScope(
+  async (servers: Record<string, PendingMcpServer["config"]>): Promise<{ added: string[]; skipped: string[] }> => {
+    if (runtimeScopeClosed()) return { added: [], skipped: Object.keys(servers) };
+    registerMcpProcessCleanup();
+    const added: string[] = [];
+    const skipped: string[] = [];
+    const startedAt = Date.now();
+    for (const [name, config] of Object.entries(servers)) {
+      const off = mcpServerOffByAgent(name);
+      if (off) logWarn(`MCP server "${name}" is not started: ${off}`);
+      if (off || getMcpRegistryEntry(name)) {
+        skipped.push(name);
+        continue;
+      }
+      setMcpRegistryEntry(name, { name, type: "pending", config, startedAt }, []);
+      added.push(name);
     }
-    setMcpRegistryEntry(name, { name, type: "pending", config, startedAt }, []);
-    added.push(name);
-  }
-  refreshGlobalToolRegistry();
-  await Promise.allSettled(added.map((name) => connectAndRegister(name, servers[name]!)));
-  return { added, skipped };
-}
+    refreshGlobalToolRegistry();
+    await Promise.allSettled(added.map((name) => connectAndRegister(name, servers[name]!)));
+    return { added, skipped };
+  },
+);
 
 /** Stop a server and drop it with its tools from the registry. Returns false when it was not registered. */
-export async function disconnectMcpServer(name: string): Promise<boolean> {
+export const disconnectMcpServer = withRuntimeScope(async (name: string): Promise<boolean> => {
   const entry = getMcpRegistryEntry(name);
   if (!entry) return false;
   stopReconnect(name);
@@ -225,7 +230,7 @@ export async function disconnectMcpServer(name: string): Promise<boolean> {
     debugLog("mcp", `[${name}] cleanup during disconnect failed: ${(error as Error).message}`);
   });
   return true;
-}
+});
 
 /** Flatten every registered MCP server's tools and push them to the global Tool registry. */
 function refreshGlobalToolRegistry(): void {
@@ -237,7 +242,7 @@ function refreshGlobalToolRegistry(): void {
  * Reconnect a single MCP server. Returns the new connection state. Used by
  * `/mcp reconnect <name>`.
  */
-export function reconnectMcpServer(name: string): Promise<McpServerConnection | null> {
+export const reconnectMcpServer = withRuntimeScope((name: string): Promise<McpServerConnection | null> => {
   if (runtimeScopeClosed()) return Promise.resolve(null);
   const { requestedReconnects } = state();
   const ongoing = requestedReconnects.get(name);
@@ -250,7 +255,7 @@ export function reconnectMcpServer(name: string): Promise<McpServerConnection | 
     })
     .catch(() => {});
   return attempt;
-}
+});
 
 async function reconnectMcpServerOnce(name: string): Promise<McpServerConnection | null> {
   const entry = getMcpRegistryEntry(name);

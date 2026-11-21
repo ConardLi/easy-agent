@@ -53,6 +53,11 @@ export function bindRuntimeScope<A extends unknown[], R>(fn: (...args: A) => R):
   return (...args) => runInRuntimeScope(scope, () => fn(...args));
 }
 
+/** Public module entry points capture the caller's owner before their first await. */
+export function withRuntimeScope<A extends unknown[], R>(fn: (...args: A) => R): (...args: A) => R {
+  return (...args) => runInRuntimeScope(currentRuntimeScope(), () => fn(...args));
+}
+
 export function runtimeScopeClosed(): boolean {
   return currentRuntimeScope().signal.aborted;
 }

@@ -8,13 +8,14 @@
 
 import { loadAllUserCommands } from "./loadCommandsDir.js";
 import { setUserCommands } from "./registry.js";
+import { withRuntimeScope } from "../../state/runtimeScope.js";
 
 export interface UserCommandsBootstrapResult {
   commandCount: number;
   warnings: string[];
 }
 
-export async function bootstrapUserCommands(cwd: string): Promise<UserCommandsBootstrapResult> {
+export const bootstrapUserCommands = withRuntimeScope(async (cwd: string): Promise<UserCommandsBootstrapResult> => {
   const { commands, warnings } = await loadAllUserCommands(cwd);
   setUserCommands(commands);
 
@@ -26,4 +27,4 @@ export async function bootstrapUserCommands(cwd: string): Promise<UserCommandsBo
     commandCount: commands.length,
     warnings,
   };
-}
+});

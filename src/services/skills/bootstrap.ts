@@ -12,6 +12,7 @@
 
 import { loadAllSkills } from "./loadSkillsDir.js";
 import { setSkills } from "./registry.js";
+import { withRuntimeScope } from "../../state/runtimeScope.js";
 
 export interface SkillsBootstrapResult {
   skillCount: number;
@@ -19,7 +20,7 @@ export interface SkillsBootstrapResult {
   warnings: string[];
 }
 
-export async function bootstrapSkills(cwd: string): Promise<SkillsBootstrapResult> {
+export const bootstrapSkills = withRuntimeScope(async (cwd: string): Promise<SkillsBootstrapResult> => {
   const { skills, warnings } = await loadAllSkills(cwd);
   setSkills(skills);
 
@@ -34,4 +35,4 @@ export async function bootstrapSkills(cwd: string): Promise<SkillsBootstrapResul
     conditionalCount,
     warnings,
   };
-}
+});
