@@ -2,15 +2,15 @@
 
 Local acceptance completed on macOS, 2026-11-21, against the configuration standardization plan. CI results are recorded in the pull request checks.
 
-The additional saved-profile/legacy-credential precedence regression has been fixed. The complete release gate passed again, followed by all 123 desktop tests. The new real-App regression verifies requests, migration, restart and authentication headers with unused conflicting legacy credentials.
+The additional saved-profile/legacy-credential precedence and independent legacy-role regressions have been fixed. The complete release gate passed again after the role and Windows environment corrections, followed by all 123 desktop tests. The real-App regression verifies requests, migration, restart and authentication headers with unused conflicting legacy credentials.
 
 | Check | Result |
 |---|---|
 | Core types, lint, format, source hygiene, frontend boundaries, inventory and build | Passed |
 | Production regressions | 91/91 groups, no skips |
 | Local platform/sandbox checks | 2/2 |
-| Request-record performance | 2/2; p95 0.29 ms, record/transcript ratio 0.77 |
-| Additional connection-precedence checks | 39/39 contract/connection/lifecycle, 53/53 Harness, both trust checks |
+| Request-record performance | 2/2; p95 0.32 ms, record/transcript ratio 0.77 |
+| Additional connection-precedence and role checks | 43/43 contract/connection/lifecycle, 53/53 Harness, both trust checks |
 | Release/package/installed CLI, SDK, RPC, ACP and installer | 72/72 |
 | Four-protocol authentication | 12 actual controlled HTTP requests: default, custom header and none for each protocol |
 | Final full desktop acceptance | 123/123: 63 unit, 52 e2e, 8 pixel visual |
@@ -23,6 +23,8 @@ The additional saved-profile/legacy-credential precedence regression has been fi
 The real Electron tests use the built app, real Agent processes, isolated HOME directories and a controlled model. They verify canonical save/reload, connection checks, unknown profile rejection, safe migration preview, exact private backup/reload, credential conflicts, helper ownership, custom authentication and explicit no-auth behavior. No-model startup remains usable for configuration. Unset reasoning budgets display as automatic and can be set and cleared without writing zero.
 
 Saved connections retain their declared credential values and sources under named/inline Agent, CLI/SDK, policy and single-profile selection. Missing references, invalid canonical values and needed legacy conflicts still fail. Same-file unused conflicts can migrate safely; newly generated legacy profiles retain their original credential.
+
+Independent legacy roles and classifiers preserve their model, endpoint and credential across migration, backup and restart while the canonical main profile retains its own API Key. The tests cover parent-process and same-file credentials, Harness roles, classifier environment selection and required legacy conflicts. Windows `Path`/`PATH` spelling now preserves the same external-tool inheritance behavior as other platforms; the original trust assertion is unchanged.
 
 Only five goldens changed for the plan's intentional behavior adjustments: CLI help/diagnostics, canonical Harness hashes, supported Sonnet 4.0 manual reasoning, conservative unknown-provider reasoning and verified reasoning-off mappings. Permission-decision goldens were unchanged. Existing pixel baselines, thresholds and masks were unchanged.
 

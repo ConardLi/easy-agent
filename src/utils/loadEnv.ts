@@ -139,18 +139,24 @@ export async function loadEnv(
       selectConnection(inherited);
       for (const [key, value] of Object.entries(inherited)) {
         if (value !== undefined) {
+          // Windows may retain the parent's "Path" spelling after a "PATH"
+          // write. Its environment keys still refer to the same variable.
+          const sourceKey =
+            process.platform === "win32"
+              ? (Object.keys(report.effectiveSources).find((name) => name.toUpperCase() === key.toUpperCase()) ?? key)
+              : key;
           // Preserve external-tool environment inheritance (PATH, build
           // variables, etc.). Product settings and credentials use the
           // standardized precedence.
           if (
-            report.effectiveSources[key] &&
+            report.effectiveSources[sourceKey] &&
             !key.startsWith("EASY_AGENT_") &&
             !(LEGACY_ENVIRONMENT_NAMES as readonly string[]).includes(key) &&
             !isInheritedCredentialProtected(key)
           )
             continue;
           writeRuntimeEnvironment(key, value);
-          delete report.effectiveSources[key];
+          delete report.effectiveSources[sourceKey];
         }
       }
     }

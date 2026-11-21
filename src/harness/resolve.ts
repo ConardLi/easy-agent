@@ -29,11 +29,11 @@ import { HARNESS_KEYS, type HarnessKey, type HarnessLayerSource, type HarnessSet
 import { BUILT_IN_HARNESSES, HARNESS_NAME, HarnessSpecSchema, type HarnessSpec, type TextSource } from "./spec.js";
 import {
   legacyDefaultModelIsShadowed,
-  legacyProfileId,
   migrateSettings,
   migrateLegacyEnvironment,
   LEGACY_ENVIRONMENT_NAMES,
   savedProfileOwnsConnection,
+  legacyClassifierConnection,
 } from "../config/migration.js";
 import { configurationInputEnvironment } from "../config/environment.js";
 import { ConfigurationError } from "../config/values.js";
@@ -492,9 +492,12 @@ export function resolveHarnessFromInputs(inputs: HarnessInputs): ResolvedHarness
   const configuredIds = new Set(
     inputs.layers.flatMap((layer) => Object.keys((layer.raw?.models as object | undefined) ?? {})),
   );
-  const legacyClassifier = env.EASY_AGENT_AUTO_MODE_MODEL?.trim();
-  if (migration.legacyConnection && legacyClassifier && !configuredIds.has(legacyClassifier))
-    env.EASY_AGENT_AUTO_MODE_MODEL = legacyProfileId(legacyClassifier);
+  const legacyClassifier = legacyClassifierConnection(migration, configuredIds);
+  if (legacyClassifier) {
+    env.EASY_AGENT_AUTO_MODE_MODEL = legacyClassifier.id;
+    for (const notice of legacyClassifier.notices.filter((notice) => notice.level === "error"))
+      issues.push({ level: "error", path: "model.roles.classifier", message: notice.message });
+  }
   const legacyDefaultModelShadowed = legacyDefaultModelIsShadowed(
     inputs.layers
       .filter((layer) => ["user", "project", "local"].includes(layer.source))
@@ -504,21 +507,36 @@ export function resolveHarnessFromInputs(inputs: HarnessInputs): ResolvedHarness
     for (const key of ["EASY_AGENT_PROTOCOL", "EASY_AGENT_MODEL", "EASY_AGENT_BASE_URL", "EASY_AGENT_API_KEY"])
       delete env[key];
   }
+  const roleMigrationIssues: HarnessIssue[] = [];
   inputs = {
     ...inputs,
     env,
-    layers: inputs.layers.map((layer) => ({
-      ...layer,
-      raw: layer.raw
-        ? migrateSettings(layer.raw, {
-            knownProfileIds: configuredIds,
-            ...(layer.source === "flag" ? {} : { legacyEnvironment: migration }),
-            legacyDefaultModelShadowed,
-          }).value
-        : layer.raw,
-    })),
+    layers: inputs.layers.map((layer) => {
+      if (!layer.raw) return layer;
+      const migrated = migrateSettings(layer.raw, {
+        knownProfileIds: configuredIds,
+        ...(layer.source === "flag" ? {} : { legacyEnvironment: migration }),
+        legacyDefaultModelShadowed,
+      });
+      if (!["project", "local"].includes(layer.source) || inputs.workspaceTrusted) {
+        for (const notice of migrated.notices.filter((notice) => notice.level === "error")) {
+          const scoped = /^harnesses\.([^.]+)\.model\.roles\./.exec(notice.field);
+          if (scoped || notice.field.startsWith("modelRoles.") || notice.field === "env.EASY_AGENT_AUTO_MODE_MODEL")
+            roleMigrationIssues.push({
+              level: "error",
+              path: notice.field,
+              ...(scoped ? { harness: scoped[1] } : {}),
+              message: notice.message,
+            });
+        }
+      }
+      return { ...layer, raw: migrated.value };
+    }),
   };
   const { name, chain, selectedBy } = buildChain(inputs, issues);
+  issues.push(
+    ...roleMigrationIssues.filter((issue) => !issue.harness || chain.some((entry) => entry.name === issue.harness)),
+  );
   const values: Record<string, ResolvedHarnessValue> = {};
   for (const key of HARNESS_KEYS) values[key.path] = resolveKey(key, chain, inputs, issues);
   const savedProfileSelected = savedProfileOwnsConnection(

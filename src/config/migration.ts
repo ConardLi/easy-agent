@@ -270,23 +270,34 @@ export function legacyProfileId(model: string): string {
   return `legacy-${createHash("sha256").update(model).digest("hex").slice(0, 12)}`;
 }
 
+/** An independent legacy role retains its original credential when the main profile owns another connection. */
+export function legacyRoleConnection(migration: EnvironmentMigration | undefined) {
+  if (!migration) return undefined;
+  if (migration.legacyConnection) return { ...migration, apiKeyReference: "${EASY_AGENT_API_KEY}" };
+  const original = Object.fromEntries(LEGACY_ENVIRONMENT_NAMES.map((name) => [name, migration.env[name]]));
+  const legacy = migrateLegacyEnvironment(original);
+  if (!legacy.legacyConnection) return undefined;
+  const credential = configString(original.ANTHROPIC_API_KEY)
+    ? "ANTHROPIC_API_KEY"
+    : configString(original.ANTHROPIC_AUTH_TOKEN)
+      ? "ANTHROPIC_AUTH_TOKEN"
+      : undefined;
+  return { ...legacy, apiKeyReference: credential ? `\${${credential}}` : undefined };
+}
+
 /** A raw legacy classifier selection is converted only with confirmed connection evidence. */
 export function legacyClassifierConnection(migration: EnvironmentMigration, configuredIds: ReadonlySet<string>) {
   const model = configString(migration.env.EASY_AGENT_AUTO_MODE_MODEL);
-  if (
-    !model ||
-    configuredIds.has(model) ||
-    !migration.legacyConnection ||
-    migration.notices.some((notice) => notice.level === "error")
-  )
-    return undefined;
+  const connection = legacyRoleConnection(migration);
+  if (!model || configuredIds.has(model) || !connection) return undefined;
   return {
     id: legacyProfileId(model),
+    notices: connection.notices,
     profile: {
       protocol: "anthropic" as const,
       model,
-      ...(migration.env.EASY_AGENT_BASE_URL ? { baseURL: migration.env.EASY_AGENT_BASE_URL } : {}),
-      ...(migration.env.EASY_AGENT_API_KEY ? { apiKey: "${EASY_AGENT_API_KEY}" } : {}),
+      ...(connection.env.EASY_AGENT_BASE_URL ? { baseURL: connection.env.EASY_AGENT_BASE_URL } : {}),
+      ...(connection.env.EASY_AGENT_API_KEY ? { apiKey: connection.apiKeyReference } : {}),
     },
   };
 }
@@ -420,11 +431,15 @@ export function migrateSettings(
   const knownIds = context.knownProfileIds ?? inheritedIds;
   const oldEnvironment = object(value.env);
   let connection = context.legacyEnvironment;
+  let roleConnection = legacyRoleConnection(connection);
+  let localEnvironment: EnvironmentMigration | undefined;
   if (oldEnvironment) {
     const strings = Object.fromEntries(Object.entries(oldEnvironment).map(([key, item]) => [key, String(item)]));
     const environment = migrateLegacyEnvironment(strings, {
       savedProfileSelected: context.savedProfileSelected ?? savedProfileOwnsConnection([input]),
     });
+    localEnvironment = environment;
+    roleConnection = legacyRoleConnection(environment) ?? roleConnection;
     if (
       typeof value.model === "string" &&
       !environment.legacyConnection &&
@@ -439,12 +454,6 @@ export function migrateSettings(
     connection = environment.legacyConnection ? environment : connection;
     notices.push(...environment.notices);
     const next = { ...environment.env };
-    // Explicit user references to vendor names remain valid after migration.
-    const references = JSON.stringify({ models: value.models, hooks: value.hooks, mcpServers: value.mcpServers });
-    for (const name of LEGACY_ENVIRONMENT_NAMES) {
-      if (!environment.notices.some((notice) => notice.level === "error") && !references.includes(`\${${name}}`))
-        delete next[name];
-    }
     value.env = next;
     if (environment.legacyConnection && !environment.notices.some((notice) => notice.level === "error")) {
       const profiles = object(value.models) ?? {};
@@ -526,19 +535,24 @@ export function migrateSettings(
   }
   migrateReasoning(value, undefined, notices, "reasoning");
   const profiles = object(value.models) ?? {};
-  const preserveReference = (container: Record<string, unknown>, key: string, field: string) => {
+  const preserveReference = (container: Record<string, unknown>, key: string, field: string, role = false) => {
     const original = configString(typeof container[key] === "string" ? container[key] : undefined);
-    if (!original || profiles[original] || knownIds.has(original) || !connection?.legacyConnection) return;
-    if (connection.notices.some((notice) => notice.level === "error")) return;
+    const target = role ? roleConnection : connection?.legacyConnection ? connection : undefined;
+    if (!original || profiles[original] || knownIds.has(original) || !target) return;
+    const errors = target.notices.filter((notice) => notice.level === "error");
+    if (errors.length) {
+      notices.push(...errors.map((notice) => ({ ...notice, field })));
+      return;
+    }
     const id = legacyProfileId(original);
-    const env = connection.env;
+    const env = target.env;
     const profile: Record<string, unknown> = {
       protocol: "anthropic",
       model: original,
       ...(env.EASY_AGENT_BASE_URL ? { baseURL: env.EASY_AGENT_BASE_URL } : {}),
-      ...(env.EASY_AGENT_API_KEY ? { apiKey: "${EASY_AGENT_API_KEY}" } : {}),
+      ...(env.EASY_AGENT_API_KEY ? { apiKey: role ? roleConnection!.apiKeyReference : "${EASY_AGENT_API_KEY}" } : {}),
     };
-    applyLegacyProfileOptions(profile, connection.profileOptions);
+    applyLegacyProfileOptions(profile, target.profileOptions);
     if (profiles[id] && JSON.stringify(profiles[id]) !== JSON.stringify(profile)) {
       notices.push({
         level: "error",
@@ -557,20 +571,36 @@ export function migrateSettings(
     });
   };
   const roles = object(value.modelRoles);
-  for (const role of Object.keys(roles ?? {})) preserveReference(roles!, role, `modelRoles.${role}`);
+  for (const role of Object.keys(roles ?? {})) preserveReference(roles!, role, `modelRoles.${role}`, true);
   for (const [name, item] of Object.entries(object(value.harnesses) ?? {})) {
     const model = object(object(item)?.model);
     if (!model) continue;
     preserveReference(model, "main", `harnesses.${name}.model.main`);
     const scopedRoles = object(model.roles);
     for (const role of Object.keys(scopedRoles ?? {}))
-      preserveReference(scopedRoles!, role, `harnesses.${name}.model.roles.${role}`);
+      preserveReference(scopedRoles!, role, `harnesses.${name}.model.roles.${role}`, true);
   }
   const savedEnv = object(value.env);
-  if (savedEnv) preserveReference(savedEnv, "EASY_AGENT_AUTO_MODE_MODEL", "env.EASY_AGENT_AUTO_MODE_MODEL");
+  if (savedEnv) preserveReference(savedEnv, "EASY_AGENT_AUTO_MODE_MODEL", "env.EASY_AGENT_AUTO_MODE_MODEL", true);
+  const inheritedClassifier = configString(context.legacyEnvironment?.env.EASY_AGENT_AUTO_MODE_MODEL);
+  if (
+    inheritedClassifier &&
+    !profiles[legacyProfileId(inheritedClassifier)] &&
+    !inheritedIds.has(legacyProfileId(inheritedClassifier)) &&
+    !knownIds.has(inheritedClassifier)
+  )
+    preserveReference({ classifier: inheritedClassifier }, "classifier", "env.EASY_AGENT_AUTO_MODE_MODEL", true);
   // A raw historical selection is convertible only with evidence of the
   // original legacy connection. A new typo without that evidence stays an error.
   preserveReference(value, "model", "model");
+  if (savedEnv && localEnvironment) {
+    // Generated role profiles may explicitly retain their original credential.
+    const references = JSON.stringify({ models: value.models, hooks: value.hooks, mcpServers: value.mcpServers });
+    for (const name of LEGACY_ENVIRONMENT_NAMES) {
+      if (!localEnvironment.notices.some((notice) => notice.level === "error") && !references.includes(`\${${name}}`))
+        delete savedEnv[name];
+    }
+  }
   for (const [id, item] of Object.entries(profiles)) {
     const profile = object(item);
     if (profile) {

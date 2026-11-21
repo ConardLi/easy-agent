@@ -222,8 +222,11 @@ export async function loadProfiles(cwd: string = process.cwd()): Promise<LoadedP
   selectEnvironment();
   const legacyClassifier = legacyClassifierConnection(migration, new Set(Object.keys(merged)));
   if (legacyClassifier) {
-    const { id, profile } = legacyClassifier;
-    if (merged[id] && merged[id].model !== profile.model)
+    const { id, profile, notices } = legacyClassifier;
+    const connectionErrors = notices.filter((notice) => notice.level === "error");
+    if (connectionErrors.length)
+      errors[id] = connectionErrors.map((notice) => `EASY_AGENT_AUTO_MODE_MODEL: ${notice.message}`);
+    else if (merged[id] && merged[id].model !== profile.model)
       errors[id] = ["Legacy classifier profile ID collision; choose a distinct explicit profile ID."];
     else merged[id] ??= profile;
     warnings.push(

@@ -411,6 +411,116 @@ test("a newly generated legacy profile still receives its migrated credential", 
     }
   }));
 
+test("a saved main profile preserves an independently configured raw legacy role", async () =>
+  fixture(async (root, cwd) => {
+    const { createAgentRuntime } = await import("../sdk/runtime.js");
+    process.env.ANTHROPIC_API_KEY = "original-role-key";
+    await write(path.join(root, ".easy-agent", "settings.json"), {
+      model: "canonical",
+      models: { canonical: { protocol: "openai-chat", model: "main", apiKey: "main-key" } },
+      modelRoles: { compaction: "old-summary-model" },
+    });
+    const runtime = await createAgentRuntime({
+      cwd,
+      harness: { name: "default" },
+      services: false,
+      hardenPrivateData: false,
+      logger: { warn() {}, error() {} },
+    });
+    try {
+      assert.equal(await runtime.resolveModel(), "canonical");
+      const id = legacyProfileId("old-summary-model");
+      assert.equal((await runtime.getHarness()).values["model.roles.compaction"]?.value, id);
+      assert.equal((await resolveProfile(id, cwd)).apiKey, "original-role-key");
+      assert.equal((await resolveProfile("canonical", cwd)).apiKey, "main-key");
+    } finally {
+      await runtime.dispose();
+    }
+  }));
+
+for (const source of ["parent", "settings"] as const)
+  test(`legacy Harness roles and classifiers keep their own ${source} credentials after migration and restart`, async () =>
+    fixture(async (root, cwd) => {
+      const { createAgentRuntime } = await import("../sdk/runtime.js");
+      process.env.EASY_AGENT_API_KEY = "main-key";
+      const legacy = { ANTHROPIC_AUTH_TOKEN: "role-key", ANTHROPIC_BASE_URL: "https://legacy.invalid" };
+      if (source === "parent") Object.assign(process.env, legacy);
+      process.env.EASY_AGENT_AUTO_MODE_MODEL = "old-classifier";
+      const file = path.join(root, ".easy-agent", "settings.json");
+      await write(file, {
+        model: "canonical",
+        models: { canonical: { protocol: "openai-chat", model: "main", apiKey: "${EASY_AGENT_API_KEY}" } },
+        harnesses: { custom: { model: { main: "canonical", roles: { compaction: "old-summary" } } } },
+        ...(source === "settings" ? { env: legacy } : {}),
+      });
+      const options = {
+        cwd,
+        harness: { name: "custom" },
+        services: false as const,
+        hardenPrivateData: false,
+        logger: { warn() {}, error() {} },
+      };
+      for (let run = 0; run < 2; run++) {
+        const runtime = await createAgentRuntime(options);
+        try {
+          const harness = await runtime.getHarness();
+          assert.equal(await runtime.resolveModel(), "canonical");
+          for (const [role, model] of [
+            ["compaction", "old-summary"],
+            ["classifier", "old-classifier"],
+          ]) {
+            const id = legacyProfileId(model!);
+            assert.equal(harness.values[`model.roles.${role}`]?.value, id);
+            const profile = await resolveProfile(id, cwd);
+            assert.equal(profile.apiKey, "role-key");
+            assert.equal(profile.baseURL, "https://legacy.invalid", `${role}, runtime ${run}`);
+          }
+          assert.equal((await resolveProfile("canonical", cwd)).apiKey, "main-key");
+          if (run === 0) {
+            const preview = await previewConfigMigration(cwd, "user");
+            assert.equal(
+              preview.notices.some((notice) => notice.level === "error"),
+              false,
+            );
+            await applyConfigMigration(cwd, "user", preview.revision);
+            const saved = JSON.parse(await readFile(file, "utf8"));
+            assert.equal(saved.models[legacyProfileId("old-summary")].apiKey, "${ANTHROPIC_AUTH_TOKEN}");
+            if (source === "settings") assert.equal(saved.env.ANTHROPIC_AUTH_TOKEN, "role-key");
+          }
+        } finally {
+          await runtime.dispose();
+        }
+      }
+    }));
+
+test("legacy credential ambiguity fails only when an independently configured role uses that connection", async () =>
+  fixture(async (root, cwd) => {
+    const { createAgentRuntime } = await import("../sdk/runtime.js");
+    process.env.ANTHROPIC_API_KEY = "first-role-key";
+    process.env.ANTHROPIC_AUTH_TOKEN = "second-role-key";
+    const file = path.join(root, ".easy-agent", "settings.json");
+    const main = { model: "canonical", models: { canonical: localProfile } };
+    const options = {
+      cwd,
+      harness: { name: "default" },
+      services: false as const,
+      hardenPrivateData: false,
+      logger: { warn() {}, error() {} },
+    };
+    await write(file, main);
+    const runtime = await createAgentRuntime(options);
+    try {
+      assert.equal(await runtime.resolveModel(), "canonical");
+    } finally {
+      await runtime.dispose();
+    }
+    await write(file, { ...main, modelRoles: { compaction: "old-summary" } });
+    await assert.rejects(createAgentRuntime(options), /disagree/);
+    await write(file, main);
+    process.env.EASY_AGENT_AUTO_MODE_MODEL = "old-classifier";
+    await assert.rejects(createAgentRuntime(options), /disagree/);
+  }));
+
 test("reasoning auto stays auto, supported off sends disabling parameters, unsupported off reports why", () => {
   withHarness(resolveHarnessFromInputs({ workspaceTrusted: false, layers: [], env: {} }), () => {
     const unknown = { id: "gateway", protocol: "openai-chat" as const, model: "unknown", apiKey: "key" };

@@ -52,6 +52,8 @@ Two equal old credentials merge. Two different old credentials block the connect
 
 Saved profiles selected by settings, an Agent, CLI/SDK overrides, managed policy or the single-profile default own their declared credential source. An unused old credential conflict does not prevent startup or migration, including when the old variables appear in the same file. An explicit `${EASY_AGENT_API_KEY}` or vendor-variable reference keeps its own value; a missing reference remains an error and never borrows the old connection's key. Profiles newly created from an actual legacy connection retain the credential produced by that migration.
 
+An independently configured legacy role or classifier retains its original model, endpoint and credential even when the main profile uses a canonical connection. Migration may preserve an explicit vendor-variable reference for that role; it never substitutes the main profile's API Key. Conflicting old credentials still prevent migration when a role actually needs that old connection.
+
 Unknown profile IDs no longer mean raw Anthropic models. With no configuration there is no fixed Claude fallback; one valid profile can be auto-selected, several require a default. Historical sessions map raw names only to a unique confirmed profile, otherwise request a new selection.
 
 Unknown models no longer get all Claude reasoning features automatically. `reasoning.mode=auto` is conservative; explicitly requested unsupported reasoning reports how to configure capabilities. Ordinary `ultrathink` text does not change reasoning. Adaptive/interleaved details belong to the selected Anthropic adapter, not a global switch.
