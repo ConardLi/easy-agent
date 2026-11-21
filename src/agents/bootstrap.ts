@@ -10,6 +10,7 @@
 import { loadAllCustomAgents } from "./loadAgentsDir.js";
 import { getBuiltInAgents } from "./builtIn/index.js";
 import { setAgents } from "./registry.js";
+import { withRuntimeScope } from "../state/runtimeScope.js";
 
 export interface AgentsBootstrapResult {
   builtInCount: number;
@@ -17,7 +18,7 @@ export interface AgentsBootstrapResult {
   warnings: string[];
 }
 
-export async function bootstrapAgents(cwd: string): Promise<AgentsBootstrapResult> {
+export const bootstrapAgents = withRuntimeScope(async (cwd: string): Promise<AgentsBootstrapResult> => {
   const builtIns = getBuiltInAgents();
   const { agents: custom, warnings } = await loadAllCustomAgents(cwd);
 
@@ -35,4 +36,4 @@ export async function bootstrapAgents(cwd: string): Promise<AgentsBootstrapResul
     customCount: custom.length,
     warnings,
   };
-}
+});

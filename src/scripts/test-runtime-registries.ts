@@ -46,6 +46,10 @@ const { registerMcpTools, getRegisteredTools } = await import("../tools/index.js
 const { fetchToolsForConnection } = await import("../services/mcp/fetchTools.js");
 const { applyLspServers, getLspStatus } = await import("../services/lsp/runtime.js");
 const { LspServerSchema } = await import("../services/lsp/schema.js");
+const { bootstrapSkills } = await import("../services/skills/bootstrap.js");
+const { bootstrapAgents } = await import("../agents/bootstrap.js");
+const { bootstrapUserCommands } = await import("../commands/userCommands/bootstrap.js");
+const { bootstrapOutputStyles } = await import("../styles/bootstrap.js");
 let runtime: Awaited<ReturnType<typeof createAgentRuntime>> | undefined;
 const options = { services: false as const, hardenPrivateData: false, logger: { warn() {}, error() {} } };
 const scopes: RuntimeScope[] = [];
@@ -356,6 +360,30 @@ try {
     await runtime.connectMcpServers({ slow: config("/slow") });
     assert.equal(getActiveMcpConnections().length, 1);
     await runtime.dispose();
+  });
+
+  await check("direct asynchronous module calls retain the runtime active at invocation", async () => {
+    const settings = path.join(first, ".easy-agent", "settings.json");
+    await write(settings, JSON.stringify({ mcpServers: { legacy: config() } }));
+    runtime = await createAgentRuntime({ cwd: first, ...options, trust: "session" });
+    const pending = Promise.all([
+      bootstrapMcp(first),
+      bootstrapSkills(first),
+      bootstrapAgents(first),
+      bootstrapUserCommands(first),
+      bootstrapOutputStyles(first),
+      loadHooksSettings(first),
+      refreshHookDisableFromSettings(first),
+    ]);
+    await runtime.dispose();
+    await pending;
+    assert.equal(getActiveMcpConnections().length, 0, "a late bootstrap must not publish into the process fallback");
+    assert.equal(getMcpRegistry().length, 0);
+    assert.deepEqual(getRegisteredSkills(), []);
+    assert.equal(isAgentsInitialized(), false);
+    assert.equal(isUserCommandsInitialized(), false);
+    assert.equal(isOutputStylesInitialized(), false);
+    await rm(settings);
   });
 
   await check("late plugin discovery and tools/list cannot repopulate a closed runtime", async () => {

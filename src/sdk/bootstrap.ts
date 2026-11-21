@@ -51,6 +51,7 @@ import { hardenPrivateDataStorage } from "../utils/privateData.js";
 import { readTrustedStringArraySetting } from "../utils/settings.js";
 import { AgentSdkError } from "./errors.js";
 import type { AgentRuntimeOptions, RuntimeLogger } from "./types.js";
+import { withRuntimeScope } from "../state/runtimeScope.js";
 
 export interface WorkspaceReport {
   projectTrusted: boolean;
@@ -97,7 +98,7 @@ async function sessionHarnessOf(
   }
 }
 
-export async function loadWorkspace(options: AgentRuntimeOptions): Promise<WorkspaceReport> {
+export const loadWorkspace = withRuntimeScope(async (options: AgentRuntimeOptions): Promise<WorkspaceReport> => {
   const { cwd } = options;
   const logger = options.logger ?? consoleLogger;
   const target = options.harness ?? {};
@@ -294,9 +295,9 @@ export async function loadWorkspace(options: AgentRuntimeOptions): Promise<Works
   }
 
   return { projectTrusted, ignoredProjectConfig, ignoredCredentialOverrides, sandboxUnavailableReason };
-}
+});
 
-export async function activateWorkspace(options: AgentRuntimeOptions): Promise<void> {
+export const activateWorkspace = withRuntimeScope(async (options: AgentRuntimeOptions): Promise<void> => {
   const { cwd } = options;
 
   // apiKeyHelper mints an auth token by running a configured command, only
@@ -319,4 +320,4 @@ export async function activateWorkspace(options: AgentRuntimeOptions): Promise<v
 
   // The hook kill switch is read on hot paths, so it is snapshotted here.
   await refreshHookDisableFromSettings(cwd).catch(() => {});
-}
+});
