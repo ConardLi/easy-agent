@@ -37,8 +37,7 @@ process.chdir(cwd);
 
 const { createAnthropicFixture, FIXTURE_MODEL } = await import("./fixtures/anthropicFixture.js");
 const fixture = createAnthropicFixture();
-await fixture.start();
-process.env.ANTHROPIC_MODEL = FIXTURE_MODEL;
+await fixture.start(home);
 
 const { configureRequestTrace, describeSystemPrompt, startRequestTrace } = await import("../trace/requestTrace.js");
 const { flushRequestTraces } = await import("../trace/traceStore.js");

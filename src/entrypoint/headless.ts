@@ -153,6 +153,26 @@ function subtypeForReason(reason: LoopTerminationReason | undefined): ResultMess
   return "error_during_execution";
 }
 
+/** A failed configuration bootstrap has no session or resolved Agent to report. */
+export function writeHeadlessConfigurationError(
+  error: import("../config/values.js").ConfigurationError,
+  format: "json" | "stream-json",
+): void {
+  if (format === "stream-json") installStreamJsonStdoutGuard();
+  writeJsonLine({
+    type: "result",
+    subtype: "error_during_execution",
+    is_error: true,
+    result: error.message,
+    session_id: crypto.randomUUID(),
+    num_turns: 0,
+    duration_ms: 0,
+    total_cost_usd: null,
+    usage: { input_tokens: 0, output_tokens: 0 },
+    error: { code: error.code, field: error.field, ...(error.source ? { source: error.source } : {}) },
+  });
+}
+
 /** Map how the loop ended to a process exit code (0 = clean success). */
 function exitCodeForReason(reason: LoopTerminationReason | undefined): number {
   return reason === "completed" ? 0 : 1;

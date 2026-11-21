@@ -27,7 +27,7 @@ async function main(): Promise<void> {
   if (process.argv.includes("--help") || process.argv.includes("-h")) {
     const { formatBuiltinCommandHelpColumns } = await import("../commands/builtinCommandHelp.js");
     console.log(`
-Easy Agent v${VERSION} — Terminal-native agentic coding system
+Easy Agent v${VERSION} — Configurable Agent Harness
 
 Usage:
   eagent [options]            (long alias: easy-agent)
@@ -35,9 +35,7 @@ Usage:
 Options:
   -v, --version               Print version and exit
   -h, --help                  Show this help message
-  --model <handle>            Select the model: a "models" profile id (multi-
-                              protocol: OpenAI/Gemini via settings.json) or a
-                              raw Anthropic model name. See /model list.
+  --model <profile-id>        Select a saved model profile. See /model list.
   -p, --print [prompt]        Headless mode: run one non-interactive turn from
                               the prompt and/or piped stdin, print the result to
                               stdout, and exit. (e.g. echo "hi" | eagent -p)
@@ -85,6 +83,12 @@ Agents:
                               --prompt, also the first request each renders for
                               the text (no model call, no tool runs)
 
+Configuration migration:
+  eagent config migrate [--scope user|project|local] [--json]
+                              Preview redacted changes and conflicts
+  eagent config migrate --apply [--scope user|project|local]
+                              Back up and apply the current migration
+
 Commands (in REPL):
 ${formatBuiltinCommandHelpColumns()}
 
@@ -124,8 +128,10 @@ Hooks (user-defined shell scripts on lifecycle events):
 Settings keys (in ~/.easy-agent/settings.json or <cwd>/.easy-agent/settings.json):
   env: { "KEY": "value" }        Inject env vars into Bash commands (trusted sources only)
   language: "japanese"           Preferred response language (injected into the system prompt)
-  apiKeyHelper: "vault token"    Script whose stdout is used as the API token when none is in env
-                                 (executed → trusted sources only)
+  model: "main"                 Default profile ID from models
+  models.main: { protocol, model, apiKey }   Explicit connection with one API Key source
+  models.main.apiKey: { helper: "vault key" }   Profile-bound credential helper (trusted sources only)
+  reasoning: { mode: "auto" }    Reasoning mode (auto/on/off), budgetTokens and effort
   cleanupPeriodDays: 30          Transcript retention in days; 0 disables session persistence
   maxTurns: 200                  Maximum tool turns per request (REPL default 200, -p default 50)
   additionalDirectories: ["..."] Extra dirs the file tools may access beyond cwd (trusted sources only)
@@ -133,7 +139,7 @@ Settings keys (in ~/.easy-agent/settings.json or <cwd>/.easy-agent/settings.json
   respectGitignore: false        Let Glob/Grep search files .gitignore would hide (default: true)
   syntaxHighlightingDisabled: true   Render code blocks as plain text (no ANSI colors)
   prefersReducedMotion: true     Calm, static spinner (no animation) for reduced-motion users
-  claudeMdExcludes: ["**/AGENT.md"]  Glob/abs-path list of AGENTS.md/AGENT.md files to skip loading
+  agentMdExcludes: ["**/AGENT.md"]   Glob/abs-path list of AGENTS.md/AGENT.md files to skip loading
   enableAllProjectMcpServers: true   Auto-approve every server in <cwd>/.mcp.json (trusted folder)
   enabledMcpjsonServers: ["name"]    Approve specific .mcp.json servers
   disabledMcpjsonServers: ["name"]   Reject specific .mcp.json servers
@@ -148,6 +154,10 @@ Settings keys (in ~/.easy-agent/settings.json or <cwd>/.easy-agent/settings.json
   if (process.argv[2] === "harness") {
     const { runHarnessCommand } = await import("./harnessCommand.js");
     process.exit(await runHarnessCommand(process.argv.slice(3)));
+  }
+  if (process.argv[2] === "config" && process.argv[3] === "migrate") {
+    const { runConfigMigrationCommand } = await import("./configMigrationCommand.js");
+    process.exit(await runConfigMigrationCommand(process.argv.slice(4)));
   }
 
   const { hardenPrivateDataStorage } = await import("../utils/privateData.js");
@@ -349,12 +359,27 @@ Settings keys (in ~/.easy-agent/settings.json or <cwd>/.easy-agent/settings.json
     process.exit(0);
   }
 
-  const { createAgentRuntime } = await import("../sdk/index.js");
   // A resumed session runs with the Agent it last ran with, unless `--harness` picks one.
-  const runtime = await createAgentRuntime({
-    ...workspaceOptions,
-    ...(!harness && shouldResume && !isPrintMode ? { harness: { session: resumeSessionId ?? true } } : {}),
-  });
+  let runtime: import("../sdk/runtime.js").AgentRuntime;
+  try {
+    const { createAgentRuntime } = await import("../sdk/index.js");
+    runtime = await createAgentRuntime({
+      ...workspaceOptions,
+      ...(!harness && shouldResume && !isPrintMode ? { harness: { session: resumeSessionId ?? true } } : {}),
+    });
+  } catch (error) {
+    const { ConfigurationError } = await import("../config/values.js");
+    if (
+      isPrintMode &&
+      error instanceof ConfigurationError &&
+      (outputFormat === "json" || outputFormat === "stream-json")
+    ) {
+      const { writeHeadlessConfigurationError } = await import("./headless.js");
+      writeHeadlessConfigurationError(error, outputFormat);
+      process.exit(1);
+    }
+    throw error;
+  }
 
   // Terminal render preferences, read once like the other startup settings.
   {
@@ -386,10 +411,7 @@ Settings keys (in ~/.easy-agent/settings.json or <cwd>/.easy-agent/settings.json
   const React = await import("react");
   const { render } = await import("ink");
   const { App } = await import("../ui/App.js");
-  // The Agent's main model: `--model` (the flag layer installed above), then
-  // `model` and `defaultModel` in the settings files, then ANTHROPIC_MODEL and
-  // the built-in default. The value is a model *handle*: a declared `models`
-  // profile id or a raw model name.
+  // All model selections are profile IDs from the shared connection resolver.
   const resolvedModel = await runtime.resolveModel();
 
   // MCP servers and plugin services connect in the background: a slow `npx`

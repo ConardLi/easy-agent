@@ -5,7 +5,7 @@ await loadEnv(process.cwd(), { allowProject: true });
  * Phase 1 verification script — Test LLM API streaming communication.
  *
  * Usage:
- *   ANTHROPIC_AUTH_TOKEN=sk-ant-... npx tsx src/scripts/test-streaming.ts
+ *   EASY_AGENT_PROFILE=main npx tsx src/scripts/test-streaming.ts
  *
  * Verifies:
  *   1. API connection works
@@ -14,28 +14,22 @@ await loadEnv(process.cwd(), { allowProject: true });
  */
 
 import { streamMessage } from "../services/api/streaming.js";
-import { getDefaultModel } from "../services/api/client.js";
+import { resolveProfileId } from "../services/api/providers/profile.js";
 import type { StreamEvent } from "../types/message.js";
 
 async function main(): Promise<void> {
   // ── Pre-flight check ──────────────────────────────────────────
-  if (!process.env.ANTHROPIC_AUTH_TOKEN) {
-    console.error(
-      "\x1b[31m✗ ANTHROPIC_AUTH_TOKEN is not set.\x1b[0m\n" +
-        "  Export it first:\n" +
-        "  export ANTHROPIC_AUTH_TOKEN=sk-ant-...\n",
-    );
-    process.exit(1);
-  }
+  const model = await resolveProfileId(undefined);
 
   const userMessage = "用一句话介绍你自己，然后用三句话解释什么是 Agentic Loop。";
 
-  console.log(`\x1b[90m── Model: ${getDefaultModel()}\x1b[0m`);
+  console.log(`\x1b[90m── Profile: ${model}\x1b[0m`);
   console.log(`\x1b[90m── User:  ${userMessage}\x1b[0m\n`);
   console.log("\x1b[36m▎ Assistant:\x1b[0m");
 
   // ── Stream the response ───────────────────────────────────────
   const generator = streamMessage({
+    model,
     messages: [{ role: "user", content: userMessage }],
     system: "You are a helpful assistant. Reply concisely in Chinese.",
   });

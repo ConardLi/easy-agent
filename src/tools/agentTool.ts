@@ -334,7 +334,7 @@ export const agentTool: Tool = {
     //   1. Per-call override (input.model)
     //   2. Agent definition's `model` field
     //   3. Parent's active model (set by QueryEngine on the context)
-    //   4. the default model (ANTHROPIC_MODEL or the built-in fallback)
+    //   4. the selected main profile
     const { resolveRoleModel } = await import("../config/features.js");
     const fallbackModel = context.defaultModel || getDefaultModel();
     const resolvedModel =

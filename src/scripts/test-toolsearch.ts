@@ -11,6 +11,8 @@
  */
 import type { MessageParam } from "@anthropic-ai/sdk/resources/messages.js";
 import type { Tool } from "../tools/Tool.js";
+import { installConfigurationEnvironment } from "../config/environment.js";
+import { migrateLegacyEnvironment } from "../config/migration.js";
 import {
   runToolSearch,
   searchToolsWithKeywords,
@@ -50,12 +52,14 @@ function withEnv<T>(vars: Record<string, string | undefined>, fn: () => T): T {
     else process.env[k] = v;
   }
   try {
+    installConfigurationEnvironment(process.env);
     return fn();
   } finally {
     for (const [k, v] of Object.entries(saved)) {
       if (v === undefined) delete process.env[k];
       else process.env[k] = v;
     }
+    installConfigurationEnvironment(process.env);
   }
 }
 
@@ -125,7 +129,10 @@ function main(): void {
       assert(getToolSearchMode() === "standard", "auto:100 → standard"),
     );
     withEnv({ EASY_AGENT_ENABLE_TOOL_SEARCH: "auto:abc" }, () =>
-      assert(getToolSearchMode() === "tst-auto", "auto:abc → tst-auto (default 10%)"),
+      assert(
+        migrateLegacyEnvironment(process.env).notices.some((notice) => notice.level === "error"),
+        "invalid legacy mode has a migration error",
+      ),
     );
     withEnv({ EASY_AGENT_DISABLE_EXPERIMENTAL_BETAS: "1", EASY_AGENT_ENABLE_TOOL_SEARCH: "true" }, () =>
       assert(getToolSearchMode() === "standard", "kill switch wins over explicit true"),

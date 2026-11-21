@@ -15,6 +15,7 @@ import type { AddressInfo } from "node:net";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { fixtureProfile } from "./fixtures/anthropicFixture.js";
 
 const root = await mkdtemp(path.join(os.tmpdir(), "easy-agent-max-turns-"));
 const home = path.join(root, "home");
@@ -26,7 +27,6 @@ await Promise.all([
 process.env.HOME = home;
 process.env.USERPROFILE = home;
 process.env.EASY_AGENT_DISABLE_HOOKS = "1";
-process.env.EASY_AGENT_ENABLE_TOOL_SEARCH = "false";
 process.chdir(cwd);
 
 const PROJECT_ROOT = path.resolve(import.meta.dirname, "../..");
@@ -95,8 +95,6 @@ const server = createServer((request, response) => {
 });
 await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
 const baseURL = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-process.env.ANTHROPIC_BASE_URL = baseURL;
-process.env.ANTHROPIC_AUTH_TOKEN = "fixture-token";
 
 const { loadMaxTurnsSetting } = await import("../config/features.js");
 const { setFlagSettings } = await import("../config/sources.js");
@@ -104,7 +102,15 @@ const { QueryEngine } = await import("../core/queryEngine.js");
 const { MAX_TOOL_TURNS, INTERACTIVE_MAX_TOOL_TURNS } = await import("../core/agenticLoop.js");
 
 async function writeUserSettings(settings: Record<string, unknown> | null): Promise<void> {
-  await writeFile(USER_SETTINGS, settings ? JSON.stringify(settings) : "{}");
+  await writeFile(
+    USER_SETTINGS,
+    JSON.stringify({
+      model: "fixture-model",
+      models: { "fixture-model": fixtureProfile(baseURL) },
+      toolSearch: "off",
+      ...settings,
+    }),
+  );
 }
 
 async function runEngine(
@@ -199,7 +205,7 @@ try {
     return new Promise((resolve, reject) => {
       const child = spawn(process.execPath, ["--import", TSX_IMPORT, CLI_PATH, ...args], {
         cwd,
-        env: { ...process.env, ANTHROPIC_MODEL: "fixture-model", NO_COLOR: "1", FORCE_COLOR: "0" },
+        env: { ...process.env, NO_COLOR: "1", FORCE_COLOR: "0" },
         stdio: ["pipe", "pipe", "pipe"],
       });
       let stdout = "";

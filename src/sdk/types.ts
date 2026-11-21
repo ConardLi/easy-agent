@@ -43,6 +43,8 @@ import type { TaskMode } from "../state/taskModeStore.js";
 import type { ToolStatus } from "../state/toolStatusStore.js";
 import type { ToolResult, UserQuestion } from "../tools/Tool.js";
 import type { ModelProtocol } from "../services/api/providers/profile.js";
+import type { Authentication, ProtocolOptions } from "../config/modelSchema.js";
+import type { EffectiveModelMetadata } from "../config/modelMetadata.js";
 import type { Usage } from "../types/message.js";
 import type { Task } from "../types/task.js";
 import type { TodoItem } from "../types/todo.js";
@@ -181,6 +183,7 @@ export interface ConfigSourceInfo {
   values: Record<string, unknown>;
   parseError?: string;
   validationErrors?: string[];
+  migrationNotices?: import("../config/migration.js").MigrationNotice[];
 }
 
 export interface EffectiveSetting {
@@ -203,6 +206,10 @@ export interface ModelProfileInfo {
   apiKey: string | null;
   /** Whether a key resolved, after `${VAR}` interpolation. */
   hasApiKey: boolean;
+  authentication: Authentication;
+  metadata: EffectiveModelMetadata;
+  protocolOptions?: ProtocolOptions;
+  credentialSource: "helper" | "apiKey" | "none";
   /** Header names; values are not returned. */
   headers: string[];
   maxTokens?: number;
@@ -410,7 +417,7 @@ export interface RuleInventoryItem extends InventoryItemBase {
   kind: "rule";
   /** `global`: user-wide AGENT.md; `ancestor`: a parent directory; `project`: the workspace; `memory`: the memory index. */
   scope: "global" | "ancestor" | "project" | "memory";
-  /** Matched by `claudeMdExcludes`. */
+  /** Matched by `agentMdExcludes`. */
   excluded: boolean;
   lines: number;
   tokens: TokenCount;

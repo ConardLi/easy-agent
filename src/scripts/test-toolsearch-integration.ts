@@ -20,6 +20,7 @@ import { setSessionThinkingConfig } from "../utils/thinking.js";
 import { fetchToolsForConnection } from "../services/mcp/fetchTools.js";
 import { setMcpRegistryEntry, deleteMcpRegistryEntry, hasPendingMcpServers } from "../services/mcp/registry.js";
 import type { ConnectedMcpServer, PendingMcpServer } from "../types/mcp.js";
+import { installConfigurationEnvironment } from "../config/environment.js";
 
 const cwd = await mkdtemp(join(tmpdir(), "ea-toolsearch-"));
 const originalFetch = globalThis.fetch;
@@ -120,6 +121,7 @@ try {
   for (const key of envKeys) delete process.env[key];
   process.env.EASY_AGENT_ENABLE_TOOL_SEARCH = "true";
   process.env.EASY_AGENT_DISABLE_HOOKS = "1";
+  installConfigurationEnvironment(process.env);
   setSessionThinkingConfig({ type: "disabled" });
   setFlagSettings({
     models: {
@@ -294,6 +296,7 @@ try {
         model: "fixture-model",
         baseURL: "https://toolsearch.invalid",
         apiKey: "fixture",
+        capabilities: { reasoning: false },
       },
       { tools: ready.tools, messages: ready.messages, toolSearchEnabled: true },
     );
@@ -308,6 +311,7 @@ try {
   for (const mode of ["false", "true"]) {
     process.env.EASY_AGENT_ENABLE_TOOL_SEARCH = mode;
     if (mode === "true") process.env.EASY_AGENT_DISABLE_EXPERIMENTAL_BETAS = "1";
+    installConfigurationEnvironment(process.env);
     requests.length = 0;
     await drive("toolsearch-test", pool, restored);
     const wire = JSON.stringify(requests[0]!.body);

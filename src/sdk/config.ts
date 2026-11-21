@@ -17,7 +17,6 @@ import { SettingsSchema, validateSettings } from "../config/schema.js";
 import { isTrustedScopeForSensitiveKeys, loadSettingSources, type SettingSource } from "../config/sources.js";
 import { getAnthropicClientForProfile } from "../services/api/client.js";
 import {
-  DEFAULT_PROVIDER_BASE_URLS,
   getProfileBaseURL,
   loadProfiles,
   type ModelProfile,
@@ -26,6 +25,8 @@ import {
 import { collectViaProvider } from "../services/api/providers/providerStream.js";
 import { updateLocalSettings, updateProjectSettings, updateUserSettings } from "../utils/settings.js";
 import { AgentSdkError } from "./errors.js";
+import { profileRequestHeaders } from "../services/api/providers/authentication.js";
+import { effectiveModelMetadata } from "../config/modelMetadata.js";
 import type {
   ConfigScope,
   ConfigSnapshot,
@@ -45,7 +46,7 @@ const ARRAY_KEYS = new Set([
   "deny",
   "ask",
   "additionalDirectories",
-  "claudeMdExcludes",
+  "agentMdExcludes",
   "enabledMcpjsonServers",
   "disabledMcpjsonServers",
 ]);
@@ -64,6 +65,7 @@ function displayValue(value: unknown, key = ""): unknown {
   }
   if (Array.isArray(value)) return value.map((item) => displayValue(item));
   if (value && typeof value === "object") {
+    if (normalized === "apikey") return REDACTED;
     const secretValues = normalized === "env" || normalized === "headers";
     return Object.fromEntries(
       Object.entries(value as Record<string, unknown>).map(([child, v]) => [
@@ -116,6 +118,7 @@ export async function readConfig(cwd: string): Promise<ConfigSnapshot> {
     values: src.raw ? (displayValue(src.raw) as Record<string, unknown>) : {},
     ...(src.parseError ? { parseError: src.parseError } : {}),
     ...(src.validationErrors?.length ? { validationErrors: src.validationErrors } : {}),
+    ...(src.migrationNotices?.length ? { migrationNotices: src.migrationNotices } : {}),
   }));
 
   const keys = new Set([...Object.keys(SettingsSchema.shape), "sandbox"]);
@@ -152,7 +155,11 @@ export async function readConfig(cwd: string): Promise<ConfigSnapshot> {
       model: profile.model,
       baseURL: getProfileBaseURL(profile),
       apiKey: typeof stored?.apiKey === "string" ? (displayValue(stored.apiKey, "apiKey") as string) : null,
-      hasApiKey: Boolean(profile.apiKey),
+      hasApiKey: Boolean(profile.apiKey || profile.apiKeyHelper),
+      authentication: profile.authentication ?? { type: "default" },
+      metadata: effectiveModelMetadata(profile),
+      ...(profile.protocolOptions ? { protocolOptions: profile.protocolOptions } : {}),
+      credentialSource: profile.apiKeyHelper ? "helper" : profile.apiKey ? "apiKey" : "none",
       headers: Object.keys(profile.headers ?? {}),
       ...(profile.maxTokens ? { maxTokens: profile.maxTokens } : {}),
       source: fields.model ?? fields.protocol ?? "user",
@@ -166,7 +173,7 @@ export async function readConfig(cwd: string): Promise<ConfigSnapshot> {
     models: {
       profiles: models,
       defaultModel: profiles.defaultModel ?? null,
-      warnings: profiles.warnings,
+      warnings: [...profiles.warnings, ...Object.values(profiles.errors ?? {}).flat()],
     },
     userOnlyKeys: [...USER_ONLY_KEYS],
   };
@@ -217,7 +224,7 @@ export async function writeConfig(
   const patch = { [key]: next === null ? undefined : next };
   if (scope === "project") await updateProjectSettings(cwd, patch);
   else if (scope === "local") await updateLocalSettings(cwd, patch);
-  else await updateUserSettings(patch);
+  else await updateUserSettings(patch, cwd);
   return { reload: SETTING_RELOAD[key] ?? "restart" };
 }
 
@@ -281,10 +288,9 @@ export async function listModels(cwd: string, handle: string): Promise<{ models:
         ids.push(model.id);
       return { models: ids };
     }
-    const base = (profile.baseURL ?? DEFAULT_PROVIDER_BASE_URLS[profile.protocol]).replace(/\/+$/, "");
-    const headers: Record<string, string> = { ...(profile.headers ?? {}) };
+    const base = getProfileBaseURL(profile);
+    const headers = profileRequestHeaders(profile);
     if (profile.protocol === "gemini") {
-      if (profile.apiKey) headers["x-goog-api-key"] = profile.apiKey;
       const response = await fetch(`${base}/models?pageSize=1000`, { headers, signal });
       if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText}`);
       const body = (await response.json()) as { models?: { name?: string; supportedGenerationMethods?: string[] }[] };
@@ -295,7 +301,6 @@ export async function listModels(cwd: string, handle: string): Promise<{ models:
           .filter(Boolean),
       };
     }
-    if (profile.apiKey) headers.authorization = `Bearer ${profile.apiKey}`;
     const response = await fetch(`${base}/models`, { headers, signal });
     if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText}`);
     const body = (await response.json()) as { data?: { id?: string }[] };

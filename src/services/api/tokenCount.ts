@@ -28,6 +28,8 @@ import type { MessageCountTokensParams, MessageParam } from "@anthropic-ai/sdk/r
 import type { RequestTokenCount } from "../../trace/requestTrace.js";
 import { debugLog } from "../../utils/log.js";
 import { getProfileBaseURL, type ModelProfile } from "./providers/profile.js";
+import { defineRuntimeState } from "../../state/runtimeScope.js";
+import { redactConnectionMessage } from "./errors.js";
 
 const COUNT_TIMEOUT_MS = 15_000;
 const MAX_CACHED = 128;
@@ -36,7 +38,8 @@ const PROBE: MessageParam[] = [{ role: "user", content: "." }];
 /** Whether requests to `profile` are counted: Anthropic protocol, the first-party API or an opted-in profile. */
 export function shouldCountTokens(profile: ModelProfile): boolean {
   if (profile.protocol !== "anthropic") return false;
-  if (profile.countTokens !== undefined) return profile.countTokens;
+  const option = profile.protocolOptions?.anthropic?.countTokens;
+  if (option !== undefined) return option;
   try {
     return new URL(getProfileBaseURL(profile)).hostname === "api.anthropic.com";
   } catch {
@@ -56,9 +59,10 @@ export interface CountableRequest {
 }
 
 /** Endpoints, by `<baseURL>|<model>`, that rejected counting. */
-const unsupported = new Set<string>();
-/** Counts of probes and of probes with a system prompt or tool list, by content. */
-const cached = new Map<string, Promise<number>>();
+const countingState = defineRuntimeState("tokenCounting", () => ({
+  unsupported: new Set<string>(),
+  cached: new Map<string, Promise<number>>(),
+}));
 
 const digest = (value: unknown): string =>
   createHash("sha256")
@@ -83,7 +87,9 @@ export async function countRequestTokens(
   request: CountableRequest,
   headers: Record<string, string>,
 ): Promise<RequestTokenCount> {
-  const endpoint = `${getProfileBaseURL(profile)}|${request.model}`;
+  const { unsupported, cached } = countingState();
+  const authentication = digest([profile.apiKey, profile.authentication, profile.headers]);
+  const endpoint = `${getProfileBaseURL(profile)}|${request.model}|${authentication}`;
   if (unsupported.has(endpoint)) return { status: "unsupported" };
   // Serializing the request again waits until the request itself is on its way.
   await new Promise<void>((resolve) => setImmediate(resolve));
@@ -159,7 +165,7 @@ export async function countRequestTokens(
     if (rejected) unsupported.add(endpoint);
     debugLog("tokenCount", rejected ? "unsupported" : "failed", {
       ...(error instanceof APIError && typeof error.status === "number" ? { status: error.status } : {}),
-      message: error instanceof Error ? error.message : String(error),
+      message: redactConnectionMessage(error instanceof Error ? error.message : String(error), profile),
     });
     return { status: rejected ? "unsupported" : "failed" };
   }

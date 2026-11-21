@@ -101,7 +101,9 @@ try {
   assert.equal(await fs.readFile(legacyFiles[3]!, "utf8"), "legacy:legacy.jsonl\n");
 
   const { updateLocalSettings, updateProjectSettings, updateUserSettings } = await import("../utils/settings.js");
-  await updateUserSettings({ models: { secure: { apiKey: "top-secret" } } });
+  await updateUserSettings({
+    models: { secure: { protocol: "anthropic", model: "test-model", apiKey: "test-secret" } },
+  });
   await updateProjectSettings(workspace, { language: "en" });
   await updateLocalSettings(workspace, { env: { PRIVATE_TOKEN: "local-secret" } });
   await expectMode(path.join(easyHome, "settings.json"), 0o600);

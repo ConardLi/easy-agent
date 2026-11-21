@@ -27,6 +27,7 @@ import type { AddressInfo } from "node:net";
 import * as os from "node:os";
 import * as path from "node:path";
 import { Ajv } from "ajv";
+import { fixtureProfile } from "./fixtures/anthropicFixture.js";
 
 const PROJECT_ROOT = path.resolve(import.meta.dirname, "../..");
 const CLI_PATH = path.join(PROJECT_ROOT, "src", "entrypoint", "cli.ts");
@@ -46,6 +47,7 @@ await Promise.all(
 await writeFile(
   path.join(home, ".easy-agent", "settings.json"),
   JSON.stringify({
+    model: "env-model",
     harnesses: { reviewer: { model: { main: "review-model" }, tools: { exclude: ["WebFetch", "WebSearch"] } } },
   }),
 );
@@ -72,20 +74,26 @@ const server = createServer((request, response) => {
 });
 await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
 const baseURL = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+const connections = path.join(root, "connections.json");
+await writeFile(
+  connections,
+  JSON.stringify({
+    toolSearch: "off",
+    models: Object.fromEntries(
+      ["env-model", "review-model", "file-model", "other-model"].map((id) => [id, fixtureProfile(baseURL, id)]),
+    ),
+  }),
+);
 
 function runCli(args: string[], homeDir = home): Promise<{ code: number | null; stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, ["--import", TSX_IMPORT, CLI_PATH, ...args], {
+    const child = spawn(process.execPath, ["--import", TSX_IMPORT, CLI_PATH, ...args, "--settings", connections], {
       cwd,
       env: {
         ...process.env,
         HOME: homeDir,
         USERPROFILE: homeDir,
-        ANTHROPIC_AUTH_TOKEN: "no-key",
-        ANTHROPIC_BASE_URL: baseURL,
-        ANTHROPIC_MODEL: "env-model",
         EASY_AGENT_DISABLE_HOOKS: "1",
-        EASY_AGENT_ENABLE_TOOL_SEARCH: "false",
         NO_COLOR: "1",
       },
       stdio: ["ignore", "pipe", "pipe"],

@@ -9,11 +9,21 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import dotenv from "dotenv";
 import { isProjectTrusted } from "../config/globalState.js";
-import { loadSettingSources } from "../config/sources.js";
+import {
+  CONNECTION_ENVIRONMENT_NAMES,
+  LEGACY_ENVIRONMENT_NAMES,
+  environmentDeclaresConnection,
+  savedProfileOwnsConnection,
+} from "../config/migration.js";
+import { resolveHarnessFromInputs } from "../harness/resolve.js";
+import { loadSettingSources, resetSettingsCache } from "../config/sources.js";
 import {
   captureInheritedEnvironment,
   isInheritedCredentialProtected,
   setEnvironmentLoadReport,
+  installConfigurationEnvironment,
+  registerCredentialReferences,
+  writeRuntimeEnvironment,
   type EnvironmentConfigSource,
   type EnvironmentLoadReport,
 } from "../config/environment.js";
@@ -21,6 +31,7 @@ import {
 export interface LoadEnvironmentOptions {
   /** Explicit caller authorization for project settings and `.env`. */
   allowProject?: boolean;
+  harness?: { name?: string; spec?: unknown };
 }
 
 function readSourceEnv(raw: Record<string, unknown> | null): Record<string, string> {
@@ -59,17 +70,50 @@ export async function loadEnv(
   cwd: string = process.cwd(),
   options: LoadEnvironmentOptions = {},
 ): Promise<EnvironmentLoadReport> {
-  captureInheritedEnvironment();
+  const inherited = captureInheritedEnvironment();
   const projectTrusted = options.allowProject === true || (await isProjectTrusted(cwd));
   const sources = await loadSettingSources(cwd);
+  const eligible = sources.filter((source) => !["project", "local"].includes(source.source) || projectTrusted);
+  const canonicalProfileIds = new Set(eligible.flatMap((source) => source.canonicalProfileIds ?? []));
+  const selection = resolveHarnessFromInputs({
+    layers: sources,
+    workspaceTrusted: projectTrusted,
+    env: inherited,
+    canonicalProfileIds: [...canonicalProfileIds],
+    ...options.harness,
+  }).values["model.main"]?.value;
+  const savedProfileSelected = savedProfileOwnsConnection(
+    eligible.map((source) => source.raw),
+    typeof selection === "string" ? selection : undefined,
+    canonicalProfileIds,
+  );
+  for (const source of sources) {
+    if ((source.source !== "project" && source.source !== "local") || projectTrusted) {
+      registerCredentialReferences(source.raw?.models);
+    }
+  }
   const report: EnvironmentLoadReport = {
     projectTrusted,
     effectiveSources: {},
     ignoredBySource: {},
     protectedCredentialOverrides: {},
   };
+  const targetNames = ["EASY_AGENT_PROFILE", "EASY_AGENT_PROTOCOL", "EASY_AGENT_MODEL", "EASY_AGENT_BASE_URL"];
+  const selectConnection = (values: Readonly<NodeJS.ProcessEnv>): void => {
+    if (!environmentDeclaresConnection(values)) return;
+    if (savedProfileSelected && !targetNames.some((name) => values[name]?.trim())) return;
+    // A higher layer chooses a complete connection. Arbitrary environment
+    // references remain available, but lower shortcut targets cannot leak in.
+    for (const key of CONNECTION_ENVIRONMENT_NAMES) {
+      if (values[key] !== undefined) continue;
+      if (values.EASY_AGENT_PROFILE?.trim() && !targetNames.includes(key)) continue;
+      writeRuntimeEnvironment(key, undefined);
+      delete report.effectiveSources[key];
+    }
+  };
 
   const apply = (source: EnvironmentConfigSource, values: Record<string, string>, projectScoped: boolean): void => {
+    if (!projectScoped || projectTrusted) selectConnection(values);
     for (const [key, value] of Object.entries(values)) {
       if (projectScoped && !projectTrusted) {
         increment(report.ignoredBySource, source);
@@ -79,7 +123,7 @@ export async function loadEnv(
         increment(report.protectedCredentialOverrides, source);
         continue;
       }
-      process.env[key] = value;
+      writeRuntimeEnvironment(key, value);
       report.effectiveSources[key] = source;
     }
   };
@@ -91,11 +135,31 @@ export async function loadEnv(
       } else if (await hasDotenv(cwd)) {
         increment(report.ignoredBySource, "dotenv");
       }
+      // The process layer follows project files, before explicit flags and policy.
+      selectConnection(inherited);
+      for (const [key, value] of Object.entries(inherited)) {
+        if (value !== undefined) {
+          // Preserve external-tool environment inheritance (PATH, build
+          // variables, etc.). Product settings and credentials use the
+          // standardized precedence.
+          if (
+            report.effectiveSources[key] &&
+            !key.startsWith("EASY_AGENT_") &&
+            !(LEGACY_ENVIRONMENT_NAMES as readonly string[]).includes(key) &&
+            !isInheritedCredentialProtected(key)
+          )
+            continue;
+          writeRuntimeEnvironment(key, value);
+          delete report.effectiveSources[key];
+        }
+      }
     }
     const projectScoped = source.source === "project" || source.source === "local";
     apply(source.source, readSourceEnv(source.raw), projectScoped);
   }
 
   setEnvironmentLoadReport(report);
+  installConfigurationEnvironment(process.env, { savedProfileSelected });
+  resetSettingsCache();
   return report;
 }

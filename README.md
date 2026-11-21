@@ -45,7 +45,9 @@ The package installs two commands, `eagent` and the long alias `easy-agent`.
 ## Quick start
 
 ```bash
-export ANTHROPIC_AUTH_TOKEN="your-token"
+export EASY_AGENT_PROTOCOL="openai-chat"
+export EASY_AGENT_MODEL="gpt-4.1"
+export EASY_AGENT_API_KEY="your-api-key"
 cd your-project
 eagent
 ```
@@ -97,16 +99,18 @@ Settings are JSON files merged in this order, from lowest to highest priority:
 1. User: `~/.easy-agent/settings.json`
 2. Project: `<project>/.easy-agent/settings.json` (shared, applied once the folder is trusted)
 3. Local: `<project>/.easy-agent/settings.local.json` (personal, applied once the folder is trusted)
-4. Command line: `--settings <file>`, `--model`, `--permission-mode`, and similar flags
-5. Managed policy: `/Library/Application Support/EasyAgent/managed-settings.json` on macOS, `/etc/easy-agent/managed-settings.json` on Linux, `%PROGRAMDATA%\EasyAgent\managed-settings.json` on Windows
+4. Process environment
+5. Explicit CLI / SDK / session overrides
+6. Managed policy: `/Library/Application Support/EasyAgent/managed-settings.json` on macOS, `/etc/easy-agent/managed-settings.json` on Linux, `%PROGRAMDATA%\EasyAgent\managed-settings.json` on Windows
 
 A project `.env` is applied after project and local settings, only for a trusted folder. Feature switches are described in [Configuration and feature controls](./docs/configuration.md).
 
-For a raw Anthropic model name, environment variables are enough:
+The selected Harness sits between user and project settings. A temporary connection requires both an explicit protocol and an upstream model:
 
 ```bash
-export ANTHROPIC_AUTH_TOKEN="your-token"
-export ANTHROPIC_MODEL="claude-sonnet-4-20250514" # optional
+export EASY_AGENT_PROTOCOL="anthropic"
+export EASY_AGENT_MODEL="claude-sonnet-4-20250514"
+export EASY_AGENT_API_KEY="your-api-key"
 eagent
 ```
 
@@ -114,7 +118,7 @@ Named Anthropic, OpenAI-compatible, Gemini, and local profiles go in `settings.j
 
 ```json
 {
-  "defaultModel": "gpt",
+  "model": "gpt",
   "models": {
     "gpt": {
       "protocol": "openai-chat",
@@ -130,24 +134,28 @@ Named Anthropic, OpenAI-compatible, Gemini, and local profiles go in `settings.j
     "ollama": {
       "protocol": "openai-chat",
       "model": "qwen2.5-coder",
-      "baseURL": "http://localhost:11434/v1"
+      "baseURL": "http://localhost:11434/v1",
+      "authentication": { "type": "none" }
     }
   }
 }
 ```
 
-Select a profile with `eagent --model gpt` or `/model gpt` inside the REPL.
+Select a saved profile with `EASY_AGENT_PROFILE=gpt`, `eagent --model gpt`, or `/model gpt`. A profile ID is distinct from its upstream model name. Unknown IDs are errors; no model or protocol is guessed. With multiple profiles, select a default. `eagent --login` creates a profile for any supported protocol using one API Key.
 
 | Environment variable | Purpose |
 |---|---|
-| `ANTHROPIC_AUTH_TOKEN` | Anthropic API token or compatible gateway token |
-| `ANTHROPIC_BASE_URL` | Optional Anthropic-compatible endpoint |
-| `ANTHROPIC_MODEL` | Default raw Anthropic model name |
+| `EASY_AGENT_API_KEY` | Single API Key for a temporary connection or an explicit profile reference |
+| `EASY_AGENT_PROTOCOL` | Explicit temporary connection protocol |
+| `EASY_AGENT_MODEL` | Upstream model for the temporary connection |
+| `EASY_AGENT_BASE_URL` | Optional address for that connection |
+| `EASY_AGENT_PROFILE` | Select a saved profile without overriding its connection |
 | `OPENAI_API_KEY` | Referenced by OpenAI-compatible profiles |
 | `GEMINI_API_KEY` | Referenced by Gemini profiles |
-| `WEB_SEARCH_API_KEY` | Optional WebSearch provider key |
 
 Run `/config list`, `/model list`, or `/doctor` to inspect the effective setup. Credential values are always redacted.
+
+Profiles support a single API Key source, explicit custom or no-auth policies, capability overrides and protocol options. General reasoning uses `reasoning.mode` (`auto`, `on`, `off`), `budgetTokens` and `effort`. Unknown models use a labelled 32000-token context estimate, unknown prices and conservative automatic reasoning. See [Model profiles](./docs/model-profiles.md), [environment inventory](./docs/configuration-inventory.md), and the [upgrade and rollback guide](./docs/configuration-migration.md).
 
 ## Where data is stored
 

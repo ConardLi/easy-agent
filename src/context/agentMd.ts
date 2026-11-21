@@ -16,7 +16,7 @@ export const PROJECT_MEMORY_FILE_NAMES = [AGENTS_MD_NAME, AGENT_MD_NAME] as cons
  * Compile a glob pattern (matched against absolute file paths) to a RegExp.
  * Supports `**` (any chars incl. separators), `*` (any non-separator run), and
  * `?` (single non-separator), the picomatch-style subset needed for
- * `claudeMdExcludes`.
+ * `agentMdExcludes`.
  */
 function globToRegExp(pattern: string): RegExp {
   let out = "";
@@ -40,7 +40,7 @@ function globToRegExp(pattern: string): RegExp {
 }
 
 /**
- * Merge the `claudeMdExcludes` glob list across all settings sources. Excludes
+ * Merge the `agentMdExcludes` glob list across all settings sources. Excludes
  * only ever REMOVE files (fail-safe), so they're read from every source.
  */
 async function loadAgentMdExcludes(cwd: string): Promise<string[]> {
@@ -48,7 +48,7 @@ async function loadAgentMdExcludes(cwd: string): Promise<string[]> {
   const seen = new Set<string>();
   const out: string[] = [];
   for (const src of sources) {
-    const arr = src.raw?.["claudeMdExcludes"];
+    const arr = src.raw?.["agentMdExcludes"];
     if (!Array.isArray(arr)) continue;
     for (const item of arr) {
       if (typeof item !== "string") continue;
@@ -119,7 +119,7 @@ export interface AgentMdFile {
   filePath: string;
   /** `global` is the user-wide file, `project` sits in the workspace, `ancestor` in a parent directory. */
   scope: "global" | "ancestor" | "project";
-  /** Matched by `claudeMdExcludes`, so it is not loaded. */
+  /** Matched by `agentMdExcludes`, so it is not loaded. */
   excluded: boolean;
   /** Content as loaded: HTML comments removed, trimmed. */
   content: string;

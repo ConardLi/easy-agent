@@ -1325,6 +1325,97 @@
             },
             "method": {
               "type": "string",
+              "const": "config/migrationPreview"
+            },
+            "params": {
+              "type": "object",
+              "properties": {
+                "scope": {
+                  "type": "string",
+                  "enum": [
+                    "user",
+                    "project",
+                    "local"
+                  ]
+                }
+              },
+              "required": [
+                "scope"
+              ]
+            }
+          },
+          "required": [
+            "jsonrpc",
+            "method"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "jsonrpc": {
+              "type": "string",
+              "const": "2.0"
+            },
+            "id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "method": {
+              "type": "string",
+              "const": "config/migrationApply"
+            },
+            "params": {
+              "type": "object",
+              "properties": {
+                "scope": {
+                  "type": "string",
+                  "enum": [
+                    "user",
+                    "project",
+                    "local"
+                  ]
+                },
+                "revision": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "scope",
+                "revision"
+              ]
+            }
+          },
+          "required": [
+            "jsonrpc",
+            "method"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "jsonrpc": {
+              "type": "string",
+              "const": "2.0"
+            },
+            "id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "method": {
+              "type": "string",
               "const": "config/write"
             },
             "params": {
@@ -7589,7 +7680,211 @@
                   },
                   "additionalProperties": {
                     "type": "object",
-                    "properties": {},
+                    "properties": {
+                      "protocol": {
+                        "type": "string",
+                        "enum": [
+                          "anthropic",
+                          "openai-chat",
+                          "openai-responses",
+                          "gemini"
+                        ]
+                      },
+                      "model": {
+                        "type": "string"
+                      },
+                      "baseURL": {
+                        "type": "string"
+                      },
+                      "apiKey": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "hasApiKey": {
+                        "type": "boolean"
+                      },
+                      "authentication": {
+                        "oneOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "const": "default"
+                              }
+                            },
+                            "required": [
+                              "type"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "const": "none"
+                              }
+                            },
+                            "required": [
+                              "type"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "const": "header"
+                              },
+                              "name": {
+                                "type": "string",
+                                "pattern": "^[!#$%&'*+\\-.^_`|~0-9A-Za-z]+$"
+                              },
+                              "prefix": {
+                                "type": "string",
+                                "pattern": "^[^\\r\\n]*$"
+                              }
+                            },
+                            "required": [
+                              "type",
+                              "name"
+                            ],
+                            "additionalProperties": false
+                          }
+                        ]
+                      },
+                      "protocolOptions": {
+                        "type": "object",
+                        "properties": {
+                          "anthropic": {
+                            "type": "object",
+                            "properties": {
+                              "adaptiveThinking": {
+                                "type": "boolean"
+                              },
+                              "interleavedThinking": {
+                                "type": "boolean"
+                              },
+                              "countTokens": {
+                                "type": "boolean"
+                              }
+                            },
+                            "additionalProperties": false
+                          },
+                          "openai-chat": {
+                            "type": "object",
+                            "properties": {
+                              "promptCacheKey": {
+                                "type": "boolean"
+                              },
+                              "reasoningOff": {
+                                "type": "string",
+                                "const": "none"
+                              }
+                            },
+                            "additionalProperties": false
+                          },
+                          "openai-responses": {
+                            "type": "object",
+                            "properties": {
+                              "promptCacheKey": {
+                                "type": "boolean"
+                              },
+                              "reasoningOff": {
+                                "type": "string",
+                                "const": "none"
+                              }
+                            },
+                            "additionalProperties": false
+                          },
+                          "gemini": {
+                            "type": "object",
+                            "properties": {
+                              "reasoningOff": {
+                                "type": "string",
+                                "const": "budget-zero"
+                              }
+                            },
+                            "additionalProperties": false
+                          }
+                        },
+                        "additionalProperties": false
+                      },
+                      "credentialSource": {
+                        "type": "string",
+                        "enum": [
+                          "helper",
+                          "apiKey",
+                          "none"
+                        ]
+                      },
+                      "metadata": {
+                        "type": "object",
+                        "properties": {
+                          "reasoning": {
+                            "type": "boolean"
+                          },
+                          "adaptiveReasoning": {
+                            "type": "boolean"
+                          },
+                          "interleavedReasoning": {
+                            "type": "boolean"
+                          },
+                          "effort": {
+                            "type": "boolean"
+                          },
+                          "contextWindow": {
+                            "type": "number"
+                          },
+                          "contextWindowSource": {
+                            "type": "string",
+                            "enum": [
+                              "profile",
+                              "catalog",
+                              "estimate"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "reasoning",
+                          "adaptiveReasoning",
+                          "interleavedReasoning",
+                          "effort",
+                          "contextWindow",
+                          "contextWindowSource"
+                        ],
+                        "additionalProperties": {}
+                      },
+                      "headers": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "source": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "protocol",
+                      "model",
+                      "baseURL",
+                      "apiKey",
+                      "hasApiKey",
+                      "authentication",
+                      "credentialSource",
+                      "metadata",
+                      "headers",
+                      "source"
+                    ],
                     "additionalProperties": {}
                   }
                 },
@@ -7640,6 +7935,99 @@
             }
           },
           "required": [
+            "reload"
+          ]
+        },
+        "config/migrationPreview": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string"
+            },
+            "revision": {
+              "type": "string"
+            },
+            "changed": {
+              "type": "boolean"
+            },
+            "changes": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "field": {
+                    "type": "string"
+                  },
+                  "before": {},
+                  "after": {}
+                },
+                "required": [
+                  "field",
+                  "before",
+                  "after"
+                ]
+              }
+            },
+            "notices": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "level": {
+                    "type": "string",
+                    "enum": [
+                      "info",
+                      "warning",
+                      "error"
+                    ]
+                  },
+                  "field": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "level",
+                  "field",
+                  "message"
+                ]
+              }
+            }
+          },
+          "required": [
+            "path",
+            "revision",
+            "changed",
+            "changes",
+            "notices"
+          ]
+        },
+        "config/migrationApply": {
+          "type": "object",
+          "properties": {
+            "changed": {
+              "type": "boolean"
+            },
+            "backup": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "reload": {
+              "type": "string",
+              "const": "restart"
+            }
+          },
+          "required": [
+            "changed",
+            "backup",
             "reload"
           ]
         },
@@ -9581,6 +9969,8 @@
         "marketplace/remove",
         "config/read",
         "config/write",
+        "config/migrationPreview",
+        "config/migrationApply",
         "workspace/trust",
         "models/check",
         "models/list",

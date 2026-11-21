@@ -27,6 +27,16 @@ import { loadSettingSources, type LoadedSource, type SettingSource } from "../co
 import { getUserSettingsPath } from "../utils/paths.js";
 import { HARNESS_KEYS, type HarnessKey, type HarnessLayerSource, type HarnessSettingsInput } from "./keys.js";
 import { BUILT_IN_HARNESSES, HARNESS_NAME, HarnessSpecSchema, type HarnessSpec, type TextSource } from "./spec.js";
+import {
+  legacyDefaultModelIsShadowed,
+  legacyProfileId,
+  migrateSettings,
+  migrateLegacyEnvironment,
+  LEGACY_ENVIRONMENT_NAMES,
+  savedProfileOwnsConnection,
+} from "../config/migration.js";
+import { configurationInputEnvironment } from "../config/environment.js";
+import { ConfigurationError } from "../config/values.js";
 
 export interface HarnessContribution {
   source: HarnessLayerSource;
@@ -100,6 +110,8 @@ export interface HarnessInputs {
   /** Base for relative `file` paths. */
   configDir?: string;
   home?: string;
+  /** IDs explicitly declared before compatibility conversion. */
+  canonicalProfileIds?: readonly string[];
 }
 
 const INLINE = "(inline)";
@@ -139,7 +151,16 @@ function readHarnessDefinitions(inputs: HarnessInputs, issues: HarnessIssue[]): 
 }
 
 function parseSpec(name: string, raw: unknown, issues: HarnessIssue[]): HarnessSpec | undefined {
-  const result = HarnessSpecSchema.safeParse(raw);
+  const migration = migrateSettings({ harnesses: { [name]: raw } });
+  for (const notice of migration.notices) {
+    issues.push({
+      level: notice.level === "error" ? "error" : "warning",
+      harness: name,
+      path: notice.field,
+      message: notice.message,
+    });
+  }
+  const result = HarnessSpecSchema.safeParse((migration.value.harnesses as Record<string, unknown>)[name]);
   if (result.success) return result.data;
   for (const issue of result.error.issues) {
     const where = issue.path.join(".");
@@ -350,10 +371,19 @@ function resolveKey(
   issues: HarnessIssue[],
 ): ResolvedHarnessValue {
   const layer = (source: SettingSource) => inputs.layers.find((candidate) => candidate.source === source);
-  const envRead = key.env?.read(inputs.env);
+  let envRead = key.env?.read(inputs.env);
+  if (key.path === "features.toolSearch" || key.path === "features.toolSearchAutoThreshold") {
+    const migrated = migrateLegacyEnvironment(inputs.env).toolSearch;
+    if (migrated)
+      envRead = {
+        value: key.path.endsWith("Threshold") ? migrated.toolSearchAutoThreshold : migrated.toolSearch,
+        name: "legacy ToolSearch migration",
+      };
+  }
+  if (envRead && "invalid" in envRead) throw new ConfigurationError(envRead.name, envRead.invalid, "environment");
   const envCandidate: Candidate | undefined = envRead
     ? "invalid" in envRead
-      ? { source: "environment", detail: envRead.name, value: envRead.raw, ignoredReason: envRead.invalid }
+      ? undefined
       : { source: "environment", detail: envRead.name, value: envRead.value }
     : undefined;
 
@@ -372,13 +402,12 @@ function resolveKey(
       withHarness ? harnessCandidate : undefined,
       settingsAt(input, "project"),
       settingsAt(input, "local"),
-      key.env?.position === "override" ? envCandidate : undefined,
+      envCandidate,
       settingsAt(input, "flag"),
       key.argvAgentTeams && inputs.agentTeamsFlag
         ? ({ source: "flag", detail: "--agent-teams", value: true } satisfies Candidate)
         : undefined,
       settingsAt(input, "policy"),
-      key.env?.position === "top" ? envCandidate : undefined,
     ].filter((candidate): candidate is Candidate => candidate !== undefined);
 
   let candidates = ordered(key.settings, true);
@@ -386,10 +415,7 @@ function resolveKey(
     candidates = [...candidates, ...ordered(key.fallbackSettings, false)];
   }
 
-  const base: HarnessContribution =
-    key.env?.position === "default" && envCandidate && !envCandidate.ignoredReason
-      ? envCandidate
-      : { source: "built-in", value: key.defaultValue };
+  const base: HarnessContribution = { source: "built-in", value: key.defaultValue };
   const accepted = candidates.filter((candidate) => !candidate.ignoredReason);
   const ignored = candidates
     .filter((candidate) => candidate.ignoredReason)
@@ -459,10 +485,55 @@ function deepFreeze<T>(value: T): T {
 
 /** Resolve a harness from already-loaded inputs. Pure apart from reading referenced text files. */
 export function resolveHarnessFromInputs(inputs: HarnessInputs): ResolvedHarness {
+  const originalInputs = inputs;
   const issues: HarnessIssue[] = [];
+  const migration = migrateLegacyEnvironment(inputs.env);
+  const env = { ...migration.env };
+  const configuredIds = new Set(
+    inputs.layers.flatMap((layer) => Object.keys((layer.raw?.models as object | undefined) ?? {})),
+  );
+  const legacyClassifier = env.EASY_AGENT_AUTO_MODE_MODEL?.trim();
+  if (migration.legacyConnection && legacyClassifier && !configuredIds.has(legacyClassifier))
+    env.EASY_AGENT_AUTO_MODE_MODEL = legacyProfileId(legacyClassifier);
+  const legacyDefaultModelShadowed = legacyDefaultModelIsShadowed(
+    inputs.layers
+      .filter((layer) => ["user", "project", "local"].includes(layer.source))
+      .map((layer) => ({ raw: layer.raw, trusted: layer.source === "user" || inputs.workspaceTrusted })),
+  );
+  if (migration.legacyConnection) {
+    for (const key of ["EASY_AGENT_PROTOCOL", "EASY_AGENT_MODEL", "EASY_AGENT_BASE_URL", "EASY_AGENT_API_KEY"])
+      delete env[key];
+  }
+  inputs = {
+    ...inputs,
+    env,
+    layers: inputs.layers.map((layer) => ({
+      ...layer,
+      raw: layer.raw
+        ? migrateSettings(layer.raw, {
+            knownProfileIds: configuredIds,
+            ...(layer.source === "flag" ? {} : { legacyEnvironment: migration }),
+            legacyDefaultModelShadowed,
+          }).value
+        : layer.raw,
+    })),
+  };
   const { name, chain, selectedBy } = buildChain(inputs, issues);
   const values: Record<string, ResolvedHarnessValue> = {};
   for (const key of HARNESS_KEYS) values[key.path] = resolveKey(key, chain, inputs, issues);
+  const savedProfileSelected = savedProfileOwnsConnection(
+    originalInputs.layers
+      .filter((layer) => !["project", "local"].includes(layer.source) || inputs.workspaceTrusted)
+      .map((layer) => layer.raw),
+    typeof values["model.main"]?.value === "string" ? values["model.main"].value : undefined,
+    originalInputs.canonicalProfileIds ? new Set(originalInputs.canonicalProfileIds) : undefined,
+  );
+  for (const notice of migrateLegacyEnvironment(originalInputs.env, { savedProfileSelected }).notices)
+    issues.push({
+      level: notice.level === "error" ? "error" : "warning",
+      path: notice.field,
+      message: notice.message,
+    });
   if (values["trace.level"]?.value === "full") {
     issues.push({
       level: "warning",
@@ -504,7 +575,10 @@ export async function resolveHarness(options: ResolveHarnessOptions): Promise<Re
   return resolveHarnessFromInputs({
     layers: sources.map(({ source, path: file, raw }: LoadedSource) => ({ source, path: file, raw })),
     workspaceTrusted,
-    env: options.env ?? process.env,
+    canonicalProfileIds: sources
+      .filter((source) => !["project", "local"].includes(source.source) || workspaceTrusted)
+      .flatMap((source) => source.canonicalProfileIds ?? []),
+    env: options.env ?? configurationInputEnvironment(),
     agentTeamsFlag: hasAgentTeamsFlag(),
     ...(options.name !== undefined ? { name: options.name } : {}),
     ...(options.spec !== undefined ? { spec: options.spec } : {}),
@@ -537,11 +611,13 @@ export async function harnessDefined(cwd: string, name: string): Promise<boolean
   return Object.hasOwn(readHarnessDefinitions({ layers, workspaceTrusted: false, env: {} }, []), name);
 }
 
-const ENVIRONMENT_NAMES = [...new Set(HARNESS_KEYS.flatMap((key) => key.env?.names ?? []))];
+const ENVIRONMENT_NAMES = [
+  ...new Set([...HARNESS_KEYS.flatMap((key) => key.env?.names ?? []), ...LEGACY_ENVIRONMENT_NAMES]),
+];
 let processHarness: { fingerprint: string; resolved: ResolvedHarness } | undefined;
 
 /** A copy of the variables Harness keys read, so later changes to the process environment do not apply. */
-export function harnessEnvironment(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+export function harnessEnvironment(env: NodeJS.ProcessEnv = configurationInputEnvironment()): NodeJS.ProcessEnv {
   return Object.fromEntries(
     ENVIRONMENT_NAMES.filter((name) => env[name] !== undefined).map((name) => [name, env[name]]),
   );
@@ -553,12 +629,13 @@ export function harnessEnvironment(env: NodeJS.ProcessEnv = process.env): NodeJS
  * reused until one of the variables it reads changes.
  */
 export function resolveProcessHarness(): ResolvedHarness {
+  const env = configurationInputEnvironment();
   const agentTeamsFlag = hasAgentTeamsFlag();
-  const fingerprint = JSON.stringify([agentTeamsFlag, ...ENVIRONMENT_NAMES.map((name) => process.env[name] ?? null)]);
+  const fingerprint = JSON.stringify([agentTeamsFlag, ...ENVIRONMENT_NAMES.map((name) => env[name] ?? null)]);
   if (processHarness?.fingerprint !== fingerprint) {
     processHarness = {
       fingerprint,
-      resolved: resolveHarnessFromInputs({ layers: [], workspaceTrusted: false, env: process.env, agentTeamsFlag }),
+      resolved: resolveHarnessFromInputs({ layers: [], workspaceTrusted: false, env, agentTeamsFlag }),
     };
   }
   return processHarness.resolved;

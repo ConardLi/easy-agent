@@ -122,7 +122,7 @@ test("slash offers skills and Agent commands, and UI aliases open their control"
     await input.fill("/mo");
     await expect(menu.getByRole("option", { name: /切换模型/ })).toBeVisible();
     await input.press("Enter");
-    await expect(page.getByPlaceholder("输入模型名称或配置里的模型句柄")).toBeVisible();
+    await expect(page.getByPlaceholder("搜索已配置的模型")).toBeVisible();
   } finally {
     await app.close();
   }

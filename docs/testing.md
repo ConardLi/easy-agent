@@ -39,7 +39,8 @@ The terminal UI, the entry points, the RPC server, and the ACP agent use the ses
 
 ```bash
 uv run acp-tck --agent-cwd /tmp/acp-wd --agent-env HOME=/tmp/acp-home \
-  --agent-env ANTHROPIC_BASE_URL=<fixture url> --agent-env ANTHROPIC_AUTH_TOKEN=fixture \
+  --agent-env EASY_AGENT_PROTOCOL=anthropic --agent-env EASY_AGENT_MODEL=fixture \
+  --agent-env EASY_AGENT_BASE_URL=<fixture url> --agent-env EASY_AGENT_API_KEY=fixture \
   -- node dist/eagent.js --acp
 ```
 

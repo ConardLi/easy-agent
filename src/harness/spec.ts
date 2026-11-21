@@ -11,6 +11,7 @@
  */
 
 import { z } from "zod";
+import { ReasoningSchema } from "../config/modelSchema.js";
 
 /** Built-in harnesses. Their values come from the defaults in `keys.ts`. */
 export const BUILT_IN_HARNESSES = ["default"] as const;
@@ -63,6 +64,7 @@ const PromptSectionSchema = z.union([
 export const HarnessSpecSchema = z.strictObject({
   extends: z.string().trim().min(1).optional(),
   description: z.string().optional(),
+  reasoning: ReasoningSchema.optional(),
   model: z
     .strictObject({
       main: ModelHandle.optional(),
@@ -141,13 +143,6 @@ export const HarnessSpecSchema = z.strictObject({
       autoModeClassifier: z.boolean().optional(),
       toolSearch: z.enum(["off", "auto", "on"]).optional(),
       toolSearchAutoThreshold: z.number().min(0).max(100).optional(),
-      thinking: z.boolean().optional(),
-      thinkingBudget: z.number().int().positive().optional(),
-      thinkingInRequests: z.boolean().optional(),
-      adaptiveThinking: z.boolean().optional(),
-      interleavedThinking: z.boolean().optional(),
-      effort: z.enum(["low", "medium", "high", "max"]).optional(),
-      effortForAllModels: z.boolean().optional(),
       promptCaching: z.boolean().optional(),
       experimentalBetas: z.boolean().optional(),
       maxRetries: z.number().int().nonnegative().optional(),

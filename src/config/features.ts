@@ -9,7 +9,7 @@ import { resolveHarnessFromInputs, type ResolvedHarness, type ResolvedHarnessVal
 import { loadTrustedSettingSources, type LoadedSource } from "./sources.js";
 
 export type ToolSearchSetting = "off" | "auto" | "on";
-export type ModelRole = "background" | "think" | "longContext";
+export type ModelRole = "background" | "think" | "longContext" | "compaction" | "webFetch";
 export interface FeatureSettings {
   toolSearch: ToolSearchSetting;
   toolSearchAutoThreshold: number;
@@ -20,7 +20,7 @@ export interface FeatureSettings {
   warnings: string[];
 }
 
-const MODEL_ROLES: readonly ModelRole[] = ["background", "think", "longContext"];
+const MODEL_ROLES: readonly ModelRole[] = ["background", "think", "longContext", "compaction", "webFetch"];
 const LAYER_ORDER = ["built-in", "user", "harness", "project", "local", "environment", "flag", "policy"];
 
 function sourceLabel(entry: Pick<ResolvedHarnessValue, "source" | "detail">): string {
@@ -63,7 +63,7 @@ export function featureSettingsOf(resolved: ResolvedHarness, diagnostics: readon
   const legacy = toolSearch.contributions.find((contribution) => contribution.source === "environment");
   if (legacy) {
     warnings.push(
-      `${legacy.detail} is deprecated; use toolSearch/toolSearchAutoThreshold in settings or --tool-search. Supported throughout 0.x; removal no earlier than 1.0 with a migration notice.`,
+      `${legacy.detail} is deprecated; use toolSearch/toolSearchAutoThreshold in settings or --tool-search. Compatibility reading ends at the next announced breaking release; see the migration guide.`,
     );
   }
   const invalid = toolSearch.ignored.find((ignored) => ignored.source === "environment");

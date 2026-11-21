@@ -55,13 +55,12 @@ export interface AgentSettings {
   sandbox: SandboxSettings;
   disableAllHooks: boolean;
   env: EnvEntry[];
-  apiKeyHelper: string;
   checkpointingEnabled: boolean;
   cleanupPeriodDays: number;
-  alwaysThinkingEnabled: boolean;
-  effortLevel: "low" | "medium" | "high" | "max";
+  reasoningMode: "auto" | "on" | "off";
+  effortLevel: "" | "low" | "medium" | "high" | "max";
   defaultModel: string;
-  modelRoles: { background?: string; think?: string; longContext?: string };
+  modelRoles: { background?: string; think?: string; longContext?: string; compaction?: string; webFetch?: string };
 }
 
 type SandboxKey = keyof SandboxSettings;
@@ -75,10 +74,9 @@ export type SettingSources = Partial<Record<SettingKey, SettingLayer>>;
 
 /** Settings that only exist as environment variables or command-line flags today, and how to set them now. */
 export const TODO_SETTINGS: Record<string, string> = {
-  mcpConnectTimeout: "MCP_CONNECT_TIMEOUT",
+  mcpConnectTimeout: "EASY_AGENT_MCP_CONNECT_TIMEOUT_MS",
   autoModeModel: "EASY_AGENT_AUTO_MODE_MODEL",
-  "webSearch.adapter": "WEB_SEARCH_ADAPTER",
-  "webSearch.apiKey": "WEB_SEARCH_API_KEY",
+  "webSearch.adapter": "EASY_AGENT_WEB_SEARCH_BACKEND",
 };
 
 const SANDBOX_DEFAULTS: SandboxSettings = {
@@ -126,10 +124,9 @@ const SCALARS = [
   "prefersReducedMotion",
   "mode",
   "disableAllHooks",
-  "apiKeyHelper",
   "checkpointingEnabled",
   "cleanupPeriodDays",
-  "alwaysThinkingEnabled",
+  "reasoningMode",
   "effortLevel",
   "defaultModel",
 ] as const;
@@ -145,11 +142,10 @@ const DEFAULTS: Pick<AgentSettings, (typeof SCALARS)[number]> = {
   prefersReducedMotion: false,
   mode: "default",
   disableAllHooks: false,
-  apiKeyHelper: "",
   checkpointingEnabled: true,
   cleanupPeriodDays: 30,
-  alwaysThinkingEnabled: true,
-  effortLevel: "medium",
+  reasoningMode: "auto",
+  effortLevel: "",
   defaultModel: "",
 };
 
@@ -166,9 +162,9 @@ const applied = (config: ConfigSnapshot) => config.sources.filter((s) => s.appli
 export function agentFromConfig(config: ConfigSnapshot): { agent: AgentSettings; sources: SettingSources } {
   const sources: SettingSources = {};
   const scalar = <K extends (typeof SCALARS)[number]>(key: K): AgentSettings[K] => {
-    const effective = config.effective[key];
+    const effective = config.effective[key === "defaultModel" ? "model" : key === "reasoningMode" || key === "effortLevel" ? "reasoning" : key];
     if (effective && effective.source !== "default") sources[key] = effective.source;
-    const value = effective?.value;
+    const value = key === "reasoningMode" ? at(effective?.value, ["mode"]) : key === "effortLevel" ? at(effective?.value, ["effort"]) : effective?.value;
     return (value === undefined || value === null ? DEFAULTS[key] : value) as AgentSettings[K];
   };
   const values = Object.fromEntries(SCALARS.map((key) => [key, scalar(key)])) as Pick<AgentSettings, (typeof SCALARS)[number]>;
@@ -204,7 +200,7 @@ export function agentFromConfig(config: ConfigSnapshot): { agent: AgentSettings;
   const modelRoles: AgentSettings["modelRoles"] = {};
   for (const src of applied(config)) {
     const raw = src.values.modelRoles as Record<string, string> | undefined;
-    for (const role of ["background", "think", "longContext"] as const) {
+    for (const role of ["background", "think", "longContext", "compaction", "webFetch"] as const) {
       if (raw?.[role]) {
         modelRoles[role] = raw[role];
         sources[`modelRoles.${role}`] = src.source;
@@ -280,6 +276,14 @@ export function writesFor(config: ConfigSnapshot, scope: WriteScope, prev: Agent
       queue("modelRoles", Object.keys(roles).length ? roles : null);
     } else if (key === "statusLine") {
       queue(key, next.statusLine.trim() ? next.statusLine.trim() : null);
+    } else if (key === "defaultModel") {
+      queue("model", next.defaultModel || null);
+    } else if (key === "reasoningMode" || key === "effortLevel") {
+      const base = (pending.reasoning as Record<string, unknown>) ?? (raw.reasoning as Record<string, unknown>) ?? {};
+      queue(
+        "reasoning",
+        setPath(base, [key === "reasoningMode" ? "mode" : "effort"], key === "reasoningMode" ? next.reasoningMode : next.effortLevel || undefined),
+      );
     } else if (key in DEFAULTS) {
       const value = next[key as (typeof SCALARS)[number]];
       queue(key, value === "" ? null : value);

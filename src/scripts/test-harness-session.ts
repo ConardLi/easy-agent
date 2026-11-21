@@ -30,7 +30,6 @@ for (const key of Object.keys(process.env)) {
 process.env.HOME = home;
 process.env.USERPROFILE = home;
 process.env.EASY_AGENT_DISABLE_HOOKS = "1";
-process.env.ANTHROPIC_MODEL = "claude-test-model";
 process.chdir(cwd);
 
 const sdk = await import("../sdk/index.js");
@@ -47,7 +46,14 @@ const localSettings = path.join(cwd, ".easy-agent", "settings.local.json");
 const writeJson = (file: string, value: unknown) => writeFile(file, `${JSON.stringify(value, null, 2)}\n`);
 
 async function setAgents(harnesses: Record<string, unknown>): Promise<void> {
-  await writeJson(userSettings, { harnesses });
+  await writeJson(userSettings, {
+    harnesses,
+    model: "test",
+    models: {
+      test: { protocol: "anthropic", model: "claude-test-model", authentication: { type: "none" } },
+      historical: { protocol: "anthropic", model: "old-model", authentication: { type: "none" } },
+    },
+  });
   resetSettingsCache();
 }
 

@@ -38,6 +38,7 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { installConfigurationEnvironment } from "../config/environment.js";
 
 import { isAgentTeamsEnabled } from "../utils/agentTeamsEnabled.js";
 import {
@@ -130,11 +131,13 @@ async function withTeamsFlag<T>(enabled: boolean, fn: () => Promise<T>): Promise
   const prevEnv = process.env["EASY_AGENT_TEAMS"];
   if (enabled) process.env["EASY_AGENT_TEAMS"] = "1";
   else delete process.env["EASY_AGENT_TEAMS"];
+  installConfigurationEnvironment(process.env);
   try {
     return await fn();
   } finally {
     if (prevEnv !== undefined) process.env["EASY_AGENT_TEAMS"] = prevEnv;
     else delete process.env["EASY_AGENT_TEAMS"];
+    installConfigurationEnvironment(process.env);
   }
 }
 

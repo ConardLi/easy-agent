@@ -26,7 +26,6 @@ await Promise.all([mkdir(path.join(home, ".easy-agent"), { recursive: true }), m
 process.env.HOME = home;
 process.env.USERPROFILE = home;
 process.env.EASY_AGENT_DISABLE_HOOKS = "1";
-process.env.EASY_AGENT_ENABLE_TOOL_SEARCH = "false";
 delete process.env.EASY_AGENT_DISABLE_PROMPT_CACHING;
 process.chdir(cwd);
 
@@ -273,8 +272,9 @@ try {
     });
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  process.env.ANTHROPIC_BASE_URL = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-  process.env.ANTHROPIC_AUTH_TOKEN = "fixture-token";
+  const { installFixtureProfile } = await import("./fixtures/anthropicFixture.js");
+  await installFixtureProfile(home, `http://127.0.0.1:${(server.address() as AddressInfo).port}`);
+  (await import("../config/sources.js")).resetSettingsCache();
   const { QueryEngine } = await import("../core/queryEngine.js");
 
   try {

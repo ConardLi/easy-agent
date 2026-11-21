@@ -46,14 +46,12 @@ for (const key of Object.keys(process.env)) {
 }
 process.env.HOME = home;
 process.env.USERPROFILE = home;
-process.env.ANTHROPIC_AUTH_TOKEN = "test-token";
 process.env.EASY_AGENT_DISABLE_HOOKS = "1";
 process.chdir(cwd);
 
-const { createAnthropicFixture, FIXTURE_MODEL } = await import("./fixtures/anthropicFixture.js");
+const { createAnthropicFixture, fixtureProfile } = await import("./fixtures/anthropicFixture.js");
 const fixture = createAnthropicFixture();
 await fixture.start();
-process.env.ANTHROPIC_MODEL = FIXTURE_MODEL;
 
 const { resolveHarnessFromInputs } = await import("../harness/resolve.js");
 const { selectionMatches, selectionOffReason, unmatchedSelectionEntries, toolConfigOf, toolConfigProblems } =
@@ -68,7 +66,21 @@ type AgentRuntime = Awaited<ReturnType<typeof createAgentRuntime>>;
 
 const userSettings = path.join(home, ".easy-agent", "settings.json");
 const projectSettings = path.join(cwd, ".easy-agent", "settings.json");
-const writeJson = (file: string, value: unknown) => writeFile(file, JSON.stringify(value, null, 2));
+const writeJson = (file: string, value: unknown) =>
+  writeFile(
+    file,
+    JSON.stringify(
+      file === userSettings
+        ? {
+            model: "fixture-model",
+            models: { "fixture-model": fixtureProfile(fixture.baseURL) },
+            ...(value as object),
+          }
+        : value,
+      null,
+      2,
+    ),
+  );
 
 let passed = 0;
 async function check(name: string, fn: () => Promise<void> | void): Promise<void> {

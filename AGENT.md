@@ -66,5 +66,5 @@ Most `test:*` commands run files under `src/scripts/`, but **`test:stage30` is t
 - **Multi-provider model config** lives in user/project `settings.json`:
   - Anthropic provider names pass through directly
   - Other providers use `protocol` + `baseURL` + `${ENV_VAR}` interpolation for API keys
-  - Relevant env vars: `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `WEB_SEARCH_API_KEY`
+  - Connection selection: `EASY_AGENT_PROFILE`, or explicit `EASY_AGENT_PROTOCOL` / `EASY_AGENT_MODEL` / `EASY_AGENT_BASE_URL` / `EASY_AGENT_API_KEY`. Provider variables work only through explicit profile references.
 - **Notable CLI flags:** `--print` (headless JSON output), `--plan`, `--auto`, `--dump-system-prompt`, `--model <name-or-profile>`.

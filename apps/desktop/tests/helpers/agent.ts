@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, type Page } from "@playwright/test";
 // The repository's scripted Anthropic API; the Agent the app starts talks to it instead of a real provider.
-import { type AnthropicFixture, createAnthropicFixture, FIXTURE_MODEL } from "../../../../src/scripts/fixtures/anthropicFixture";
+import { type AnthropicFixture, createAnthropicFixture } from "../../../../src/scripts/fixtures/anthropicFixture";
 import { answerFolderDialog, type LaunchedApp, launchApp } from "./app";
 import type { Prefs } from "../../src/shared/contract";
 
@@ -26,7 +26,7 @@ export async function createAgentWorld(): Promise<AgentWorld> {
   writeFileSync(join(project, "README.md"), "# Demo\n\nA project for desktop tests.");
 
   const fixture = createAnthropicFixture();
-  await fixture.start();
+  await fixture.start(home);
   return {
     fixture,
     project,
@@ -34,11 +34,8 @@ export async function createAgentWorld(): Promise<AgentWorld> {
     env: {
       HOME: home,
       USERPROFILE: home,
-      ANTHROPIC_BASE_URL: process.env.ANTHROPIC_BASE_URL ?? "",
-      ANTHROPIC_AUTH_TOKEN: "fixture-token",
-      ANTHROPIC_MODEL: FIXTURE_MODEL,
+      EASY_AGENT_API_KEY: "fixture-token",
       EASY_AGENT_DISABLE_HOOKS: "1",
-      EASY_AGENT_ENABLE_TOOL_SEARCH: "false",
       NO_COLOR: "1",
     },
   };

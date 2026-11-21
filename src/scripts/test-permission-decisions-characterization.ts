@@ -44,7 +44,7 @@ const GOLDEN_PATH = path.join(import.meta.dirname, "__golden__", "permission-dec
 
 const { createAnthropicFixture } = await import("./fixtures/anthropicFixture.js");
 const fixture = createAnthropicFixture();
-await fixture.start();
+await fixture.start(home);
 
 const { checkPermission } = await import("../permissions/permissions.js");
 type PermissionMode = import("../permissions/permissions.js").PermissionMode;

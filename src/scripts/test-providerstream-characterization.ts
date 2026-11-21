@@ -319,7 +319,7 @@ async function buildRecording(): Promise<string> {
     "openai-responses / explicit effort → reasoning.effort + summary",
     await record({
       name: "openai-responses effort=high",
-      profile: oai("openai-responses", "oair"),
+      profile: { ...oai("openai-responses", "oair"), capabilities: { reasoning: true, effort: true } },
       params: params(TEXT_MSGS),
       chunks: OAI_MINIMAL,
     }),
@@ -328,10 +328,13 @@ async function buildRecording(): Promise<string> {
 
   setSessionThinkingConfig({ type: "disabled" });
   push(
-    "openai-responses / think off → reasoning.effort=minimal, no summary",
+    "openai-responses / think off → verified reasoning.effort=none, no summary",
     await record({
       name: "openai-responses think off",
-      profile: oai("openai-responses", "oair"),
+      profile: {
+        ...oai("openai-responses", "oair"),
+        protocolOptions: { "openai-responses": { reasoningOff: "none" } },
+      },
       params: params(TEXT_MSGS),
       chunks: OAI_MINIMAL,
     }),
@@ -353,7 +356,7 @@ async function buildRecording(): Promise<string> {
     "openai-chat / explicit effort → reasoning_effort (top-level)",
     await record({
       name: "openai-chat effort=high",
-      profile: oai("openai-chat", "oai"),
+      profile: { ...oai("openai-chat", "oai"), capabilities: { reasoning: true, effort: true } },
       params: params(TEXT_MSGS),
       chunks: OAI_MINIMAL,
     }),

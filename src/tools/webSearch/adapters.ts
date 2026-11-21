@@ -19,7 +19,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 import he from "he";
 import { harnessSetting } from "../../harness/active.js";
 import { getAnthropicClientForProfile } from "../../services/api/client.js";
-import { resolveProfile } from "../../services/api/providers/profile.js";
+import { resolveProfile, getProfileBaseURL } from "../../services/api/providers/profile.js";
 import { classifyAPIError } from "../../services/api/errors.js";
 import { markMessageSource } from "../../core/messageSources.js";
 import { startRequestTrace } from "../../trace/requestTrace.js";
@@ -230,11 +230,9 @@ export function resolveBingUrl(rawUrl: string): string | undefined {
 
 // ─── Adapter selection ───────────────────────────────────────────────────
 
-function isFirstPartyAnthropic(baseURL: string | undefined): boolean {
-  const url = baseURL ?? process.env.ANTHROPIC_BASE_URL ?? "";
-  if (!url) return true; // default endpoint is api.anthropic.com
+function isFirstPartyAnthropic(url: string): boolean {
   try {
-    return new URL(url).hostname.endsWith("anthropic.com");
+    return new URL(url).hostname === "api.anthropic.com";
   } catch {
     return false;
   }
@@ -248,12 +246,19 @@ function isFirstPartyAnthropic(baseURL: string | undefined): boolean {
 export async function createAdapter(modelHandle?: string): Promise<WebSearchAdapter> {
   const override = harnessSetting<"bing" | "api" | undefined>("tools.webSearchBackend");
   if (override === "bing") return new BingSearchAdapter();
-  if (override === "api") return new AnthropicApiSearchAdapter(modelHandle);
+  if (override === "api") {
+    const profile = await resolveProfile(modelHandle ?? "");
+    if (profile.protocol !== "anthropic")
+      throw new Error(
+        "The API search backend requires an Anthropic profile; use EASY_AGENT_WEB_SEARCH_BACKEND=bing for this connection.",
+      );
+    return new AnthropicApiSearchAdapter(modelHandle);
+  }
 
   if (modelHandle) {
     try {
       const profile = await resolveProfile(modelHandle);
-      if (profile.protocol === "anthropic" && isFirstPartyAnthropic(profile.baseURL)) {
+      if (profile.protocol === "anthropic" && isFirstPartyAnthropic(getProfileBaseURL(profile))) {
         return new AnthropicApiSearchAdapter(modelHandle);
       }
     } catch {

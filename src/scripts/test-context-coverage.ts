@@ -79,11 +79,10 @@ await writeFile(
   )}\n`,
 );
 
-const { createAnthropicFixture, FIXTURE_MODEL } = await import("./fixtures/anthropicFixture.js");
+const { createAnthropicFixture } = await import("./fixtures/anthropicFixture.js");
 type RecordedRequest = import("./fixtures/anthropicFixture.js").RecordedRequest;
 const fixture = createAnthropicFixture();
-await fixture.start();
-process.env.ANTHROPIC_MODEL = FIXTURE_MODEL;
+await fixture.start(home);
 
 const sdk = await import("../sdk/index.js");
 const { runInScopeOf } = await import("../sdk/session.js");
@@ -131,7 +130,7 @@ const HIDDEN: ReadonlyArray<[string, MessageSource]> = [
   ["[task-notification]", "background_notification"],
   ["<teammate-messages>", "team_message"],
   [CONTEXT_UPDATE_MARKER, "context_update"],
-  ["[ultrathink]", "meta"],
+  ["Output token limit hit.", "meta"],
   ["<command-message>", "command"],
   ["<command-name>", "command"],
   ["[command_invocation:", "command"],
@@ -400,7 +399,7 @@ try {
       assertBreakdown(await session.getContext(), latestMain(records));
     });
 
-    await check("a background notification, a context update, and ultrathink", async () => {
+    await check("a background notification, a context update, and ordinary ultrathink text", async () => {
       fixture.script([{ kind: "text", text: "Noted." }]);
       const start = fixture.requests.length;
       runInScopeOf(session, () =>
@@ -410,8 +409,21 @@ try {
       await writeFile(path.join(cwd, "AGENT.md"), "Project rule: keep answers very short.\n");
       fixture.script([{ kind: "text", text: "Thought about it." }]);
       await say(session, "ultrathink about the notification");
+      assert.equal(fixture.requests.at(-1)!.body.thinking, undefined, "ordinary text cannot enable reasoning");
       const records = await all();
       assertBreakdown(await session.getContext(), latestMain(records));
+    });
+
+    await check("output truncation adds an attributed continuation message", async () => {
+      fixture.script([
+        { kind: "text", text: "Partial", stopReason: "max_tokens" },
+        { kind: "text", text: "Still partial", stopReason: "max_tokens" },
+        { kind: "text", text: "Finished." },
+      ]);
+      await say(session, "Finish the response");
+      const records = await all();
+      assertBreakdown(await session.getContext(), latestMain(records));
+      assert.ok(seenSources.has("meta"), "continuation has the meta source");
     });
 
     await check("a teammate's mail", async () => {

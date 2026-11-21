@@ -16,11 +16,12 @@
 
 import type { SettingScope } from "../config/catalog.js";
 import type { HarnessComponent } from "./spec.js";
+import { configBoolean, configInteger, configEnum, configString } from "../config/values.js";
+import { migrateLegacyEnvironment, parseLegacyToolSearch } from "../config/migration.js";
+import { ENVIRONMENT_PROFILE_ID } from "../config/modelSchema.js";
 
 /** Retries for a failed model request when nothing sets `features.maxRetries`. */
 export const DEFAULT_MAX_RETRIES = 10;
-/** Model when no setting, flag, Agent, or ANTHROPIC_MODEL selects one. */
-export const FALLBACK_MODEL = "claude-sonnet-4-20250514";
 /** Characters for the skill listing when nothing sets `skills.listingBudgetChars`. */
 export const DEFAULT_BUDGET_CHARS = 8000;
 /** Recent messages compaction keeps as they are when nothing sets `compaction.keepRecentMessages`. */
@@ -52,12 +53,6 @@ export type HarnessEnvRead =
 export interface HarnessEnvInput {
   names: readonly string[];
   read: (env: NodeJS.ProcessEnv) => HarnessEnvRead;
-  /**
-   * - `default`: stands in for the built-in default; any settings layer wins over it.
-   * - `override`: above user, project, and local settings, below flags and policy.
-   * - `top`: above every settings layer, policy included.
-   */
-  position: "default" | "override" | "top";
 }
 
 export interface HarnessKey {
@@ -123,55 +118,27 @@ function positiveInteger(raw: Record<string, unknown>, key: string): number | un
 
 // ─── Environment readers ───────────────────────────────────────────────
 
-const TRUTHY = new Set(["1", "true", "yes", "on"]);
-const isTruthy = (value: string | undefined) => Boolean(value) && TRUTHY.has(value!.trim().toLowerCase());
+export { parseLegacyToolSearch };
 
-/** Set to any non-empty value. */
-const present = (value: string | undefined) => Boolean(value);
-
-function positiveIntegerFrom(value: string | undefined): number | undefined {
-  if (!value) return undefined;
-  const parsed = Number.parseInt(value, 10);
-  return !Number.isNaN(parsed) && parsed > 0 ? parsed : undefined;
-}
-
-/** The deprecated `EASY_AGENT_ENABLE_TOOL_SEARCH` spellings: on/off words, `auto`, and `auto:N`. */
-export function parseLegacyToolSearch(
-  value: string,
-): { toolSearch: "off" | "auto" | "on"; toolSearchAutoThreshold: number } | null {
-  const normalized = value.trim().toLowerCase();
-  if (["true", "1", "yes", "on"].includes(normalized)) return { toolSearch: "on", toolSearchAutoThreshold: 10 };
-  if (["false", "0", "no", "off"].includes(normalized)) return { toolSearch: "off", toolSearchAutoThreshold: 10 };
-  if (normalized === "auto") return { toolSearch: "auto", toolSearchAutoThreshold: 10 };
-  if (normalized.startsWith("auto:")) {
-    const n = Number.parseInt(normalized.slice(5), 10);
-    const threshold = Number.isFinite(n) ? Math.max(0, Math.min(100, n)) : 10;
-    return {
-      toolSearch: threshold === 0 ? "on" : threshold === 100 ? "off" : "auto",
-      toolSearchAutoThreshold: threshold,
-    };
-  }
-  return null;
-}
-
-function legacyToolSearch(env: NodeJS.ProcessEnv): { raw: string; name: string } | undefined {
-  if (env.EASY_AGENT_ENABLE_TOOL_SEARCH !== undefined) {
-    return { raw: env.EASY_AGENT_ENABLE_TOOL_SEARCH, name: "EASY_AGENT_ENABLE_TOOL_SEARCH" };
-  }
-  if (env.ENABLE_TOOL_SEARCH !== undefined) return { raw: env.ENABLE_TOOL_SEARCH, name: "ENABLE_TOOL_SEARCH" };
-  return undefined;
-}
-
-const legacyToolSearchField =
-  (field: "toolSearch" | "toolSearchAutoThreshold") =>
-  (env: NodeJS.ProcessEnv): HarnessEnvRead => {
-    const legacy = legacyToolSearch(env);
-    if (!legacy) return undefined;
-    const parsed = parseLegacyToolSearch(legacy.raw);
-    return parsed
-      ? { value: parsed[field], name: legacy.name }
-      : { invalid: "expected on, off, auto or auto:N", name: legacy.name, raw: legacy.raw };
+function envValue(name: string, parse: (value: string | undefined, name: string) => unknown): HarnessEnvInput {
+  return {
+    names: [name],
+    read: (env) => {
+      const value = parse(env[name], name);
+      return value === undefined ? undefined : { value, name };
+    },
   };
+}
+const envInteger = (name: string, min = 1) => envValue(name, (value, field) => configInteger(value, field, min));
+const envBoolean = (name: string, invert = false) =>
+  envValue(name, (value, field) => {
+    const parsed = configBoolean(value, field);
+    return parsed === undefined ? undefined : invert ? !parsed : parsed;
+  });
+const reasoningField =
+  (key: string) =>
+  (raw: Record<string, unknown>): unknown =>
+    raw.reasoning && typeof raw.reasoning === "object" ? (raw.reasoning as Record<string, unknown>)[key] : undefined;
 
 // ─── Keys ──────────────────────────────────────────────────────────────
 
@@ -193,19 +160,41 @@ export const HARNESS_KEYS: readonly HarnessKey[] = [
   {
     path: "model.main",
     component: "model",
-    summary: "Main model or model profile.",
-    defaultValue: FALLBACK_MODEL,
+    summary: "Main model profile ID; unset selects the only available profile.",
+    defaultValue: "",
     merge: "replace",
     settings: { key: "model", read: trimmedString("model"), scope: "trusted" },
-    fallbackSettings: { key: "defaultModel", read: trimmedString("defaultModel"), scope: "trusted" },
     env: {
-      names: ["ANTHROPIC_MODEL"],
-      read: (env) => (env.ANTHROPIC_MODEL ? { value: env.ANTHROPIC_MODEL, name: "ANTHROPIC_MODEL" } : undefined),
-      position: "default",
+      names: ["EASY_AGENT_PROFILE", "EASY_AGENT_PROTOCOL", "EASY_AGENT_MODEL", "EASY_AGENT_BASE_URL"],
+      read: (env) => {
+        const migration = migrateLegacyEnvironment(env);
+        const canonical = migration.env;
+        // Legacy model variables used to be a fallback, not an override of a
+        // saved selection. The profile migration preserves that relationship.
+        if (migration.legacyConnection) return undefined;
+        if (
+          configString(canonical.EASY_AGENT_PROFILE) &&
+          ["EASY_AGENT_PROTOCOL", "EASY_AGENT_MODEL", "EASY_AGENT_BASE_URL"].some((name) =>
+            configString(canonical[name]),
+          )
+        ) {
+          return { value: ENVIRONMENT_PROFILE_ID, name: "environment.connection" };
+        }
+        if (configString(canonical.EASY_AGENT_PROFILE))
+          return { value: canonical.EASY_AGENT_PROFILE!.trim(), name: "EASY_AGENT_PROFILE" };
+        if (
+          ["EASY_AGENT_PROTOCOL", "EASY_AGENT_MODEL", "EASY_AGENT_BASE_URL"].some((name) =>
+            configString(canonical[name]),
+          )
+        ) {
+          return { value: ENVIRONMENT_PROFILE_ID, name: "EASY_AGENT_PROTOCOL/EASY_AGENT_MODEL" };
+        }
+        return undefined;
+      },
     },
     applied: true,
   },
-  ...(["background", "think", "longContext"] as const).map(
+  ...(["background", "think", "longContext", "compaction", "webFetch"] as const).map(
     (role): HarnessKey => ({
       path: `model.roles.${role}`,
       component: "model",
@@ -220,18 +209,9 @@ export const HARNESS_KEYS: readonly HarnessKey[] = [
     component: "model",
     summary: "Model for the Auto Mode classifier; unset uses the session's model.",
     merge: "replace",
-    env: {
-      names: ["EASY_AGENT_AUTO_MODE_MODEL"],
-      read: (env) =>
-        env.EASY_AGENT_AUTO_MODE_MODEL
-          ? { value: env.EASY_AGENT_AUTO_MODE_MODEL, name: "EASY_AGENT_AUTO_MODE_MODEL" }
-          : undefined,
-      position: "override",
-    },
+    env: envValue("EASY_AGENT_AUTO_MODE_MODEL", (value) => configString(value)),
     applied: true,
   },
-  specOnly("model.roles.compaction", "model", "Model for compaction summaries."),
-  specOnly("model.roles.webFetch", "model", "Model for WebFetch summaries."),
 
   ...selection("tools", "tools", true),
   {
@@ -256,14 +236,7 @@ export const HARNESS_KEYS: readonly HarnessKey[] = [
     component: "tools",
     summary: "WebSearch backend; unset picks one from the model endpoint.",
     merge: "replace",
-    env: {
-      names: ["WEB_SEARCH_ADAPTER"],
-      read: (env) =>
-        env.WEB_SEARCH_ADAPTER === "bing" || env.WEB_SEARCH_ADAPTER === "api"
-          ? { value: env.WEB_SEARCH_ADAPTER, name: "WEB_SEARCH_ADAPTER" }
-          : undefined,
-      position: "override",
-    },
+    env: envValue("EASY_AGENT_WEB_SEARCH_BACKEND", (value, name) => configEnum(value, name, ["bing", "api"])),
     applied: true,
   },
 
@@ -327,19 +300,7 @@ export const HARNESS_KEYS: readonly HarnessKey[] = [
     component: "compaction",
     summary: "Context window size; unset uses the model's.",
     merge: "replace",
-    env: {
-      names: ["EASY_AGENT_MAX_CONTEXT_TOKENS", "CLAUDE_CODE_MAX_CONTEXT_TOKENS"],
-      read: (env) => {
-        const name = env.EASY_AGENT_MAX_CONTEXT_TOKENS
-          ? "EASY_AGENT_MAX_CONTEXT_TOKENS"
-          : "CLAUDE_CODE_MAX_CONTEXT_TOKENS";
-        const raw = env.EASY_AGENT_MAX_CONTEXT_TOKENS ?? env.CLAUDE_CODE_MAX_CONTEXT_TOKENS;
-        if (!raw) return undefined;
-        const value = positiveIntegerFrom(raw);
-        return value === undefined ? { invalid: "expected a positive integer", name, raw } : { value, name };
-      },
-      position: "override",
-    },
+    env: envInteger("EASY_AGENT_MAX_CONTEXT_TOKENS"),
     applied: true,
   },
 
@@ -392,14 +353,7 @@ export const HARNESS_KEYS: readonly HarnessKey[] = [
     summary: "Characters for the skill listing.",
     defaultValue: DEFAULT_BUDGET_CHARS,
     merge: "replace",
-    env: {
-      names: ["EASY_AGENT_SKILL_CHAR_BUDGET"],
-      read: (env) => {
-        const value = positiveIntegerFrom(env.EASY_AGENT_SKILL_CHAR_BUDGET);
-        return value === undefined ? undefined : { value, name: "EASY_AGENT_SKILL_CHAR_BUDGET" };
-      },
-      position: "override",
-    },
+    env: envInteger("EASY_AGENT_SKILL_CHAR_BUDGET"),
     applied: true,
   },
   ...selection("agents", "sub-agents", true),
@@ -421,11 +375,7 @@ export const HARNESS_KEYS: readonly HarnessKey[] = [
     summary: "Agent Teams tools.",
     defaultValue: false,
     merge: "replace",
-    env: {
-      names: ["EASY_AGENT_TEAMS"],
-      read: (env) => (isTruthy(env.EASY_AGENT_TEAMS) ? { value: true, name: "EASY_AGENT_TEAMS" } : undefined),
-      position: "override",
-    },
+    env: envBoolean("EASY_AGENT_TEAMS"),
     argvAgentTeams: true,
     applied: true,
   },
@@ -454,11 +404,6 @@ export const HARNESS_KEYS: readonly HarnessKey[] = [
     defaultValue: "on",
     merge: "replace",
     settings: { key: "toolSearch", read: (raw) => raw.toolSearch, scope: "trusted" },
-    env: {
-      names: ["EASY_AGENT_ENABLE_TOOL_SEARCH", "ENABLE_TOOL_SEARCH"],
-      read: legacyToolSearchField("toolSearch"),
-      position: "override",
-    },
     applied: true,
   },
   {
@@ -472,124 +417,36 @@ export const HARNESS_KEYS: readonly HarnessKey[] = [
       read: (raw) => raw.toolSearchAutoThreshold,
       scope: "trusted",
     },
-    env: {
-      names: ["EASY_AGENT_ENABLE_TOOL_SEARCH", "ENABLE_TOOL_SEARCH"],
-      read: legacyToolSearchField("toolSearchAutoThreshold"),
-      position: "override",
-    },
     applied: true,
   },
   {
-    path: "features.thinking",
-    component: "features",
-    summary: "Extended thinking on by default.",
-    defaultValue: true,
+    path: "reasoning.mode",
+    component: "reasoning",
+    summary: "Reasoning intent: auto uses confirmed model capabilities.",
+    defaultValue: "auto",
     merge: "replace",
-    settings: { key: "alwaysThinkingEnabled", read: boolean("alwaysThinkingEnabled"), scope: "trusted" },
-    env: {
-      names: ["MAX_THINKING_TOKENS"],
-      read: (env) => {
-        const raw = env.MAX_THINKING_TOKENS;
-        if (raw === undefined) return undefined;
-        const parsed = Number.parseInt(raw, 10);
-        return Number.isNaN(parsed)
-          ? { invalid: "expected 0 or a token budget", name: "MAX_THINKING_TOKENS", raw }
-          : { value: parsed > 0, name: "MAX_THINKING_TOKENS" };
-      },
-      position: "top",
-    },
+    settings: { key: "reasoning.mode", read: reasoningField("mode"), scope: "trusted" },
+    env: envValue("EASY_AGENT_REASONING", (value, name) => configEnum(value, name, ["auto", "on", "off"])),
     applied: true,
   },
   {
-    path: "features.thinkingBudget",
-    component: "features",
-    summary: "Fixed thinking budget in tokens; unset lets the model decide.",
+    path: "reasoning.budgetTokens",
+    component: "reasoning",
+    summary: "Reasoning budget in tokens.",
     merge: "replace",
-    env: {
-      names: ["MAX_THINKING_TOKENS"],
-      read: (env) => {
-        const value = positiveIntegerFrom(env.MAX_THINKING_TOKENS);
-        return value === undefined ? undefined : { value, name: "MAX_THINKING_TOKENS" };
-      },
-      position: "top",
-    },
+    settings: { key: "reasoning.budgetTokens", read: reasoningField("budgetTokens"), scope: "trusted" },
+    env: envInteger("EASY_AGENT_REASONING_BUDGET_TOKENS"),
     applied: true,
   },
   {
-    path: "features.thinkingInRequests",
-    component: "features",
-    summary: "Send thinking parameters to the model.",
-    defaultValue: true,
-    merge: "replace",
-    env: {
-      names: ["CLAUDE_CODE_DISABLE_THINKING"],
-      read: (env) =>
-        present(env.CLAUDE_CODE_DISABLE_THINKING) ? { value: false, name: "CLAUDE_CODE_DISABLE_THINKING" } : undefined,
-      position: "top",
-    },
-    applied: true,
-  },
-  {
-    path: "features.adaptiveThinking",
-    component: "features",
-    summary: "Use adaptive thinking where the model supports it.",
-    defaultValue: true,
-    merge: "replace",
-    env: {
-      names: ["CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING"],
-      read: (env) =>
-        present(env.CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING)
-          ? { value: false, name: "CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING" }
-          : undefined,
-      position: "top",
-    },
-    applied: true,
-  },
-  {
-    path: "features.interleavedThinking",
-    component: "features",
-    summary: "Send the interleaved-thinking beta header.",
-    defaultValue: true,
-    merge: "replace",
-    env: {
-      names: ["DISABLE_INTERLEAVED_THINKING"],
-      read: (env) =>
-        present(env.DISABLE_INTERLEAVED_THINKING) ? { value: false, name: "DISABLE_INTERLEAVED_THINKING" } : undefined,
-      position: "top",
-    },
-    applied: true,
-  },
-  {
-    path: "features.effort",
-    component: "features",
+    path: "reasoning.effort",
+    component: "reasoning",
     summary: "Default reasoning effort; unset lets the model decide.",
     merge: "replace",
     settings: {
-      key: "effortLevel",
-      read: (raw) =>
-        raw.effortLevel === "low" ||
-        raw.effortLevel === "medium" ||
-        raw.effortLevel === "high" ||
-        raw.effortLevel === "max"
-          ? raw.effortLevel
-          : undefined,
+      key: "reasoning.effort",
+      read: reasoningField("effort"),
       scope: "trusted",
-    },
-    applied: true,
-  },
-  {
-    path: "features.effortForAllModels",
-    component: "features",
-    summary: "Treat every model as supporting the effort parameter.",
-    defaultValue: false,
-    merge: "replace",
-    env: {
-      names: ["CLAUDE_CODE_ALWAYS_ENABLE_EFFORT"],
-      read: (env) =>
-        present(env.CLAUDE_CODE_ALWAYS_ENABLE_EFFORT)
-          ? { value: true, name: "CLAUDE_CODE_ALWAYS_ENABLE_EFFORT" }
-          : undefined,
-      position: "top",
     },
     applied: true,
   },
@@ -599,14 +456,7 @@ export const HARNESS_KEYS: readonly HarnessKey[] = [
     summary: "Prompt-cache markers and keys in requests.",
     defaultValue: true,
     merge: "replace",
-    env: {
-      names: ["EASY_AGENT_DISABLE_PROMPT_CACHING"],
-      read: (env) =>
-        /^(1|true|yes|on)$/i.test(env.EASY_AGENT_DISABLE_PROMPT_CACHING?.trim() ?? "")
-          ? { value: false, name: "EASY_AGENT_DISABLE_PROMPT_CACHING" }
-          : undefined,
-      position: "top",
-    },
+    env: envBoolean("EASY_AGENT_DISABLE_PROMPT_CACHING", true),
     applied: true,
   },
   {
@@ -615,20 +465,7 @@ export const HARNESS_KEYS: readonly HarnessKey[] = [
     summary: "Experimental beta request fields.",
     defaultValue: true,
     merge: "replace",
-    env: {
-      names: ["EASY_AGENT_DISABLE_EXPERIMENTAL_BETAS", "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS"],
-      read: (env) => {
-        const truthy = (value: string | undefined) => /^(1|true|yes|on)$/i.test(value?.trim() ?? "");
-        if (truthy(env.EASY_AGENT_DISABLE_EXPERIMENTAL_BETAS)) {
-          return { value: false, name: "EASY_AGENT_DISABLE_EXPERIMENTAL_BETAS" };
-        }
-        if (truthy(env.CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS)) {
-          return { value: false, name: "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS" };
-        }
-        return undefined;
-      },
-      position: "top",
-    },
+    env: envBoolean("EASY_AGENT_DISABLE_EXPERIMENTAL_BETAS", true),
     applied: true,
   },
   {
@@ -637,19 +474,7 @@ export const HARNESS_KEYS: readonly HarnessKey[] = [
     summary: "Retries for a failed model request.",
     defaultValue: DEFAULT_MAX_RETRIES,
     merge: "replace",
-    env: {
-      names: ["EASY_AGENT_MAX_RETRIES", "CLAUDE_CODE_MAX_RETRIES"],
-      read: (env) => {
-        const name = env.EASY_AGENT_MAX_RETRIES !== undefined ? "EASY_AGENT_MAX_RETRIES" : "CLAUDE_CODE_MAX_RETRIES";
-        const raw = env.EASY_AGENT_MAX_RETRIES ?? env.CLAUDE_CODE_MAX_RETRIES;
-        if (!raw) return undefined;
-        const parsed = Number.parseInt(raw, 10);
-        return Number.isFinite(parsed) && parsed >= 0
-          ? { value: parsed, name }
-          : { invalid: "expected a non-negative integer", name, raw };
-      },
-      position: "override",
-    },
+    env: envInteger("EASY_AGENT_MAX_RETRIES", 0),
     applied: true,
   },
   {
@@ -668,14 +493,7 @@ export const HARNESS_KEYS: readonly HarnessKey[] = [
     defaultValue: true,
     merge: "replace",
     settings: { key: "checkpointingEnabled", read: boolean("checkpointingEnabled"), scope: "trusted" },
-    env: {
-      names: ["EASY_AGENT_DISABLE_CHECKPOINTING"],
-      read: (env) =>
-        isTruthy(env.EASY_AGENT_DISABLE_CHECKPOINTING)
-          ? { value: false, name: "EASY_AGENT_DISABLE_CHECKPOINTING" }
-          : undefined,
-      position: "top",
-    },
+    env: envBoolean("EASY_AGENT_DISABLE_CHECKPOINTING", true),
     applied: true,
   },
   {

@@ -9,6 +9,7 @@
  */
 
 import { secretEnvName } from "../../../shared/contract";
+import type { Authentication, ProtocolOptions, ModelCapabilities } from "eagent/sdk";
 import type { ConfigSnapshot } from "../../../shared/agent";
 import { apiKeyEntry, type KeySource, type ModelEntry, type Protocol, type ProviderConfig, TEMPLATES, templateById } from "../../lib/models";
 import { WRITE_SCOPES, type WriteScope } from "../../lib/scopes";
@@ -18,15 +19,23 @@ interface RawProfile {
   protocol?: string;
   model?: string;
   baseURL?: string;
-  apiKey?: string;
+  apiKey?: string | { helper: string };
   maxTokens?: number;
   headers?: Record<string, string>;
-  promptCacheKey?: boolean;
-  countTokens?: boolean;
+  authentication?: Authentication;
+  protocolOptions?: ProtocolOptions;
+  capabilities?: ModelCapabilities;
 }
 
 const ENV_REFERENCE = /^\$\{([A-Z0-9_]+)\}$/i;
 const trimSlash = (url: string) => url.replace(/\/+$/, "");
+const hostname = (url: string) => {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return "自定义端点";
+  }
+};
 
 function templateFor(protocol: Protocol, baseURL: string) {
   const url = trimSlash(baseURL);
@@ -37,8 +46,10 @@ function templateFor(protocol: Protocol, baseURL: string) {
   );
 }
 
-function keyFrom(apiKey: string | undefined, secrets: Record<string, string>): KeySource {
+function keyFrom(apiKey: RawProfile["apiKey"], secrets: Record<string, string>, helper = false): KeySource {
   if (!apiKey) return { kind: "none" };
+  if (typeof apiKey === "object") return { kind: "helper", command: apiKey.helper };
+  if (helper) return { kind: "helper", command: "[redacted]" };
   const ref = ENV_REFERENCE.exec(apiKey.trim())?.[1];
   if (!ref) return { kind: "inline" };
   const stored = Object.keys(secrets).find((name) => secretEnvName(name) === ref);
@@ -61,29 +72,33 @@ export function providersFromConfig(config: ConfigSnapshot, secrets: Record<stri
     const groups = new Map<string, ProviderConfig>();
     for (const [handle, raw] of Object.entries(models)) {
       if (!raw || typeof raw !== "object" || !raw.model) continue;
-      const protocol = (raw.protocol ?? "anthropic") as Protocol;
+      if (!["anthropic", "openai-chat", "openai-responses", "gemini"].includes(raw.protocol ?? "")) continue;
+      const protocol = raw.protocol as Protocol;
+      const effective = config.models.profiles[handle];
       const baseURL = raw.baseURL ?? "";
       const headers = Object.entries(raw.headers ?? {}).map(([name, value]) => ({ name, value: String(value) }));
-      const groupKey = JSON.stringify([protocol, trimSlash(baseURL), raw.apiKey ?? "", headers, raw.promptCacheKey, raw.countTokens]);
+      const groupKey = JSON.stringify([protocol, trimSlash(baseURL), raw.apiKey ?? "", headers, raw.authentication, raw.protocolOptions]);
       let provider = groups.get(groupKey);
       if (!provider) {
         const t = templateFor(protocol, baseURL);
-        let id = t.id === "custom" ? `custom-${keyName(new URL(baseURL || "http://custom").hostname)}` : t.id;
+        let id = t.id === "custom" ? `custom-${keyName(hostname(baseURL || "http://custom"))}` : t.id;
         if (scope !== "user") id = `${id}-${scope}`;
         while (ids.has(id)) id = `${id}-2`;
         ids.add(id);
         provider = {
           id,
           templateId: t.id,
-          name: t.id === "custom" ? (baseURL ? new URL(baseURL).hostname : "自定义服务商") : t.name,
+          name: t.id === "custom" ? (baseURL ? hostname(baseURL) : "自定义服务商") : t.name,
           icon: t.icon,
           protocol,
           baseURL: baseURL || t.baseURL,
-          key: keyFrom(raw.apiKey, secrets),
+          key: keyFrom(raw.apiKey, secrets, effective?.credentialSource === "helper"),
           enabled: true,
           headers,
-          ...(raw.promptCacheKey !== undefined ? { promptCacheKey: raw.promptCacheKey } : {}),
-          ...(raw.countTokens !== undefined ? { countTokens: raw.countTokens } : {}),
+          ...(raw.authentication ? { authentication: raw.authentication } : {}),
+          ...(raw.protocolOptions ? { protocolOptions: raw.protocolOptions } : {}),
+          ...(protocol === "openai-chat" || protocol === "openai-responses" ? { promptCacheKey: raw.protocolOptions?.[protocol]?.promptCacheKey } : {}),
+          ...(protocol === "anthropic" ? { countTokens: raw.protocolOptions?.anthropic?.countTokens } : {}),
           models: [],
           scope,
         };
@@ -95,11 +110,19 @@ export function providersFromConfig(config: ConfigSnapshot, secrets: Record<stri
         handle,
         model: raw.model,
         name: known?.name ?? raw.model,
-        contextWindow: known?.contextWindow ?? 128_000,
+        contextWindow: effective?.metadata.contextWindow ?? raw.capabilities?.contextWindow ?? 32_000,
+        contextWindowSource: effective?.metadata.contextWindowSource ?? (raw.capabilities?.contextWindow ? "profile" : "estimate"),
         maxOutput: raw.maxTokens ?? 0,
-        capabilities: known?.capabilities ?? { tools: true, vision: false, reasoning: false, cache: false },
+        capabilities: {
+          tools: effective?.metadata.tools ?? raw.capabilities?.tools ?? true,
+          vision: effective?.metadata.vision ?? raw.capabilities?.vision ?? false,
+          reasoning: effective?.metadata.reasoning ?? raw.capabilities?.reasoning ?? false,
+          cache: effective?.metadata.cache ?? raw.capabilities?.cache ?? false,
+        },
+        ...(raw.capabilities ? { capabilityOverrides: raw.capabilities } : {}),
         enabled: true,
-        ...(known?.price ? { price: known.price } : {}),
+        ...(effective?.metadata.pricing ? { price: effective.metadata.pricing } : {}),
+        ...(effective?.metadata.contextWindowSource === "estimate" ? { note: "上下文窗口为估算；价格未知时不计作零成本" } : {}),
       };
       provider.models.push(entry);
     }
@@ -118,11 +141,17 @@ export function modelsMapFor(providers: ProviderConfig[], scope: WriteScope): Re
       const entry: RawProfile = { protocol: p.protocol, model: m.model.trim() };
       if (p.baseURL.trim()) entry.baseURL = p.baseURL.trim();
       if (apiKey) entry.apiKey = apiKey;
+      if (p.key.kind === "helper") entry.apiKey = p.key.command === "[redacted]" ? "[redacted]" : { helper: p.key.command };
+      if (p.authentication) entry.authentication = p.authentication;
+      if (m.capabilityOverrides) entry.capabilities = m.capabilityOverrides;
       if (m.maxOutput > 0) entry.maxTokens = m.maxOutput;
       const headers = p.headers.filter((h) => h.name.trim());
       if (headers.length) entry.headers = Object.fromEntries(headers.map((h) => [h.name.trim(), h.value]));
-      if (p.promptCacheKey !== undefined && p.protocol.startsWith("openai")) entry.promptCacheKey = p.promptCacheKey;
-      if (p.countTokens !== undefined && p.protocol === "anthropic") entry.countTokens = p.countTokens;
+      const options = { ...p.protocolOptions };
+      if (p.promptCacheKey !== undefined && (p.protocol === "openai-chat" || p.protocol === "openai-responses"))
+        options[p.protocol] = { ...options[p.protocol], promptCacheKey: p.promptCacheKey };
+      if (p.countTokens !== undefined && p.protocol === "anthropic") options.anthropic = { ...options.anthropic, countTokens: p.countTokens };
+      if (Object.keys(options).length) entry.protocolOptions = options;
       out[m.handle] = entry;
     }
   }
@@ -135,6 +164,36 @@ export function modelsMapFor(providers: ProviderConfig[], scope: WriteScope): Re
  * different one; a provider that keeps any of its models keeps its id,
  * template, and name.
  */
+/** A changed endpoint needs its own credential declaration and protocol metadata. */
+export function changeProviderConnection(p: ProviderConfig, protocol: Protocol, baseURL: string): ProviderConfig {
+  if (protocol === p.protocol && trimSlash(baseURL) === trimSlash(p.baseURL)) return p;
+  const changedProtocol = protocol !== p.protocol;
+  return {
+    ...p,
+    protocol,
+    baseURL,
+    key: { kind: "none" },
+    authentication: p.authentication?.type === "none" ? { type: "none" } : { type: "default" },
+    headers: [],
+    ...(changedProtocol
+      ? {
+          protocolOptions: undefined,
+          promptCacheKey: undefined,
+          countTokens: undefined,
+          models: p.models.map((m) => ({
+            ...m,
+            capabilityOverrides: undefined,
+            capabilities: { tools: true, vision: false, reasoning: false, cache: false },
+            contextWindow: 32_000,
+            contextWindowSource: "estimate",
+            maxOutput: 0,
+            price: undefined,
+          })),
+        }
+      : {}),
+  };
+}
+
 export function reconcileProviders(previous: ProviderConfig[], next: ProviderConfig[]): ProviderConfig[] {
   const taken = new Set<string>();
   return next.map((p) => {
@@ -145,7 +204,7 @@ export function reconcileProviders(previous: ProviderConfig[], next: ProviderCon
     const catalog = templateById(match.templateId).catalog;
     const models = p.models.map((m) => {
       const known = catalog.find((c) => c.model === m.model);
-      return known && m.name === m.model ? { ...m, name: known.name, contextWindow: known.contextWindow, capabilities: known.capabilities } : m;
+      return known && m.name === m.model ? { ...m, name: known.name } : m;
     });
     return { ...p, id: match.id, templateId: match.templateId, name: match.name, icon: match.icon, models };
   });

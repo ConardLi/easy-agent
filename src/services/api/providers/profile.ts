@@ -1,65 +1,34 @@
 /**
- * Model profiles — resolves a user-facing "model handle" into a concrete
- * provider target (protocol + model + endpoint + credentials).
- *
- * A profile is declared in settings.json under `models`:
- *
- *   {
- *     "models": {
- *       "gpt5":   { "protocol": "openai-chat", "model": "gpt-5.1",
- *                   "baseURL": "https://api.openai.com/v1", "apiKey": "${OPENAI_API_KEY}" },
- *       "gemini": { "protocol": "gemini", "model": "gemini-2.5-pro",
- *                   "apiKey": "${GEMINI_API_KEY}" }
- *     },
- *     "defaultModel": "gpt5"
- *   }
- *
- * The profile *id* (the map key) is the handle the rest of the system passes
- * around — `--model gpt5`, `/model gpt5`, etc. When a handle does not match any
- * declared profile it is treated as a raw Anthropic model name (backwards
- * compatible: `--model claude-sonnet-4-...` still works with no `models` block).
- *
- * Translation to OpenAI / Gemini happens entirely at the edge (see
- * providerStream.ts via the zero-dependency `llm-bridge` library). The upper
- * stack never learns a profile is non-Anthropic — it keeps speaking the
- * normalized StreamEvent contract.
- *
- * Provider selection, endpoints, credentials, and headers from project/local
- * settings are ignored until workspace trust has been established.
+ * The single connection resolver for generation, counting, search, connection
+ * checks and diagnostics. A handle is always a profile ID; credentials belong
+ * to that profile and are resolved only against the runtime environment.
  */
-
 import { loadSettingSources, isTrustedScopeForSensitiveKeys, type SettingSource } from "../../../config/sources.js";
 import { isProjectTrusted } from "../../../config/globalState.js";
+import {
+  ModelProfileSchema,
+  ENVIRONMENT_PROFILE_ID,
+  MODEL_PROTOCOLS,
+  profileValidationErrors,
+  type ModelProfileConfig,
+  type ModelProtocol,
+} from "../../../config/modelSchema.js";
+import { configurationEnvironment, configurationEnvironmentMigration } from "../../../config/environment.js";
+import { ConfigurationError, configString, configEnum, resolveEnvironmentReferences } from "../../../config/values.js";
+import { resolveApiKeyFromHelper } from "../apiKeyHelper.js";
+import { replaceModelMetadata } from "../../../config/modelMetadata.js";
+import { legacyClassifierConnection, savedProfileOwnsConnection } from "../../../config/migration.js";
 
-export type ModelProtocol = "anthropic" | "openai-chat" | "openai-responses" | "gemini";
-
-export interface ModelProfile {
-  /** The map key / user-facing handle. */
+export type { ModelProtocol } from "../../../config/modelSchema.js";
+export interface ModelProfile extends Omit<ModelProfileConfig, "apiKey"> {
   id: string;
-  protocol: ModelProtocol;
-  /** The model name sent to the upstream provider. */
-  model: string;
-  /** Override the provider base URL (else a protocol default is used). */
-  baseURL?: string;
-  /** Resolved API key (after `${ENV}` interpolation). */
   apiKey?: string;
-  /** Per-profile max output tokens override. */
-  maxTokens?: number;
-  /** Extra HTTP headers merged into the upstream request. */
-  headers?: Record<string, string>;
-  /**
-   * OpenAI protocols: send the session id as `prompt_cache_key`. Defaults to
-   * on for api.openai.com and off for other endpoints.
-   */
-  promptCacheKey?: boolean;
-  /**
-   * Anthropic protocol: count each main-loop request's input tokens by part
-   * with the token-counting endpoint. Defaults to on for api.anthropic.com
-   * and off for other endpoints.
-   */
-  countTokens?: boolean;
+  /** Internal source, never written to a transcript. Executed only for an actual connection. */
+  apiKeyHelper?: string;
 }
 
+/** Reserved stable ID for the explicitly configured temporary connection. */
+export { ENVIRONMENT_PROFILE_ID };
 export const DEFAULT_PROVIDER_BASE_URLS: Readonly<Record<ModelProtocol, string>> = {
   anthropic: "https://api.anthropic.com",
   "openai-chat": "https://api.openai.com/v1",
@@ -67,159 +36,293 @@ export const DEFAULT_PROVIDER_BASE_URLS: Readonly<Record<ModelProtocol, string>>
   gemini: "https://generativelanguage.googleapis.com/v1beta",
 };
 
-/** Return the base URL the runtime will actually use for a resolved profile. */
 export function getProfileBaseURL(profile: ModelProfile): string {
-  if (profile.protocol === "anthropic") {
-    // Only a profile override is normalized by getAnthropicClientForProfile.
-    // The environment-configured SDK client uses its base URL verbatim.
-    return profile.baseURL
-      ? profile.baseURL.replace(/\/+$/, "").replace(/\/v1$/i, "")
-      : process.env.ANTHROPIC_BASE_URL || DEFAULT_PROVIDER_BASE_URLS.anthropic;
-  }
-  return profile.baseURL ?? DEFAULT_PROVIDER_BASE_URLS[profile.protocol];
-}
-
-interface RawProfile {
-  protocol?: unknown;
-  model?: unknown;
-  baseURL?: unknown;
-  apiKey?: unknown;
-  maxTokens?: unknown;
-  headers?: unknown;
-  promptCacheKey?: unknown;
-  countTokens?: unknown;
-}
-
-const VALID_PROTOCOLS: ReadonlySet<string> = new Set<ModelProtocol>([
-  "anthropic",
-  "openai-chat",
-  "openai-responses",
-  "gemini",
-]);
-
-/** `${VAR}` → process.env.VAR (missing vars collapse to empty string). */
-function interpolateEnv(value: string): string {
-  return value.replace(/\$\{([A-Z0-9_]+)\}/gi, (_, name) => process.env[name] ?? "");
+  const base = (profile.baseURL ?? DEFAULT_PROVIDER_BASE_URLS[profile.protocol]).replace(/\/+$/, "");
+  return profile.protocol === "anthropic" ? base.replace(/\/v1$/i, "") : base;
 }
 
 export interface LoadedProfiles {
   profiles: Record<string, ModelProfile>;
+  /** Effective selection. The persisted field is settings.model. */
   defaultModel?: string;
-  /** Non-fatal notices (dropped inline secrets, malformed entries). */
   warnings: string[];
-  /** Effective source for each merged profile field. Contains no values. */
-  provenance: Record<string, Partial<Record<keyof RawProfile, SettingSource>>>;
+  provenance: Record<string, Partial<Record<keyof ModelProfileConfig, SettingSource>>>;
   defaultModelSource?: SettingSource;
+  errors?: Record<string, string[]>;
 }
 
-/**
- * Merge the `models` map (and `defaultModel`) across every settings source in
- * priority order, sanitizing privilege-sensitive fields from untrusted scopes.
- */
+/** No helper execution: this path is safe for configuration editors and first launch. */
 export async function loadProfiles(cwd: string = process.cwd()): Promise<LoadedProfiles> {
   const sources = await loadSettingSources(cwd);
-  const merged: Record<string, RawProfile> = {};
+  const workspaceTrusted = await isProjectTrusted(cwd);
+  const merged: Record<string, Record<string, unknown>> = {};
   const provenance: LoadedProfiles["provenance"] = {};
   const warnings: string[] = [];
+  const errors: Record<string, string[]> = {};
   let defaultModel: string | undefined;
   let defaultModelSource: SettingSource | undefined;
-  const workspaceTrusted = await isProjectTrusted(cwd);
-
-  for (const src of sources) {
-    if (!src.raw) continue;
-    const trusted = isTrustedScopeForSensitiveKeys(src.source) || workspaceTrusted;
-
-    const models = src.raw.models;
-    if (models && typeof models === "object" && !Array.isArray(models)) {
-      for (const [id, value] of Object.entries(models as Record<string, unknown>)) {
-        if (!value || typeof value !== "object" || Array.isArray(value)) continue;
-        const raw: RawProfile = { ...(value as RawProfile) };
-
-        if (!trusted) {
-          warnings.push(`models.${id}: profile from "${src.source}" scope ignored until the workspace is trusted`);
-          continue;
+  let environmentAdded = false;
+  const migration = configurationEnvironmentMigration();
+  const env = migration.env;
+  const selectEnvironment = () => {
+    if (environmentAdded) return;
+    environmentAdded = true;
+    const profileId = configString(env.EASY_AGENT_PROFILE);
+    const hasTarget = ["EASY_AGENT_PROTOCOL", "EASY_AGENT_MODEL", "EASY_AGENT_BASE_URL"].some(
+      (key) => configString(env[key]) !== undefined,
+    );
+    const savedSelection =
+      migration.legacyConnection &&
+      savedProfileOwnsConnection(
+        [{ models: merged, ...(defaultModel ? { model: defaultModel } : {}) }],
+        undefined,
+        new Set(
+          sources
+            .filter((source) => isTrustedScopeForSensitiveKeys(source.source) || workspaceTrusted)
+            .flatMap((source) => source.canonicalProfileIds ?? []),
+        ),
+      );
+    const relevantNotices = migration.notices.filter(
+      (notice) => !savedSelection || notice.field !== "environment.connection",
+    );
+    const environmentErrors = relevantNotices.filter((notice) => notice.level === "error");
+    if (environmentErrors.length) {
+      errors[ENVIRONMENT_PROFILE_ID] = environmentErrors.map((notice) => `${notice.field}: ${notice.message}`);
+      defaultModel = ENVIRONMENT_PROFILE_ID;
+      defaultModelSource = undefined;
+      return;
+    }
+    warnings.push(...relevantNotices.map((notice) => `${notice.field}: ${notice.message}`));
+    if (profileId && hasTarget) {
+      errors[ENVIRONMENT_PROFILE_ID] = [
+        "environment.connection: choose EASY_AGENT_PROFILE or EASY_AGENT_PROTOCOL/EASY_AGENT_MODEL, not both.",
+      ];
+      defaultModel = ENVIRONMENT_PROFILE_ID;
+      defaultModelSource = undefined;
+      return;
+    }
+    if (savedSelection) {
+      warnings.push("Legacy environment connection did not replace the explicitly selected saved profile.");
+      return;
+    }
+    if (profileId) {
+      defaultModel = profileId;
+      defaultModelSource = undefined;
+    } else if (hasTarget || environmentErrors.length) {
+      defaultModel = ENVIRONMENT_PROFILE_ID;
+      defaultModelSource = undefined;
+      try {
+        const protocol = configEnum(env.EASY_AGENT_PROTOCOL, "EASY_AGENT_PROTOCOL", MODEL_PROTOCOLS);
+        const model = configString(env.EASY_AGENT_MODEL);
+        if (!protocol || !model) {
+          throw new ConfigurationError(
+            "environment.connection",
+            "provide both EASY_AGENT_PROTOCOL and EASY_AGENT_MODEL.",
+          );
         }
-
-        merged[id] = { ...merged[id], ...raw };
-        const fieldSources = (provenance[id] ??= {});
-        for (const key of Object.keys(raw) as (keyof RawProfile)[]) {
-          fieldSources[key] = src.source;
-        }
+        const legacyOptions = migration.legacyConnection ? migration.profileOptions : {};
+        const id = ENVIRONMENT_PROFILE_ID;
+        const selected = {
+          protocol,
+          model,
+          ...(configString(env.EASY_AGENT_BASE_URL) ? { baseURL: configString(env.EASY_AGENT_BASE_URL) } : {}),
+          ...(configString(env.EASY_AGENT_API_KEY) ? { apiKey: "${EASY_AGENT_API_KEY}" } : {}),
+          ...(legacyOptions.effort !== undefined ? { capabilities: { effort: legacyOptions.effort } } : {}),
+          ...(legacyOptions.adaptiveThinking !== undefined || legacyOptions.interleavedThinking !== undefined
+            ? {
+                protocolOptions: {
+                  anthropic: {
+                    ...(legacyOptions.adaptiveThinking !== undefined
+                      ? { adaptiveThinking: legacyOptions.adaptiveThinking }
+                      : {}),
+                    ...(legacyOptions.interleavedThinking !== undefined
+                      ? { interleavedThinking: legacyOptions.interleavedThinking }
+                      : {}),
+                  },
+                },
+              }
+            : {}),
+        };
+        if (merged[id])
+          throw new ConfigurationError("models", `${ENVIRONMENT_PROFILE_ID} is reserved for environment connections.`);
+        merged[id] = selected;
+        defaultModel = id;
+      } catch (error) {
+        errors[ENVIRONMENT_PROFILE_ID] = [safeConfigurationMessage(error)];
       }
     }
+  };
 
-    const dm = src.raw.defaultModel;
-    if (trusted && typeof dm === "string" && dm.trim().length > 0) {
-      defaultModel = dm.trim();
+  for (const src of sources) {
+    if (src.source === "flag") selectEnvironment();
+    if (!src.raw) continue;
+    const trusted = isTrustedScopeForSensitiveKeys(src.source) || workspaceTrusted;
+    if (!trusted) {
+      if (src.raw.models) warnings.push(`models: "${src.source}" profiles ignored until the workspace is trusted.`);
+      continue;
+    }
+    for (const notice of src.migrationNotices ?? []) {
+      warnings.push(`${src.path ?? src.source}: ${notice.field}: ${notice.message}`);
+      if (notice.level === "error" && notice.field === "environment.connection") {
+        const message = `${src.path ?? src.source}: ${notice.message}`;
+        errors[ENVIRONMENT_PROFILE_ID] = [message];
+        if (typeof src.raw.model === "string") errors[src.raw.model] = [message];
+      }
+    }
+    const models = src.raw.models;
+    if (models && typeof models === "object" && !Array.isArray(models)) {
+      for (const [id, value] of Object.entries(models)) {
+        if (!value || typeof value !== "object" || Array.isArray(value)) {
+          errors[id] = [`models.${id}: expected a model profile object.`];
+          continue;
+        }
+        const raw = value as Record<string, unknown>;
+        const previous = merged[id];
+        const targetChanged =
+          previous &&
+          ((raw.protocol !== undefined && raw.protocol !== previous.protocol) ||
+            (raw.baseURL !== undefined && raw.baseURL !== previous.baseURL));
+        if (
+          targetChanged &&
+          raw.apiKey === undefined &&
+          (raw.authentication as { type?: string } | undefined)?.type !== "none"
+        ) {
+          errors[id] = [
+            `models.${id} (${src.source}): changing protocol or baseURL requires an explicit API Key source or authentication.type=none.`,
+          ];
+          continue;
+        }
+        // Target changes discard connection-specific state, even when a new
+        // API Key was explicitly supplied. A protocol also owns its metadata.
+        const inherited = { ...previous };
+        const fieldSources = (provenance[id] ??= {});
+        if (targetChanged) {
+          for (const key of ["apiKey", "authentication", "headers"] as const) {
+            delete inherited[key];
+            delete fieldSources[key];
+          }
+          if (raw.protocol !== undefined && raw.protocol !== previous?.protocol) {
+            for (const key of ["protocolOptions", "capabilities", "baseURL", "maxTokens"] as const) {
+              delete inherited[key];
+              delete fieldSources[key];
+            }
+          }
+        }
+        merged[id] = { ...inherited, ...raw };
+        delete errors[id];
+        for (const key of Object.keys(raw) as (keyof ModelProfileConfig)[]) fieldSources[key] = src.source;
+      }
+    }
+    const selection = src.raw.model;
+    if (typeof selection === "string" && selection.trim()) {
+      defaultModel = selection.trim();
       defaultModelSource = src.source;
     }
+  }
+  selectEnvironment();
+  const legacyClassifier = legacyClassifierConnection(migration, new Set(Object.keys(merged)));
+  if (legacyClassifier) {
+    const { id, profile } = legacyClassifier;
+    if (merged[id] && merged[id].model !== profile.model)
+      errors[id] = ["Legacy classifier profile ID collision; choose a distinct explicit profile ID."];
+    else merged[id] ??= profile;
+    warnings.push(
+      "EASY_AGENT_AUTO_MODE_MODEL: preserved the historical raw classifier model as an explicit profile; save its profile ID.",
+    );
   }
 
   const profiles: Record<string, ModelProfile> = {};
   for (const [id, raw] of Object.entries(merged)) {
-    const built = buildProfile(id, raw, warnings);
-    if (built) profiles[id] = built;
+    if (errors[id]) continue;
+    const issues = profileValidationErrors(raw, `models.${id}`);
+    if (issues.length) {
+      errors[id] = issues;
+      continue;
+    }
+    const config = ModelProfileSchema.parse(raw);
+    try {
+      const { apiKey, ...rest } = config;
+      const profile: ModelProfile = { id, ...rest };
+      if (profile.baseURL) {
+        profile.baseURL = resolveEnvironmentReferences(profile.baseURL, env, `models.${id}.baseURL`);
+        let url: URL;
+        try {
+          url = new URL(profile.baseURL);
+        } catch {
+          throw new ConfigurationError(`models.${id}.baseURL`, "provide an absolute HTTP or HTTPS service URL.");
+        }
+        if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || url.search || url.hash) {
+          throw new ConfigurationError(
+            `models.${id}.baseURL`,
+            "use an HTTP(S) URL without credentials, query or fragment; configure authentication separately.",
+          );
+        }
+      }
+      if (typeof apiKey === "string") profile.apiKey = resolveEnvironmentReferences(apiKey, env, `models.${id}.apiKey`);
+      else if (apiKey) profile.apiKeyHelper = apiKey.helper;
+      if (profile.headers) {
+        profile.headers = Object.fromEntries(
+          Object.entries(profile.headers).map(([name, value]) => [
+            name,
+            resolveEnvironmentReferences(value, env, `models.${id}.headers`),
+          ]),
+        );
+      }
+      profiles[id] = profile;
+    } catch (error) {
+      errors[id] = [safeConfigurationMessage(error)];
+    }
   }
-
+  if (!defaultModel && Object.keys(profiles).length === 1) defaultModel = Object.keys(profiles)[0];
+  replaceModelMetadata(profiles);
   return {
     profiles,
     defaultModel,
     warnings,
     provenance,
+    errors,
     ...(defaultModelSource ? { defaultModelSource } : {}),
   };
 }
 
-function buildProfile(id: string, raw: RawProfile, warnings: string[]): ModelProfile | null {
-  const protocol = typeof raw.protocol === "string" ? raw.protocol.trim() : "";
-  const model = typeof raw.model === "string" ? raw.model.trim() : "";
+function safeConfigurationMessage(error: unknown): string {
+  return error instanceof ConfigurationError
+    ? error.message
+    : "Invalid connection configuration; check the profile fields.";
+}
 
-  if (!VALID_PROTOCOLS.has(protocol)) {
-    warnings.push(
-      `models.${id}: unknown or missing protocol "${protocol}" — ignored (expected anthropic | openai-chat | openai-responses | gemini)`,
+/** Select a stable ID without requiring a key or running a helper. */
+export async function resolveProfileId(handle: string | undefined, cwd = process.cwd()): Promise<string> {
+  const loaded = await loadProfiles(cwd);
+  return selectedProfileId(loaded, handle);
+}
+
+function selectedProfileId(loaded: LoadedProfiles, handle: string | undefined): string {
+  const id = configString(handle) ?? loaded.defaultModel;
+  if (!id) {
+    throw new ConfigurationError(
+      "model",
+      Object.keys(loaded.profiles).length > 1
+        ? "multiple profiles are available; choose a profile ID with model or --model."
+        : "no model profile is configured; add a profile with protocol, model and an API Key source.",
     );
-    return null;
   }
-  if (!model) {
-    warnings.push(`models.${id}: missing "model" — ignored`);
-    return null;
-  }
+  if (loaded.errors?.[id]?.length) throw new ConfigurationError(`models.${id}`, loaded.errors[id]!.join(" "));
+  if (!loaded.profiles[id])
+    throw new ConfigurationError("model", `profile "${id}" does not exist; select a saved profile ID.`);
+  return id;
+}
 
-  const profile: ModelProfile = { id, protocol: protocol as ModelProtocol, model };
-
-  if (typeof raw.baseURL === "string" && raw.baseURL.trim()) {
-    profile.baseURL = interpolateEnv(raw.baseURL.trim());
+export async function resolveProfile(handle: string, cwd: string = process.cwd()): Promise<ModelProfile> {
+  const profile = await resolveProfileConfiguration(handle, cwd);
+  if (profile.apiKeyHelper) {
+    profile.apiKey = await resolveApiKeyFromHelper(cwd, profile.apiKeyHelper, profile.id, configurationEnvironment());
   }
-  if (typeof raw.apiKey === "string" && raw.apiKey.trim()) {
-    const key = interpolateEnv(raw.apiKey.trim());
-    if (key) profile.apiKey = key;
-  }
-  if (typeof raw.maxTokens === "number" && Number.isFinite(raw.maxTokens) && raw.maxTokens > 0) {
-    profile.maxTokens = raw.maxTokens;
-  }
-  if (raw.headers && typeof raw.headers === "object" && !Array.isArray(raw.headers)) {
-    const out: Record<string, string> = {};
-    for (const [k, v] of Object.entries(raw.headers as Record<string, unknown>)) {
-      if (typeof v === "string") out[k] = interpolateEnv(v);
-    }
-    if (Object.keys(out).length > 0) profile.headers = out;
-  }
-  if (typeof raw.promptCacheKey === "boolean") profile.promptCacheKey = raw.promptCacheKey;
-  if (typeof raw.countTokens === "boolean") profile.countTokens = raw.countTokens;
-
   return profile;
 }
 
-/**
- * Resolve a model handle into a concrete profile.
- *
- * - A handle matching a declared profile id → that profile.
- * - Anything else → a synthetic Anthropic profile whose `model` is the handle
- *   verbatim (legacy / direct-model behavior, env-configured client).
- */
-export async function resolveProfile(handle: string, cwd: string = process.cwd()): Promise<ModelProfile> {
-  const { profiles } = await loadProfiles(cwd);
-  const declared = profiles[handle];
-  if (declared) return declared;
-  return { id: handle, protocol: "anthropic", model: handle };
+/** Display and context preview resolve identical targets without executing credentials helpers. */
+export async function resolveProfileConfiguration(handle: string, cwd = process.cwd()): Promise<ModelProfile> {
+  const loaded = await loadProfiles(cwd);
+  return structuredClone(loaded.profiles[selectedProfileId(loaded, handle)]!);
 }

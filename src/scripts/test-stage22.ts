@@ -685,6 +685,7 @@ async function main(): Promise<void> {
     const prevKill = process.env["EASY_AGENT_DISABLE_HOOKS"];
     try {
       process.env["EASY_AGENT_DISABLE_HOOKS"] = "1";
+      (await import("../config/environment.js")).installConfigurationEnvironment(process.env);
       assert(hooksGloballyDisabled() === true, "kill switch reads env");
 
       const outcome = await runUserPromptSubmitHooks({
@@ -695,6 +696,7 @@ async function main(): Promise<void> {
     } finally {
       if (prevKill !== undefined) process.env["EASY_AGENT_DISABLE_HOOKS"] = prevKill;
       else delete process.env["EASY_AGENT_DISABLE_HOOKS"];
+      (await import("../config/environment.js")).installConfigurationEnvironment(process.env);
     }
   });
 

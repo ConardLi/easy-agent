@@ -34,7 +34,7 @@ export const MAX_529_RETRIES = 3;
 
 /**
  * Max retry attempts: the Agent's `features.maxRetries`, which
- * EASY_AGENT_MAX_RETRIES (or CLAUDE_CODE_MAX_RETRIES) sets.
+ * EASY_AGENT_MAX_RETRIES sets.
  */
 export function getMaxRetries(): number {
   return harnessSetting<number>("features.maxRetries");

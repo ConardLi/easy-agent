@@ -39,9 +39,9 @@ const PROJECT_ROOT = path.resolve(import.meta.dirname, "../..");
 const CLI_PATH = path.join(PROJECT_ROOT, "src", "entrypoint", "cli.ts");
 const TSX_IMPORT = import.meta.resolve("tsx");
 
-const { createAnthropicFixture, FIXTURE_MODEL } = await import("./fixtures/anthropicFixture.js");
+const { createAnthropicFixture, fixtureProfile, FIXTURE_MODEL } = await import("./fixtures/anthropicFixture.js");
 const fixture = createAnthropicFixture();
-await fixture.start();
+await fixture.start(home);
 
 const protocol = await import("../rpc/protocol.js");
 const ajv = new Ajv2020({ strict: false, allErrors: true });
@@ -53,9 +53,7 @@ const childEnv = {
   ...process.env,
   HOME: home,
   USERPROFILE: home,
-  ANTHROPIC_MODEL: FIXTURE_MODEL,
   EASY_AGENT_DISABLE_HOOKS: "1",
-  EASY_AGENT_ENABLE_TOOL_SEARCH: "false",
   NO_COLOR: "1",
 };
 
@@ -472,6 +470,7 @@ try {
     "config/read shows sources and effective values; config/write validates, keeps secrets, refuses escalation",
     async () => {
       const userFile = path.join(home, ".easy-agent", "settings.json");
+      const savedSettings = JSON.parse(await readFile(userFile, "utf8"));
       let config = await rpc.call<Json>("config/read", {});
       assert.equal(config.workspaceTrusted, false);
       const sources = config.sources as Json[];
@@ -534,7 +533,9 @@ try {
 
       await rpc.call("config/write", { scope: "user", key: "models", value: null });
       await rpc.call("config/write", { scope: "user", key: "maxTurns", value: null });
-      assert.deepEqual(JSON.parse(await readFile(userFile, "utf8")), { deny: ["WebFetch"] });
+      const { models: _models, ...withoutModels } = savedSettings;
+      assert.deepEqual(JSON.parse(await readFile(userFile, "utf8")), withoutModels);
+      await rpc.call("config/write", { scope: "user", key: "models", value: savedSettings.models });
     },
   );
 
@@ -1197,7 +1198,18 @@ try {
       const userSettings = path.join(home, ".easy-agent", "settings.json");
       const saved = await readFile(userSettings, "utf8");
       const withReviewer = (spec: Json) =>
-        writeFile(userSettings, JSON.stringify({ ...JSON.parse(saved), harnesses: { reviewer: spec } }));
+        writeFile(
+          userSettings,
+          JSON.stringify({
+            ...JSON.parse(saved),
+            models: {
+              ...JSON.parse(saved).models,
+              "reviewer-model": fixtureProfile(fixture.baseURL, "reviewer-model"),
+              "edited-model": fixtureProfile(fixture.baseURL, "edited-model"),
+            },
+            harnesses: { reviewer: spec },
+          }),
+        );
       await withReviewer({ model: { main: "reviewer-model" } });
       try {
         const writer = startClient();

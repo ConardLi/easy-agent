@@ -175,7 +175,7 @@ test("a rule file is edited and excluded from the rules page", async () => {
     await expect.poll(() => readFileSync(join(world.project, "AGENTS.md"), "utf8")).toBe("# Rules\nUse npm.\n");
 
     await page.locator("aside").getByRole("switch").click();
-    await expect.poll(() => userSettings().claudeMdExcludes).toEqual([join(world.project, "AGENTS.md")]);
+    await expect.poll(() => userSettings().agentMdExcludes).toEqual([join(world.project, "AGENTS.md")]);
     await expect(page.getByText("已排除", { exact: true }).first()).toBeVisible();
     await page.getByRole("button", { name: "关闭", exact: true }).click();
     await captureResource(page, "resource-rules");

@@ -65,9 +65,6 @@ const baseURL = `http://127.0.0.1:${(tripwire.address() as AddressInfo).port}`;
 
 process.env.HOME = home;
 process.env.USERPROFILE = home;
-process.env.ANTHROPIC_AUTH_TOKEN = "test-token";
-process.env.ANTHROPIC_BASE_URL = baseURL;
-process.env.ANTHROPIC_MODEL = "claude-sonnet-4-20250514";
 process.chdir(cwd);
 
 let fetches = 0;
@@ -95,6 +92,8 @@ await Promise.all([
   writeFile(
     path.join(home, ".easy-agent", "settings.json"),
     JSON.stringify({
+      model: "main",
+      models: { main: { protocol: "anthropic", model: "claude-sonnet-4-20250514", baseURL, apiKey: "test-token" } },
       harnesses: { reviewer: REVIEWER },
       hooks: {
         SessionStart: [hook("session-start")],

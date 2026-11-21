@@ -21,6 +21,7 @@
  */
 
 import { z } from "zod";
+import { ModelProfileSchema, ReasoningSchema, profileValidationErrors } from "./modelSchema.js";
 
 const PermissionRule = z.string().trim().min(1);
 
@@ -31,34 +32,16 @@ const PermissionRule = z.string().trim().min(1);
  */
 export const SettingsSchema = z.looseObject({
   model: z.string().trim().min(1).optional(),
-  // Multi-protocol model profiles. Each entry declares a provider
-  // target (protocol + model + endpoint + credentials). The map key is the
-  // user-facing handle used by `--model` / `/model`. Validated leniently
-  // (looseObject) so a single bad profile doesn't drop the whole `models` block;
-  // deeper per-profile validation + ${ENV} interpolation lives in profile.ts.
-  models: z
-    .record(
-      z.string(),
-      z.looseObject({
-        protocol: z.string().optional(),
-        model: z.string().optional(),
-        baseURL: z.string().optional(),
-        apiKey: z.string().optional(),
-        maxTokens: z.number().optional(),
-        headers: z.record(z.string(), z.string()).optional(),
-        promptCacheKey: z.boolean().optional(),
-        countTokens: z.boolean().optional(),
-      }),
-    )
-    .optional(),
-  // Default profile id (or raw model name) when no --model is given.
-  defaultModel: z.string().trim().min(1).optional(),
+  models: z.record(z.string(), ModelProfileSchema).optional(),
+  reasoning: ReasoningSchema.optional(),
   // Role names match runtime invocation classes. Unknown roles are rejected.
   modelRoles: z
     .object({
       background: z.string().trim().min(1).optional(),
       think: z.string().trim().min(1).optional(),
       longContext: z.string().trim().min(1).optional(),
+      compaction: z.string().trim().min(1).optional(),
+      webFetch: z.string().trim().min(1).optional(),
     })
     .strict()
     .optional(),
@@ -79,7 +62,6 @@ export const SettingsSchema = z.looseObject({
   statusLine: z.union([z.string(), z.looseObject({})]).optional(),
   outputStyle: z.string().trim().min(1).optional(),
   language: z.string().trim().min(1).optional(),
-  apiKeyHelper: z.string().trim().min(1).optional(),
   cleanupPeriodDays: z.number().int().nonnegative().optional(),
   // Tool-turn limit for one request of the main session. Sub-agents keep
   // their own `maxTurns` frontmatter.
@@ -88,18 +70,10 @@ export const SettingsSchema = z.looseObject({
   disableAllHooks: z.boolean().optional(),
   // Master switch for file-history checkpointing (default on).
   checkpointingEnabled: z.boolean().optional(),
-  // Extended-thinking default switch. When false, thinking is
-  // off by default (the `/think on` command can still enable it per-session).
-  // When unset/true, thinking defaults to adaptive. Env var
-  // MAX_THINKING_TOKENS overrides this (0 → disabled, N>0 → budget N).
-  alwaysThinkingEnabled: z.boolean().optional(),
-  // Default reasoning-effort level for output_config.effort
-  // (Anthropic only). The `/effort` command overrides this per-session.
-  effortLevel: z.enum(["low", "medium", "high", "max"]).optional(),
   respectGitignore: z.boolean().optional(),
   syntaxHighlightingDisabled: z.boolean().optional(),
   prefersReducedMotion: z.boolean().optional(),
-  claudeMdExcludes: z.array(PermissionRule).optional(),
+  agentMdExcludes: z.array(PermissionRule).optional(),
   enableAllProjectMcpServers: z.boolean().optional(),
   enabledMcpjsonServers: z.array(PermissionRule).optional(),
   disabledMcpjsonServers: z.array(PermissionRule).optional(),
@@ -131,7 +105,11 @@ export interface ValidationResult {
  * @param raw   The parsed JSON object for one source (already JSON-valid).
  * @param label A short source label for diagnostics (file path or "flag").
  */
-export function validateSettings(raw: unknown, label: string): ValidationResult {
+export function validateSettings(
+  raw: unknown,
+  label: string,
+  options: { partialProfiles?: boolean } = {},
+): ValidationResult {
   if (raw == null) return { value: {}, errors: [] };
   if (typeof raw !== "object" || Array.isArray(raw)) {
     return { value: {}, errors: [`${label}: settings root must be a JSON object — ignored`] };
@@ -144,6 +122,19 @@ export function validateSettings(raw: unknown, label: string): ValidationResult 
     }
   }
   const candidate: Record<string, unknown> = { ...(raw as Record<string, unknown>) };
+  // A malformed profile must remain diagnosable and must never disappear into
+  // default selection. Validate it here, then preserve the map for the resolver.
+  const models = candidate.models;
+  if (models && typeof models === "object" && !Array.isArray(models)) {
+    for (const [id, profile] of Object.entries(models)) {
+      // Layer fragments are checked after merging. New writes still validate
+      // complete profiles, and malformed selected profiles remain visible.
+      if (!options.partialProfiles) errors.push(...profileValidationErrors(profile, `${label}.models.${id}`));
+    }
+    delete candidate.models;
+  }
+  const resultValue = (value: Record<string, unknown>): Record<string, unknown> =>
+    models && typeof models === "object" && !Array.isArray(models) ? { ...value, models } : value;
 
   // 1) Per-rule tolerance for permission arrays: keep valid string rules,
   //    drop malformed entries (non-string / empty) without discarding the rest.
@@ -163,7 +154,7 @@ export function validateSettings(raw: unknown, label: string): ValidationResult 
   let current = candidate;
   for (let attempt = 0; attempt < 12; attempt++) {
     const result = SettingsSchema.safeParse(current);
-    if (result.success) return { value: result.data as Record<string, unknown>, errors };
+    if (result.success) return { value: resultValue(result.data as Record<string, unknown>), errors };
 
     const badKeys = new Set<string>();
     for (const issue of result.error.issues) {
@@ -181,5 +172,5 @@ export function validateSettings(raw: unknown, label: string): ValidationResult 
   }
 
   // Fallback: hand back the best-effort object we have.
-  return { value: current, errors };
+  return { value: resultValue(current), errors };
 }

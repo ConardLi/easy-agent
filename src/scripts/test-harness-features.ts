@@ -42,6 +42,8 @@ await Promise.all([
   mkdir(path.join(pluginDir, "agents"), { recursive: true }),
 ]);
 const FEATURE_ENV = [
+  "EASY_AGENT_REASONING",
+  "EASY_AGENT_REASONING_BUDGET_TOKENS",
   "EASY_AGENT_TEAMS",
   "EASY_AGENT_ENABLE_TOOL_SEARCH",
   "ENABLE_TOOL_SEARCH",
@@ -69,12 +71,11 @@ process.env.USERPROFILE = home;
 process.env.EASY_AGENT_DISABLE_HOOKS = "1";
 process.chdir(cwd);
 
-const { createAnthropicFixture, FIXTURE_MODEL } = await import("./fixtures/anthropicFixture.js");
+const { createAnthropicFixture, fixtureProfile, FIXTURE_MODEL } = await import("./fixtures/anthropicFixture.js");
 type ScriptStep = import("./fixtures/anthropicFixture.js").ScriptStep;
 type RecordedRequest = import("./fixtures/anthropicFixture.js").RecordedRequest;
 const fixture = createAnthropicFixture();
 await fixture.start();
-process.env.ANTHROPIC_MODEL = FIXTURE_MODEL;
 
 const { resolveHarnessFromInputs } = await import("../harness/resolve.js");
 const { installHarness, uninstallHarness } = await import("../harness/active.js");
@@ -139,6 +140,7 @@ interface RunOptions {
 }
 
 interface RunResult {
+  errors: string[];
   requests: RecordedRequest[];
   outputs: string[];
   warnings: string[];
@@ -149,7 +151,25 @@ interface RunResult {
 }
 
 async function startRuntime(options: RunOptions, warnings: string[]): Promise<AgentRuntime> {
-  await writeJson(userSettings, { ...options.user, harnesses: { probe: options.spec ?? {} } });
+  await writeJson(userSettings, {
+    model: FIXTURE_MODEL,
+    ...options.user,
+    models: {
+      [FIXTURE_MODEL]: {
+        ...fixtureProfile(fixture.baseURL),
+        capabilities: {
+          contextWindow: 200_000,
+          reasoning: true,
+          adaptiveReasoning: true,
+          interleavedReasoning: true,
+          effort: true,
+        },
+      },
+      "claude-sonnet-4-5": fixtureProfile(fixture.baseURL, "claude-sonnet-4-5"),
+      ...(options.user?.models as object | undefined),
+    },
+    harnesses: { probe: options.spec ?? {} },
+  });
   await writeJson(projectSettings, options.project ?? {});
   resetSettingsCache();
   for (const name of FEATURE_ENV) delete process.env[name];
@@ -185,8 +205,10 @@ async function run(options: RunOptions): Promise<RunResult> {
       },
     });
     const outputs: string[] = [];
+    const errors: string[] = [];
     session.subscribe((event) => {
       if (event.type === "command_output") outputs.push(event.message);
+      if (event.type === "error") errors.push(event.message);
     });
     fixture.requests.length = 0;
     fixture.script(options.script ?? [{ kind: "text", text: "ok" }]);
@@ -195,6 +217,7 @@ async function run(options: RunOptions): Promise<RunResult> {
     const result: RunResult = {
       requests,
       outputs,
+      errors,
       warnings,
       permissionAsks,
       checkpointFiles: session.listCheckpoints()[0]?.files,
@@ -284,37 +307,37 @@ try {
     );
   });
 
-  await check("features.thinking and MAX_THINKING_TOKENS=0 leave thinking out; the variable wins", async () => {
+  await check("reasoning.mode and EASY_AGENT_REASONING select the same request behavior", async () => {
     const thinking = (result: RunResult) => result.requests[0]?.body.thinking ?? null;
     await sameEffect("thinking", first, {
-      spec: { spec: { features: { thinking: false } } },
-      other: { env: { MAX_THINKING_TOKENS: "0" } },
+      spec: { spec: { reasoning: { mode: "off" } } },
+      other: { env: { EASY_AGENT_REASONING: "off" } },
       both: {
         options: {
-          spec: { features: { thinking: false, adaptiveThinking: false } },
-          env: { MAX_THINKING_TOKENS: "4096" },
+          spec: { reasoning: { mode: "off" } },
+          env: { EASY_AGENT_REASONING: "on", EASY_AGENT_REASONING_BUDGET_TOKENS: "4096" },
         },
-        expect: first(await run({ env: { MAX_THINKING_TOKENS: "4096", CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING: "1" } })),
+        expect: first(await run({ env: { EASY_AGENT_REASONING: "on", EASY_AGENT_REASONING_BUDGET_TOKENS: "4096" } })),
       },
     });
-    assert.equal(thinking(await run({ spec: { features: { thinking: false } } })), null);
+    assert.equal(thinking(await run({ spec: { reasoning: { mode: "off" } } })), null);
   });
 
-  await check("features.thinkingBudget and adaptiveThinking match MAX_THINKING_TOKENS and its switch", async () => {
+  await check("reasoning budget is equivalent in Harness and environment and selects manual reasoning", async () => {
     await sameEffect("thinkingBudget", first, {
-      spec: { spec: { features: { thinkingBudget: 2048, adaptiveThinking: false } } },
-      other: { env: { MAX_THINKING_TOKENS: "2048", CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING: "1" } },
+      spec: { spec: { reasoning: { mode: "on", budgetTokens: 2048 } } },
+      other: { env: { EASY_AGENT_REASONING: "on", EASY_AGENT_REASONING_BUDGET_TOKENS: "2048" } },
     });
-    const result = await run({ spec: { features: { thinkingBudget: 2048, adaptiveThinking: false } } });
+    const result = await run({ spec: { reasoning: { mode: "on", budgetTokens: 2048 } } });
     assert.deepEqual(result.requests[0]?.body.thinking, { type: "enabled", budget_tokens: 2048 });
   });
 
-  await check("features.thinkingInRequests and CLAUDE_CODE_DISABLE_THINKING; the variable wins", async () => {
+  await check("legacy request prohibition migrates to the canonical off intent", async () => {
     await sameEffect("thinkingInRequests", first, {
-      spec: { spec: { features: { thinkingInRequests: false } } },
+      spec: { spec: { reasoning: { mode: "off" } } },
       other: { env: { CLAUDE_CODE_DISABLE_THINKING: "1" } },
       both: {
-        options: { spec: { features: { thinkingInRequests: true } }, env: { CLAUDE_CODE_DISABLE_THINKING: "1" } },
+        options: { spec: { reasoning: { mode: "on" } }, env: { CLAUDE_CODE_DISABLE_THINKING: "1" } },
         expect: first(await run({ env: { CLAUDE_CODE_DISABLE_THINKING: "1" } })),
       },
     });
@@ -328,25 +351,44 @@ try {
     });
   });
 
-  await check("features.effortForAllModels and CLAUDE_CODE_ALWAYS_ENABLE_EFFORT send effort to any model", async () => {
+  await check("effort requires a verified model capability, with scoped legacy migration", async () => {
     const legacy = { model: { main: "claude-sonnet-4-5" }, features: { effort: "high" } };
     const effort = (result: RunResult) => result.requests[0]?.body.output_config ?? null;
-    assert.equal(effort(await run({ spec: legacy })), null, "this model does not take effort by default");
+    const unsupported = await run({ spec: legacy });
+    assert.equal(unsupported.requests.length, 0);
+    assert.match(unsupported.errors.join("\n"), /effort is unsupported or unconfirmed/);
     const fromSpec = await run({ spec: { ...legacy, features: { ...legacy.features, effortForAllModels: true } } });
-    const fromEnv = await run({ spec: legacy, env: { CLAUDE_CODE_ALWAYS_ENABLE_EFFORT: "1" } });
+    const explicit = await run({
+      spec: legacy,
+      user: {
+        models: {
+          "claude-sonnet-4-5": {
+            ...fixtureProfile(fixture.baseURL, "claude-sonnet-4-5"),
+            capabilities: { effort: true },
+          },
+        },
+      },
+    });
     assert.deepEqual(effort(fromSpec), { effort: "high" });
-    assert.deepEqual(first(fromSpec), first(fromEnv));
+    assert.deepEqual(first(fromSpec), first(explicit));
+    const ambiguous = await run({ spec: legacy, env: { CLAUDE_CODE_ALWAYS_ENABLE_EFFORT: "1" } });
+    assert.equal(ambiguous.requests.length, 0);
+    assert.match(ambiguous.errors.join("\n"), /effort is unsupported or unconfirmed/);
+    assert.match(ambiguous.warnings.join("\n"), /unambiguous Anthropic profile/);
   });
 
-  await check("features.effort matches effortLevel; the spec is above user and below project settings", async () => {
+  await check("reasoning.effort uses the spec above user and below project settings", async () => {
     const effort = (result: RunResult) => (result.requests[0]?.body.output_config as { effort?: string })?.effort;
     await sameEffect("effort", first, {
-      spec: { spec: { features: { effort: "low" } } },
-      other: { user: { effortLevel: "low" } },
+      spec: { spec: { reasoning: { effort: "low" } } },
+      other: { user: { reasoning: { effort: "low" } } },
     });
-    assert.equal(effort(await run({ spec: { features: { effort: "low" } }, user: { effortLevel: "high" } })), "low");
     assert.equal(
-      effort(await run({ spec: { features: { effort: "low" } }, project: { effortLevel: "max" } })),
+      effort(await run({ spec: { reasoning: { effort: "low" } }, user: { reasoning: { effort: "high" } } })),
+      "low",
+    );
+    assert.equal(
+      effort(await run({ spec: { reasoning: { effort: "low" } }, project: { reasoning: { effort: "max" } } })),
       "max",
       "a trusted project setting overrides the Agent",
     );

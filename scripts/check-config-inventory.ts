@@ -25,6 +25,7 @@ import {
 } from "../src/config/catalog.js";
 import { SettingsSchema } from "../src/config/schema.js";
 import { HARNESS_KEYS } from "../src/harness/keys.js";
+import { LEGACY_ENVIRONMENT_NAMES } from "../src/config/migration.js";
 
 interface ArgvCheck {
   flag: string;
@@ -67,8 +68,24 @@ const ARGV_CHECKS: ArgvCheck[] = [
 /** Reads whose variable name comes from configuration or from a listed name. */
 const DYNAMIC_ENV_READS: DynamicEnvRead[] = [
   {
+    file: "src/config/values.ts",
+    reason: "Strict `${VAR}` references and credential source validation against the runtime snapshot.",
+  },
+  {
+    file: "src/config/environment.ts",
+    reason: "Runtime snapshot, credential protection and owned process environment restoration.",
+  },
+  {
+    file: "src/config/migration.ts",
+    reason: "The centralized, temporary compatibility boundary for retired environment names.",
+  },
+  {
+    file: "src/harness/keys.ts",
+    reason: "Strict parsers for canonical names declared in the Harness key table.",
+  },
+  {
     file: "src/services/api/providers/profile.ts",
-    reason: "`${VAR}` references in model profile fields.",
+    reason: "Complete connection selection from the runtime environment snapshot.",
   },
   {
     file: "src/services/mcp/remoteHeaders.ts",
@@ -94,9 +111,9 @@ const HARNESS_DIRECTORY = "src/harness";
 const BEHAVIOR_CONSTANTS: BehaviorConstant[] = [
   {
     component: "model",
-    file: "src/harness/keys.ts",
-    declaration: 'export const FALLBACK_MODEL = "claude-sonnet-4-20250514";',
-    summary: "Model when no setting, flag, Agent, or ANTHROPIC_MODEL selects one (model.main).",
+    file: "src/config/modelMetadata.ts",
+    declaration: "export const UNKNOWN_CONTEXT_WINDOW = 32_000;",
+    summary: "Conservative, explicitly labelled context estimate for unknown models. No fixed default model.",
   },
   {
     component: "model",
@@ -138,8 +155,8 @@ const BEHAVIOR_CONSTANTS: BehaviorConstant[] = [
   {
     component: "compaction",
     file: "src/utils/tokens.ts",
-    declaration: "export const MODEL_CONTEXT_WINDOW_DEFAULT = 200_000;",
-    summary: "Context window of a model with no known size.",
+    declaration: "export const MODEL_CONTEXT_WINDOW_DEFAULT = UNKNOWN_CONTEXT_WINDOW;",
+    summary: "Shared context estimate; profile and known catalogue metadata take precedence.",
   },
   {
     component: "compaction",
@@ -231,7 +248,7 @@ const BEHAVIOR_CONSTANTS: BehaviorConstant[] = [
     component: "mcp",
     file: "src/services/mcp/client.ts",
     declaration: "const CONNECT_TIMEOUT_MS = 30_000;",
-    summary: "MCP connection timeout (MCP_CONNECT_TIMEOUT).",
+    summary: "MCP connection timeout (EASY_AGENT_MCP_CONNECT_TIMEOUT_MS).",
   },
   {
     component: "session",
@@ -281,7 +298,15 @@ function isProcessMember(node: ts.Expression, member: string): boolean {
 
 /** `process.env`, or an identifier named `env` (a parameter defaulting to `process.env`, or a copy of it). */
 function isEnvObject(node: ts.Expression): boolean {
-  return isProcessMember(node, "env") || (ts.isIdentifier(node) && node.text === "env");
+  return (
+    isProcessMember(node, "env") ||
+    (ts.isIdentifier(node) && node.text === "env") ||
+    (ts.isCallExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      ["configurationEnvironment", "configurationInputEnvironment", "captureInheritedEnvironment"].includes(
+        node.expression.text,
+      ))
+  );
 }
 
 /**
@@ -322,11 +347,29 @@ export function scanSource(file: string, text: string): ScanResult {
     file.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
   );
   const lineOf = (node: ts.Node) => source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1;
+  const aliases = new Set<string>();
+  const discoverAliases = (node: ts.Node) => {
+    if (ts.isParameter(node) && ts.isIdentifier(node.name) && node.type?.getText(source).includes("ProcessEnv"))
+      aliases.add(node.name.text);
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.initializer &&
+      (isEnvObject(node.initializer) ||
+        (ts.isPropertyAccessExpression(node.initializer) && node.initializer.name.text === "env"))
+    ) {
+      aliases.add(node.name.text);
+    }
+    ts.forEachChild(node, discoverAliases);
+  };
+  discoverAliases(source);
+  const environmentObject = (node: ts.Expression) =>
+    isEnvObject(node) || (ts.isIdentifier(node) && aliases.has(node.text));
 
   const visit = (node: ts.Node) => {
-    if (ts.isPropertyAccessExpression(node) && isEnvObject(node.expression) && ENV_NAME.test(node.name.text)) {
+    if (ts.isPropertyAccessExpression(node) && environmentObject(node.expression) && ENV_NAME.test(node.name.text)) {
       result.envReads.push({ name: node.name.text, file, line: lineOf(node) });
-    } else if (ts.isElementAccessExpression(node) && isEnvObject(node.expression)) {
+    } else if (ts.isElementAccessExpression(node) && environmentObject(node.expression)) {
       const arg = node.argumentExpression;
       if (ts.isStringLiteralLike(arg)) {
         if (ENV_NAME.test(arg.text)) result.envReads.push({ name: arg.text, file, line: lineOf(node) });
@@ -344,6 +387,10 @@ export function scanSource(file: string, text: string): ScanResult {
           ? callee.name.text
           : "";
       const key = node.arguments[1];
+      const variable = node.arguments[0];
+      if (["envValue", "envInteger", "envBoolean"].includes(name) && variable && ts.isStringLiteralLike(variable)) {
+        result.envReads.push({ name: variable.text, file, line: lineOf(node) });
+      }
       if (SETTING_READERS.test(name) && key && ts.isStringLiteralLike(key)) {
         result.settingKeys.push({ key: key.text, file, line: lineOf(node) });
       }
@@ -404,7 +451,14 @@ function harnessKeysByVariable(): Map<string, string[]> {
 /** Reads of a Harness-resolved variable outside the resolver. */
 function directHarnessEnvReads(scan: ScanResult): EnvRead[] {
   const resolved = harnessKeysByVariable();
-  return scan.envReads.filter((read) => resolved.has(read.name) && !read.file.startsWith(`${HARNESS_DIRECTORY}/`));
+  const lifecycle = new Set(["src/config/migration.ts", "src/config/environment.ts", "src/utils/loadEnv.ts"]);
+  return scan.envReads.filter(
+    (read) =>
+      resolved.has(read.name) &&
+      !read.file.startsWith(`${HARNESS_DIRECTORY}/`) &&
+      !lifecycle.has(read.file) &&
+      !(read.file === "src/services/api/providers/profile.ts" && resolved.get(read.name)?.includes("model.main")),
+  );
 }
 
 export function findProblems(scan: ScanResult, texts: ReadonlyMap<string, string>, complete: boolean): string[] {
@@ -414,7 +468,10 @@ export function findProblems(scan: ScanResult, texts: ReadonlyMap<string, string
   const loc = (item: Located) => `${item.file}:${item.line}`;
 
   for (const read of scan.envReads) {
-    if (!listedEnv.has(read.name)) {
+    if (
+      !listedEnv.has(read.name) &&
+      !(read.file === "src/config/migration.ts" && (LEGACY_ENVIRONMENT_NAMES as readonly string[]).includes(read.name))
+    ) {
       problems.push(
         `${loc(read)} reads ${read.name}, which ENVIRONMENT_VARIABLES in src/config/catalog.ts does not list`,
       );
@@ -493,8 +550,9 @@ function selfTest(): void {
     'const e = await readMergedStringSetting(cwd, "sampleUnlistedKey");',
     'const g = source.raw?.["anotherUnlistedKey"];',
     "// process.env.IN_A_COMMENT is not a read",
-    "const h = process.env.ANTHROPIC_BASE_URL;",
+    "const h = configurationEnvironment().UNLISTED_SNAPSHOT;",
     "const i = process.env.EASY_AGENT_MAX_RETRIES;",
+    "const snapshot = configurationEnvironment(); const j = snapshot.UNLISTED_ALIAS;",
   ].join("\n");
   const problems = findProblems(scanSource("src/sample.ts", sample), new Map(), false);
   const expected = [
@@ -506,9 +564,11 @@ function selfTest(): void {
     '"sampleUnlistedKey"',
     '"anotherUnlistedKey"',
     "reads EASY_AGENT_MAX_RETRIES directly; read features.maxRetries",
+    "UNLISTED_SNAPSHOT",
+    "UNLISTED_ALIAS",
   ];
   const missing = expected.filter((fragment) => !problems.some((problem) => problem.includes(fragment)));
-  const unexpected = problems.filter((problem) => /IN_A_COMMENT|ANTHROPIC_BASE_URL/.test(problem));
+  const unexpected = problems.filter((problem) => /IN_A_COMMENT/.test(problem));
   const resolverRead = findProblems(
     scanSource(`${HARNESS_DIRECTORY}/sample.ts`, "const r = env.EASY_AGENT_MAX_RETRIES;"),
     new Map(),

@@ -260,7 +260,7 @@ async function runScenario(name: ScenarioName): Promise<ScenarioOutput> {
           apiKey: "test-key",
         },
       };
-      userSettings.defaultModel = "remote";
+      userSettings.model = "remote";
       break;
     }
     default:
@@ -270,9 +270,14 @@ async function runScenario(name: ScenarioName): Promise<ScenarioOutput> {
     await writeFile(path.join(userDir, "settings.json"), JSON.stringify(userSettings, null, 2));
   }
 
-  const { createAnthropicFixture } = await import("./fixtures/anthropicFixture.js");
+  const { createAnthropicFixture, fixtureProfile } = await import("./fixtures/anthropicFixture.js");
   const fixture = createAnthropicFixture();
   await fixture.start();
+  if (!userSettings.model) {
+    userSettings.model = "main";
+    userSettings.models = { main: fixtureProfile(fixture.baseURL, "claude-sonnet-4-20250514") };
+  }
+  await writeFile(path.join(userDir, "settings.json"), JSON.stringify(userSettings, null, 2));
 
   if (name === "project-memory" || name === "agent-no-memory") {
     const { getProjectMemoryDir } = await import("../context/memory/memdir.js");

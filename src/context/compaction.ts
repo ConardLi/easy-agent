@@ -235,7 +235,7 @@ async function summarizeMessages(messages: MessageParam[], focus?: string, model
   debugLog("compact", "summary_request", { messageCount: messages.length, focus: focus ?? null, model: model ?? null });
 
   const response = await createMessage({
-    model,
+    model: harnessSetting<string | undefined>("model.roles.compaction") ?? model,
     maxTokens: 8000,
     system: NO_TOOLS_PREAMBLE + BASE_COMPACT_PROMPT + extraInstruction,
     messages: [

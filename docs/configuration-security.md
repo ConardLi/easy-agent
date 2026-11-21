@@ -26,7 +26,7 @@ For process environment values, `<project>/.env` is applied after project and lo
 
 Project, local, and `.env` sources cannot replace a credential-shaped environment variable that was already supplied by the parent process. This protection covers API keys, auth and access tokens, secrets, passwords, credentials, private keys, and client secrets. User settings, explicit command-line settings, and managed policy remain trusted sources and can override the inherited environment according to precedence.
 
-Project and local `mode` and `autoMode` values never change the permission mode, including in a trusted workspace. Restrictive project values such as deny rules, hook disabling, MCP server disabling, and `claudeMdExcludes` remain effective while untrusted because they only remove capability.
+Project and local `mode` and `autoMode` values never change the permission mode, including in a trusted workspace. Restrictive project values such as deny rules, hook disabling, MCP server disabling, and `agentMdExcludes` remain effective while untrusted because they only remove capability.
 
 ## Trust-sensitive settings
 

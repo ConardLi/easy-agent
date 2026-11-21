@@ -233,7 +233,8 @@ try {
       const written = await experimental.writeHarness("default", {
         extends: "default",
         outputStyle: "Explanatory", // the top-level user setting already gives this
-        features: { thinking: true, maxTurns: 30 }, // thinking is on by default
+        reasoning: { mode: "auto" },
+        features: { maxTurns: 30 },
         permissions: { deny: ["WebFetch"], ask: ["Bash"] }, // WebFetch is denied at the top level already
       });
       assert.deepEqual(written.spec, { features: { maxTurns: 30 }, permissions: { ask: ["Bash"] } });

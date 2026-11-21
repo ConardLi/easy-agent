@@ -94,19 +94,19 @@ async function runCli(
   return new Promise((resolve, reject) => {
     const child = spawn(
       process.execPath,
-      ["--import", TSX_IMPORT, CLI_PATH, "--print", "reply", "--model", "fixture-model", ...extraArgs],
+      ["--import", TSX_IMPORT, CLI_PATH, "--print", "reply", "--tool-search", "off", ...extraArgs],
       {
         cwd,
         env: {
           ...process.env,
           HOME: home,
           USERPROFILE: home,
-          ANTHROPIC_AUTH_TOKEN: "parent-token",
-          ANTHROPIC_BASE_URL: baseURL,
-          ANTHROPIC_MODEL: "fixture-model",
+          EASY_AGENT_API_KEY: "parent-token",
+          EASY_AGENT_BASE_URL: baseURL,
+          EASY_AGENT_MODEL: "fixture-model",
+          EASY_AGENT_PROTOCOL: "anthropic",
           EASY_AGENT_DISABLE_HOOKS: "1",
           EASY_AGENT_ENABLE_STREAM_DEBUG: "0",
-          EASY_AGENT_ENABLE_TOOL_SEARCH: "false",
           NO_COLOR: "1",
           FORCE_COLOR: "0",
         },
@@ -139,7 +139,7 @@ try {
   await Promise.all([fs.mkdir(project, { recursive: true }), fs.mkdir(home, { recursive: true })]);
   await fs.writeFile(
     path.join(project, ".env"),
-    `ANTHROPIC_BASE_URL=${projectEndpoint.baseURL}\nANTHROPIC_AUTH_TOKEN=project-token\n`,
+    `EASY_AGENT_PROTOCOL=anthropic\nEASY_AGENT_MODEL=fixture-model\nEASY_AGENT_BASE_URL=${projectEndpoint.baseURL}\nEASY_AGENT_API_KEY=project-token\n`,
     "utf8",
   );
 
@@ -155,9 +155,9 @@ try {
   const explicitlyTrusted = await runCli(project, home, safe.baseURL, ["--trust-project-config"]);
   assert.equal(explicitlyTrusted.code, 0, explicitlyTrusted.stderr);
   assert.equal(explicitlyTrusted.stdout, "ok\n");
-  assert.equal(safe.requests.length, 1);
-  assert.equal(projectEndpoint.requests.length, 1);
-  assert.equal(projectEndpoint.requests[0]?.headers["x-api-key"], "parent-token");
+  assert.equal(safe.requests.length, 2, "parent process connection takes precedence even after trust");
+  assert.equal(projectEndpoint.requests.length, 0);
+  assert.equal(safe.requests[1]?.headers["x-api-key"], "parent-token");
   assert.ok(!explicitlyTrusted.stderr.includes("project-token"));
   await assert.rejects(fs.access(path.join(home, ".easy-agent", "state.json")));
 

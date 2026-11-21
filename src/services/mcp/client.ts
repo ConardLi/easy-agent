@@ -17,6 +17,8 @@ import { debugLog, logWarn } from "../../utils/log.js";
 import { CLIENT_NAME, USER_AGENT, VERSION } from "../../version.js";
 import { createMcpAuthSession, type McpAuthSession } from "./oauth.js";
 import { createMcpFetch } from "./remoteHeaders.js";
+import { configurationEnvironment } from "../../config/environment.js";
+import { configInteger } from "../../config/values.js";
 import {
   bindRuntimeScope,
   currentRuntimeScope,
@@ -30,8 +32,10 @@ import {
 const CONNECT_TIMEOUT_MS = 30_000;
 
 function getConnectTimeoutMs(): number {
-  const env = parseInt(process.env.MCP_CONNECT_TIMEOUT || "", 10);
-  return Number.isFinite(env) && env > 0 ? env : CONNECT_TIMEOUT_MS;
+  return (
+    configInteger(configurationEnvironment().EASY_AGENT_MCP_CONNECT_TIMEOUT_MS, "EASY_AGENT_MCP_CONNECT_TIMEOUT_MS") ??
+    CONNECT_TIMEOUT_MS
+  );
 }
 
 // ─── Connection cache ────────────────────────────────────────────────

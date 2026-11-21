@@ -12,8 +12,17 @@
 export { AgentRuntime, createAgentRuntime, INTERACTIVE_DEFAULT_MAX_TURNS } from "./runtime.js";
 export { AgentSession } from "./session.js";
 export { AgentSdkError, isAgentSdkError, type AgentSdkErrorCode } from "./errors.js";
+export { ConfigurationError } from "../config/values.js";
 export type { WorkspaceReport } from "./bootstrap.js";
 export * from "./types.js";
+export type {
+  ModelProfileConfig,
+  ModelCapabilities,
+  Authentication,
+  ProtocolOptions,
+  ReasoningSettings,
+} from "../config/modelSchema.js";
+export type { ConfigMigrationPreview, ConfigMigrationResult } from "../config/migrationFiles.js";
 export type {
   HarnessContribution,
   HarnessIgnoredValue,

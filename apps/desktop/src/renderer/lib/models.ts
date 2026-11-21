@@ -4,8 +4,8 @@
  *
  * Today Easy Agent stores one flat profile per model:
  *
- *   "models": { "<handle>": { protocol, model, baseURL, apiKey, maxTokens, headers, promptCacheKey, countTokens } }
- *   "defaultModel": "<handle>",
+ *   "models": { "<handle>": { protocol, model, baseURL, apiKey, authentication, maxTokens, headers, capabilities, protocolOptions } }
+ *   "model": "<handle>",
  *   "modelRoles": { background, think, longContext }
  *
  * The UI groups profiles by provider so a key and an endpoint are entered once,
@@ -13,12 +13,6 @@
  *
  * TODO(config): add a `providers` block that profiles reference by id, so
  *   baseURL / apiKey / headers are not repeated in every profile.
- * TODO(config): add `contextWindow`, `capabilities` (tools / vision / reasoning
- *   / cache), and `pricing` to profiles. The runtime currently assumes the
- *   Anthropic context window and estimates cost from Anthropic prices.
- * TODO(config): allow several API keys per provider and rotate them on 429.
- * TODO(config): per-profile reasoning settings (thinking budget for Anthropic,
- *   `reasoning_effort` for OpenAI) instead of the global effortLevel only.
  * TODO(config): a model catalog (models.dev-style) to fill limits and prices
  *   for models fetched from `/models`.
  * TODO(runtime): Azure OpenAI (api-version, deployment names), AWS Bedrock
@@ -26,13 +20,14 @@
  */
 
 import { secretEnvName } from "../../shared/contract";
+import type { ModelCapabilities, Authentication, ProtocolOptions } from "eagent/sdk";
 import type { BrandId } from "../design/BrandIcon";
 import type { WriteScope } from "./scopes";
 
 export type Protocol = "anthropic" | "openai-chat" | "openai-responses" | "gemini";
 
 export const PROTOCOLS: { id: Protocol; label: string; short: string; hint: string }[] = [
-  { id: "anthropic", label: "Anthropic Messages", short: "Anthropic", hint: "原生协议，支持思考、提示词缓存和 ToolSearch" },
+  { id: "anthropic", label: "Anthropic Messages", short: "Anthropic", hint: "Messages API；能力取决于所选模型和端点" },
   { id: "openai-chat", label: "OpenAI Chat Completions", short: "OpenAI Chat", hint: "兼容面最广，绝大多数服务商和本地推理框架都支持" },
   { id: "openai-responses", label: "OpenAI Responses", short: "Responses", hint: "OpenAI 新接口，推理模型效果更好" },
   { id: "gemini", label: "Google Gemini", short: "Gemini", hint: "Gemini 原生协议" },
@@ -63,6 +58,9 @@ export interface ModelEntry {
   /** Written as `maxTokens`. */
   maxOutput: number;
   capabilities: Capabilities;
+  /** Explicit overrides survive edits; displayed facts come from the runtime. */
+  capabilityOverrides?: ModelCapabilities;
+  contextWindowSource?: "profile" | "catalog" | "estimate";
   /** USD per million tokens. */
   price?: { input: number; output: number; cacheRead?: number };
   enabled: boolean;
@@ -76,6 +74,7 @@ export type KeySource =
   | { kind: "keychain"; name: string; masked: string; value?: string }
   /** Written into the settings file itself; the Agent never returns it. */
   | { kind: "inline" }
+  | { kind: "helper"; command: string }
   | { kind: "none" };
 
 export interface ProviderConfig {
@@ -88,6 +87,8 @@ export interface ProviderConfig {
   key: KeySource;
   enabled: boolean;
   headers: { name: string; value: string }[];
+  authentication?: Authentication;
+  protocolOptions?: ProtocolOptions;
   promptCacheKey?: boolean;
   /** Anthropic protocol: count requests with the token-counting endpoint; kept as the settings file has it. */
   countTokens?: boolean;
@@ -148,9 +149,9 @@ export const TEMPLATES: ProviderTemplate[] = [
     category: "官方",
     protocol: "anthropic",
     baseURL: "https://api.anthropic.com",
-    envKey: "ANTHROPIC_API_KEY",
+    envKey: "EASY_AGENT_API_KEY",
     keyUrl: "console.anthropic.com/settings/keys",
-    description: "Claude 系列，Easy Agent 的原生协议",
+    description: "Claude 系列，通过 Anthropic Messages 连接",
     catalog: [
       m("claude-opus-4-1", "claude-opus-4-1", "Claude Opus 4.1", 200_000, 32_000, caps(true, true, true, true), { input: 15, output: 75, cacheRead: 1.5 }),
       m(
@@ -460,6 +461,7 @@ export function apiKeyEntry(key: KeySource): string | undefined {
   if (key.kind === "env") return `\${${key.name}}`;
   if (key.kind === "keychain") return `\${${secretEnvName(key.name)}}`;
   if (key.kind === "inline") return "[redacted]";
+  if (key.kind === "helper") return "[redacted]";
   return undefined;
 }
 
@@ -471,29 +473,27 @@ export function profileEntryLines(p: ProviderConfig): string[] {
   enabled.forEach((x, i) => {
     const entry: Record<string, unknown> = { protocol: p.protocol, model: x.model };
     if (p.baseURL) entry.baseURL = p.baseURL;
-    if (key) entry.apiKey = key;
+    if (key) entry.apiKey = p.key.kind === "helper" && p.key.command !== "[redacted]" ? { helper: p.key.command } : key;
+    if (p.authentication) entry.authentication = p.authentication;
+    if (x.capabilityOverrides) entry.capabilities = x.capabilityOverrides;
     if (x.maxOutput) entry.maxTokens = x.maxOutput;
     if (p.headers.length) entry.headers = Object.fromEntries(p.headers.filter((h) => h.name).map((h) => [h.name, h.value]));
-    if (p.promptCacheKey !== undefined && p.protocol.startsWith("openai")) entry.promptCacheKey = p.promptCacheKey;
-    if (p.countTokens !== undefined && p.protocol === "anthropic") entry.countTokens = p.countTokens;
+    const options = { ...p.protocolOptions };
+    if (p.promptCacheKey !== undefined && (p.protocol === "openai-chat" || p.protocol === "openai-responses"))
+      options[p.protocol] = { ...options[p.protocol], promptCacheKey: p.promptCacheKey };
+    if (p.countTokens !== undefined && p.protocol === "anthropic") options.anthropic = { ...options.anthropic, countTokens: p.countTokens };
+    if (Object.keys(options).length) entry.protocolOptions = options;
     const body = JSON.stringify(entry, null, 2)
       .split("\n")
       .slice(1, -1)
       .map((l) => `    ${l}`);
-    const caps = Object.entries(x.capabilities)
-      .filter(([, v]) => v)
-      .map(([k]) => `"${k}"`)
-      .join(", ");
-    lines.push(`    "${x.handle}": {`, ...body.map((l, j) => (j === body.length - 1 ? `${l},` : l)));
-    lines.push(
-      `      // TODO(config): "contextWindow": ${x.contextWindow}, "capabilities": [${caps}]${x.price ? `, "pricing": { "input": ${x.price.input}, "output": ${x.price.output} }` : ""}`,
-    );
+    lines.push(`    "${x.handle}": {`, ...body);
     lines.push(`    }${i === enabled.length - 1 ? "" : ","}`);
   });
   return lines;
 }
 
-/** The provider's profiles as a settings file fragment. Fields the schema lacks go into TODO comments. */
+/** The provider's canonical profiles as a settings file fragment. */
 export function profileJson(p: ProviderConfig, scopeFile: string): string {
   const head = [`// ${scopeFile}`];
   if (p.key.kind === "keychain") head.push("// 钥匙串里的密钥由桌面端在启动 Agent 进程时作为环境变量传入");

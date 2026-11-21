@@ -12,6 +12,7 @@
  */
 
 import type { z } from "zod";
+import { ConfigurationError } from "../config/values.js";
 import { JsonRpcError as RpcError, JsonRpcPeer } from "../jsonrpc/peer.js";
 import {
   AgentSdkError,
@@ -128,6 +129,9 @@ export class RpcServer {
     "marketplace/update": async ({ name }) => this.#requireRuntime().mutatePlugin({ op: "marketplace-update", name }),
     "marketplace/remove": async ({ name }) => this.#requireRuntime().mutatePlugin({ op: "marketplace-remove", name }),
     "config/read": async () => this.#requireRuntime().readConfig(),
+    "config/migrationPreview": async ({ scope }) => this.#requireRuntime().previewConfigMigration(scope),
+    "config/migrationApply": async ({ scope, revision }) =>
+      this.#requireRuntime().applyConfigMigration(scope, revision),
     "config/write": async ({ scope, key, value }) => this.#requireRuntime().writeConfig(scope, key, value ?? null),
     "workspace/trust": async ({ trusted }) => this.#requireRuntime().setWorkspaceTrust(trusted),
     "models/check": async ({ model }) => this.#requireRuntime().checkModel(model),
@@ -390,6 +394,12 @@ function harnessOf(target: HarnessTarget | undefined): { harness: HarnessTarget 
 }
 
 function toRpcError(error: unknown): RpcError | undefined {
+  if (error instanceof ConfigurationError)
+    return new RpcError(RpcErrorCode.AgentError, error.message, {
+      code: error.code,
+      field: error.field,
+      ...(error.source ? { source: error.source } : {}),
+    });
   if (error instanceof AgentSdkError) return new RpcError(RpcErrorCode.AgentError, error.message, { code: error.code });
   // The SDK throws TypeError for a response that does not answer the request's kind.
   if (error instanceof TypeError) return new RpcError(RpcErrorCode.InvalidParams, error.message);

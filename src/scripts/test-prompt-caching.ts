@@ -21,6 +21,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { MessageParam } from "@anthropic-ai/sdk/resources/messages.js";
+import { installConfigurationEnvironment } from "../config/environment.js";
 
 const root = await mkdtemp(path.join(os.tmpdir(), "easy-agent-prompt-cache-"));
 process.env.HOME = root;
@@ -173,15 +174,18 @@ await check("the compatibility switch accepts the usual truthy spellings", () =>
   try {
     for (const value of ["1", "true", "YES", " on "]) {
       process.env.EASY_AGENT_DISABLE_PROMPT_CACHING = value;
+      installConfigurationEnvironment(process.env);
       assert.equal(isPromptCachingDisabled(), true, JSON.stringify(value));
     }
     for (const value of [undefined, "", "0", "false"]) {
       if (value === undefined) delete process.env.EASY_AGENT_DISABLE_PROMPT_CACHING;
       else process.env.EASY_AGENT_DISABLE_PROMPT_CACHING = value;
+      installConfigurationEnvironment(process.env);
       assert.equal(isPromptCachingDisabled(), false, JSON.stringify(value));
     }
   } finally {
     delete process.env.EASY_AGENT_DISABLE_PROMPT_CACHING;
+    installConfigurationEnvironment(process.env);
   }
 });
 
@@ -254,8 +258,17 @@ const server = createServer((request, response) => {
   });
 });
 await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-process.env.ANTHROPIC_BASE_URL = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-process.env.ANTHROPIC_AUTH_TOKEN = "fixture-token";
+const { setFlagSettings } = await import("../config/sources.js");
+setFlagSettings({
+  models: {
+    "claude-fixture": {
+      protocol: "anthropic",
+      model: "claude-fixture",
+      baseURL: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
+      apiKey: "fixture-token",
+    },
+  },
+});
 
 async function send(): Promise<{ body: Record<string, unknown>; usage: Record<string, unknown> }> {
   const generator = streamMessage({
@@ -309,6 +322,7 @@ try {
 
   await check("EASY_AGENT_DISABLE_PROMPT_CACHING restores the uncached request shape", async () => {
     process.env.EASY_AGENT_DISABLE_PROMPT_CACHING = "1";
+    installConfigurationEnvironment(process.env);
     try {
       const { body } = await send();
       assert.equal(countMarkers(body), 0);
@@ -323,6 +337,7 @@ try {
       assert.equal(countMarkers(anthropicBodies.at(-1)), 0);
     } finally {
       delete process.env.EASY_AGENT_DISABLE_PROMPT_CACHING;
+      installConfigurationEnvironment(process.env);
     }
   });
 } finally {
@@ -358,7 +373,7 @@ async function runProvider(profile: ModelProfile, chunks: string[], promptCacheK
     {
       messages: [{ role: "user", content: "hi" }],
       system: SYSTEM,
-      thinking: { type: "disabled" },
+      thinking: { type: "auto" },
       ...(promptCacheKey ? { promptCacheKey } : {}),
     },
     trace,
@@ -436,9 +451,12 @@ try {
     );
     const gateway = openai("openai-chat", { baseURL: "https://gateway.example/v1" });
     assert.equal((await runProvider(gateway, CHAT_WITHOUT_CACHE, "session-1")).body.prompt_cache_key, undefined);
-    const optedIn = openai("openai-chat", { baseURL: "https://gateway.example/v1", promptCacheKey: true });
+    const optedIn = openai("openai-chat", {
+      baseURL: "https://gateway.example/v1",
+      protocolOptions: { "openai-chat": { promptCacheKey: true } },
+    });
     assert.equal((await runProvider(optedIn, CHAT_WITHOUT_CACHE, "session-1")).body.prompt_cache_key, "session-1");
-    const optedOut = openai("openai-responses", { promptCacheKey: false });
+    const optedOut = openai("openai-responses", { protocolOptions: { "openai-responses": { promptCacheKey: false } } });
     assert.equal(shouldSendPromptCacheKey(optedOut), false);
     assert.equal(
       (await runProvider(openai("openai-chat"), CHAT_WITHOUT_CACHE)).body.prompt_cache_key,
@@ -449,6 +467,7 @@ try {
 
   await check("the compatibility switch also stops prompt_cache_key", async () => {
     process.env.EASY_AGENT_DISABLE_PROMPT_CACHING = "1";
+    installConfigurationEnvironment(process.env);
     try {
       assert.equal(
         (await runProvider(openai("openai-chat"), CHAT_WITHOUT_CACHE, "session-1")).body.prompt_cache_key,
@@ -456,6 +475,7 @@ try {
       );
     } finally {
       delete process.env.EASY_AGENT_DISABLE_PROMPT_CACHING;
+      installConfigurationEnvironment(process.env);
     }
   });
 } finally {

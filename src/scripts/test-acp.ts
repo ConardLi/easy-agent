@@ -43,9 +43,9 @@ const CLI_PATH = path.join(PROJECT_ROOT, "src", "entrypoint", "cli.ts");
 const TSX_IMPORT = import.meta.resolve("tsx");
 const PNG_1X1 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
 
-const { createAnthropicFixture, FIXTURE_MODEL } = await import("./fixtures/anthropicFixture.js");
+const { createAnthropicFixture, fixtureProfile } = await import("./fixtures/anthropicFixture.js");
 const fixture = createAnthropicFixture();
-await fixture.start();
+await fixture.start(home);
 
 const acpSchema = createRequire(import.meta.url)("@agentclientprotocol/sdk/schema/schema.json") as object;
 // The schema uses integer formats such as uint64 that Ajv does not define; the integer type is still checked.
@@ -81,9 +81,7 @@ const baseEnv = {
   ...process.env,
   HOME: home,
   USERPROFILE: home,
-  ANTHROPIC_MODEL: FIXTURE_MODEL,
   EASY_AGENT_DISABLE_HOOKS: "1",
-  EASY_AGENT_ENABLE_TOOL_SEARCH: "false",
   NO_COLOR: "1",
 };
 
@@ -561,6 +559,7 @@ try {
       userSettings,
       JSON.stringify({
         ...JSON.parse(saved),
+        models: { ...JSON.parse(saved).models, "acp-reviewer": fixtureProfile(fixture.baseURL, "acp-reviewer") },
         harnesses: { reviewer: { model: { main: "acp-reviewer" }, permissions: { deny: ["Edit"] } } },
       }),
     );
@@ -591,7 +590,14 @@ try {
   console.log("\n[6] authentication");
 
   await check("without credentials, sessions need authentication and a terminal login is offered", async () => {
-    const anonymous = start({ env: { ANTHROPIC_AUTH_TOKEN: "", ANTHROPIC_BASE_URL: "" } });
+    const anonymous = start({
+      env: {
+        EASY_AGENT_PROTOCOL: "anthropic",
+        EASY_AGENT_MODEL: "fixture-model",
+        EASY_AGENT_BASE_URL: fixture.baseURL,
+        EASY_AGENT_API_KEY: "",
+      },
+    });
     const init = await anonymous.initialize({ auth: { terminal: true } });
     assert.deepEqual(
       init.authMethods?.map((method) => ({ id: method.id, ...("args" in method ? { args: method.args } : {}) })),

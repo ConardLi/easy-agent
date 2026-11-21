@@ -42,7 +42,8 @@ body: {
     }
   ],
   "thinking": {
-    "type": "adaptive"
+    "budget_tokens": 7999,
+    "type": "enabled"
   },
   "tools": [
     "<<T1 Read>>",
@@ -134,7 +135,8 @@ body: {
     }
   ],
   "thinking": {
-    "type": "adaptive"
+    "budget_tokens": 7999,
+    "type": "enabled"
   },
   "tools": [
     "<<T1 Read>>",
@@ -239,7 +241,8 @@ body: {
     }
   ],
   "thinking": {
-    "type": "adaptive"
+    "budget_tokens": 7999,
+    "type": "enabled"
   },
   "tools": [
     "<<T1 Read>>",
@@ -309,7 +312,8 @@ body: {
     }
   ],
   "thinking": {
-    "type": "adaptive"
+    "budget_tokens": 7999,
+    "type": "enabled"
   },
   "tools": [
     "<<T1 Read>>",
@@ -383,7 +387,8 @@ body: {
     }
   ],
   "thinking": {
-    "type": "adaptive"
+    "budget_tokens": 7999,
+    "type": "enabled"
   },
   "tools": [
     "<<T1 Read>>",
@@ -453,7 +458,8 @@ body: {
     }
   ],
   "thinking": {
-    "type": "adaptive"
+    "budget_tokens": 7999,
+    "type": "enabled"
   },
   "tools": [
     "<<T1 Read>>",
@@ -527,7 +533,8 @@ body: {
     }
   ],
   "thinking": {
-    "type": "adaptive"
+    "budget_tokens": 7999,
+    "type": "enabled"
   },
   "tools": [
     "<<T1 Read>>",
@@ -588,7 +595,8 @@ body: {
     }
   ],
   "thinking": {
-    "type": "adaptive"
+    "budget_tokens": 7999,
+    "type": "enabled"
   },
   "tools": [
     "<<T1 Read>>",
@@ -659,7 +667,8 @@ body: {
     }
   ],
   "thinking": {
-    "type": "adaptive"
+    "budget_tokens": 7999,
+    "type": "enabled"
   },
   "tools": [
     "<<T1 Read>>",
@@ -757,7 +766,8 @@ body: {
     }
   ],
   "thinking": {
-    "type": "adaptive"
+    "budget_tokens": 7999,
+    "type": "enabled"
   },
   "tools": [
     "<<T1 Read>>",
@@ -842,10 +852,7 @@ body: {
     }
   ],
   "generationConfig": {
-    "maxOutputTokens": 8000,
-    "thinkingConfig": {
-      "includeThoughts": true
-    }
+    "maxOutputTokens": 8000
   },
   "systemInstruction": {
     "parts": [
@@ -917,7 +924,8 @@ body: {
     }
   ],
   "thinking": {
-    "type": "adaptive"
+    "budget_tokens": 7999,
+    "type": "enabled"
   },
   "tools": [
     "<<T1 Read>>",
@@ -987,7 +995,8 @@ body: {
     }
   ],
   "thinking": {
-    "type": "adaptive"
+    "budget_tokens": 7999,
+    "type": "enabled"
   },
   "tools": [
     "<<T1 Read>>",
@@ -1057,7 +1066,8 @@ body: {
     }
   ],
   "thinking": {
-    "type": "adaptive"
+    "budget_tokens": 7999,
+    "type": "enabled"
   },
   "tools": [
     "<<T1 Read>>",

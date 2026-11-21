@@ -1,4 +1,4 @@
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
 import { createAgentWorld, openProject, send } from "../helpers/agent";
@@ -14,7 +14,8 @@ for (const scenario of SCENARIOS) {
   test(`matches the style reference: ${scenario.name}`, async () => {
     if (scenario.requestView) {
       const world = await createAgentWorld();
-      writeFileSync(join(world.home, ".easy-agent", "settings.json"), JSON.stringify({ harnesses: { lean: {} } }));
+      const file = join(world.home, ".easy-agent", "settings.json");
+      writeFileSync(file, JSON.stringify({ ...JSON.parse(readFileSync(file, "utf8")), harnesses: { lean: {} } }));
       const { app, page } = await openProject(world, scenario.prefs);
       try {
         await replayRequests(app, { context: CONTEXT_FIXTURE, comparison: COMPARISON_FIXTURE });

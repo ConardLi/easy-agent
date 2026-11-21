@@ -124,7 +124,9 @@ const CASES: Case[] = [
 ];
 
 async function main() {
-  console.log(`Model: ${process.env.EASY_AGENT_AUTO_MODE_MODEL ?? process.env.ANTHROPIC_MODEL ?? "(default)"}`);
+  console.log(
+    `Profile: ${process.env.EASY_AGENT_AUTO_MODE_MODEL ?? process.env.EASY_AGENT_PROFILE ?? "(selected main profile)"}`,
+  );
   console.log(`cwd: ${CWD}\n`);
 
   let passed = 0;

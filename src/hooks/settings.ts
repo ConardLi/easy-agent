@@ -1,6 +1,8 @@
 import { getSettingsPaths } from "../utils/paths.js";
 import { logWarn } from "../utils/log.js";
 import { defineRuntimeState, runtimeScopeClosed, withRuntimeScope } from "../state/runtimeScope.js";
+import { configurationEnvironment } from "../config/environment.js";
+import { configBoolean } from "../config/values.js";
 import { hookOffByAgent, hookSelectionKey } from "../harness/resources.js";
 import { loadTrustedSettingSources, loadSettingSources, type LoadedSource } from "../config/sources.js";
 import {
@@ -340,10 +342,7 @@ export function hooksGloballyDisabled(cwd?: string): boolean {
   if (runtimeScopeClosed()) return true;
   const { disabledByCwd, lastRefreshedCwd } = state();
   if (disabledByCwd.get(cwd ?? lastRefreshedCwd ?? "")) return true;
-  const v = process.env.EASY_AGENT_DISABLE_HOOKS;
-  if (!v) return false;
-  const lower = v.toLowerCase();
-  return lower === "1" || lower === "true" || lower === "yes";
+  return configBoolean(configurationEnvironment().EASY_AGENT_DISABLE_HOOKS, "EASY_AGENT_DISABLE_HOOKS") ?? false;
 }
 
 /**

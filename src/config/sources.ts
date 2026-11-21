@@ -35,6 +35,13 @@ import { getManagedSettingsPath } from "./managedPath.js";
 import { isProjectTrusted } from "./globalState.js";
 import { validateSettings } from "./schema.js";
 import { bindRuntimeScope, defineRuntimeState, runtimeScopeClosed } from "../state/runtimeScope.js";
+import {
+  legacyDefaultModelIsShadowed,
+  migrateSettings,
+  savedProfileOwnsConnection,
+  type MigrationNotice,
+} from "./migration.js";
+import { configurationEnvironmentMigration } from "./environment.js";
 
 export type SettingSource = "user" | "project" | "local" | "flag" | "policy";
 
@@ -51,6 +58,10 @@ export interface LoadedSource {
   parseError?: string;
   /** Per-field schema repairs (dropped rules / ignored fields), if any. */
   validationErrors?: string[];
+  /** Compatibility diagnostics are separate from malformed updates. Never contain credentials. */
+  migrationNotices?: MigrationNotice[];
+  /** Original explicit protocol declarations; generated compatibility profiles are excluded. */
+  canonicalProfileIds?: string[];
 }
 
 // ─── flag source (set once by the CLI entrypoint) ────────────────────────
@@ -79,7 +90,7 @@ interface CacheEntry {
 
 const state = defineRuntimeState("settingsSnapshots", () => ({
   sourceCache: new Map<string, CacheEntry>(),
-  lastValidSources: new Map<string, Record<string, unknown>>(),
+  lastValidSources: new Map<string, { raw: Record<string, unknown>; canonicalProfileIds: string[] }>(),
   loading: new Map<string, Promise<LoadedSource[]>>(),
 }));
 
@@ -108,16 +119,36 @@ function buildSource(
   filePath: string | null,
   raw: Record<string, unknown> | null,
   parseError: string | undefined,
+  inheritedProfileIds: ReadonlySet<string>,
+  knownProfileIds: ReadonlySet<string>,
+  legacyDefaultModelShadowed: boolean,
+  savedProfileSelected: boolean,
 ): LoadedSource {
   if (raw == null) {
     return { source, path: filePath, raw: null, ...(parseError ? { parseError } : {}) };
   }
-  const { value, errors } = validateSettings(raw, filePath ?? source);
+  const migration = migrateSettings(raw, {
+    inheritedProfileIds,
+    knownProfileIds,
+    legacyDefaultModelShadowed,
+    savedProfileSelected,
+    ...(source === "flag" ? {} : { legacyEnvironment: configurationEnvironmentMigration() }),
+  });
+  const { value, errors } = validateSettings(migration.value, filePath ?? source, { partialProfiles: true });
+  errors.push(
+    ...migration.notices
+      .filter((notice) => notice.level === "error")
+      .map((notice) => `${filePath ?? source}: ${notice.field}: ${notice.message}`),
+  );
   return {
     source,
     path: filePath,
     raw: value,
+    canonicalProfileIds: Object.entries((raw.models as Record<string, unknown> | undefined) ?? {})
+      .filter(([, profile]) => profile && typeof profile === "object" && "protocol" in profile)
+      .map(([id]) => id),
     ...(errors.length ? { validationErrors: errors } : {}),
+    ...(migration.notices.length ? { migrationNotices: migration.notices } : {}),
   };
 }
 
@@ -147,6 +178,7 @@ async function readSettingSources(cwd: string): Promise<LoadedSource[]> {
   const localPath = getLocalSettingsPath(cwd);
   const policyPath = getManagedSettingsPath();
   const flag = getFlagSettings();
+  const trusted = await isProjectTrusted(cwd);
 
   // Cache key off file fingerprints + the flag layer. A write (which changes
   // mtime/size) or a flag change invalidates the entry; an external hand-edit
@@ -158,7 +190,7 @@ async function readSettingSources(cwd: string): Promise<LoadedSource[]> {
     fileSignature(localPath),
     fileSignature(policyPath),
   ]);
-  const signature = [userSig, projectSig, localSig, policySig, JSON.stringify(flag)].join("|");
+  const signature = [userSig, projectSig, localSig, policySig, JSON.stringify(flag), trusted].join("|");
 
   const cached = sourceCache.get(cwd);
   if (cached && cached.signature === signature) return cached.sources;
@@ -170,13 +202,41 @@ async function readSettingSources(cwd: string): Promise<LoadedSource[]> {
     readJsonSettingsFile<Record<string, unknown>>(policyPath),
   ]);
 
-  const sources: LoadedSource[] = [
-    buildSource("user", userPath, user.raw, user.parseError),
-    buildSource("project", projectPath, project.raw, project.parseError),
-    buildSource("local", localPath, local.raw, local.parseError),
-    buildSource("flag", null, flag, undefined),
-    buildSource("policy", policyPath, policy.raw, policy.parseError),
-  ];
+  const inheritedProfileIds = new Set<string>();
+  const knownProfileIds = new Set(
+    [user.raw, ...(trusted ? [project.raw, local.raw] : []), flag, policy.raw].flatMap((raw) =>
+      Object.keys((raw?.models as object | undefined) ?? {}),
+    ),
+  );
+  const legacyDefaultModelShadowed = legacyDefaultModelIsShadowed([
+    { raw: user.raw, trusted: true },
+    { raw: project.raw, trusted },
+    { raw: local.raw, trusted },
+  ]);
+  const savedProfileSelected =
+    configurationEnvironmentMigration().savedProfileSelected === true ||
+    savedProfileOwnsConnection([user.raw, ...(trusted ? [project.raw, local.raw] : []), flag, policy.raw]);
+  const sources: LoadedSource[] = [];
+  for (const [source, filePath, raw, parseError] of [
+    ["user", userPath, user.raw, user.parseError],
+    ["project", projectPath, project.raw, project.parseError],
+    ["local", localPath, local.raw, local.parseError],
+    ["flag", null, flag, undefined],
+    ["policy", policyPath, policy.raw, policy.parseError],
+  ] as const) {
+    const loaded = buildSource(
+      source,
+      filePath,
+      raw,
+      parseError,
+      inheritedProfileIds,
+      knownProfileIds,
+      legacyDefaultModelShadowed,
+      savedProfileSelected,
+    );
+    for (const id of Object.keys((loaded.raw?.models as object | undefined) ?? {})) inheritedProfileIds.add(id);
+    sources.push(loaded);
+  }
 
   // Publish a whole source snapshot, never a mixture of a new valid field and
   // stale siblings. Initial loads retain field-level tolerance for compatibility.
@@ -187,13 +247,18 @@ async function readSettingSources(cwd: string): Promise<LoadedSource[]> {
     );
     const previous = lastValidSources.get(key);
     if (invalid && previous) {
-      src.raw = structuredClone(previous);
+      src.raw = structuredClone(previous.raw);
+      src.canonicalProfileIds = [...previous.canonicalProfileIds];
       src.validationErrors = [
         ...(src.validationErrors ?? []),
         `${src.path ?? src.source}: update rejected; retained last valid source snapshot`,
       ];
     } else if (!invalid && !runtimeScopeClosed()) {
-      if (src.raw) lastValidSources.set(key, structuredClone(src.raw));
+      if (src.raw)
+        lastValidSources.set(key, {
+          raw: structuredClone(src.raw),
+          canonicalProfileIds: [...(src.canonicalProfileIds ?? [])],
+        });
       else lastValidSources.delete(key);
     }
   }

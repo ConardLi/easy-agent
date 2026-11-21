@@ -20,6 +20,8 @@
 
 import { z } from "zod";
 import { SESSION_EVENT_TYPES } from "../sdk/types.js";
+import { ConfigScopeSchema, MigrationPreviewSchema, MigrationApplySchema } from "../config/migrationFiles.js";
+import { ModelProtocolSchema, AuthenticationSchema, ProtocolOptionsSchema } from "../config/modelSchema.js";
 
 export const RPC_PROTOCOL_VERSION = 1;
 export const SUPPORTED_RPC_PROTOCOL_VERSIONS: readonly number[] = [RPC_PROTOCOL_VERSION];
@@ -636,6 +638,8 @@ export const MethodParams = {
   "marketplace/update": z.object({ name: z.string().min(1) }),
   "marketplace/remove": z.object({ name: z.string().min(1) }),
   "config/read": z.object({}),
+  "config/migrationPreview": z.object({ scope: ConfigScopeSchema }),
+  "config/migrationApply": z.object({ scope: ConfigScopeSchema, revision: z.string().min(1) }),
   /** `value: null` deletes the key. `[redacted]` inside the value keeps what the file already holds there. */
   "config/write": z.object({ scope: z.enum(["user", "project", "local"]), key: z.string().min(1), value: z.unknown() }),
   /** Saved trust applies when the process starts; restart the server to use it. */
@@ -823,7 +827,33 @@ export const MethodResults = {
         z.object({ source: z.string(), sources: z.array(z.string()), reload: z.string() }).loose(),
       ),
       models: z.object({
-        profiles: z.record(z.string(), z.object({}).loose()),
+        profiles: z.record(
+          z.string(),
+          z
+            .object({
+              protocol: ModelProtocolSchema,
+              model: z.string(),
+              baseURL: z.string(),
+              apiKey: z.string().nullable(),
+              hasApiKey: z.boolean(),
+              authentication: AuthenticationSchema,
+              protocolOptions: ProtocolOptionsSchema.optional(),
+              credentialSource: z.enum(["helper", "apiKey", "none"]),
+              metadata: z
+                .object({
+                  reasoning: z.boolean(),
+                  adaptiveReasoning: z.boolean(),
+                  interleavedReasoning: z.boolean(),
+                  effort: z.boolean(),
+                  contextWindow: z.number(),
+                  contextWindowSource: z.enum(["profile", "catalog", "estimate"]),
+                })
+                .loose(),
+              headers: z.array(z.string()),
+              source: z.string(),
+            })
+            .loose(),
+        ),
         defaultModel: z.string().nullable(),
         warnings: z.array(z.string()),
       }),
@@ -831,6 +861,8 @@ export const MethodResults = {
     })
     .loose(),
   "config/write": z.object({ reload: z.string() }),
+  "config/migrationPreview": MigrationPreviewSchema,
+  "config/migrationApply": MigrationApplySchema,
   "workspace/trust": z.object({ trusted: z.boolean() }),
   "models/check": z.object({
     ok: z.boolean(),

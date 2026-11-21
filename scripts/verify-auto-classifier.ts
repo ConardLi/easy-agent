@@ -80,7 +80,9 @@ const CASES: Case[] = [
 ];
 
 async function main() {
-  console.log(`Model: ${process.env.EASY_AGENT_AUTO_MODE_MODEL ?? process.env.ANTHROPIC_MODEL ?? "(default)"}\n`);
+  console.log(
+    `Profile: ${process.env.EASY_AGENT_AUTO_MODE_MODEL ?? process.env.EASY_AGENT_PROFILE ?? "(selected main profile)"}\n`,
+  );
 
   let passed = 0;
   for (const c of CASES) {

@@ -47,11 +47,11 @@ Tools
 {
   "a": {
     "name": "default",
-    "hash": "605da62280ec0263"
+    "hash": "4361140b71cabe12"
   },
   "b": {
     "name": "reviewer",
-    "hash": "fb51ec8f9efcc98d"
+    "hash": "8f03ed43fc1616b8"
   },
   "differences": [
     {
@@ -119,14 +119,15 @@ Tools
     "a": {
       "harness": {
         "name": "default",
-        "hash": "605da62280ec0263"
+        "hash": "4361140b71cabe12"
       },
       "protocol": "anthropic",
       "model": "claude-sonnet-4-20250514",
       "params": {
         "maxTokens": 8000,
         "thinking": {
-          "type": "adaptive"
+          "type": "enabled",
+          "budget_tokens": 7999
         },
         "betas": [
           "interleaved-thinking-2025-05-14"
@@ -147,14 +148,15 @@ Tools
     "b": {
       "harness": {
         "name": "reviewer",
-        "hash": "fb51ec8f9efcc98d"
+        "hash": "8f03ed43fc1616b8"
       },
       "protocol": "anthropic",
       "model": "claude-sonnet-4-20250514",
       "params": {
         "maxTokens": 8000,
         "thinking": {
-          "type": "adaptive"
+          "type": "enabled",
+          "budget_tokens": 7999
         },
         "betas": [
           "interleaved-thinking-2025-05-14"

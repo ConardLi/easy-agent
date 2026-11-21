@@ -1,8 +1,9 @@
 import type { MessageParam } from "@anthropic-ai/sdk/resources/messages.js";
 import { harnessSetting } from "../harness/active.js";
 import type { Usage } from "../types/message.js";
+import { getModelMetadata, UNKNOWN_CONTEXT_WINDOW } from "../config/modelMetadata.js";
 
-export const MODEL_CONTEXT_WINDOW_DEFAULT = 200_000;
+export const MODEL_CONTEXT_WINDOW_DEFAULT = UNKNOWN_CONTEXT_WINDOW;
 export const MAX_OUTPUT_TOKENS_FOR_SUMMARY = 20_000;
 export const AUTOCOMPACT_BUFFER_TOKENS = 13_000;
 export const WARNING_THRESHOLD_BUFFER_TOKENS = 20_000;
@@ -14,29 +15,12 @@ const MESSAGE_OVERHEAD_TOKENS = 12;
 const TOOL_BLOCK_OVERHEAD_TOKENS = 24;
 const FIXED_BINARY_BLOCK_TOKENS = 2_000;
 
-const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
-  "claude-opus-4-20250514": 200_000,
-  "claude-sonnet-4-20250514": 200_000,
-  "claude-haiku-3-20250307": 200_000,
-  "claude-3-5-sonnet-20241022": 200_000,
-  "claude-3-5-haiku-20241022": 200_000,
-  "claude-3-opus-20240229": 200_000,
-};
-
 /** The Agent's `compaction.contextWindow` when set (EASY_AGENT_MAX_CONTEXT_TOKENS), else the model's window. */
 export function getContextWindowForModel(model: string): number {
   const configured = harnessSetting<number | undefined>("compaction.contextWindow");
   if (configured !== undefined) return configured;
 
-  if (MODEL_CONTEXT_WINDOWS[model]) {
-    return MODEL_CONTEXT_WINDOWS[model];
-  }
-
-  for (const [key, value] of Object.entries(MODEL_CONTEXT_WINDOWS)) {
-    if (model.includes(key) || key.includes(model)) return value;
-  }
-
-  return MODEL_CONTEXT_WINDOW_DEFAULT;
+  return getModelMetadata(model).contextWindow;
 }
 
 export function getEffectiveContextWindowSize(model: string): number {

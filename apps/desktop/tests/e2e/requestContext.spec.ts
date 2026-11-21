@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
 import { createAgentWorld, openProject, send } from "../helpers/agent";
@@ -11,12 +11,20 @@ test("request provenance links to the session Agent and disabling a skill remove
   const world = await createAgentWorld();
   mkdirSync(join(world.home, ".easy-agent", "skills", "review"), { recursive: true });
   writeFileSync(join(world.home, ".easy-agent", "skills", "review", "SKILL.md"), "---\nname: review\ndescription: Review code carefully\n---\nCheck the code.");
-  world.env.ANTHROPIC_MODEL = "counted";
   writeFileSync(
     join(world.home, ".easy-agent", "settings.json"),
     JSON.stringify({
+      model: "counted",
       harnesses: { reviewer: {} },
-      models: { counted: { protocol: "anthropic", model: "fixture-counted", baseURL: world.env.ANTHROPIC_BASE_URL, countTokens: true } },
+      models: {
+        counted: {
+          protocol: "anthropic",
+          model: "fixture-counted",
+          baseURL: world.fixture.baseURL,
+          apiKey: "${EASY_AGENT_API_KEY}",
+          protocolOptions: { anthropic: { countTokens: true } },
+        },
+      },
     }),
   );
   world.fixture.countTokens("on");
@@ -80,7 +88,8 @@ test("request provenance links to the session Agent and disabling a skill remove
 
 test("context errors can be retried and a late comparison cannot replace edited input", async () => {
   const world = await createAgentWorld();
-  writeFileSync(join(world.home, ".easy-agent", "settings.json"), JSON.stringify({ harnesses: { lean: {} } }));
+  const userFile = join(world.home, ".easy-agent", "settings.json");
+  writeFileSync(userFile, JSON.stringify({ ...JSON.parse(readFileSync(userFile, "utf8")), harnesses: { lean: {} } }));
   world.fixture.script([{ kind: "text", text: "收到。" }]);
   const { app, page } = await openProject(world);
   try {
@@ -121,6 +130,7 @@ test("compare two Agents for one input without model calls, and invalidate the r
   writeFileSync(
     join(world.home, ".easy-agent", "settings.json"),
     JSON.stringify({
+      ...JSON.parse(readFileSync(join(world.home, ".easy-agent", "settings.json"), "utf8")),
       harnesses: { lean: { tools: { exclude: ["Bash"] }, prompt: { identity: { text: "You are a concise reviewer." } } } },
     }),
   );

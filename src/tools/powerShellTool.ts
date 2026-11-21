@@ -3,6 +3,8 @@ import { readMergedEnv } from "../utils/settings.js";
 import { decideSandboxExecution, loadSandboxSettings } from "../sandbox/index.js";
 import { formatCapturedOutput, runControlledProcess } from "../utils/controlledProcess.js";
 import { shellTimeoutProperties, shellToolLimits } from "./shellToolConfig.js";
+import { configurationEnvironment } from "../config/environment.js";
+import { configString } from "../config/values.js";
 
 /**
  * PowerShell registers only on Windows. Windows process isolation is not yet
@@ -17,7 +19,7 @@ interface PowerShellInput {
 
 function resolveExecutable(): string {
   // pwsh (PowerShell 7+) if explicitly requested; default to Windows PowerShell.
-  return process.env.EASY_AGENT_POWERSHELL || "powershell.exe";
+  return configString(configurationEnvironment().EASY_AGENT_POWERSHELL) ?? "powershell.exe";
 }
 
 export const powerShellTool: Tool = {

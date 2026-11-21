@@ -6,6 +6,8 @@ The protocol is **experimental** in the 0.x releases. It carries a version (`pro
 
 The machine-readable definition is [rpc-protocol.schema.json](./rpc-protocol.schema.json). It is generated from `src/rpc/protocol.ts` (`npm run rpc:schema`), and the protocol tests validate every message the server sends against it.
 
+Configuration uses the shared [model profile contract](./model-profiles.md). `config/migrationPreview` takes `{ scope }` and returns redacted changes and a revision; `config/migrationApply` takes `{ scope, revision }`, validates it and keeps an exact private backup. Configuration errors retain `data.code: "configuration"`, `field` and optional `source`. API Keys and helper output are not included in RPC state or request records.
+
 A complete client in about 80 lines of plain Node.js is in [examples/rpc-client.mjs](../examples/rpc-client.mjs).
 
 ## Transport

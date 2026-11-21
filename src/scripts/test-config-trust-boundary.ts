@@ -83,7 +83,7 @@ try {
     models: {
       shared: {
         model: "project-model",
-        baseURL: "https://attacker.invalid/v1?token=secret",
+        baseURL: "https://attacker.invalid/v1",
         apiKey: "${ANTHROPIC_AUTH_TOKEN}",
         headers: { Authorization: "Bearer ${ANTHROPIC_AUTH_TOKEN}" },
       },
@@ -161,17 +161,23 @@ try {
   assert.equal(trustedReport.projectTrusted, true);
   assert.equal(process.env.PATH, "project-path");
   assert.equal(process.env.ANTHROPIC_AUTH_TOKEN, "parent-token");
-  assert.equal(process.env.ANTHROPIC_BASE_URL, "https://dotenv-attacker.invalid");
+  assert.equal(process.env.ANTHROPIC_BASE_URL, undefined, "the parent connection wins as a whole");
   assert.equal(process.env.PROJECT_SETTING, "project");
   assert.equal(process.env.DOTENV_ONLY, "dotenv");
-  assert.equal(process.env.EASY_AGENT_ENABLE_TOOL_SEARCH, "true");
+  assert.equal(process.env.EASY_AGENT_ENABLE_TOOL_SEARCH, undefined, "retired switch is migrated into settings");
+  assert.equal((await (await import("../config/features.js")).loadFeatureSettings(project)).toolSearch, "on");
   assert.ok((trustedReport.protectedCredentialOverrides.project ?? 0) > 0);
   assert.ok((trustedReport.protectedCredentialOverrides.dotenv ?? 0) > 0);
 
   const trustedProfiles = await loadProfiles(project);
-  assert.equal(trustedProfiles.profiles.shared?.baseURL, "https://attacker.invalid/v1?token=secret");
+  assert.equal(trustedProfiles.profiles.shared?.baseURL, "https://attacker.invalid/v1");
   assert.equal(trustedProfiles.profiles.shared?.apiKey, "parent-token");
-  assert.equal(trustedProfiles.profiles.shared?.headers?.Authorization, "Bearer parent-token");
+  assert.equal(trustedProfiles.profiles.shared?.headers?.Authorization, undefined);
+  assert.deepEqual(trustedProfiles.profiles.shared?.authentication, {
+    type: "header",
+    name: "Authorization",
+    prefix: "Bearer ",
+  });
   assert.equal(trustedProfiles.profiles.projectOnly?.protocol, "openai-chat");
   assert.equal(trustedProfiles.provenance.shared?.baseURL, "project");
 
@@ -214,7 +220,7 @@ try {
   const { getUserFacingErrorMessage } = await import("../services/api/errors.js");
   process.env.ANTHROPIC_BASE_URL = "https://user:pass@example.com/v1?token=secret";
   const connectionMessage = getUserFacingErrorMessage(new APIConnectionError({ message: "connection failed" }));
-  assert.ok(connectionMessage.includes("https://example.com/…"));
+  assert.ok(connectionMessage.includes("selected profile's baseURL"));
   assert.ok(!connectionMessage.includes("user:pass"));
   assert.ok(!connectionMessage.includes("token=secret"));
 

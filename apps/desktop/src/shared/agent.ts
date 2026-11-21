@@ -7,6 +7,8 @@
 import type {
   ConfigScope,
   ConfigSnapshot,
+  ConfigMigrationPreview,
+  ConfigMigrationResult,
   EffortLevel,
   HarnessDiff,
   ImageInput,
@@ -204,6 +206,8 @@ export interface AgentMethods {
   "session/setEffort": { params: { sessionId: string; effort: EffortLevel | null }; result: Record<string, never> };
   "session/stopBackgroundAgent": { params: { sessionId: string; agentId: string }; result: { stopped: boolean } };
   "config/read": { params: Record<string, never>; result: ConfigSnapshot };
+  "config/migrationPreview": { params: { scope: ConfigScope }; result: ConfigMigrationPreview };
+  "config/migrationApply": { params: { scope: ConfigScope; revision: string }; result: ConfigMigrationResult };
   "config/write": { params: { scope: ConfigScope; key: string; value: unknown }; result: { reload: string } };
   "workspace/trust": { params: { trusted: boolean }; result: { trusted: boolean } };
   "models/check": { params: { model: string }; result: ModelCheckResult };
@@ -269,6 +273,8 @@ export const AGENT_METHODS = [
   "session/setEffort",
   "session/stopBackgroundAgent",
   "config/read",
+  "config/migrationPreview",
+  "config/migrationApply",
   "config/write",
   "workspace/trust",
   "models/check",

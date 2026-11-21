@@ -45,7 +45,9 @@ curl -fsSL https://raw.githubusercontent.com/ConardLi/easy-agent/main/install.sh
 ## 快速上手
 
 ```bash
-export ANTHROPIC_AUTH_TOKEN="your-token"
+export EASY_AGENT_PROTOCOL="openai-chat"
+export EASY_AGENT_MODEL="gpt-4.1"
+export EASY_AGENT_API_KEY="your-api-key"
 cd your-project
 eagent
 ```
@@ -97,16 +99,18 @@ Easy Agent 不上报任何统计或遥测数据。它只会向这些地方发请
 1. 用户级：`~/.easy-agent/settings.json`
 2. 项目级：`<project>/.easy-agent/settings.json`（可提交共享，目录受信任后才生效）
 3. 本地级：`<project>/.easy-agent/settings.local.json`（个人配置，目录受信任后才生效）
-4. 命令行：`--settings <file>`、`--model`、`--permission-mode` 等参数
-5. 托管策略：macOS 为 `/Library/Application Support/EasyAgent/managed-settings.json`，Linux 为 `/etc/easy-agent/managed-settings.json`，Windows 为 `%PROGRAMDATA%\EasyAgent\managed-settings.json`
+4. 进程环境
+5. 显式 CLI、SDK、会话覆盖
+6. 托管策略：macOS 为 `/Library/Application Support/EasyAgent/managed-settings.json`，Linux 为 `/etc/easy-agent/managed-settings.json`，Windows 为 `%PROGRAMDATA%\EasyAgent\managed-settings.json`
 
 项目里的 `.env` 在项目级和本地级配置之后应用，同样只在目录受信任时生效。各项功能开关见[配置与功能开关](./docs/configuration.md)。
 
-使用原始 Anthropic 模型名时，配好环境变量就够了：
+所选 Harness 位于用户设置与项目设置之间。临时连接必须明确提供协议和上游模型：
 
 ```bash
-export ANTHROPIC_AUTH_TOKEN="your-token"
-export ANTHROPIC_MODEL="claude-sonnet-4-20250514" # 可选
+export EASY_AGENT_PROTOCOL="anthropic"
+export EASY_AGENT_MODEL="claude-sonnet-4-20250514"
+export EASY_AGENT_API_KEY="your-api-key"
 eagent
 ```
 
@@ -114,7 +118,7 @@ eagent
 
 ```json
 {
-  "defaultModel": "gpt",
+  "model": "gpt",
   "models": {
     "gpt": {
       "protocol": "openai-chat",
@@ -130,24 +134,28 @@ eagent
     "ollama": {
       "protocol": "openai-chat",
       "model": "qwen2.5-coder",
-      "baseURL": "http://localhost:11434/v1"
+      "baseURL": "http://localhost:11434/v1",
+      "authentication": { "type": "none" }
     }
   }
 }
 ```
 
-用 `eagent --model gpt` 启动，或在 REPL 里执行 `/model gpt` 切换 Profile。
+用 `EASY_AGENT_PROFILE=gpt`、`eagent --model gpt` 或 `/model gpt` 选择已保存的 Profile。Profile ID 与上游模型名分开；未知 ID 会报错，不猜测协议。多个 Profile 时需要选定默认值。`eagent --login` 可为四种协议创建 Profile，只输入一个 API Key。
 
 | 环境变量 | 用途 |
 |---|---|
-| `ANTHROPIC_AUTH_TOKEN` | Anthropic API Token 或兼容网关 Token |
-| `ANTHROPIC_BASE_URL` | 可选的 Anthropic 兼容端点 |
-| `ANTHROPIC_MODEL` | 默认的原始 Anthropic 模型名 |
+| `EASY_AGENT_API_KEY` | 临时连接的唯一 API Key，或 Profile 明确引用的来源 |
+| `EASY_AGENT_PROTOCOL` | 临时连接的明确协议 |
+| `EASY_AGENT_MODEL` | 临时连接的上游模型 |
+| `EASY_AGENT_BASE_URL` | 该连接的可选地址 |
+| `EASY_AGENT_PROFILE` | 选择已保存的 Profile，不覆盖其连接 |
 | `OPENAI_API_KEY` | OpenAI 兼容 Profile 引用的 Key |
 | `GEMINI_API_KEY` | Gemini Profile 引用的 Key |
-| `WEB_SEARCH_API_KEY` | 可选的 WebSearch 服务 Key |
 
 运行 `/config list`、`/model list` 或 `/doctor` 可以查看最终生效的配置，凭据值一律脱敏显示。
+
+Profile 支持单一 API Key 来源、明确的自定义认证或无认证策略、能力覆盖和协议选项。通用推理配置是 `reasoning.mode`（`auto`、`on`、`off`）、`budgetTokens` 和 `effort`。未知模型使用标注为估算的 32000-token 窗口、未知价格和保守的自动推理。详见[模型 Profile](./docs/model-profiles.md)、[环境变量目录](./docs/configuration-inventory.md)和[迁移及回退指南](./docs/configuration-migration.md)。
 
 ## 数据存放位置
 

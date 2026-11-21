@@ -137,8 +137,7 @@ try {
   };
   setSkills([forkSkill]);
   const oldFetch = globalThis.fetch;
-  const oldToken = process.env.ANTHROPIC_AUTH_TOKEN;
-  process.env.ANTHROPIC_AUTH_TOKEN = "fixture-token";
+  setFlagSettings({ models: { fork: { protocol: "anthropic", model: "claude-sonnet-4-5", apiKey: "fixture-token" } } });
   globalThis.fetch = (async () => {
     const event = (type: string, data: unknown) => `event: ${type}\ndata: ${JSON.stringify(data)}\n\n`;
     return new Response(
@@ -179,11 +178,10 @@ try {
   }) as typeof fetch;
   const forkResult = await skillTool.call(
     { skill: "fork-test" },
-    { cwd, defaultModel: "claude-sonnet-4-5", availableTools: [skillTool] },
+    { cwd, defaultModel: "fork", availableTools: [skillTool] },
   );
   globalThis.fetch = oldFetch;
-  if (oldToken === undefined) delete process.env.ANTHROPIC_AUTH_TOKEN;
-  else process.env.ANTHROPIC_AUTH_TOKEN = oldToken;
+  setFlagSettings(null);
   assert.equal(forkResult.isError, undefined, `fork failed: ${String(forkResult.content)}`);
   assert.match(String(forkResult.content), /FORK_OK/);
   console.log("Feature configuration, atomic reload, LSP and fork-skill checks passed.");

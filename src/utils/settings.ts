@@ -34,6 +34,9 @@ import { loadSettingSources, loadTrustedSettingSources, resetSettingsCache } fro
 import { isInheritedCredentialProtected } from "../config/environment.js";
 import { writePrivateFile } from "./privateData.js";
 import { atomicWriteFile, PersistentDataError, withFileLock } from "./atomicFile.js";
+import { migrateSettings } from "../config/migration.js";
+import { validateSettings } from "../config/schema.js";
+import { ConfigurationError } from "../config/values.js";
 
 export interface SettingsFileResult<T = unknown> {
   /** Parsed JSON object, or null if missing / unreadable / invalid. */
@@ -69,7 +72,7 @@ export async function readJsonSettingsFile<T = unknown>(filePath: string): Promi
     if (error instanceof SyntaxError) {
       return {
         raw: null,
-        parseError: `Invalid JSON in ${filePath}: ${error.message}`,
+        parseError: `Invalid JSON in ${filePath}; fix the JSON syntax before reloading.`,
       };
     }
     return {
@@ -91,8 +94,8 @@ export async function readJsonSettingsFile<T = unknown>(filePath: string): Promi
  *     That's all the current callers need.
  *   - Creates `~/.easy-agent/` if it doesn't exist yet.
  */
-export async function updateUserSettings(patch: SettingsPatch): Promise<void> {
-  await writeSettingsPatch(getUserSettingsPath(), patch, "private-home");
+export async function updateUserSettings(patch: SettingsPatch, cwd = process.cwd()): Promise<void> {
+  await writeSettingsPatch(getUserSettingsPath(), patch, "private-home", cwd);
 }
 
 /**
@@ -102,7 +105,7 @@ export async function updateUserSettings(patch: SettingsPatch): Promise<void> {
  * single-source write semantics in the plan).
  */
 export async function updateProjectSettings(cwd: string, patch: SettingsPatch): Promise<void> {
-  await writeSettingsPatch(getProjectSettingsPath(cwd), patch, "shared-project");
+  await writeSettingsPatch(getProjectSettingsPath(cwd), patch, "shared-project", cwd);
 }
 
 /**
@@ -111,7 +114,7 @@ export async function updateProjectSettings(cwd: string, patch: SettingsPatch): 
  * gitignored so personal overrides never get committed.
  */
 export async function updateLocalSettings(cwd: string, patch: SettingsPatch): Promise<void> {
-  await writeSettingsPatch(getLocalSettingsPath(cwd), patch, "private-project");
+  await writeSettingsPatch(getLocalSettingsPath(cwd), patch, "private-project", cwd);
   await ensureLocalSettingsGitignored(cwd);
 }
 
@@ -133,6 +136,7 @@ async function writeSettingsPatch(
   filePath: string,
   patchOrBuild: SettingsPatch,
   storage: "private-home" | "private-project" | "shared-project",
+  cwd: string,
 ): Promise<void> {
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   await withFileLock(filePath, async () => {
@@ -141,13 +145,53 @@ async function writeSettingsPatch(
     if (raw !== null && (typeof raw !== "object" || Array.isArray(raw))) {
       throw new PersistentDataError(filePath, "settings root must be a JSON object");
     }
-    const patch = typeof patchOrBuild === "function" ? patchOrBuild(raw ?? {}) : patchOrBuild;
-    const merged: Record<string, unknown> = { ...(raw ?? {}) };
+    const source = (await loadSettingSources(cwd)).find((source) => source.path === filePath);
+    const current = migrateSettings(raw ?? {}, {
+      legacyDefaultModelShadowed:
+        raw?.defaultModel !== undefined && raw.model === undefined && source?.raw?.model === undefined,
+    });
+    const patch = typeof patchOrBuild === "function" ? patchOrBuild(current.value) : patchOrBuild;
+    const merged: Record<string, unknown> = { ...current.value };
     for (const [key, value] of Object.entries(patch)) {
       if (value === undefined) delete merged[key];
       else merged[key] = value;
     }
-    const content = JSON.stringify(merged, null, 2) + "\n";
+    const canonical = migrateSettings(merged);
+    const migrationErrors = canonical.notices.filter((notice) => notice.level === "error");
+    if (migrationErrors.length) {
+      throw new ConfigurationError(
+        "migration",
+        migrationErrors.map((notice) => `${notice.field}: ${notice.message}`).join(" "),
+        filePath,
+      );
+    }
+    const { errors } = validateSettings(canonical.value, filePath);
+    const previousErrors = new Set(validateSettings(current.value, filePath).errors);
+    const unchangedModels =
+      !Object.hasOwn(patch, "models") &&
+      JSON.stringify(current.value.models) === JSON.stringify(canonical.value.models);
+    const invalid = errors.filter(
+      (error) =>
+        !error.includes("unsupported setting") &&
+        !(unchangedModels && error.includes(".models.") && previousErrors.has(error)),
+    );
+    if (invalid.length) throw new ConfigurationError("settings", invalid.join(" "), filePath);
+    if (storage === "shared-project" && canonical.value.models && typeof canonical.value.models === "object") {
+      for (const [id, profile] of Object.entries(canonical.value.models)) {
+        const key = (profile as { apiKey?: unknown }).apiKey;
+        if (typeof key === "string" && !/^\$\{[A-Za-z_][A-Za-z0-9_]*\}$/.test(key)) {
+          throw new ConfigurationError(
+            `models.${id}.apiKey`,
+            "shared settings must use an explicit environment reference or profile helper; keep inline API Keys in private settings.",
+          );
+        }
+      }
+    }
+    if (raw && current.changed) {
+      const backup = `${filePath}.pre-standardization-${Date.now()}.bak`;
+      await writePrivateFile(backup, await fs.readFile(filePath), { secureParent: false });
+    }
+    const content = JSON.stringify(canonical.value, null, 2) + "\n";
     if (storage === "shared-project") {
       await atomicWriteFile(filePath, content);
     } else {

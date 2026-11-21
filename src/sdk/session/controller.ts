@@ -67,7 +67,6 @@ import {
   buildDefaultThinkingConfig,
   type EffortLevel,
   getSessionEffortLevel,
-  modelSupportsAdaptiveThinking,
   setSessionEffortLevel,
   setSessionThinkingConfig,
   type ThinkingConfig,
@@ -302,10 +301,7 @@ export class SessionController {
     this.#assertOpen();
     let config: ThinkingConfig;
     if (setting === "off") config = { type: "disabled" };
-    else if (setting === "on")
-      config = modelSupportsAdaptiveThinking(this.#model)
-        ? { type: "adaptive" }
-        : { type: "enabled", budgetTokens: 10_000 };
+    else if (setting === "on") config = { type: "adaptive" };
     else if (Number.isInteger(setting) && setting > 0) config = { type: "enabled", budgetTokens: setting };
     else throw new AgentSdkError("invalid_argument", 'Thinking must be "on", "off", or a positive token budget.');
     this.#inScope(() => setSessionThinkingConfig(config));

@@ -56,10 +56,10 @@ export function RulesPage({ query }: { query: string }) {
     await sendMessage("/init");
   };
 
-  /** Exclude a file by adding its path to `claudeMdExcludes`, or stop excluding it. */
+  /** Exclude a file by adding its path to `agentMdExcludes`, or stop excluding it. */
   const setExcluded = async (rule: RuleInventoryItem, excluded: boolean) => {
     if (!rule.path) return;
-    const current = (sourceValues(config, writeScope).claudeMdExcludes ?? []) as string[];
+    const current = (sourceValues(config, writeScope).agentMdExcludes ?? []) as string[];
     const next = excluded ? [...new Set([...current, rule.path])] : current.filter((p) => p !== rule.path);
     if (next.length === current.length && !excluded) {
       toast(`${SCOPE_FILE[writeScope]} 里没有排除它，排除规则写在别的配置里`);
@@ -67,9 +67,9 @@ export function RulesPage({ query }: { query: string }) {
     }
     await writeSetting(
       writeScope,
-      "claudeMdExcludes",
+      "agentMdExcludes",
       next.length > 0 ? next : null,
-      excluded ? `已在 ${SCOPE_FILE[writeScope]} 的 claudeMdExcludes 中加入 ${label(rule)}` : `已不再排除 ${label(rule)}`,
+      excluded ? `已在 ${SCOPE_FILE[writeScope]} 的 agentMdExcludes 中加入 ${label(rule)}` : `已不再排除 ${label(rule)}`,
     );
   };
 
@@ -198,7 +198,7 @@ export function RulesPage({ query }: { query: string }) {
       <div className="mb-5 grid grid-cols-3 gap-2.5">
         <Stat label="每轮占用" value={`${tokens(loaded.reduce((n, r) => n + r.tokens.value, 0))} tokens`} sub="全文加载，无法按需" />
         <Stat label="已加载" value={`${loaded.length} 个文件`} sub={`${rules.length - loaded.length} 个被排除`} />
-        <Stat label="排除规则" value="claudeMdExcludes" sub="glob 匹配，所有配置合并生效" />
+        <Stat label="排除规则" value="agentMdExcludes" sub="glob 匹配，所有配置合并生效" />
       </div>
 
       <h3 className="mb-2 px-1 text-[12.5px] font-semibold text-fg">加载顺序</h3>
@@ -261,7 +261,7 @@ export function RulesPage({ query }: { query: string }) {
                 label="排除这个文件"
                 hint={
                   <>
-                    关闭后会写入 claudeMdExcludes，比如 <code className="font-mono">"{selected.path}"</code>。排除只会少加载，任何一层配置里写了都生效。
+                    关闭后会写入 agentMdExcludes，比如 <code className="font-mono">"{selected.path}"</code>。排除只会少加载，任何一层配置里写了都生效。
                   </>
                 }
               >

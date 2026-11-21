@@ -125,7 +125,7 @@ export async function updateAgent(fn: (a: AgentSettings) => AgentSettings, keys:
  * Agent processes pick up new keychain keys when they restart.
  */
 export async function updateProviders(fn: (list: ProviderConfig[]) => ProviderConfig[]): Promise<void> {
-  const { providers: current } = useSettings.getState();
+  const { providers: current, config } = useSettings.getState();
   const next = fn(current);
   let secretsChanged = false;
   const saved: ProviderConfig[] = [];
@@ -143,14 +143,29 @@ export async function updateProviders(fn: (list: ProviderConfig[]) => ProviderCo
     } else saved.push(p);
   }
   useSettings.setState({ providers: saved });
+  let written = false;
   const scopes = new Set([...current, ...saved].map((p) => p.scope));
   for (const scope of scopes) {
     const after = modelsMapFor(saved, scope);
-    if (JSON.stringify(modelsMapFor(current, scope)) !== JSON.stringify(after))
-      await write([{ key: "models", value: Object.keys(after).length ? after : null }], scope, true);
+    const before = modelsMapFor(current, scope);
+    if (JSON.stringify(before) !== JSON.stringify(after)) {
+      written = true;
+      const raw = (config?.sources.find((source) => source.source === scope)?.values.models ?? {}) as Record<string, unknown>;
+      const unmanaged = Object.fromEntries(Object.entries(raw).filter(([id]) => !Object.hasOwn(before, id)));
+      const merged = { ...unmanaged, ...after };
+      await write([{ key: "models", value: Object.keys(merged).length ? merged : null }], scope, true);
+    }
   }
   if (secretsChanged) await restartIdleAgents("密钥已存进钥匙串");
-  else await loadConfig();
+  else if (written) await loadConfig();
+  // A newly added provider or a disabled one has no active profiles to
+  // serialize yet. Keep its edits until it is enabled and complete, rather
+  // than replacing its URL with the untouched template during a refresh.
+  const pending = saved.filter((p) => Object.keys(modelsMapFor([p], p.scope)).length === 0);
+  if ((written || secretsChanged) && pending.length) {
+    const pendingIds = new Set(pending.map((p) => p.id));
+    useSettings.setState((s) => ({ providers: [...s.providers.filter((p) => !pendingIds.has(p.id)), ...pending] }));
+  }
 }
 
 /** Restart every workspace's Agent process that has no turn running, so new keys and process settings apply. */

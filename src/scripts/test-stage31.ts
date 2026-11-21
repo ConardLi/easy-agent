@@ -295,16 +295,23 @@ async function main(): Promise<void> {
   assert(redirect === "https://example.org/x", "resolveBingUrl decodes a Bing base64 redirect");
 
   // Adapter selection (no network — just which class is chosen).
-  const savedOverride = process.env.WEB_SEARCH_ADAPTER;
-  process.env.WEB_SEARCH_ADAPTER = "bing";
-  assert((await createAdapter("anything")).name === "bing", "WEB_SEARCH_ADAPTER=bing forces Bing");
-  process.env.WEB_SEARCH_ADAPTER = "api";
+  const { installConfigurationEnvironment } = await import("../config/environment.js");
+  const { setFlagSettings } = await import("../config/sources.js");
+  const savedOverride = process.env.EASY_AGENT_WEB_SEARCH_BACKEND;
+  process.env.EASY_AGENT_WEB_SEARCH_BACKEND = "bing";
+  installConfigurationEnvironment(process.env);
+  assert((await createAdapter("anything")).name === "bing", "EASY_AGENT_WEB_SEARCH_BACKEND=bing forces Bing");
+  process.env.EASY_AGENT_WEB_SEARCH_BACKEND = "api";
+  installConfigurationEnvironment(process.env);
+  setFlagSettings({ models: { search: { protocol: "anthropic", model: "claude-x", apiKey: "fixture-key" } } });
   assert(
-    (await createAdapter("claude-x")).name === "anthropic",
-    "WEB_SEARCH_ADAPTER=api forces Anthropic server-side search",
+    (await createAdapter("search")).name === "anthropic",
+    "EASY_AGENT_WEB_SEARCH_BACKEND=api selects the configured Anthropic service",
   );
-  delete process.env.WEB_SEARCH_ADAPTER;
-  if (savedOverride) process.env.WEB_SEARCH_ADAPTER = savedOverride;
+  delete process.env.EASY_AGENT_WEB_SEARCH_BACKEND;
+  if (savedOverride) process.env.EASY_AGENT_WEB_SEARCH_BACKEND = savedOverride;
+  installConfigurationEnvironment(process.env);
+  setFlagSettings(null);
 
   console.log("\n[9] MCP resource tools with no connected servers");
   const list = await listMcpResourcesTool.call({}, ctx);

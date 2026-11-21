@@ -32,7 +32,7 @@ export type MessageSource =
   | "compaction_summary"
   /** The names of deferred tools, prepended to the copy of the history a request carries. */
   | "deferred_tools"
-  /** Hidden nudges such as the ultrathink note and the continuation after an output cut-off. */
+  /** Hidden control messages such as the continuation after an output cut-off. */
   | "meta"
   /** The task a sub-agent starts with. */
   | "subagent_prompt"

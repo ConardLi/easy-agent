@@ -2,12 +2,14 @@
 
 Easy Agent resolves settings from these sources, from lowest to highest priority:
 
-1. user: `~/.easy-agent/settings.json`
-2. trusted project: `<cwd>/.easy-agent/settings.json`
-3. trusted local: `<cwd>/.easy-agent/settings.local.json`
-4. parent-process compatibility environment (feature-specific only)
-5. CLI/`--settings` flag layer
-6. managed policy
+1. built-in defaults
+2. user: `~/.easy-agent/settings.json`
+3. selected Harness
+4. trusted project: `<cwd>/.easy-agent/settings.json`
+5. trusted local: `<cwd>/.easy-agent/settings.local.json`
+6. process environment
+7. explicit CLI / SDK / session overrides
+8. managed policy
 
 Project and local settings that can execute code, redirect providers, or widen resource access are ignored until the workspace is trusted. `/config list` and `/doctor` show effective values, their source, and reload behavior. Secrets, environment values, headers, hooks, MCP definitions, and endpoint credentials are redacted.
 
@@ -26,7 +28,7 @@ Project and local settings that can execute code, redirect providers, or widen r
 - `auto`: defer schemas when their estimated size reaches the configured percentage of the context window.
 - `on`: always defer eligible tool schemas.
 
-`--tool-search off|auto|on` overrides file settings. `EASY_AGENT_ENABLE_TOOL_SEARCH` and `ENABLE_TOOL_SEARCH` remain compatible throughout the 0.x line (`true`, `false`, `auto`, `auto:N`) and are planned for removal no earlier than 1.0 after a migration notice.
+`--tool-search off|auto|on` overrides file settings, below managed policy. Retired variables are handled only by the [central migration boundary](./configuration-migration.md).
 
 ## Model roles
 
@@ -46,7 +48,7 @@ Project and local settings that can execute code, redirect providers, or widen r
 - `think`: main-agent requests using extended thinking.
 - `longContext`: main-agent requests whose current message history exceeds 80% of the fallback model's context window; takes precedence over `think`.
 
-Values are model profile IDs or raw Anthropic model names. Per-call and custom-agent model declarations remain authoritative.
+Values are saved profile IDs. Per-call and custom-agent profile selections remain authoritative; missing explicit profiles are errors.
 
 ## Project memory files
 
@@ -54,11 +56,11 @@ Every session loads `~/.easy-agent/AGENT.md`, then `AGENTS.md` and `AGENT.md` fr
 
 `/init` writes `AGENT.md`. If the repository root has an `AGENTS.md` and no `AGENT.md`, `/init` improves `AGENTS.md` instead of creating a second file. `/memory` lists the files that exist, plus the project `AGENT.md` when the working directory has neither file.
 
-`claudeMdExcludes` matches absolute paths, so each name needs its own pattern:
+`agentMdExcludes` matches absolute paths, so each name needs its own pattern:
 
 ```json
 {
-  "claudeMdExcludes": ["**/AGENTS.md", "/abs/path/to/repo/AGENT.md"]
+  "agentMdExcludes": ["**/AGENTS.md", "/abs/path/to/repo/AGENT.md"]
 }
 ```
 
@@ -80,13 +82,13 @@ Providers reuse a cached request prefix only while it stays byte-identical. Easy
       "model": "gpt-5.5",
       "baseURL": "https://gateway.example/v1",
       "apiKey": "${GATEWAY_API_KEY}",
-      "promptCacheKey": true
+      "protocolOptions": { "openai-chat": { "promptCacheKey": true } }
     }
   }
 }
 ```
 
-`"promptCacheKey": false` turns it off for an `api.openai.com` profile.
+`protocolOptions.<openai-protocol>.promptCacheKey: false` turns it off for an `api.openai.com` profile.
 
 **Gemini** applies implicit caching on its own; nothing extra is sent.
 
@@ -240,26 +242,22 @@ An Agent is a Harness spec: the model, tools, prompt, context sources, compactio
 
 ### Feature switches
 
-Each switch under `features` (and `session.checkpoints`) is also controlled by the setting or environment variable it had before; those keep working and resolve as layers around the Agent's spec. The spec sits above user settings and below project and local settings, environment variables, flags, and managed policy, except where the table says the variable wins over every settings layer.
+Each canonical switch resolves through the same priority order above. A process variable does not override explicit session settings or managed policy. General reasoning is shared by settings and Harness under `reasoning`; protocol-specific options belong to the profile.
 
 | Key | Default | Same as | Order against the spec |
 |---|---|---|---|
 | `features.agentTeams` | `false` | `EASY_AGENT_TEAMS`, `--agent-teams` | the variable and the flag can turn it on over the spec |
 | `features.tasks` | `"task"` | `/tasks task\|todo` in a session | the session's `/tasks` changes it for that session |
-| `features.toolSearch`, `features.toolSearchAutoThreshold` | `"on"`, `10` | `toolSearch`, `toolSearchAutoThreshold`, `--tool-search`, `EASY_AGENT_ENABLE_TOOL_SEARCH` (deprecated) | project and local settings, the variable, and the flag win |
-| `features.thinking` | `true` | `alwaysThinkingEnabled`, `MAX_THINKING_TOKENS` | `MAX_THINKING_TOKENS` wins over every layer |
-| `features.thinkingBudget` | unset | `MAX_THINKING_TOKENS=N` | the variable wins over every layer |
-| `features.thinkingInRequests` | `true` | `CLAUDE_CODE_DISABLE_THINKING` | the variable wins over every layer |
-| `features.adaptiveThinking` | `true` | `CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING` | the variable wins over every layer |
-| `features.interleavedThinking` | `true` | `DISABLE_INTERLEAVED_THINKING` | the variable wins over every layer |
-| `features.effort` | unset | `effortLevel` | project and local settings win |
-| `features.effortForAllModels` | `false` | `CLAUDE_CODE_ALWAYS_ENABLE_EFFORT` | the variable wins over every layer |
-| `features.promptCaching` | `true` | `EASY_AGENT_DISABLE_PROMPT_CACHING` | the variable wins over every layer |
-| `features.experimentalBetas` | `true` | `EASY_AGENT_DISABLE_EXPERIMENTAL_BETAS` | the variable wins over every layer |
-| `features.maxRetries` | `10` | `EASY_AGENT_MAX_RETRIES` | the variable wins |
+| `features.toolSearch`, `features.toolSearchAutoThreshold` | `"on"`, `10` | `toolSearch`, `toolSearchAutoThreshold`, `--tool-search` | files, explicit flags, then policy |
+| `reasoning.mode` | `"auto"` | `reasoning.mode`, `EASY_AGENT_REASONING` | environment, explicit overrides, then policy |
+| `reasoning.budgetTokens` | unset | `reasoning.budgetTokens`, `EASY_AGENT_REASONING_BUDGET_TOKENS` | same order; positive integer |
+| `reasoning.effort` | unset | `reasoning.effort` | explicit overrides, then policy |
+| `features.promptCaching` | `true` | `EASY_AGENT_DISABLE_PROMPT_CACHING` | environment, explicit overrides, then policy |
+| `features.experimentalBetas` | `true` | `EASY_AGENT_DISABLE_EXPERIMENTAL_BETAS` | environment, explicit overrides, then policy |
+| `features.maxRetries` | `10` | `EASY_AGENT_MAX_RETRIES` | environment, explicit overrides, then policy; 0 disables retries |
 | `features.maxTurns` | unset | `maxTurns`, `--max-turns` | project and local settings and the flag win |
 | `features.autoModeClassifier` | `true` | none | |
-| `session.checkpoints` | `true` | `checkpointingEnabled`, `EASY_AGENT_DISABLE_CHECKPOINTING` | the variable wins over every layer |
+| `session.checkpoints` | `true` | `checkpointingEnabled`, `EASY_AGENT_DISABLE_CHECKPOINTING` | environment, explicit overrides, then policy |
 
 - `features.tasks` is the task tracking a session starts with: `"task"`, the persistent task list (TaskCreate, TaskList, TaskGet, TaskUpdate), or `"todo"`, the session-only list (TodoWrite). `/tasks` marks the Agent's choice as the default.
 - `features.autoModeClassifier: false` keeps Auto Mode from calling the classifier. Deny rules, the blocked shell commands, read-only tools and commands, and `allow` rules decide as before, and an action none of them decides asks you instead of the classifier.
@@ -305,13 +303,13 @@ Main-loop requests are also counted by the provider when it can: Anthropic-proto
 ```json
 {
   "models": {
-    "sonnet": { "protocol": "anthropic", "model": "claude-sonnet-4-6", "countTokens": false },
+    "sonnet": { "protocol": "anthropic", "model": "claude-sonnet-4-6", "apiKey": "${EASY_AGENT_API_KEY}", "protocolOptions": { "anthropic": { "countTokens": false } } },
     "gateway": {
       "protocol": "anthropic",
       "model": "claude-sonnet-4-6",
       "baseURL": "https://gateway.example",
       "apiKey": "${GATEWAY_API_KEY}",
-      "countTokens": true
+      "protocolOptions": { "anthropic": { "countTokens": true } }
     }
   }
 }
@@ -331,11 +329,11 @@ A session remembers the Agent it ran with. `eagent --resume [id]` without `--har
 
 A selected Agent must resolve: an unknown name, an invalid spec, a broken `extends` chain, or an unreadable `file` reference stops the startup with the reason (exit code 1, SDK error code `harness`) instead of running another Agent. Keys the Agent sets that this version does not apply yet are printed as warnings when the runtime starts. If the definition stops resolving while the runtime runs (it was edited or removed), the runtime keeps the Agent's last good settings and warns once. A spec file or spec object is trusted like `--settings`: it can set permission `mode` and `allow` rules, because whoever starts Easy Agent chose it.
 
-A value resolves through these layers, lowest first: the built-in default, top-level keys in user settings, the Agent's spec, project settings, local settings, environment variables, CLI flags, and managed policy. Project and local settings follow the same trust rules as today: in an untrusted workspace they can only add deny rules and other restrictions, and permission `mode` comes only from user settings, flags, and policy. Some environment variables keep their existing precedence: `ANTHROPIC_MODEL` acts as the default model, and `MAX_THINKING_TOKENS`, `EASY_AGENT_DISABLE_CHECKPOINTING`, and the thinking, caching, and beta switches override every settings layer. The resolved snapshot records, for each value, the layer it came from and any values a layer set but could not apply. Spec keys that no code reads yet, such as `commands.exclude`, are reported when set.
+A value resolves through these layers, lowest first: the built-in default, user settings, the Agent's spec, project settings, local settings, process environment, explicit CLI / SDK / session overrides, and managed policy. In an untrusted workspace project and local settings can only add deny rules and other restrictions; permission `mode` comes only from user settings, flags and policy. Restrictive exclusions and hook disabling still use safety merges. Each resolved value records its source and values that could not apply.
 
 A runtime resolves its Agent (`default` unless one is selected) when it starts, after the workspace environment is loaded, and every Agent setting in the table above is read from the resolved Agent: models and model roles, ToolSearch, `respectGitignore`, `language`, `outputStyle`, `maxTurns`, checkpoints, permission rules and mode, thinking, effort, retries, prompt caching, experimental betas, the context window, the skill listing budget, the WebSearch backend, Agent Teams, the tools and MCP servers it keeps, its prompt sections and context sources, compaction, the task mode, the Auto Mode classifier switch, the skills and sub-agents it keeps, and its request record level. Environment variables and flags are taken when the runtime starts, so change them and restart; [configuration-inventory.md](./configuration-inventory.md) marks each environment variable read this way as `runtime`.
 
-Settings files can change while the runtime runs. Before each model request the runtime resolves the Agent again, and everything that request reads (thinking, effort, ToolSearch, model roles, `respectGitignore`) comes from that one snapshot, so an edit applies from the next request. Reads outside a request use the files as they are at that moment: a session reads `model`, `defaultModel`, `mode`, and `checkpointingEnabled` when it opens, a turn reads `maxTurns` and `language` when it starts, and permission rules are read when a session opens and after `/config` or `/permissions` change them. A request that names no model uses the Agent's main model. A sub-agent working in another directory, such as a worktree, resolves the same Agent with that directory's settings files. `/harness` without an argument shows the Agent the session runs. `/config list` shows when each setting takes effect.
+Settings files can change while the runtime runs. Before a model request the runtime refreshes the Agent and resolves one complete connection and request snapshot. Supported hot updates apply to the next request; retries keep the current request's profile. A session reads `model`, `mode` and checkpoints when it opens, and a turn reads `maxTurns` and `language` when it starts. Environment and `.env` changes require a new runtime. Helpers refresh only their profile's credential. A sub-agent in a worktree resolves the same Agent against that directory's settings. `/harness` shows the active Agent; `/config list` shows each key's reload behavior. See [Model profiles](./model-profiles.md).
 
 ## Reload behavior
 

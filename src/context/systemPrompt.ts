@@ -1,7 +1,7 @@
 import * as os from "node:os";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { formatAgentMdSection, listAgentMdFiles } from "./claudeMd.js";
+import { formatAgentMdSection, listAgentMdFiles } from "./agentMd.js";
 import { ruleOffByAgent } from "../harness/resources.js";
 import { joinParts, type PromptPart } from "../utils/promptParts.js";
 import {
