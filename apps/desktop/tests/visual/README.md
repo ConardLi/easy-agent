@@ -33,3 +33,37 @@ all four local visual comparisons pass.
 These four scenarios cover the first-run shell. Resource library pages and
 Agent assignment are exercised by `tests/e2e/customize.spec.ts`; their saved
 screenshots support manual inspection but are not pixel comparison baselines.
+
+## Request detail and comparison (#120)
+
+Four more scenarios cover the context panel and request comparison, each in
+dark and light themes. The reference states are `?requestView=context` and
+`?requestView=compare` (with `&theme=dark|light`). Their presentation lives in
+`web-ui/src/components/requests/`, using the same modal shell and panel width
+as the client. The original four first-run baselines are unchanged.
+
+`requestFixtures.ts` contains frozen, SDK-typed `session/context` and request
+diff responses. The reference reads these fixtures; `shell.spec.ts` opens a
+real workspace in the client and replays only those two RPC responses at the
+test IPC boundary. No replay or mock mode ships in the application. The
+fixtures stabilize request IDs, sizes, token counts and diff text so the
+pixel test measures presentation. `requestSteps.ts` performs the same visible
+interactions on both sides, clears hover and lets macOS scrollbars fade.
+
+The context capture covers the panel viewport with the skill source expanded;
+the comparison capture covers the dialog content with the identity difference
+expanded. No new masks or tolerance changes are used. The four new baselines
+were captured on macOS 15.7.3 / Electron 44.4.5 at the existing 1280×800, 1×
+viewport. To capture only these states:
+
+```sh
+WEB_UI_URL=http://127.0.0.1:5180 npm run visual:baseline -- --grep request-
+```
+
+`tests/e2e/requestContext.spec.ts` separately exercises actual Agent requests:
+component provenance and provider counts, cache activity, navigation to the
+session's Agent, removal of a disabled skill on the next request, two-Agent
+comparison without provider calls, identical requests, input invalidation,
+failed reads with retry, and late comparison responses. Its screenshots show
+the complete application with real RPC data. Pixel replay does not replace
+these behavioral tests or claim coverage of every expanded component.

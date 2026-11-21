@@ -8,6 +8,7 @@ import type {
   ConfigScope,
   ConfigSnapshot,
   EffortLevel,
+  HarnessDiff,
   ImageInput,
   McpApprovalResult,
   McpReconnectResult,
@@ -59,6 +60,7 @@ export type {
 
 export type {
   AgentInventoryItem,
+  RequestDiff,
   BackgroundAgentInfo,
   CommandInventoryItem,
   ContextCategory,
@@ -149,6 +151,7 @@ export interface AgentMethods {
   /** With `harness`, the components as that Agent has them (the Agent page shows Agents no process runs). */
   "runtime/inventory": { params: { harness?: { name: string } }; result: RuntimeInventory };
   "runtime/harness": { params: { name?: string }; result: ResolvedHarness };
+  "runtime/diffHarness": { params: { a: { name: string }; b: { name: string }; prompt: string }; result: HarnessDiff };
   "runtime/reload": { params: Record<string, never>; result: ReloadResult };
   "harness/list": { params: Record<string, never>; result: HarnessListing };
   "harness/read": { params: { name: string }; result: HarnessDefinition };
@@ -220,6 +223,7 @@ export const AGENT_METHODS = [
   "runtime/capabilities",
   "runtime/inventory",
   "runtime/harness",
+  "runtime/diffHarness",
   "runtime/reload",
   "harness/list",
   "harness/read",

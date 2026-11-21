@@ -1,8 +1,9 @@
-import { Bot, Download, FileJson, PanelLeftOpen, Plus, Star, X } from "lucide-react";
+import { Bot, Download, FileJson, GitCompareArrows, PanelLeftOpen, Plus, Star, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button, cn, IconButton, MOD, Spinner, Tooltip } from "../../design/primitives";
 import { keyOf, loadAgent, pickImport, useAgents } from "../../state/agents";
 import { usePrefs } from "../../state/prefs";
+import { useRequests } from "../../state/requests";
 import { useActiveWorkspace, useRuntime } from "../../state/workspaces";
 import { WindowControls } from "../shell/WindowControls";
 import { WorkspaceAvatar } from "../workspace/WorkspaceAvatar";
@@ -57,6 +58,15 @@ export function AgentsView() {
           </span>
           <span className="hidden text-[11.5px] text-fg-3 md:inline">Agent 对所有工作区生效，每个工作区选一个默认 Agent</span>
         </div>
+        <Button
+          size="sm"
+          variant="secondary"
+          disabled={!ready || !selected}
+          onClick={() => selected && useRequests.getState().openComparison(workspace.id, selected.name)}
+        >
+          <GitCompareArrows />
+          请求对比
+        </Button>
         <Tooltip content="返回对话">
           <IconButton onClick={closeAgents} aria-label="返回对话">
             <X />

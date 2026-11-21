@@ -2,6 +2,7 @@ import { join } from "node:path";
 import { _electron as electron, test } from "@playwright/test";
 import { ELECTRON_FLAGS, electronEnv, fitWindow } from "../helpers/app";
 import { MASK_SELECTOR, SCENARIOS } from "./scenarios";
+import { prepareRequestView } from "./requestSteps";
 
 const webUi = process.env.WEB_UI_URL;
 
@@ -17,11 +18,16 @@ for (const scenario of SCENARIOS) {
     });
     try {
       const page = await app.firstWindow();
-      await page.locator("aside").first().waitFor();
+      await page
+        .locator(scenario.requestView ? "[data-context-detail], [data-request-comparison]" : "aside")
+        .first()
+        .waitFor();
       await fitWindow(app, page);
+      await page.mouse.move(0, 0);
+      const target = scenario.requestView ? await prepareRequestView(page, scenario.requestView) : page;
       // Let the entrance animations finish.
       await page.waitForTimeout(1200);
-      await page.screenshot({
+      await target.screenshot({
         path: join(import.meta.dirname, "baseline", `${scenario.name}.png`),
         mask: [page.locator(MASK_SELECTOR)],
         animations: "disabled",

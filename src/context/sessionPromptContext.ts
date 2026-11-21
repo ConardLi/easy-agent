@@ -20,6 +20,8 @@
  *   - A change to the static block (an output style that drops the coding
  *     instructions) rebuilds the prompt, because that block cannot be patched
  *     from the tail.
+ *   - Explicit Harness composition changes rebuild it too: excluded sources
+ *     must stop appearing in the system prompt on the next turn.
  *
  * `reset()` drops the snapshot; the next turn builds a fresh prompt. Callers
  * reset after /clear, compaction, and session restore, when the conversation
@@ -80,6 +82,7 @@ export interface SessionPromptContext {
 }
 
 interface Snapshot {
+  composition: string;
   environment: RuntimeEnvironmentContext;
   staticParts: string[];
   systemParts: string[];
@@ -95,6 +98,16 @@ export interface SessionPromptContextOptions {
   cwd: string;
   additionalInstructions?: string;
   now?: () => Date;
+}
+
+/** Only composition settings invalidate the prefix; ordinary file edits still use tail updates. */
+function compositionOf(harness: ResolvedHarness | undefined): string {
+  return JSON.stringify(
+    Object.entries(harness?.values ?? {})
+      .filter(([key]) => key === "prompt.sections" || /^(context|skills|agents|plugins|rules)\./.test(key))
+      .map(([key, entry]) => [key, entry.value])
+      .sort(([a], [b]) => String(a).localeCompare(String(b))),
+  );
 }
 
 export function createSessionPromptContext(options: SessionPromptContextOptions): SessionPromptContext {
@@ -118,6 +131,7 @@ export function createSessionPromptContext(options: SessionPromptContextOptions)
     const sections = await collect(environment, harness);
     const systemParts = assembleSystemPrompt(staticParts, sections);
     return {
+      composition: compositionOf(harness),
       environment,
       staticParts,
       systemParts,
@@ -146,7 +160,11 @@ export function createSessionPromptContext(options: SessionPromptContextOptions)
       // One read of the Agent per turn, so the static block and the sections agree.
       const harness = await promptHarnessFor(options.cwd);
 
-      if (!snapshot || !sameParts(snapshot.staticParts, buildStaticSystemParts(harness))) {
+      if (
+        !snapshot ||
+        snapshot.composition !== compositionOf(harness) ||
+        !sameParts(snapshot.staticParts, buildStaticSystemParts(harness))
+      ) {
         snapshot = await build(harness);
         describe(snapshot);
         return {
