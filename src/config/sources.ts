@@ -34,6 +34,7 @@ import { readJsonSettingsFile } from "../utils/settings.js";
 import { getManagedSettingsPath } from "./managedPath.js";
 import { isProjectTrusted } from "./globalState.js";
 import { validateSettings } from "./schema.js";
+import { bindRuntimeScope, defineRuntimeState, runtimeScopeClosed } from "../state/runtimeScope.js";
 
 export type SettingSource = "user" | "project" | "local" | "flag" | "policy";
 
@@ -76,9 +77,11 @@ interface CacheEntry {
   sources: LoadedSource[];
 }
 
-const sourceCache = new Map<string, CacheEntry>();
-const lastValidSources = new Map<string, Record<string, unknown>>();
-const loading = new Map<string, Promise<LoadedSource[]>>();
+const state = defineRuntimeState("settingsSnapshots", () => ({
+  sourceCache: new Map<string, CacheEntry>(),
+  lastValidSources: new Map<string, Record<string, unknown>>(),
+  loading: new Map<string, Promise<LoadedSource[]>>(),
+}));
 
 /**
  * Drop all cached source reads. Called automatically when flags change or a
@@ -86,7 +89,7 @@ const loading = new Map<string, Promise<LoadedSource[]>>();
  * this so a freshly-written value is visible to the very next read.
  */
 export function resetSettingsCache(): void {
-  sourceCache.clear();
+  state().sourceCache.clear();
 }
 
 /** Cheap per-file fingerprint: mtime + size, or "none" when absent. */
@@ -126,8 +129,9 @@ function buildSource(
  * `parseError` the caller can report.
  */
 export async function loadSettingSources(cwd: string): Promise<LoadedSource[]> {
+  const { loading } = state();
   const previous = loading.get(cwd) ?? Promise.resolve([]);
-  const next = previous.catch(() => []).then(() => readSettingSources(cwd));
+  const next = previous.catch(() => []).then(bindRuntimeScope(() => readSettingSources(cwd)));
   loading.set(cwd, next);
   try {
     return structuredClone(await next);
@@ -137,6 +141,7 @@ export async function loadSettingSources(cwd: string): Promise<LoadedSource[]> {
 }
 
 async function readSettingSources(cwd: string): Promise<LoadedSource[]> {
+  const { sourceCache, lastValidSources } = state();
   const userPath = getUserSettingsPath();
   const projectPath = getProjectSettingsPath(cwd);
   const localPath = getLocalSettingsPath(cwd);
@@ -187,12 +192,12 @@ async function readSettingSources(cwd: string): Promise<LoadedSource[]> {
         ...(src.validationErrors ?? []),
         `${src.path ?? src.source}: update rejected; retained last valid source snapshot`,
       ];
-    } else if (!invalid) {
+    } else if (!invalid && !runtimeScopeClosed()) {
       if (src.raw) lastValidSources.set(key, structuredClone(src.raw));
       else lastValidSources.delete(key);
     }
   }
-  sourceCache.set(cwd, { signature, sources });
+  if (!runtimeScopeClosed()) sourceCache.set(cwd, { signature, sources });
   return sources;
 }
 

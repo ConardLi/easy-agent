@@ -15,7 +15,7 @@
  *   <cwd>/.easy-agent/output-styles/<name>.md    (project scope, wins)
  * Enabled plugins can contribute styles from their `output-styles/` dir.
  *
- * The active style is a single piece of process-global state, flipped at
+ * The active style is shared by the runtime's sessions, flipped at
  * runtime with `/output-style <name>` and persisted to settings.json as
  * `outputStyle`. `buildSystemPrompt` reads `getActiveOutputStyleConfig()`
  * each turn so a switch takes effect on the very next request.
@@ -25,6 +25,7 @@
  */
 
 import { pluginOffByAgent } from "../harness/resources.js";
+import { defineRuntimeState } from "../state/runtimeScope.js";
 
 export type OutputStyleSource = "built-in" | "user" | "project" | "plugin";
 
@@ -114,20 +115,19 @@ ${INSIGHT_FEATURE_PROMPT}`,
 
 // ─── In-memory state ──────────────────────────────────────────────────
 
-const registry = new Map<string, OutputStyleConfig>();
-let activeStyleName: string = DEFAULT_OUTPUT_STYLE_NAME;
-let initialized = false;
+const state = defineRuntimeState("outputStyles", () => ({
+  registry: new Map(BUILT_IN_STYLES.map((style) => [style.name, style])),
+  activeStyleName: DEFAULT_OUTPUT_STYLE_NAME,
+  initialized: false,
+}));
 
 function seedBuiltIns(): void {
+  const { registry } = state();
   registry.clear();
   for (const style of BUILT_IN_STYLES) {
     registry.set(style.name, style);
   }
 }
-
-// Seed eagerly so the built-in styles are usable even before bootstrap
-// runs (e.g. in unit tests that import the registry directly).
-seedBuiltIns();
 
 /**
  * Replace the custom (disk-loaded) styles, keeping the built-ins. Custom
@@ -137,18 +137,18 @@ seedBuiltIns();
 export function setCustomOutputStyles(custom: OutputStyleConfig[]): void {
   seedBuiltIns();
   for (const style of custom) {
-    registry.set(style.name, style);
+    state().registry.set(style.name, style);
   }
-  initialized = true;
+  state().initialized = true;
 }
 
 export function isOutputStylesInitialized(): boolean {
-  return initialized;
+  return state().initialized;
 }
 
 /** Exact-name lookup; returns undefined when the style isn't registered. */
 export function getOutputStyle(name: string): OutputStyleConfig | undefined {
-  const style = registry.get(name);
+  const style = state().registry.get(name);
   return style && !pluginOffByAgent(style.pluginId) ? style : undefined;
 }
 
@@ -161,7 +161,7 @@ export function resolveOutputStyle(name: string): OutputStyleConfig | undefined 
   const exact = getOutputStyle(name);
   if (exact) return exact;
   const lower = name.toLowerCase();
-  for (const style of registry.values()) {
+  for (const style of state().registry.values()) {
     if (style.name.toLowerCase() === lower && !pluginOffByAgent(style.pluginId)) return style;
   }
   return undefined;
@@ -169,11 +169,11 @@ export function resolveOutputStyle(name: string): OutputStyleConfig | undefined 
 
 /** Every registered style (built-in + custom), built-ins first. */
 export function getAllOutputStyles(): OutputStyleConfig[] {
-  return [...registry.values()].filter((style) => !pluginOffByAgent(style.pluginId));
+  return [...state().registry.values()].filter((style) => !pluginOffByAgent(style.pluginId));
 }
 
 export function getActiveOutputStyleName(): string {
-  return activeStyleName;
+  return state().activeStyleName;
 }
 
 /**
@@ -183,7 +183,7 @@ export function getActiveOutputStyleName(): string {
 export function setActiveOutputStyle(name: string): boolean {
   const resolved = resolveOutputStyle(name);
   if (!resolved) return false;
-  activeStyleName = resolved.name;
+  state().activeStyleName = resolved.name;
   return true;
 }
 
@@ -195,8 +195,8 @@ export function setActiveOutputStyle(name: string): boolean {
  * Returns true when a fallback was applied so callers can surface a diagnostic.
  */
 export function ensureActiveOutputStyleAvailable(): boolean {
-  if (registry.has(activeStyleName)) return false;
-  activeStyleName = DEFAULT_OUTPUT_STYLE_NAME;
+  if (state().registry.has(state().activeStyleName)) return false;
+  state().activeStyleName = DEFAULT_OUTPUT_STYLE_NAME;
   return true;
 }
 
@@ -206,7 +206,7 @@ export function ensureActiveOutputStyleAvailable(): boolean {
  * output-style section and keep the normal coding instructions".
  */
 export function getActiveOutputStyleConfig(): OutputStyleConfig | null {
-  const style = getOutputStyle(activeStyleName);
+  const style = getOutputStyle(state().activeStyleName);
   if (!style || style.prompt.trim().length === 0) return null;
   return style;
 }
@@ -214,6 +214,6 @@ export function getActiveOutputStyleConfig(): OutputStyleConfig | null {
 /** Reset everything to built-ins + default. Tests / hot reload only. */
 export function clearOutputStyles(): void {
   seedBuiltIns();
-  activeStyleName = DEFAULT_OUTPUT_STYLE_NAME;
-  initialized = false;
+  state().activeStyleName = DEFAULT_OUTPUT_STYLE_NAME;
+  state().initialized = false;
 }

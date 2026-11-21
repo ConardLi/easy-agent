@@ -56,6 +56,7 @@
     "test:queryengine": "tsx src/scripts/test-queryengine-characterization.ts",
     "test:interactive-session": "node --import tsx src/scripts/test-interactive-session-characterization.tsx",
     "test:sdk": "node --import tsx src/scripts/test-sdk-session.ts",
+    "test:runtime-registries": "node --import tsx src/scripts/test-runtime-registries.ts",
     "test:rpc": "node --import tsx src/scripts/test-rpc.ts",
     "test:acp": "node --import tsx src/scripts/test-acp.ts",
     "test:headless-session": "node --import tsx src/scripts/test-headless-session.ts",

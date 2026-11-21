@@ -6,7 +6,7 @@
  * execution settings); sessions created from it share those registries and
  * keep their conversation state in their own session scopes.
  *
- * Settings layers, the workspace `.env`, and the registries are process-wide,
+ * Settings layers and the workspace `.env` still affect the process,
  * so a process runs one runtime at a time. Frontends that serve several
  * workspaces run one process per workspace.
  */
@@ -40,6 +40,14 @@ import {
 import { getTaskListId, getTasksDir } from "../state/taskStore.js";
 import { getEasyAgentHome } from "../utils/paths.js";
 import { createSessionScope } from "../state/sessionScope.js";
+import {
+  bindRuntimeScope,
+  createRuntimeScope,
+  currentRuntimeScope,
+  disposeRuntimeScope,
+  runInRuntimeScope,
+  setDefaultRuntimeScope,
+} from "../state/runtimeScope.js";
 import { getActiveOutputStyleName } from "../styles/registry.js";
 import { logWarn } from "../utils/log.js";
 import type { McpServerConfig } from "../types/mcp.js";
@@ -48,7 +56,7 @@ import { checkModel, listModels, readConfig, setWorkspaceTrust, writeConfig } fr
 import { AgentSdkError } from "./errors.js";
 import { approveMcpServer, reconnectMcpServer, reloadExtensions } from "./extensions.js";
 import { buildRuntimeInventory } from "./inventory.js";
-import { activeHarness, refreshHarness, uninstallHarness, withHarness } from "../harness/active.js";
+import { refreshHarness, withHarness } from "../harness/active.js";
 import { diffHarnesses, type HarnessDiff } from "../harness/diff.js";
 import { diffRenderedRequests } from "../harness/requestDiff.js";
 import { harnessValue, type ResolvedHarness, resolveHarness } from "../harness/resolve.js";
@@ -94,9 +102,8 @@ let bootstrapping = false;
 export async function reloadRuntimeUsing(agents: readonly string[]): Promise<boolean> {
   const runtime = activeRuntime;
   if (!runtime || agents.length === 0) return false;
-  const current = activeHarness();
+  const current = await runtime.getHarness();
   if (![current.name, ...current.chain].some((name) => agents.includes(name))) return false;
-  await refreshHarness();
   await Promise.all(runtime.listOpenSessions().map((session) => reloadSettingsOf(session)));
   return true;
 }
@@ -108,6 +115,8 @@ export class AgentRuntime {
   readonly #logger: RuntimeLogger;
   readonly #sessions = new Map<string, AgentSession>();
   #disposed = false;
+  #disposal?: Promise<void>;
+  readonly #scope = currentRuntimeScope();
 
   /** @internal Use `createAgentRuntime()`. */
   constructor(options: AgentRuntimeOptions, report: WorkspaceReport) {
@@ -115,6 +124,31 @@ export class AgentRuntime {
     this.report = report;
     this.#options = options;
     this.#logger = options.logger ?? consoleLogger;
+    // SDK calls originate outside ALS (RPC, UI, consumers). Bind the boundary,
+    // including callbacks passed elsewhere and calls made from another runtime.
+    this.startServices = bindRuntimeScope(this.startServices.bind(this));
+    this.resolveModel = bindRuntimeScope(this.resolveModel.bind(this));
+    this.createSession = bindRuntimeScope(this.createSession.bind(this));
+    this.resumeSession = bindRuntimeScope(this.resumeSession.bind(this));
+    this.forkSession = bindRuntimeScope(this.forkSession.bind(this));
+    this.connectMcpServers = bindRuntimeScope(this.connectMcpServers.bind(this));
+    this.hasModelCredentials = bindRuntimeScope(this.hasModelCredentials.bind(this));
+    this.readConfig = bindRuntimeScope(this.readConfig.bind(this));
+    this.writeConfig = bindRuntimeScope(this.writeConfig.bind(this));
+    this.setWorkspaceTrust = bindRuntimeScope(this.setWorkspaceTrust.bind(this));
+    this.checkModel = bindRuntimeScope(this.checkModel.bind(this));
+    this.listModels = bindRuntimeScope(this.listModels.bind(this));
+    this.getInventory = bindRuntimeScope(this.getInventory.bind(this));
+    this.getHarness = bindRuntimeScope(this.getHarness.bind(this));
+    this.diffHarness = bindRuntimeScope(this.diffHarness.bind(this));
+    this.reload = bindRuntimeScope(this.reload.bind(this));
+    this.approveMcpServer = bindRuntimeScope(this.approveMcpServer.bind(this));
+    this.reconnectMcpServer = bindRuntimeScope(this.reconnectMcpServer.bind(this));
+    this.listPlugins = bindRuntimeScope(this.listPlugins.bind(this));
+    this.previewPlugin = bindRuntimeScope(this.previewPlugin.bind(this));
+    this.mutatePlugin = bindRuntimeScope(this.mutatePlugin.bind(this));
+    this.getCapabilities = bindRuntimeScope(this.getCapabilities.bind(this));
+    this.dispose = bindRuntimeScope(this.dispose.bind(this));
   }
 
   /**
@@ -155,6 +189,7 @@ export class AgentRuntime {
    * `ANTHROPIC_MODEL`, then the built-in default).
    */
   async resolveModel(): Promise<string> {
+    this.#assertActive();
     return harnessValue<string>(await refreshHarness(), "model.main");
   }
 
@@ -530,6 +565,7 @@ export class AgentRuntime {
   }
 
   getCapabilities(): RuntimeCapabilities {
+    this.#assertActive();
     return {
       builtinCommands: [...BUILTIN_COMMAND_NAMES].sort(),
       skills: getAllUserInvocableSkills().map(({ name, description }) => ({ name, description })),
@@ -540,14 +576,21 @@ export class AgentRuntime {
   }
 
   /** Close every open session and release the process for another runtime. */
-  async dispose(): Promise<void> {
-    if (this.#disposed) return;
-    await Promise.all([...this.#sessions.values()].map((session) => session.close()));
+  dispose(): Promise<void> {
+    if (this.#disposal) return this.#disposal;
     this.#disposed = true;
-    if (activeRuntime === this) {
-      activeRuntime = null;
-      uninstallHarness();
-    }
+    this.#disposal = (async () => {
+      try {
+        await Promise.all([...this.#sessions.values()].map((session) => session.close()));
+      } finally {
+        try {
+          await disposeRuntimeScope(this.#scope);
+        } finally {
+          if (activeRuntime === this) activeRuntime = null;
+        }
+      }
+    })();
+    return this.#disposal;
   }
 
   /**
@@ -597,6 +640,7 @@ export class AgentRuntime {
     restored: RestoredSession | null;
     harnessCheck?: SessionHarnessCheck;
   }): Promise<AgentSession> {
+    this.#assertActive();
     const controller = await SessionController.create({
       scope: createSessionScope(),
       cwd: this.cwd,
@@ -618,6 +662,10 @@ export class AgentRuntime {
         this.#sessions.delete(sessionId);
       },
     });
+    if (this.#disposed) {
+      await controller.close();
+      this.#assertActive();
+    }
     const session = new AgentSession(params.sessionId, controller, params.harnessCheck ?? null);
     this.#sessions.set(params.sessionId, session);
     return session;
@@ -638,20 +686,25 @@ export async function createAgentRuntime(options: AgentRuntimeOptions): Promise<
     throw new AgentSdkError("runtime_active", "Another runtime is already active in this process.");
   }
   bootstrapping = true;
-  let runtime: AgentRuntime;
-  try {
-    const report = await loadWorkspace(options);
-    await activateWorkspace(options);
-    runtime = new AgentRuntime(options, report);
-    activeRuntime = runtime;
-  } catch (error) {
-    uninstallHarness();
-    throw error;
-  } finally {
-    bootstrapping = false;
-  }
-  if (options.services !== false) await runtime.startServices(options.services ?? {});
-  return runtime;
+  const scope = createRuntimeScope();
+  return runInRuntimeScope(scope, async () => {
+    let runtime: AgentRuntime | undefined;
+    try {
+      const report = await loadWorkspace(options);
+      await activateWorkspace(options);
+      runtime = new AgentRuntime(options, report);
+      activeRuntime = runtime;
+      setDefaultRuntimeScope(scope);
+      if (options.services !== false) await runtime.startServices(options.services ?? {});
+      return runtime;
+    } catch (error) {
+      if (runtime) await runtime.dispose();
+      else await disposeRuntimeScope(scope);
+      throw error;
+    } finally {
+      bootstrapping = false;
+    }
+  });
 }
 
 /** A missing transcript is `not_found`; anything else keeps the caller's code. */

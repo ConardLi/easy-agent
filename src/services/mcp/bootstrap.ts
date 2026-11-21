@@ -16,6 +16,7 @@ import { debugLog, logWarn } from "../../utils/log.js";
 import { activeHarness } from "../../harness/active.js";
 import { selectionOffReason } from "../../harness/selection.js";
 import { pluginMcpOffByAgent } from "../../harness/resources.js";
+import { bindRuntimeScope, defineRuntimeState, runtimeScopeClosed } from "../../state/runtimeScope.js";
 
 export interface McpBootstrapResult {
   connections: McpServerConnection[];
@@ -23,12 +24,26 @@ export interface McpBootstrapResult {
   configErrors: string[];
 }
 
-const reconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
-const reconnectAttempts = new Map<string, number>();
-const reconnecting = new Map<string, Promise<void>>();
-const requestedReconnects = new Map<string, Promise<McpServerConnection | null>>();
+const state = defineRuntimeState(
+  "mcpBootstrap",
+  () => ({
+    reconnectTimers: new Map<string, ReturnType<typeof setTimeout>>(),
+    reconnectAttempts: new Map<string, number>(),
+    reconnecting: new Map<string, Promise<void>>(),
+    requestedReconnects: new Map<string, Promise<McpServerConnection | null>>(),
+  }),
+  async (owner) => {
+    for (const timer of owner.reconnectTimers.values()) clearTimeout(timer);
+    owner.reconnectTimers.clear();
+    owner.reconnectAttempts.clear();
+    clearMcpRegistry();
+    registerMcpTools([]);
+    await Promise.allSettled([...owner.reconnecting.values(), ...owner.requestedReconnects.values()]);
+  },
+);
 
 function stopReconnect(name: string): void {
+  const { reconnectTimers, reconnectAttempts } = state();
   const timer = reconnectTimers.get(name);
   if (timer) clearTimeout(timer);
   reconnectTimers.delete(name);
@@ -40,40 +55,45 @@ export function cancelMcpReconnect(name: string): void {
 }
 
 function scheduleReconnect(name: string, config: PendingMcpServer["config"], immediate = false): void {
+  if (runtimeScopeClosed()) return;
+  const { reconnectTimers, reconnectAttempts, reconnecting } = state();
   if (reconnectTimers.has(name) || reconnecting.has(name)) return;
   const entry = getMcpRegistryEntry(name);
   if (!entry || entry.connection.config !== config) return;
   const attempt = reconnectAttempts.get(name) ?? 0;
   const delay = immediate ? 0 : Math.min(30_000, 1_000 * 2 ** Math.min(attempt, 5));
   reconnectAttempts.set(name, attempt + 1);
-  const timer = setTimeout(() => {
-    reconnectTimers.delete(name);
-    if (getMcpRegistryEntry(name)?.connection.config !== config) {
-      stopReconnect(name);
-      return;
-    }
-    const task = (async () => {
-      await clearServerCache(name, config);
-      if (getMcpRegistryEntry(name)?.connection.config !== config) return;
-      await connectAndRegister(name, config);
-    })()
-      .catch((error) => {
-        debugLog("mcp", `[${name}] reconnect failed: ${(error as Error).message}`);
-        scheduleReconnect(name, config);
-      })
-      .finally(() => {
-        reconnecting.delete(name);
-        const current = getMcpRegistryEntry(name);
-        if (
-          current?.connection.config === config &&
-          current.connection.type === "failed" &&
-          !current.connection.error.startsWith("Authorization required:")
-        ) {
+  const timer = setTimeout(
+    bindRuntimeScope(() => {
+      reconnectTimers.delete(name);
+      if (runtimeScopeClosed() || getMcpRegistryEntry(name)?.connection.config !== config) {
+        stopReconnect(name);
+        return;
+      }
+      const task = (async () => {
+        await clearServerCache(name, config);
+        if (runtimeScopeClosed() || getMcpRegistryEntry(name)?.connection.config !== config) return;
+        await connectAndRegister(name, config);
+      })()
+        .catch((error) => {
+          debugLog("mcp", `[${name}] reconnect failed: ${(error as Error).message}`);
           scheduleReconnect(name, config);
-        }
-      });
-    reconnecting.set(name, task);
-  }, delay);
+        })
+        .finally(() => {
+          reconnecting.delete(name);
+          const current = getMcpRegistryEntry(name);
+          if (
+            current?.connection.config === config &&
+            current.connection.type === "failed" &&
+            !current.connection.error.startsWith("Authorization required:")
+          ) {
+            scheduleReconnect(name, config);
+          }
+        });
+      reconnecting.set(name, task);
+    }),
+    delay,
+  );
   timer.unref?.();
   reconnectTimers.set(name, timer);
 }
@@ -86,6 +106,8 @@ export function mcpServerOffByAgent(name: string): string | undefined {
 /** Connect the configured servers the Agent keeps, in parallel, and publish each result as it arrives. */
 export async function bootstrapMcp(cwd: string): Promise<McpBootstrapResult> {
   const { servers: configured, errors: configErrors } = await loadMcpConfigs(cwd);
+  if (runtimeScopeClosed()) return { connections: [], toolCount: 0, configErrors };
+  const { reconnectTimers } = state();
   const servers = Object.fromEntries(
     Object.entries(configured).filter(([name]) => {
       const off = mcpServerOffByAgent(name);
@@ -97,6 +119,7 @@ export async function bootstrapMcp(cwd: string): Promise<McpBootstrapResult> {
   for (const name of reconnectTimers.keys()) stopReconnect(name);
   setMcpConnectionListeners({
     onUnexpectedClose: (name, config) => {
+      if (runtimeScopeClosed()) return;
       const entry = getMcpRegistryEntry(name);
       if (!entry || entry.connection.config !== config) return;
       setMcpRegistryEntry(name, { name, type: "pending", config, startedAt: Date.now() }, []);
@@ -141,14 +164,14 @@ async function connectAndRegister(
 ): Promise<{ connection: McpServerConnection; toolCount: number }> {
   const connection = await connectToServer(name, config);
   let tools: Awaited<ReturnType<typeof fetchToolsForConnection>> = [];
-  if (connection.type === "connected") {
+  if (connection.type === "connected" && !runtimeScopeClosed()) {
     try {
       tools = await fetchToolsForConnection(connection);
     } catch (error) {
       debugLog("mcp", `[${name}] tools/list failed after connect: ${(error as Error).message}`);
     }
   }
-  if (getMcpRegistryEntry(name)?.connection.config !== config) {
+  if (runtimeScopeClosed() || getMcpRegistryEntry(name)?.connection.config !== config) {
     if (connection.type === "connected") await connection.cleanup();
     return { connection, toolCount: 0 };
   }
@@ -171,6 +194,7 @@ async function connectAndRegister(
 export async function connectAdditionalMcpServers(
   servers: Record<string, PendingMcpServer["config"]>,
 ): Promise<{ added: string[]; skipped: string[] }> {
+  if (runtimeScopeClosed()) return { added: [], skipped: Object.keys(servers) };
   registerMcpProcessCleanup();
   const added: string[] = [];
   const skipped: string[] = [];
@@ -214,6 +238,8 @@ function refreshGlobalToolRegistry(): void {
  * `/mcp reconnect <name>`.
  */
 export function reconnectMcpServer(name: string): Promise<McpServerConnection | null> {
+  if (runtimeScopeClosed()) return Promise.resolve(null);
+  const { requestedReconnects } = state();
   const ongoing = requestedReconnects.get(name);
   if (ongoing) return ongoing;
   const attempt = reconnectMcpServerOnce(name);
@@ -233,6 +259,7 @@ async function reconnectMcpServerOnce(name: string): Promise<McpServerConnection
   stopReconnect(name);
 
   await clearServerCache(name, entry.connection.config);
+  if (runtimeScopeClosed() || getMcpRegistryEntry(name) !== entry) return null;
   deleteMcpRegistryEntry(name);
   setMcpRegistryEntry(
     name,

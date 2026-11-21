@@ -24,10 +24,13 @@ import type { ResolvedHarness } from "../../harness/resolve.js";
 import { selectionOffReason } from "../../harness/selection.js";
 import { pluginOffByAgent } from "../../harness/resources.js";
 import type { Skill } from "../../types/types.js";
+import { defineRuntimeState } from "../../state/runtimeScope.js";
 
-const dynamic = new Map<string, Skill>();
-const conditional = new Map<string, Skill>();
-let initialized = false;
+const state = defineRuntimeState("skills", () => ({
+  dynamic: new Map<string, Skill>(),
+  conditional: new Map<string, Skill>(),
+  initialized: false,
+}));
 
 /**
  * Replace the registry with a freshly-loaded set. Called once at startup
@@ -35,6 +38,7 @@ let initialized = false;
  * here based on whether `frontmatter.paths` is present.
  */
 export function setSkills(skills: Skill[]): void {
+  const { dynamic, conditional } = state();
   dynamic.clear();
   conditional.clear();
   for (const skill of skills) {
@@ -44,16 +48,17 @@ export function setSkills(skills: Skill[]): void {
       dynamic.set(skill.name, skill);
     }
   }
-  initialized = true;
+  state().initialized = true;
 }
 
 /** Has bootstrapSkills() ever been called? Useful for warning suppression. */
 export function isSkillsInitialized(): boolean {
-  return initialized;
+  return state().initialized;
 }
 
 /** Why the Agent leaves out the skill `name`, or undefined when it keeps it. */
 export function skillOffByAgent(name: string, resolved: ResolvedHarness = activeHarness()): string | undefined {
+  const { dynamic, conditional } = state();
   const skill = dynamic.get(name) ?? conditional.get(name);
   return pluginOffByAgent(skill?.pluginId, resolved) ?? selectionOffReason(resolved, "skills", name);
 }
@@ -66,7 +71,7 @@ const kept = (skills: Iterable<Skill>, resolved: ResolvedHarness): Skill[] =>
  * listing in the system prompt. EXCLUDES `disable-model-invocation` skills.
  */
 export function getModelVisibleSkills(resolved: ResolvedHarness = activeHarness()): Skill[] {
-  return kept(dynamic.values(), resolved).filter((s) => !s.frontmatter.disableModelInvocation);
+  return kept(state().dynamic.values(), resolved).filter((s) => !s.frontmatter.disableModelInvocation);
 }
 
 /**
@@ -76,22 +81,26 @@ export function getModelVisibleSkills(resolved: ResolvedHarness = activeHarness(
  * surprised by "command not found" before the file path matches).
  */
 export function getAllUserInvocableSkills(resolved: ResolvedHarness = activeHarness()): Skill[] {
+  const { dynamic, conditional } = state();
   return kept([...dynamic.values(), ...conditional.values()], resolved);
 }
 
 /** Every loaded skill, including the ones the Agent leaves out. */
 export function getRegisteredSkills(): Skill[] {
+  const { dynamic, conditional } = state();
   return [...dynamic.values(), ...conditional.values()];
 }
 
 /** Look up by name across both maps; undefined if not loaded or left out by the Agent. */
 export function findSkill(name: string): Skill | undefined {
+  const { dynamic, conditional } = state();
   const skill = dynamic.get(name) ?? conditional.get(name);
   return skill && !skillOffByAgent(name) ? skill : undefined;
 }
 
 /** Why a loaded skill is left out by the Agent; undefined when it is kept or no such skill is loaded. */
 export function loadedSkillOffByAgent(name: string): string | undefined {
+  const { dynamic, conditional } = state();
   return dynamic.has(name) || conditional.has(name) ? skillOffByAgent(name) : undefined;
 }
 
@@ -101,6 +110,7 @@ export function loadedSkillOffByAgent(name: string): string | undefined {
  * UI ("activated skill X").
  */
 export function activateConditional(name: string): boolean {
+  const { dynamic, conditional } = state();
   const skill = conditional.get(name);
   if (!skill) return false;
   conditional.delete(name);
@@ -110,12 +120,13 @@ export function activateConditional(name: string): boolean {
 
 /** The conditional skills the Agent keeps that are not activated yet (read-only view). */
 export function listConditionalSkills(): Skill[] {
-  return kept(conditional.values(), activeHarness());
+  return kept(state().conditional.values(), activeHarness());
 }
 
 /** Drop everything — only used by tests / hot reload. */
 export function clearSkills(): void {
+  const { dynamic, conditional } = state();
   dynamic.clear();
   conditional.clear();
-  initialized = false;
+  state().initialized = false;
 }

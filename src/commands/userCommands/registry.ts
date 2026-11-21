@@ -8,26 +8,30 @@
 
 import type { UserCommand } from "./types.js";
 import { pluginOffByAgent } from "../../harness/resources.js";
+import { defineRuntimeState } from "../../state/runtimeScope.js";
 
-const commands = new Map<string, UserCommand>();
-let initialized = false;
+const state = defineRuntimeState("userCommands", () => ({
+  commands: new Map<string, UserCommand>(),
+  initialized: false,
+}));
 
 /** Replace the registry with a freshly-loaded set. Called by bootstrap. */
 export function setUserCommands(list: UserCommand[]): void {
+  const { commands } = state();
   commands.clear();
   for (const cmd of list) {
     commands.set(cmd.name, cmd);
   }
-  initialized = true;
+  state().initialized = true;
 }
 
 export function isUserCommandsInitialized(): boolean {
-  return initialized;
+  return state().initialized;
 }
 
 /** Look up a command by name (case-sensitive). */
 export function findUserCommand(name: string): UserCommand | undefined {
-  const command = commands.get(name);
+  const command = state().commands.get(name);
   return command && !pluginOffByAgent(command.pluginId) ? command : undefined;
 }
 
@@ -38,11 +42,11 @@ export function getAllUserCommands(): UserCommand[] {
 
 /** Every loaded command, including plugin commands the current Agent leaves out. */
 export function getRegisteredUserCommands(): UserCommand[] {
-  return [...commands.values()];
+  return [...state().commands.values()];
 }
 
 /** Drop everything — tests / hot reload only. */
 export function clearUserCommands(): void {
-  commands.clear();
-  initialized = false;
+  state().commands.clear();
+  state().initialized = false;
 }
