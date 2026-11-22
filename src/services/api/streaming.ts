@@ -11,6 +11,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 import type { MessageParam, TextBlockParam } from "@anthropic-ai/sdk/resources/messages.js";
 import { getAnthropicClientForProfile, getDefaultModel, DEFAULT_MAX_TOKENS } from "./client.js";
 import { resolveProfile, type ModelProfile } from "./providers/profile.js";
+import { profileRequestHeaders } from "./providers/authentication.js";
 import { streamViaProvider, collectViaProvider } from "./providers/providerStream.js";
 import type {
   AssistantMessage,
@@ -134,7 +135,7 @@ async function* streamOnce(
     return yield* streamViaProvider(profile, params, trace);
   }
 
-  const client = getAnthropicClientForProfile(profile);
+  profileRequestHeaders(profile);
   const model = profile.model;
   const maxTokens = profile.maxTokens ?? params.maxTokens ?? DEFAULT_MAX_TOKENS;
 
@@ -226,7 +227,7 @@ async function* streamOnce(
     output_config: outputConfig,
     betas: betaHeaders,
     promptCaching,
-    hasApiKey: Boolean(profile.apiKey),
+    hasApiKey: Boolean(profile.apiKey || profile.apiKeyHelper),
   });
 
   trace?.sent({
@@ -251,6 +252,7 @@ async function* streamOnce(
     },
   });
 
+  const client = getAnthropicClientForProfile(profile);
   // Initiate the stream
   const stream = client.messages.stream(requestParams, {
     signal: params.signal,
@@ -648,7 +650,7 @@ async function createMessageTraced(
     });
   }
 
-  const client = getAnthropicClientForProfile(profile);
+  profileRequestHeaders(profile);
   const model = profile.model;
   const maxTokens = profile.maxTokens ?? params.maxTokens ?? DEFAULT_MAX_TOKENS;
 
@@ -708,6 +710,7 @@ async function createMessageTraced(
           promptCacheKey: false,
         },
       });
+      const client = getAnthropicClientForProfile(profile);
       return client.messages.create(
         body,
         params.betaHeaders?.length ? { headers: { "anthropic-beta": params.betaHeaders.join(",") } } : undefined,

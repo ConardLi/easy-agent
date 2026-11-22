@@ -19,7 +19,12 @@ import type Anthropic from "@anthropic-ai/sdk";
 import he from "he";
 import { harnessSetting } from "../../harness/active.js";
 import { getAnthropicClientForProfile } from "../../services/api/client.js";
-import { resolveProfile, getProfileBaseURL } from "../../services/api/providers/profile.js";
+import {
+  resolveProfile,
+  resolveProfileConfiguration,
+  getProfileBaseURL,
+} from "../../services/api/providers/profile.js";
+import { profileRequestHeaders } from "../../services/api/providers/authentication.js";
 import { classifyAPIError } from "../../services/api/errors.js";
 import { markMessageSource } from "../../core/messageSources.js";
 import { startRequestTrace } from "../../trace/requestTrace.js";
@@ -81,7 +86,7 @@ export class AnthropicApiSearchAdapter implements WebSearchAdapter {
 
   async search(query: string, options: SearchOptions): Promise<SearchResult[]> {
     const profile = await resolveProfile(this.modelHandle ?? "");
-    const client = getAnthropicClientForProfile(profile);
+    profileRequestHeaders(profile);
 
     const webSearchTool = {
       type: "web_search_20250305",
@@ -123,6 +128,7 @@ export class AnthropicApiSearchAdapter implements WebSearchAdapter {
     });
     let response: Anthropic.Message;
     try {
+      const client = getAnthropicClientForProfile(profile);
       response = await client.messages.create(body, options.signal ? { signal: options.signal } : undefined);
     } catch (error) {
       trace.fail(classifyAPIError(error));
@@ -247,7 +253,7 @@ export async function createAdapter(modelHandle?: string): Promise<WebSearchAdap
   const override = harnessSetting<"bing" | "api" | undefined>("tools.webSearchBackend");
   if (override === "bing") return new BingSearchAdapter();
   if (override === "api") {
-    const profile = await resolveProfile(modelHandle ?? "");
+    const profile = await resolveProfileConfiguration(modelHandle ?? "");
     if (profile.protocol !== "anthropic")
       throw new Error(
         "The API search backend requires an Anthropic profile; use EASY_AGENT_WEB_SEARCH_BACKEND=bing for this connection.",
@@ -257,7 +263,7 @@ export async function createAdapter(modelHandle?: string): Promise<WebSearchAdap
 
   if (modelHandle) {
     try {
-      const profile = await resolveProfile(modelHandle);
+      const profile = await resolveProfileConfiguration(modelHandle);
       if (profile.protocol === "anthropic" && isFirstPartyAnthropic(getProfileBaseURL(profile))) {
         return new AnthropicApiSearchAdapter(modelHandle);
       }

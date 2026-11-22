@@ -357,6 +357,69 @@ await check("a server the other Agent leaves out drops out of its rendering, not
   assert.equal(tripped + fetches, 0);
 });
 
+await check("credential helpers never run while rendering, across protocols, and still run outside it", async () => {
+  const helperCommand = `${JSON.stringify(process.execPath)} -e "require('fs').writeFileSync('${marker("api-key-helper")}', 'ran'); process.stdout.write('sk-from-helper')"`;
+  const settingsFile = path.join(home, ".easy-agent", "settings.json");
+  const currentSettings = JSON.parse(await readFile(settingsFile, "utf8")) as Record<string, unknown>;
+  await writeFile(
+    settingsFile,
+    JSON.stringify({
+      ...currentSettings,
+      models: {
+        ...(currentSettings.models as Record<string, unknown>),
+        helperAnthropic: {
+          protocol: "anthropic",
+          model: "claude-sonnet-4-20250514",
+          baseURL,
+          apiKey: { helper: helperCommand },
+        },
+        helperOpenAI: {
+          protocol: "openai-chat",
+          model: "gpt-4.1",
+          baseURL: `${baseURL}/v1`,
+          apiKey: { helper: helperCommand },
+        },
+      },
+    }),
+  );
+
+  const helperDiff = await runtime.diffHarness(
+    { spec: { model: { main: "helperAnthropic" } } },
+    { spec: { model: { main: "helperOpenAI" } } },
+    { prompt: PROMPT },
+  );
+  assert.ok(helperDiff.request, "helper-backed profiles render on both Anthropic and non-Anthropic paths");
+
+  const { renderRequests, RequestNotSent } = await import("../trace/requestRender.js");
+  const { createMessage } = await import("../services/api/streaming.js");
+  await renderRequests(
+    () => {},
+    async () => {
+      for (const handle of ["helperAnthropic", "helperOpenAI"]) {
+        await assert.rejects(
+          createMessage({
+            model: handle,
+            messages: [{ role: "user", content: "summarize" }],
+            trace: { purpose: "compaction" },
+          }),
+          (error) => error instanceof RequestNotSent,
+        );
+      }
+    },
+  );
+  assert.equal(existsSync(path.join(markers, "api-key-helper")), false, "credential helper ran while rendering");
+  assert.equal(tripped + fetches, 0);
+
+  const { resolveProfile } = await import("../services/api/providers/profile.js");
+  const resolved = await resolveProfile("helperAnthropic", cwd);
+  assert.equal(resolved.apiKey, "sk-from-helper");
+  assert.equal(
+    existsSync(path.join(markers, "api-key-helper")),
+    true,
+    "the helper is configured and runs outside rendering",
+  );
+});
+
 await session.close();
 // The runtime leaves MCP servers running; stop the echo server, whose working directory is the workspace.
 const { getMcpRegistry } = await import("../services/mcp/registry.js");

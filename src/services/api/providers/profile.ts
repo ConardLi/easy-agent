@@ -18,6 +18,7 @@ import { ConfigurationError, configString, configEnum, resolveEnvironmentReferen
 import { resolveApiKeyFromHelper } from "../apiKeyHelper.js";
 import { replaceModelMetadata } from "../../../config/modelMetadata.js";
 import { harnessFor } from "../../../harness/active.js";
+import { renderingRequests } from "../../../trace/requestRender.js";
 
 export type { ModelProtocol } from "../../../config/modelSchema.js";
 export interface ModelProfile extends Omit<ModelProfileConfig, "apiKey"> {
@@ -266,7 +267,7 @@ function selectedProfileId(loaded: LoadedProfiles, handle: string | undefined): 
 
 export async function resolveProfile(handle: string, cwd: string = process.cwd()): Promise<ModelProfile> {
   const profile = await resolveProfileConfiguration(handle, cwd);
-  if (profile.apiKeyHelper) {
+  if (profile.apiKeyHelper && !renderingRequests()) {
     profile.apiKey = await resolveApiKeyFromHelper(cwd, profile.apiKeyHelper, profile.id, configurationEnvironment());
   }
   return profile;

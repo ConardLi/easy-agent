@@ -1,5 +1,6 @@
 import { ConfigurationError } from "../../../config/values.js";
 import { isAuthenticationHeader } from "../../../config/modelSchema.js";
+import { renderingRequests } from "../../../trace/requestRender.js";
 import type { ModelProfile } from "./profile.js";
 
 /** All transports, including model discovery, use this exact authentication contract. */
@@ -16,12 +17,6 @@ export function profileRequestHeaders(profile: ModelProfile): Record<string, str
   }
   const policy = profile.authentication ?? { type: "default" };
   if (policy.type === "none") return headers;
-  if (!profile.apiKey?.trim() || /[\r\n]/.test(profile.apiKey)) {
-    throw new ConfigurationError(
-      `models.${profile.id}.apiKey`,
-      "provide this profile's API Key, or explicitly select authentication.type=none for an unauthenticated endpoint.",
-    );
-  }
   const name =
     policy.type === "header"
       ? policy.name.toLowerCase()
@@ -34,6 +29,13 @@ export function profileRequestHeaders(profile: ModelProfile): Record<string, str
     throw new ConfigurationError(
       `models.${profile.id}.headers`,
       "custom headers cannot override the authentication policy.",
+    );
+  }
+  if (renderingRequests() && profile.apiKeyHelper && !profile.apiKey) return headers;
+  if (!profile.apiKey?.trim() || /[\r\n]/.test(profile.apiKey)) {
+    throw new ConfigurationError(
+      `models.${profile.id}.apiKey`,
+      "provide this profile's API Key, or explicitly select authentication.type=none for an unauthenticated endpoint.",
     );
   }
   const prefix =
