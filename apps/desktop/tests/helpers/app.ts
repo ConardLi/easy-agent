@@ -22,10 +22,7 @@ export function electronEnv(extra: Record<string, string> = {}): Record<string, 
   const env = Object.fromEntries(Object.entries(process.env).filter((e): e is [string, string] => e[1] !== undefined));
   delete env.ELECTRON_RUN_AS_NODE;
   for (const key of Object.keys(env)) {
-    if (
-      /^(?:EASY_AGENT_|ANTHROPIC_|CLAUDE_CODE_|OPENAI_|GOOGLE_|GEMINI_)/.test(key) ||
-      /(?:^|_)(?:API_KEY|AUTH_TOKEN|TOKEN|SECRET|PASSWORD|CREDENTIALS?)$/.test(key)
-    )
+    if (/^(?:EASY_AGENT_|ANTHROPIC_|OPENAI_|GOOGLE_|GEMINI_)/.test(key) || /(?:^|_)(?:API_KEY|AUTH_TOKEN|TOKEN|SECRET|PASSWORD|CREDENTIALS?)$/.test(key))
       delete env[key];
   }
   return { ...env, ...extra };

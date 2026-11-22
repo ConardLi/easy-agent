@@ -26,11 +26,13 @@ const cwd = await mkdtemp(join(tmpdir(), "ea-toolsearch-"));
 const originalFetch = globalThis.fetch;
 const originalFlags = getFlagSettings();
 const envKeys = [
-  "EASY_AGENT_ENABLE_TOOL_SEARCH",
-  "ENABLE_TOOL_SEARCH",
-  "EASY_AGENT_DISABLE_HOOKS",
-  "EASY_AGENT_DISABLE_EXPERIMENTAL_BETAS",
-  "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS",
+  ...new Set([
+    "HOME",
+    "USERPROFILE",
+    "EASY_AGENT_DISABLE_HOOKS",
+    "EASY_AGENT_DISABLE_EXPERIMENTAL_BETAS",
+    ...Object.keys(process.env).filter((key) => key.startsWith("EASY_AGENT_")),
+  ]),
 ];
 const savedEnv = envKeys.map((key) => [key, process.env[key]] as const);
 let calls = 0;
@@ -119,6 +121,8 @@ async function drive(
 
 try {
   for (const key of envKeys) delete process.env[key];
+  process.env.HOME = cwd;
+  process.env.USERPROFILE = cwd;
   process.env.EASY_AGENT_DISABLE_HOOKS = "1";
   installConfigurationEnvironment(process.env);
   setSessionThinkingConfig({ type: "disabled" });

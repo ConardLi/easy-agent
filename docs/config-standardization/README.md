@@ -18,6 +18,6 @@ npm --prefix doc-site run check:links
 
 The patch is already applied in the development workspace. Use a clean original copy to run these commands. To reverse it, use `git apply --reverse` after checking the reverse patch. Existing tutorials, reference code, generated synchronized modules, package dependencies and user credentials are excluded.
 
-Canonical usage is documented in [Model profiles](../model-profiles.md) and [Migration and rollback](../configuration-migration.md). The prototype's Models page accepts `?migration=legacy` and `?migration=conflict` to inspect migration states. Desktop screenshots and the final acceptance report accompany the PR.
+Canonical usage is documented in [Model profiles](../model-profiles.md). Desktop screenshots and the final acceptance report accompany the PR.
 
-Local results and the eight reviewed screenshots are in [Validation](./validation.md). Existing pixel baselines cover startup and request views; new model/migration states are covered by real configuration e2e and manual inspection.
+Local results and reviewed screenshots are in [Validation](./validation.md). Existing pixel baselines cover startup and request views; model settings are covered by real configuration e2e and manual inspection.

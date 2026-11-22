@@ -118,7 +118,6 @@ export async function readConfig(cwd: string): Promise<ConfigSnapshot> {
     values: src.raw ? (displayValue(src.raw) as Record<string, unknown>) : {},
     ...(src.parseError ? { parseError: src.parseError } : {}),
     ...(src.validationErrors?.length ? { validationErrors: src.validationErrors } : {}),
-    ...(src.migrationNotices?.length ? { migrationNotices: src.migrationNotices } : {}),
   }));
 
   const keys = new Set([...Object.keys(SettingsSchema.shape), "sandbox"]);

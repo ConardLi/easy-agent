@@ -83,12 +83,6 @@ Agents:
                               --prompt, also the first request each renders for
                               the text (no model call, no tool runs)
 
-Configuration migration:
-  eagent config migrate [--scope user|project|local] [--json]
-                              Preview redacted changes and conflicts
-  eagent config migrate --apply [--scope user|project|local]
-                              Back up and apply the current migration
-
 Commands (in REPL):
 ${formatBuiltinCommandHelpColumns()}
 
@@ -154,10 +148,6 @@ Settings keys (in ~/.easy-agent/settings.json or <cwd>/.easy-agent/settings.json
   if (process.argv[2] === "harness") {
     const { runHarnessCommand } = await import("./harnessCommand.js");
     process.exit(await runHarnessCommand(process.argv.slice(3)));
-  }
-  if (process.argv[2] === "config" && process.argv[3] === "migrate") {
-    const { runConfigMigrationCommand } = await import("./configMigrationCommand.js");
-    process.exit(await runConfigMigrationCommand(process.argv.slice(4)));
   }
 
   const { hardenPrivateDataStorage } = await import("../utils/privateData.js");

@@ -40,7 +40,7 @@ await Promise.all([
   mkdir(path.join(cwd, ".easy-agent", "agents"), { recursive: true }),
 ]);
 for (const key of Object.keys(process.env)) {
-  if (/^(?:ANTHROPIC_|EASY_AGENT_|CLAUDE_CODE_)/.test(key) || /TOOL_SEARCH|THINKING|WEB_SEARCH/.test(key)) {
+  if (/^(?:ANTHROPIC_|EASY_AGENT_)/.test(key)) {
     delete process.env[key];
   }
 }

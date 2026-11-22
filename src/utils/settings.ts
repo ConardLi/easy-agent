@@ -34,7 +34,6 @@ import { loadSettingSources, loadTrustedSettingSources, resetSettingsCache } fro
 import { isInheritedCredentialProtected } from "../config/environment.js";
 import { writePrivateFile } from "./privateData.js";
 import { atomicWriteFile, PersistentDataError, withFileLock } from "./atomicFile.js";
-import { declaredEnvironmentReferences, retiredSettingsNotices } from "../config/retired.js";
 import { validateSettings } from "../config/schema.js";
 import { ConfigurationError } from "../config/values.js";
 
@@ -152,24 +151,12 @@ async function writeSettingsPatch(
       if (value === undefined) delete merged[key];
       else merged[key] = value;
     }
-    const references = declaredEnvironmentReferences([
-      merged,
-      ...(await loadTrustedSettingSources(cwd))
-        .filter((source) => source.path !== filePath)
-        .map((source) => source.raw),
-    ]);
-    const retired = retiredSettingsNotices(merged, references);
-    if (retired.length) {
-      throw new ConfigurationError("settings", retired.map((notice) => notice.message).join(" "), filePath);
-    }
     const { errors } = validateSettings(merged, filePath);
     const previousErrors = new Set(validateSettings(current, filePath).errors);
     const unchangedModels =
       !Object.hasOwn(patch, "models") && JSON.stringify(current.models) === JSON.stringify(merged.models);
     const invalid = errors.filter(
-      (error) =>
-        !error.includes("unsupported setting") &&
-        !(unchangedModels && error.includes(".models.") && previousErrors.has(error)),
+      (error) => !(unchangedModels && error.includes(".models.") && previousErrors.has(error)),
     );
     if (invalid.length) throw new ConfigurationError("settings", invalid.join(" "), filePath);
     if (storage === "shared-project" && merged.models && typeof merged.models === "object") {

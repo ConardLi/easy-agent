@@ -1,23 +1,18 @@
 /**
  * Field-level schema validation for a single settings source.
  *
- * Philosophy (matches how source treats settings.json):
- *   - Validation is *best-effort and additive*, never a gate. A settings file
- *     with one bad field must NOT take the whole file down — we keep every
- *     field we can parse and drop only the ones we can't.
- *   - Unknown keys are PRESERVED (`z.looseObject`). New settings keys that this
- *     build doesn't know about yet (or feature-specific keys owned by a loader,
- *     e.g. `sandbox`) flow through untouched.
+ * Field repair keeps valid values available for inspection. Source loading
+ * retains the preceding valid snapshot on rejected live edits; model use
+ * separately rejects invalid initial configuration.
+ *   - Keep every field we can parse and drop only the ones we can't.
+ *   - Unknown keys are rejected with a generic schema diagnostic.
  *   - Permission rule arrays (`allow`/`deny`/`ask`) get *per-rule* tolerance:
  *     a single malformed entry is dropped while the valid rules survive.
  *
  * Diagnostics: every repair (dropped rule, ignored field) is recorded as a
- * human-readable string so the CLI can surface a non-fatal notice telling the
- * user exactly which file/field was ignored.
+ * human-readable string identifying the affected file and field.
  *
- * The key fields (model / permissions / hooks / env / mcpServers) are
- * validated with Zod and `.passthrough()`-style leniency; the schema does not
- * try to describe every possible key.
+ * Feature-specific objects are validated by their owning loaders.
  */
 
 import { z } from "zod";
@@ -26,11 +21,9 @@ import { ModelProfileSchema, ReasoningSchema, profileValidationErrors } from "./
 const PermissionRule = z.string().trim().min(1);
 
 /**
- * Schema for the *known* top-level settings fields. `looseObject` keeps any
- * other keys verbatim (passthrough), so this validates the fields we care
- * about without rejecting unknown ones.
+ * Canonical top-level settings fields.
  */
-export const SettingsSchema = z.looseObject({
+export const SettingsSchema = z.strictObject({
   model: z.string().trim().min(1).optional(),
   models: z.record(z.string(), ModelProfileSchema).optional(),
   reasoning: ReasoningSchema.optional(),
@@ -59,6 +52,7 @@ export const SettingsSchema = z.looseObject({
   env: z.record(z.string(), z.coerce.string()).optional(),
   hooks: z.record(z.string(), z.unknown()).optional(),
   mcpServers: z.record(z.string(), z.unknown()).optional(),
+  sandbox: z.record(z.string(), z.unknown()).optional(),
   statusLine: z.union([z.string(), z.looseObject({})]).optional(),
   outputStyle: z.string().trim().min(1).optional(),
   language: z.string().trim().min(1).optional(),
@@ -93,7 +87,7 @@ export const SettingsSchema = z.looseObject({
 const RULE_ARRAY_KEYS = ["allow", "deny", "ask"] as const;
 
 export interface ValidationResult {
-  /** Cleaned settings object — valid known fields + all unknown fields. */
+  /** Cleaned settings object containing only valid known fields. */
   value: Record<string, unknown>;
   /** One human-readable message per repair performed (dropped rule / field). */
   errors: string[];
@@ -130,12 +124,13 @@ export function validateSettings(
     errors.push(
       `${label}: environment.connection: this layer selects model and a shortcut connection; keep one complete connection source.`,
     );
-  for (const key of Object.keys(raw as Record<string, unknown>)) {
-    if (!Object.hasOwn(SettingsSchema.shape, key) && key !== "sandbox") {
-      errors.push(`${label}: unsupported setting "${key}"; retained for compatibility but not applied by this build`);
+  const candidate: Record<string, unknown> = { ...(raw as Record<string, unknown>) };
+  for (const key of Object.keys(candidate)) {
+    if (!Object.hasOwn(SettingsSchema.shape, key)) {
+      errors.push(`${label}: unknown setting "${key}"`);
+      delete candidate[key];
     }
   }
-  const candidate: Record<string, unknown> = { ...(raw as Record<string, unknown>) };
   // A malformed profile must remain diagnosable and must never disappear into
   // default selection. Validate it here, then preserve the map for the resolver.
   const models = candidate.models;

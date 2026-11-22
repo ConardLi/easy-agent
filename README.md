@@ -155,9 +155,9 @@ Select a saved profile with `EASY_AGENT_PROFILE=gpt`, `eagent --model gpt`, or `
 
 Run `/config list`, `/model list`, or `/doctor` to inspect the effective setup. Credential values are always redacted.
 
-Profiles support a single API Key source, explicit custom or no-auth policies, capability overrides and protocol options. General reasoning uses `reasoning.mode` (`auto`, `on`, `off`), `budgetTokens` and `effort`. Unknown models use a labelled 32000-token context estimate, unknown prices and conservative automatic reasoning. See [Model profiles](./docs/model-profiles.md), [environment inventory](./docs/configuration-inventory.md), and the [upgrade and rollback guide](./docs/configuration-migration.md).
+Profiles support a single API Key source, explicit custom or no-auth policies, capability overrides and protocol options. General reasoning uses `reasoning.mode` (`auto`, `on`, `off`), `budgetTokens` and `effort`. Unknown models use a labelled 32000-token context estimate, unknown prices and conservative automatic reasoning. See [Model profiles](./docs/model-profiles.md) and the [environment inventory](./docs/configuration-inventory.md).
 
-This upgrade removes automatic legacy configuration reads. Retired fields and variables report errors; preview `eagent config migrate` and use `--apply` to back up and convert a file explicitly. Ordinary startup and saves do not migrate configuration.
+Configuration accepts only the documented schema. Unknown fields report validation errors; unrelated environment variables are ignored unless explicitly referenced by a profile. Create a connection with `eagent --login` or the model settings page.
 
 ## Where data is stored
 

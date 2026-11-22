@@ -125,7 +125,7 @@ try {
   setFlagSettings(null);
   const raw = new QueryEngine({ model: "@environment", toolContext: { cwd } });
   const apiKeyDoctor = await commandOutput(raw, "/doctor");
-  assert.match(apiKeyDoctor, /Retired configuration "ANTHROPIC_API_KEY"/);
+  assert.match(apiKeyDoctor, /No valid model profile selected/);
   assert.doesNotMatch(apiKeyDoctor, /API Key source configured|sdk-env-key/);
   delete process.env.ANTHROPIC_API_KEY;
   process.env.EASY_AGENT_PROTOCOL = "anthropic";

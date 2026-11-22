@@ -1,14 +1,6 @@
 --- a/AGENTS.md
 +++ b/AGENTS.md
-@@ -90,6 +90,7 @@
- eagent --help                # 帮助
- eagent --version             # 版本
- eagent --model <name>        # 指定模型
-+eagent config migrate       # 预览旧配置迁移；--apply 备份并应用
- eagent --resume [id]         # 恢复会话
- eagent --plan                # Plan 模式（只读）
- eagent --auto                # Auto 模式
-@@ -98,9 +99,13 @@
+@@ -98,9 +98,13 @@
  
  ### 环境变量
  
@@ -21,11 +13,11 @@
 +- `EASY_AGENT_BASE_URL` — 当前临时连接的可选地址
 +- `EASY_AGENT_REASONING`、`EASY_AGENT_REASONING_BUDGET_TOKENS` — 通用推理模式与正整数预算
 +
-+持久化默认选择是 settings 的 `model`（Profile ID），不再写 `defaultModel` 或把未知 ID 当作原始 Anthropic 模型。统一优先级：默认→用户→所选 Harness→项目→本地→环境→显式 CLI/SDK/会话→管理策略；信任和收紧型配置继续安全合并。环境修改需重建 Runtime，支持热更新的设置从下一请求生效。本次升级即停止旧配置参与运行时解析：旧字段及未被显式引用的旧变量报错；普通启动与保存不转换配置。仅手动 `config migrate` / SDK 迁移 API 可转换并备份原文件。历史会话不按原始模型名自动匹配 Profile；显式任意环境引用及第三方 Skills 占位符保留。映射与回退见 `easy-agent/docs/configuration-migration.md`。本专项方案覆盖旧记忆里「未知模型默认打开全部 thinking 特性」的约束。
++持久化默认选择是 settings 的 `model`（Profile ID），不把未知 ID 当作原始 Anthropic 模型。统一优先级：默认→用户→所选 Harness→项目→本地→环境→显式 CLI/SDK/会话→管理策略；信任和收紧型配置继续安全合并。环境修改需重建 Runtime，支持热更新的设置从下一请求生效。只保留规范 schema，未知字段通过通用校验报错；不保留旧配置转换器、旧名称清单或迁移入口。无关环境变量被忽略，显式引用仍有效。历史会话不按原始模型名自动匹配 Profile；第三方 Skills 占位符保留。连接契约见 `easy-agent/docs/model-profiles.md`。本专项方案覆盖旧记忆里「未知模型默认打开全部 thinking 特性」的约束。
  
  ### tsconfig 关键配置
  
-@@ -216,7 +221,7 @@
+@@ -216,7 +220,7 @@
  | `tools/*.ts` | `src/tools/<ToolName>/` |
  | `services/api/` | `src/services/api/` |
  | `context/systemPrompt.ts` | `src/context.ts` |
@@ -34,7 +26,7 @@
  | `permissions/` | `src/permissions/` |
  | `ui/App.tsx` | `src/screens/REPL.tsx` |
  
-@@ -254,7 +259,7 @@
+@@ -254,7 +258,7 @@
  ### 命名约定
  
  - 项目名：`easy-agent`
@@ -132,7 +124,7 @@
  
  ### 支持的平台
  
-+模型设置按服务商分组保存 `models.<profile-id>`，API Key 使用环境引用、系统安全存储或所属 Profile 的 helper。协议必须明确，无认证端点在认证策略里选择；高级设置可自定义认证头，仍只引用一个 API Key。迁移先预览差异并备份应用，默认选择、角色、规则排除和推理都写规范字段。未知 Profile、估算窗口、未知价格和需要重建 Runtime 的状态会说明原因。
++模型设置按服务商分组保存 `models.<profile-id>`，API Key 使用环境引用、系统安全存储或所属 Profile 的 helper。协议必须明确，无认证端点在认证策略里选择；高级设置可自定义认证头，仍只引用一个 API Key。默认选择、角色、规则排除和推理都写规范字段。未知 Profile、估算窗口、未知价格和需要重建 Runtime 的状态会说明原因。
 +
  macOS、Windows 和 Linux。
  
@@ -169,7 +161,7 @@
 +
 +Each runtime captures environment and trust provenance. Environment or `.env` edits require rebuilding it. Supported settings updates apply consistently to the next request; active requests and retries retain their connection. MCP reconnects and credential-helper refreshes follow their own reload rules.
 +
-+`/config list`, `/model list` and `/doctor` display effective values, sources and reload policy, with credentials redacted. See [Model profiles](/en/docs/config/model-profiles), [environment variables](/en/reference/env) and [migration](/en/docs/config/migration).
++`/config list`, `/model list` and `/doctor` display effective values, sources and reload policy, with credentials redacted. See [Model profiles](/en/docs/config/model-profiles) and [environment variables](/en/reference/env).
 --- a/doc-site/content/docs/docs/config/index.mdx
 +++ b/doc-site/content/docs/docs/config/index.mdx
 @@ -7,15 +7,18 @@
@@ -208,108 +200,13 @@
  
 --- a/doc-site/content/docs/docs/config/meta.en.json
 +++ b/doc-site/content/docs/docs/config/meta.en.json
-@@ -3,7 +3,8 @@
-   "pages": [
-     "index",
-     "model-profiles",
-+    "migration",
+@@ -6,4 +6,4 @@
      "managed-policy",
      "feature-flags"
    ]
 -}
 \ No newline at end of file
 +}
---- a/doc-site/content/docs/docs/config/meta.json
-+++ b/doc-site/content/docs/docs/config/meta.json
-@@ -1 +1 @@
--{ "title": "配置", "pages": ["index", "model-profiles", "managed-policy", "feature-flags"] }
-+{ "title": "配置", "pages": ["index", "model-profiles", "migration", "managed-policy", "feature-flags"] }
---- /dev/null
-+++ b/doc-site/content/docs/docs/config/migration.en.mdx
-@@ -0,0 +1,40 @@
-+---
-+title: Configuration migration and rollback
-+description: Preview differences, resolve conflicts and retain exact private backups.
-+---
-+
-+**This upgrade is a breaking configuration change.** Runtime accepts canonical configuration only. Retired fields and unreferenced retired environment variables report errors. Startup and ordinary saves never convert them. Settings remain accessible; conversion is available only through the explicit migration command/API.
-+
-+```bash
-+eagent config migrate --scope user --json
-+eagent config migrate --scope user --apply
-+```
-+
-+The desktop Models page previews before **Back up and apply**. SDK exposes `previewConfigMigration(scope)` / `applyConfigMigration(scope, revision)`; RPC exposes `config/migrationPreview` / `config/migrationApply`. Scopes are user/project/local. Preview executes no helper or model request and redacts secrets. Conflicts prevent apply; a changed file or runtime requires another preview.
-+
-+| Retired input | Canonical handling |
-+|---|---|
-+| `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN` | One EASY_AGENT_API_KEY and a confirmed explicit Anthropic connection |
-+| `ANTHROPIC_MODEL`, `ANTHROPIC_BASE_URL` | EASY_AGENT_MODEL / EASY_AGENT_BASE_URL with an explicit protocol |
-+| `defaultModel`, raw model selections | Stable profile ID under model; preserve the actual old choice without upgrading it |
-+| Global `apiKeyHelper` | apiKey helper belonging to one unambiguous profile |
-+| Authentication headers | One API Key and explicit authentication; conflicting secrets block apply |
-+| `countTokens`, `promptCacheKey` | Selected protocolOptions, preserving true and false |
-+| `alwaysThinkingEnabled`, old thinking features, `MAX_THINKING_TOKENS` | reasoning.mode / budgetTokens; old zero becomes off |
-+| `effortLevel`, `features.effort` | reasoning.effort |
-+| Global adaptive/interleaved switches | Selected Anthropic profile options |
-+| Force effort for every model | Capability on one applicable profile, never broadcast |
-+| CLAUDE_CODE context/retry/beta aliases | Existing canonical EASY_AGENT variables |
-+| `WEB_SEARCH_ADAPTER`, `MCP_CONNECT_TIMEOUT` | EASY_AGENT_WEB_SEARCH_BACKEND / EASY_AGENT_MCP_CONNECT_TIMEOUT_MS |
-+| Old ToolSearch variables | Settings or CLI |
-+| `claudeMdExcludes` | agentMdExcludes, safely unioned with existing exclusions |
-+
-+Equal old keys merge; different keys block connection migration without revealing either. A complete canonical connection does not borrow old fields. Duplicate default authentication headers are removed; gateways must declare their policy explicitly. A variable named Token does not imply Bearer. See the [complete mapping](https://github.com/ConardLi/easy-agent/blob/main/docs/configuration-migration.md).
-+
-+These conversions happen only during explicit migration. Residual old variables block model requests even with a complete canonical profile; remove them and rebuild the runtime. Explicit references such as `${ANTHROPIC_API_KEY}` remain valid ordinary environment references. Sessions restore saved profile IDs only; a historical raw model name requires an explicit profile selection even when one upstream-model match exists.
-+
-+Unknown IDs no longer imply Anthropic models, no fixed model is selected without configuration, unknown automatic reasoning is conservative, and plain ultrathink text does not change settings. False/0 are parsed as false; numeric input is fully validated. Environment priority is below explicit CLI/SDK/session and policy. Trust, permissions, resources and exclusions retain their safety rules.
-+
-+Apply saves exact original bytes beside the file as `*.pre-standardization-<timestamp>.bak`, private with POSIX 0600 or Windows account ACLs. Canonical migrations are idempotent. Ordinary saves reject retired fields without changing the file or creating a migration backup; explicitly deleting old fields while writing replacements is supported. Shell settings, CI Secrets and external credentials are not changed. Environment edits require a new runtime.
-+
-+For rollback stop active runtimes, restore the printed backups, install the known-good version recorded before upgrading, and restore any environment changes you made yourself. Keep backups private: they may contain old inline keys. Names retained in diagnostics, the explicit converter, historical tutorials and third-party Skill formats do not enable automatic legacy configuration.
---- /dev/null
-+++ b/doc-site/content/docs/docs/config/migration.mdx
-@@ -0,0 +1,40 @@
-+---
-+title: 配置迁移与回退
-+description: 预览旧配置差异、解决凭据冲突、保留原文件备份并回退。
-+---
-+
-+**本次升级即为配置契约的破坏性变更。** 运行时只接受规范配置，旧字段和未被显式引用的旧环境变量会明确报错。启动和普通保存不会自动转换；配置页仍可打开，转换仅通过手动迁移命令或 API 执行。
-+
-+```bash
-+eagent config migrate --scope user --json
-+eagent config migrate --scope user --apply
-+```
-+
-+桌面模型页先点「预览迁移」，审阅后「备份并应用」。SDK 的 `previewConfigMigration(scope)` / `applyConfigMigration(scope, revision)` 与 RPC 的 `config/migrationPreview` / `config/migrationApply` 使用同一结果。支持 user/project/local 范围。预览不运行 helper、不发模型请求、不显示秘密；冲突阻止应用，文件或 Runtime 变动后要重新预览。
-+
-+| 旧入口 | 新归属 |
-+|---|---|
-+| `ANTHROPIC_API_KEY`、`ANTHROPIC_AUTH_TOKEN` | 一个 `EASY_AGENT_API_KEY`，同时补齐确认过的 Anthropic 协议 |
-+| `ANTHROPIC_MODEL`、`ANTHROPIC_BASE_URL` | `EASY_AGENT_MODEL`、`EASY_AGENT_BASE_URL`，显式 protocol |
-+| `defaultModel`、原始模型字符串 | `model` 的稳定 Profile ID；保留原来实际选择，不升级型号 |
-+| 全局 `apiKeyHelper` | 可明确确定的 Profile 的 `apiKey: { helper }` |
-+| 认证请求头 | 单一 API Key 与显式 authentication；多份秘密冲突须处理 |
-+| `countTokens`、`promptCacheKey` | 所选协议的 `protocolOptions`，保留开启和关闭状态 |
-+| `alwaysThinkingEnabled`、`features.thinking*`、`MAX_THINKING_TOKENS` | `reasoning.mode` / budgetTokens，旧 0 迁移为 off |
-+| `effortLevel`、`features.effort` | `reasoning.effort` |
-+| adaptive、interleaved 旧全局开关 | 所选 Anthropic Profile 的协议选项 |
-+| 强制所有模型支持 effort | 一个明确 Profile 的能力覆盖；无法归属时报告冲突 |
-+| `CLAUDE_CODE_MAX_CONTEXT_TOKENS`、`CLAUDE_CODE_MAX_RETRIES`、`CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS` | 对应已有 EASY_AGENT 规范变量 |
-+| `WEB_SEARCH_ADAPTER`、`MCP_CONNECT_TIMEOUT` | `EASY_AGENT_WEB_SEARCH_BACKEND`、`EASY_AGENT_MCP_CONNECT_TIMEOUT_MS` |
-+| `EASY_AGENT_ENABLE_TOOL_SEARCH`、`ENABLE_TOOL_SEARCH` | settings 的 toolSearch / threshold 或 CLI |
-+| `claudeMdExcludes` | `agentMdExcludes`，与已有排除项安全合并 |
-+
-+两个旧凭据相同会合并，不同则停止该连接迁移，不沿用 Token 覆盖 Key。完整新连接不混用残留旧变量。旧双认证头行为已移除，依赖它的网关要明确选择认证策略，不能仅凭变量里的 Token 字样猜 Bearer。
-+
-+以上转换只在手动迁移中发生。即使已有完整新 Profile，残留旧变量也会阻止模型请求，须清理后重建 Runtime。`${ANTHROPIC_API_KEY}` 等用户显式引用仍是有效的普通变量引用。历史会话只恢复 Profile ID；原始模型名即使只匹配一个 Profile，也需要显式重新选择。
-+
-+未知 Profile、未配置固定默认模型、未知模型自动推理和普通 `ultrathink` 文本的行为已调整。布尔 false/0 不再启用，数值严格校验；环境低于显式 CLI/SDK/会话和管理策略。信任、权限、资源加载和规则排除保持安全边界。完整映射见 [仓库迁移表](https://github.com/ConardLi/easy-agent/blob/main/docs/configuration-migration.md)。
-+
-+应用前在原文件旁写入 `*.pre-standardization-<timestamp>.bak`，保存原始字节，POSIX 权限为 0600，Windows 使用账户 ACL。再次迁移规范配置不产生重复 Profile。普通保存遇到旧字段会拒绝并保持原文件不变，也不生成迁移备份；可明确删除旧字段并写入新字段。不会修改 Shell 配置、CI Secrets 或外部凭据；环境改动需要重建 Runtime。
-+
-+回退时停止 Runtime，从打印出的备份恢复每个文件，安装升级前记录的已知版本，并恢复你自己改过的环境变量。备份可能含旧秘密，应保持私有。诊断、手动迁移器、历史教程及第三方 Skills 格式中保留的旧名称不参与自动配置解析。
 --- /dev/null
 +++ b/doc-site/content/docs/docs/config/model-profiles.en.mdx
 @@ -0,0 +1,42 @@
@@ -354,7 +251,7 @@
 +
 +Reasoning uses `reasoning.mode: auto|on|off`, optional positive `budgetTokens` and `effort: low|medium|high|max`. Unknown models receive no unconfirmed automatic reasoning or experimental parameters. Context defaults to a labelled 32000-token estimate and pricing stays unknown; capabilities can override them. Output, reasoning and context bounds are jointly validated.
 +
-+`modelRoles` accepts profile IDs for background, think, longContext, compaction and webFetch. Harness `model.roles.classifier` or `EASY_AGENT_AUTO_MODE_MODEL` selects the Auto Mode classifier. Unset roles inherit the main profile; invalid explicit references fail. See [Connect a model](/en/docs/models) and [migration](/en/docs/config/migration).
++`modelRoles` accepts profile IDs for background, think, longContext, compaction and webFetch. Harness `model.roles.classifier` or `EASY_AGENT_AUTO_MODE_MODEL` selects the Auto Mode classifier. Unset roles inherit the main profile; invalid explicit references fail. See [Connect a model](/en/docs/models).
 --- a/doc-site/content/docs/docs/config/model-profiles.mdx
 +++ b/doc-site/content/docs/docs/config/model-profiles.mdx
 @@ -7,11 +7,12 @@
@@ -537,7 +434,7 @@
 +
 +Ordinary headers are non-authentication fields. A gateway can use `authentication: { type: "header", name: "X-Gateway-Key", prefix: "Key " }`, still referencing the same `apiKey`. Default Anthropic authentication uses `x-api-key`, OpenAI uses Bearer and Gemini uses `x-goog-api-key`.
 +
-+General reasoning uses `reasoning: { mode: "auto" }`. Unknown models receive no unconfirmed automatic reasoning parameters, a labelled 32000-token context estimate and unknown pricing; profiles can override metadata. Environment edits require a new runtime; supported settings updates apply to the next request. See the [migration guide](/en/docs/config/migration).
++General reasoning uses `reasoning: { mode: "auto" }`. Unknown models receive no unconfirmed automatic reasoning parameters, a labelled 32000-token context estimate and unknown pricing; profiles can override metadata. Environment edits require a new runtime; supported settings updates apply to the next request.
  
  ## Check the connection
  
@@ -624,7 +521,7 @@
 +
 +普通请求头只承载非认证字段。自定义网关可设置 `authentication: { type: "header", name: "X-Gateway-Key", prefix: "Key " }`，仍只引用一个 `apiKey`。默认 Anthropic 使用 `x-api-key`，OpenAI 使用 Bearer，Gemini 使用 `x-goog-api-key`。
 +
-+通用推理使用 `reasoning: { mode: "auto" }`。未知模型不会自动获得可选推理特性，窗口显示为 32000-token 估算、价格为未知；支持通过 Profile 覆盖。环境和 `.env` 的修改需要重建 Runtime，允许热更新的设置从下一请求生效。旧配置升级见[迁移指南](/docs/config/migration)。
++通用推理使用 `reasoning: { mode: "auto" }`。未知模型不会自动获得可选推理特性，窗口显示为 32000-token 估算、价格为未知；支持通过 Profile 覆盖。环境和 `.env` 的修改需要重建 Runtime，允许热更新的设置从下一请求生效。
  
  ## 检查连接
  
@@ -699,7 +596,7 @@
 +| Headless permission denied | Configure allow rules; deny still wins |
 +| Sandbox blocks all commands | Check `/doctor` for OS dependencies and namespaces |
 +
-+Never include API Keys, `.env` content or private prompts in an issue. For upgrading, conflicts and private backups see [migration](/en/docs/config/migration).
++Never include API Keys, `.env` content or private prompts in an issue. Check unknown fields against the [profile contract](/en/docs/config/model-profiles) and restart the runtime after changing its environment.
 --- a/doc-site/content/docs/docs/resources/troubleshooting.mdx
 +++ b/doc-site/content/docs/docs/resources/troubleshooting.mdx
 @@ -23,6 +23,8 @@
@@ -707,7 +604,7 @@
  
  ## 常见问题
 +
-+Profile 不存在时请选已保存的 ID；只有上游模型名不能确定连接。多个 Profile 时设置默认 `model`。无模型时可用 `eagent --login` 或模型页创建连接，仍能查看帮助和编辑配置。缺失的环境引用要在重建 Runtime 前补齐；helper 失败只检查所属来源。无认证端点显式设置 authentication.type=none。迁移冲突先[预览并解决](/docs/config/migration)，未知模型能力可用 Profile 覆盖，不自动套用 Claude 的窗口、价格或推理。
++Profile 不存在时请选已保存的 ID；只有上游模型名不能确定连接。多个 Profile 时设置默认 `model`。无模型时可用 `eagent --login` 或模型页创建连接，仍能查看帮助和编辑配置。缺失的环境引用要在重建 Runtime 前补齐；helper 失败只检查所属来源。无认证端点显式设置 authentication.type=none。未知配置字段需按 schema 修正；未知模型能力可用 Profile 覆盖，不自动套用 Claude 的窗口、价格或推理。
  
  <Accordions>
  <Accordion title="装好了但提示找不到 eagent">
@@ -717,7 +614,7 @@
  
  用安装脚本装的，重新运行一次安装脚本也可以。每个版本的变化见[更新日志](/changelog)。
  
-+配置契约升级先查看[迁移与回退](/docs/config/migration)。备份保存原始配置字节，不会改 Shell 或 CI Secrets。退出旧入口的破坏性版本会提前公告版本号和日期。
++升级前保存配置副本，并按[模型 Profile](/docs/config/model-profiles)核对连接。配置只接受当前 schema；修改环境或 `.env` 后重建 Runtime。
 +
  ## 卸载
  
@@ -752,7 +649,7 @@
  
 --- /dev/null
 +++ b/doc-site/content/docs/reference/cli.en.mdx
-@@ -0,0 +1,34 @@
+@@ -0,0 +1,32 @@
 +---
 +title: Command-line options
 +description: Model profiles, execution modes and canonical configuration.
@@ -782,11 +679,9 @@
 +
 +```bash
 +eagent --model main --plan
-+eagent config migrate --scope user --json
-+eagent config migrate --scope user --apply
 +```
 +
-+Temporary connections use EASY_AGENT_PROTOCOL, EASY_AGENT_MODEL, optional EASY_AGENT_BASE_URL and EASY_AGENT_API_KEY. EASY_AGENT_PROFILE selects a saved connection. Priority remains below managed policy; environment changes require a new runtime. See [profiles](/en/docs/config/model-profiles) and [migration](/en/docs/config/migration).
++Temporary connections use EASY_AGENT_PROTOCOL, EASY_AGENT_MODEL, optional EASY_AGENT_BASE_URL and EASY_AGENT_API_KEY. EASY_AGENT_PROFILE selects a saved connection. Priority remains below managed policy; environment changes require a new runtime. See [profiles](/en/docs/config/model-profiles).
 --- a/doc-site/content/docs/reference/cli.mdx
 +++ b/doc-site/content/docs/reference/cli.mdx
 @@ -13,7 +13,7 @@
@@ -805,7 +700,7 @@
 -| `--login` | 把模型服务的 API Key 保存到 `~/.easy-agent/settings.json` |
 +| `--login` | 选择协议，用一个 API Key 创建 Profile，保存在私有用户设置里 |
 +
-+`eagent config migrate --scope user` 预览配置迁移，审阅后加 `--apply` 备份并应用。见[迁移指南](/docs/config/migration)。环境和 `.env` 修改需要重建 Runtime，支持热更新的设置从下一请求生效。
++用 `eagent --login` 创建模型连接。环境和 `.env` 修改需要重建 Runtime，支持热更新的设置从下一请求生效。
  
  ## 例子
  
@@ -845,7 +740,7 @@
 +
 +Do not select a saved profile and another shortcut target in the same layer. Priority is defaults → user → selected Harness → project → local → environment → explicit CLI/SDK/session → policy. Trust filtering and restrictive safety merges still apply. Project environment cannot replace parent credentials, including arbitrary explicitly referenced names.
 +
-+Environment is captured when a runtime starts. Rebuild it after editing environment or `.env`; supported settings updates apply to the next request. ToolSearch uses settings or CLI. Retired names are documented only in [migration](/en/docs/config/migration).
++Environment is captured when a runtime starts. Rebuild it after editing environment or `.env`; supported settings updates apply to the next request. ToolSearch uses settings or CLI. Unlisted variables are read only through explicit configuration references.
 --- a/doc-site/content/docs/reference/env.mdx
 +++ b/doc-site/content/docs/reference/env.mdx
 @@ -7,10 +7,11 @@
@@ -893,7 +788,7 @@
 +
 +同一层不能同时选择 Profile 和另一套快捷连接目标；API Key 本身可以是 Profile 的显式引用。所有产品变量在 Runtime 启动时取快照，修改环境需要重建 Runtime。
 +
-+字符串去除首尾空白，空白视为未设置。布尔接受大小写无关的 `1/0`、`true/false`、`yes/no`、`on/off`；数值必须是完整合法整数，重试次数允许 0。非法显式值会报告字段和来源，不回退或显示秘密原值。优先级是默认、用户、Harness、项目、本地、环境、显式 CLI/SDK/会话、管理策略；收紧项继续安全合并。ToolSearch 使用 settings 或 CLI。旧名称只见[迁移指南](/docs/config/migration)。
++字符串去除首尾空白，空白视为未设置。布尔接受大小写无关的 `1/0`、`true/false`、`yes/no`、`on/off`；数值必须是完整合法整数，重试次数允许 0。非法显式值会报告字段和来源，不回退或显示秘密原值。优先级是默认、用户、Harness、项目、本地、环境、显式 CLI/SDK/会话、管理策略；收紧项继续安全合并。ToolSearch 使用 settings 或 CLI。未列出的变量只在配置显式引用时读取。
 --- /dev/null
 +++ b/doc-site/content/docs/reference/settings.en.mdx
 @@ -0,0 +1,33 @@
@@ -929,7 +824,7 @@
 +
 +Profiles and helpers cannot inject connections from an untrusted project. Restrictive deny, exclusions and hook disabling retain safety merges. Unknown profiles error; no protocol or fixed model is guessed. Unknown context uses a labelled 32000-token estimate; pricing stays unknown.
 +
-+`/config list` shows values, sources and reload policies with secrets redacted. Supported settings updates apply to the next request; environment edits need a new runtime. See [Model profiles](/en/docs/config/model-profiles), [environment](/en/reference/env) and [migration](/en/docs/config/migration).
++`/config list` shows values, sources and reload policies with secrets redacted. Supported settings updates apply to the next request; environment edits need a new runtime. See [Model profiles](/en/docs/config/model-profiles) and [environment](/en/reference/env).
 --- a/doc-site/content/docs/reference/settings.mdx
 +++ b/doc-site/content/docs/reference/settings.mdx
 @@ -9,13 +9,12 @@
@@ -962,16 +857,7 @@
  | `respectGitignore` | boolean | `true` | 搜索时跳过 `.gitignore` 里的路径 |
 --- a/doc-site/content/docs/sdk/node.en.mdx
 +++ b/doc-site/content/docs/sdk/node.en.mdx
-@@ -64,6 +64,8 @@
- | `startServices()` / `connectMcpServers(servers)` | Connect MCP and plugin services, or add MCP servers |
- | `hasModelCredentials(model?)` | Whether the model has usable credentials |
- | `readConfig()` | Every settings source, each key's effective value, source and reload policy, and model profiles. Inline secrets come back as `[redacted]`, `${VAR}` references as written |
-+| `previewConfigMigration(scope)` | Read-only redacted changes, diagnostics and a revision |
-+| `applyConfigMigration(scope, revision)` | Validate the revision, back up the exact original bytes and migrate; rebuild the runtime |
- | `writeConfig(scope, key, value)` | Validate and write one key in user, project or local settings; `null` deletes. Open sessions pick up permission rules right away |
- | `setWorkspaceTrust(trusted)` | Save or revoke trust; applies to the next runtime |
- | `checkModel(model)` | Send a minimal request and report reachability, protocol, latency and an error without credentials |
-@@ -74,7 +76,7 @@
+@@ -74,7 +74,7 @@
  
  ```ts
  const session = await runtime.createSession({
@@ -980,7 +866,7 @@
    permissionMode: "default",              // "default" | "plan" | "auto"
    interactions: ["permission", "plan_approval", "question"], // what your UI answers
    handlers: {},                           // automatic answers, see below
-@@ -136,7 +138,7 @@
+@@ -136,7 +136,7 @@
  
  ```ts
  const config = await runtime.readConfig();          // values per layer, effective values and sources
@@ -989,7 +875,7 @@
  await runtime.writeConfig("project", "deny", ["Bash(git push *)"]);
  
  const check = await runtime.checkModel("gpt");      // { ok, protocol, model, latencyMs, error? }
-@@ -152,4 +154,6 @@
+@@ -152,4 +152,6 @@
  
  SDK errors are `AgentSdkError` with a stable `code`: `busy`, `closed`, `replaced`, `not_found`, `invalid_argument`, `already_open`, `runtime_active`, `session_restore`, `session_storage`, `permission_settings`. Check with `isAgentSdkError(error, code)`.
  
@@ -1007,16 +893,7 @@
  | 方法 | 作用 |
  |---|---|
  | `createSession(options?)` | 开一个新会话 |
-@@ -64,6 +66,8 @@
- | `startServices()` / `connectMcpServers(servers)` | 连接 MCP 和插件服务，或者追加 MCP Server |
- | `hasModelCredentials(model?)` | 这个模型有没有可用的凭证 |
- | `readConfig()` | 每个配置来源、每一项的生效值和来源、改了以后什么时候生效、模型 Profile。写在文件里的密钥返回 `[redacted]`，`${VAR}` 引用原样返回 |
-+| `previewConfigMigration(scope)` | 只读的脱敏差异、诊断及当前 revision |
-+| `applyConfigMigration(scope, revision)` | revision 校验后备份原字节并迁移；需要重建运行环境 |
- | `writeConfig(scope, key, value)` | 校验后写入用户级、项目级或本地级配置的一项，`value` 为 `null` 时删除。打开着的会话会立刻用上新的权限规则 |
- | `setWorkspaceTrust(trusted)` | 保存或撤销对这个工作区的信任，下一个 Runtime 生效 |
- | `checkModel(model)` | 用这个模型发一个最小的请求，返回是否连通、协议、延迟和错误（不含凭据） |
-@@ -74,7 +78,7 @@
+@@ -74,7 +76,7 @@
  
  ```ts
  const session = await runtime.createSession({
@@ -1025,7 +902,7 @@
    permissionMode: "default",              // "default" | "plan" | "auto"
    interactions: ["permission", "plan_approval", "question"], // 你的界面会回答哪些请求
    handlers: {},                           // 自动回答，见下文
-@@ -136,7 +140,7 @@
+@@ -136,7 +138,7 @@
  
  ```ts
  const config = await runtime.readConfig();          // 各层的值、生效值和来源
@@ -1034,7 +911,7 @@
  await runtime.writeConfig("project", "deny", ["Bash(git push *)"]);
  
  const check = await runtime.checkModel("gpt");      // { ok, protocol, model, latencyMs, error? }
-@@ -152,4 +156,6 @@
+@@ -152,4 +154,6 @@
  
  SDK 抛出的错误是 `AgentSdkError`，带一个稳定的 `code`：`busy`、`closed`、`replaced`、`not_found`、`invalid_argument`、`already_open`、`runtime_active`、`session_restore`、`session_storage`、`permission_settings`。用 `isAgentSdkError(error, code)` 判断。
  
@@ -1043,52 +920,381 @@
  完整的类型定义见 [SDK API 参考](/reference/sdk-api)。
 --- a/doc/0TODO-CONFIG-STANDARDIZATION-PLAN.md
 +++ b/doc/0TODO-CONFIG-STANDARDIZATION-PLAN.md
-@@ -1,10 +1,12 @@
- # Easy Agent 配置通用化改造方案
+@@ -1,379 +1,102 @@
+-# Easy Agent 配置通用化改造方案
++# Easy Agent 配置标准化
  
- 日期：2026-11-21  
+-日期：2026-11-21  
 -状态：改造提案；尚未实施  
-+状态：按 2026-11-22 用户确认修订：移除运行时旧配置兼容；实现与复验中，更新 PR #172
- 范围：Easy Agent 核心、CLI、SDK、RPC、ACP、桌面客户端、界面原型及当前使用文档
+-范围：Easy Agent 核心、CLI、SDK、RPC、ACP、桌面客户端、界面原型及当前使用文档
++更新：2026-11-22。原 PR：[easy-agent #172](https://github.com/ConardLi/easy-agent/pull/172)。
  
 -本次改造要让 Easy Agent 的配置与“通用 Agent Harness”的定位一致：连接模型时使用统一的 profile 和一个 API Key，通用行为使用 Easy Agent 自己的配置，厂商特有参数归属对应协议适配器。
-+> 用户最新确认覆盖原兼容窗口方案：本次升级即停止旧字段、旧环境变量与历史原始模型名参与运行时解析；旧配置提供明确错误和迁移指引。转换、精确备份与回退仅通过手动迁移命令/API 执行，普通保存不自动迁移。显式环境变量引用及第三方 Skills 格式继续有效。
-+
-+本次改造要让 Easy Agent 的配置与“通用 Agent Harness”的定位一致：连接模型时使用统一的 profile 和一个 API Key，通用行为使用 Easy Agent 自己的配置，厂商特有参数归属对应协议适配器。规范契约、集中迁移、CLI/SDK/RPC/ACP、桌面端、原型和双语文档已接入；实施记录与验收结果见第 15 节。
++目标：连接模型统一使用 Profile 和一个 API Key，通用行为使用 Easy Agent 配置，厂商参数归属协议适配器。用户最新要求是彻底删除不必要的旧配置逻辑；仅保留仍有实际用途、需要按场景处理的能力。
  
- 用户已明确要求：对外只保留一个凭据概念，不再要求区分 API Key 和 Auth Token；全面整理历史遗留配置；先形成改造文档。本文件中的新字段名称、迁移方式和实施顺序是据此提出的具体方案，仅描述改造内容与验收要求，不包含实现代码。
+-用户已明确要求：对外只保留一个凭据概念，不再要求区分 API Key 和 Auth Token；全面整理历史遗留配置；先形成改造文档。本文件中的新字段名称、迁移方式和实施顺序是据此提出的具体方案，仅描述改造内容与验收要求，不包含实现代码。
++## 1. 清理范围
  
-@@ -18,7 +20,7 @@
- 4. 删除“未匹配到 profile 就视为 Anthropic 模型”“未配置就选择固定 Claude 型号”等默认行为。
- 5. 将推理、上下文、缓存、搜索等通用意图与具体协议参数分开，避免通用配置默认为 Claude 专用行为。
- 6. 清理自有配置、模块、提示文案中的 Claude 品牌残留，并同步桌面端、诊断、模板与文档。
+-## 1. 改造边界
++删除配置转换器、旧字段和变量名清单、专项旧名称诊断、迁移预览与应用、迁移修订校验、专用备份，以及 CLI、SDK、RPC、桌面和原型中的相关入口。同步删除专用类型、生成接口、测试、说明页面和截图。
+ 
+-### 1.1 必须达成的结果
++只按当前 schema 校验配置。未知 settings、Profile 和 Harness 字段通过通用校验报告；没有旧名称黑名单或按旧格式推断协议的分支。无关环境变量不影响程序配置；显式 `${VAR}` 引用仍可使用任意变量名。
+ 
+-1. 凭据统一称为 **API Key**，profile 使用 `apiKey`，快捷环境配置使用 `EASY_AGENT_API_KEY`。
+-2. Easy Agent 自己定义的正式环境变量统一使用 `EASY_AGENT_` 前缀；不再把 `ANTHROPIC_`、`CLAUDE_CODE_` 变量作为正常配置入口。
+-3. 模型选择、协议、服务地址、凭据、模型能力有明确归属，所有入口使用一致的解析结果。
+-4. 删除“未匹配到 profile 就视为 Anthropic 模型”“未配置就选择固定 Claude 型号”等默认行为。
+-5. 将推理、上下文、缓存、搜索等通用意图与具体协议参数分开，避免通用配置默认为 Claude 专用行为。
+-6. 清理自有配置、模块、提示文案中的 Claude 品牌残留，并同步桌面端、诊断、模板与文档。
 -7. 旧配置通过集中的迁移入口处理；新保存的配置只写规范名称，不长期维护两套同等地位的配置。
-+7. 旧配置只通过手动迁移入口转换；运行时和普通保存拒绝旧字段，不提供自动兼容读取。
++保留以下实际能力：
  
- ### 1.2 继续保留的内容
+-### 1.2 继续保留的内容
++- 第三方 Skills 的 `${CLAUDE_SKILL_DIR}`、`${CLAUDE_SESSION_ID}` 占位符及验证。
++- Anthropic SDK、协议字段、已知模型能力和云平台模型名规范化。
++- Profile 所属的 API Key helper、自定义认证头、无认证本地服务。
++- 信任、权限、环境快照、父进程凭据保护和连接隔离。
++- 通用原子写入、文件锁、私有存储权限以及现有会话和数据格式处理。
++- 各入口的配置编辑、连接检查、诊断和模型选择。
  
-@@ -194,7 +196,7 @@
- - 默认推理模式为 `auto`，依据目标模型已知能力决定；`on` 和 `off` 表达用户意图，由适配器转换成合法参数。
- - 内部是否保留 Thinking 类型、推理事件名称不作为此次统一要求；这些名称不等于必须改写厂商协议。
- - 旧的推理开关存在冲突时，迁移器根据旧版实际行为生成等价设置并展示解释，不能简单逐字段改名。
+-- Anthropic 是正式支持的协议之一，保留真实协议标识、官方地址、Claude 模型名、厂商 SDK 和协议要求的请求字段。
+-- OpenAI Chat、OpenAI Responses、Gemini 与 Anthropic 使用同等地位的连接配置。
+-- 保留 `AGENTS.md`、`AGENT.md` 的实际规则文件约定；第三方插件、Skills、Hooks 的兼容格式按其协议保留。
+-- 用户可以在 profile 中显式引用任意名称的环境变量，包括 `OPENAI_API_KEY`、`ANTHROPIC_API_KEY` 或自定义变量。这是用户声明的引用，不是 Easy Agent 自动读取厂商变量。
+-- 操作系统、终端、代理、证书、Node.js 等公共环境变量保留原名；MCP、Hooks、插件自己的环境变量不批量改名。
+-- `step/`、`article/` 中的历史教程快照与只读的 `claude-code-source-code/` 不做批量替换。
+-- 本次不要求重写内部消息、流事件和工具协议，不扩展支持新的云厂商认证体系。
++## 2. 连接契约
+ 
+-## 2. 已确认的现状与问题
++`models.<profile-id>` 保存连接，settings 的 `model` 是默认 Profile ID。CLI `--model`、SDK、ACP、会话和模型角色均引用该 ID。上游模型名只在 Profile 内发送。
+ 
+-以下为调查时的代码行为，作为改造依据。
++| 字段 | 契约 |
++| --- | --- |
++| `protocol` | 必填：anthropic、openai-chat、openai-responses、gemini |
++| `model` | 必填的上游模型名，允许自定义网关名称 |
++| `baseURL` | 可选 HTTP(S) 服务地址；默认地址由显式协议决定 |
++| `apiKey` | 单一来源：字符串引用、桌面安全存储引用或 `{ helper }` |
++| `authentication` | 默认协议认证、自定义头，或显式 `none` |
++| `headers` | 额外非认证头；不得追加另一套秘密凭据 |
++| `capabilities` | 工具、视觉、缓存、推理、窗口、输出上限和价格覆盖 |
++| `protocolOptions` | 仅所属协议选项 |
++| `maxTokens` | 独立校验的输出上限 |
+ 
+-| 位置 | 当前行为 | 需要解决的问题 |
+-| --- | --- | --- |
+-| `easy-agent/src/config/catalog.ts` | 环境变量目录有 28 条记录，计入别名共 33 个名字，包含 4 条系统变量记录 | 正式变量混用 Easy Agent、Anthropic、Claude Code 与无前缀名称 |
+-| `easy-agent/src/services/api/client.ts` | 将 `ANTHROPIC_AUTH_TOKEN` 传给 SDK 的 `apiKey`，SDK 自身还会读取 `authToken` | 两个凭据入口含义重叠，最终认证头与变量名不一致 |
+-| `easy-agent/src/services/api/providers/profile.ts` | profile 已支持四种协议，但未命中的字符串被当作原始 Anthropic 模型名 | 拼错 profile ID、遗漏配置也可能进入 Anthropic 请求路径 |
+-| `easy-agent/src/harness/keys.ts` | 内置固定 Claude 默认模型；`ANTHROPIC_MODEL` 仅作低优先级兜底；部分功能变量可覆盖所有配置层 | 模型默认与环境变量优先级带有历史特例 |
+-| `easy-agent/src/entrypoint/login.ts`、`easy-agent/src/sdk/bootstrap.ts` | 登录写入 Anthropic 变量，凭据 helper 输出回写全局 `ANTHROPIC_AUTH_TOKEN` | 登录、SDK、profile 没有共用完整的凭据生命周期 |
+-| `easy-agent/src/utils/thinking.ts` | 按 Claude 名称推断能力，未知模型默认支持多项 thinking 特性；存在 `ultrathink` 文本触发行为 | 厂商特性与通用推理意图混合，未知模型的行为缺乏依据 |
+-| `easy-agent/src/context/claudeMd.ts`、配置项 `claudeMdExcludes` | 实际加载的是 `AGENTS.md`、`AGENT.md` | 自有规则配置和内部命名仍沿用 Claude 名称 |
+-| SDK inventory、请求上下文明细、WebSearch、错误提示与 ACP | 部分路径直接读取 Anthropic 环境变量或给出 Anthropic 配置指引 | 配置展示、辅助请求与实际所选 profile 可能不一致 |
+-| 桌面端 `providers.ts`、模型模板和原型 | 服务商界面从扁平 profile 分组；缺协议时默认 Anthropic；存在“原生协议”文案 | 客户端继续生成或掩盖旧的隐式默认 |
+-| 核心 token 估算、桌面 `modelIndex.ts` | 模型窗口、能力和价格信息分布在不同位置 | 未知模型与各入口之间可能出现不同的兜底结果 |
++默认认证分别使用 Anthropic `x-api-key`、OpenAI Bearer、Gemini `x-goog-api-key`。自定义头仍从同一 `apiKey` 获取秘密。无认证 Profile 必须省略 `apiKey`。改变协议或地址必须明确声明新凭据来源或无认证策略，不继承低优先级连接的秘密。
+ 
+-使用假凭据、未发送网络请求的认证头检查已确认：仅配置旧 API Key 时使用 `x-api-key`；仅配置旧 Auth Token 时会出现两个携带相同值的认证头；两者都存在时，Auth Token 覆盖 API Key 的实际用途。统一凭据时必须修正这一行为，不能只替换变量前缀。
++helper 仅在实际连接时执行，10 秒超时，只服务所属 Profile。编辑器和配置预览不会执行 helper。共享项目配置使用引用，不保存明文秘密；桌面继续使用系统安全存储。
+ 
+-## 3. 环境变量整理
++找不到 Profile ID 时明确失败，不以原始模型名创建连接。只有一个有效 Profile 时可自动选择；多个 Profile 需要默认选择。无模型仍可进入配置页面、查看帮助和创建连接。历史会话恢复需要明确选择有效 Profile，不按上游名称猜测。
+ 
+-### 3.1 连接和模型选择
++## 3. 环境和优先级
+ 
+-| 当前入口 | 目标入口 | 改造要求 |
+-| --- | --- | --- |
+-| `ANTHROPIC_API_KEY`、`ANTHROPIC_AUTH_TOKEN` | `EASY_AGENT_API_KEY` | 合并为一个凭据；不增加 `EASY_AGENT_AUTH_TOKEN` |
+-| `ANTHROPIC_BASE_URL` | `EASY_AGENT_BASE_URL` | 表示当前快捷连接的服务地址，按明确选定的协议解释 |
+-| `ANTHROPIC_MODEL` | `EASY_AGENT_MODEL` | 表示发给上游的模型名；旧变量迁移时同时补齐原有 Anthropic 协议信息 |
+-| 当前无独立通用入口 | `EASY_AGENT_PROTOCOL` | 明确选择 `anthropic`、`openai-chat`、`openai-responses` 或 `gemini` |
+-| 当前依赖模型字符串兼任 profile ID | `EASY_AGENT_PROFILE` | 选择已保存的 profile，与快捷连接中的上游模型名区分 |
++| 变量 | 含义 |
++| --- | --- |
++| `EASY_AGENT_PROFILE` | 选择保存的 Profile ID |
++| `EASY_AGENT_PROTOCOL` + `EASY_AGENT_MODEL` | 完整声明临时连接 |
++| `EASY_AGENT_BASE_URL` | 临时连接地址 |
++| `EASY_AGENT_API_KEY` | 临时连接的单一 API Key |
++| `EASY_AGENT_REASONING` | auto、on、off |
++| `EASY_AGENT_REASONING_BUDGET_TOKENS` | 正整数推理预算 |
++| `EASY_AGENT_AUTO_MODE_MODEL` | Auto Mode 分类器 Profile ID |
+ 
+-环境配置保留两种明确用法：
++其余规范变量由源码目录和[生成文档](../easy-agent/docs/configuration-inventory.md)维护。ToolSearch 使用 settings 或 CLI，不增加等价环境入口。
+ 
+-- **选择已保存的 profile**：使用 `EASY_AGENT_PROFILE`。该 profile 自己声明连接和凭据来源；其他快捷连接变量不能悄悄覆盖它。它可以显式引用 `EASY_AGENT_API_KEY`。
+-- **配置一个临时连接**：使用 `EASY_AGENT_PROTOCOL`、`EASY_AGENT_MODEL` 以及所需的地址和 API Key，由系统形成同样结构的临时 profile。协议、模型缺失时提示补齐，不根据地址或模型名前缀猜测协议。
++优先级：默认 → 用户 → 所选 Harness → 项目 → 本地 → 环境 → 显式 CLI/SDK/会话 → 管理策略。权限与收紧项继续按安全语义合并；未信任项目不能执行配置或覆盖连接凭据。
+ 
+-同一有效配置层同时选择 profile、又提供另一套快捷连接目标时，应报告冲突。不同优先级来源按第 7 节选择完整的连接来源，不把两套连接字段混拼。环境变量中的 API Key 本身可以作为显式引用的凭据存在，不因此构成两套连接冲突。
++同一层只声明一个连接目标。高优先级连接完整替换低层连接，不把不同来源的协议、地址、模型和秘密拼接。环境在 Runtime 创建时固定；修改 shell、`.env` 或注入变量后重建 Runtime。支持热更新的 settings 从下一请求生效。
+ 
+-### 3.2 推理与协议特性
++布尔接受大小写无关的 1/0、true/false、yes/no、on/off；空白表示未设置。整数必须完整合法且处于范围内；重试次数允许 0。非法显式值报告字段及来源，不显示秘密原值。
+ 
+-| 当前入口 | 目标归属 | 改造要求 |
+-| --- | --- | --- |
+-| `MAX_THINKING_TOKENS` | `EASY_AGENT_REASONING_BUDGET_TOKENS` | 统一为推理预算；新变量只接受正整数，旧值 0 迁移为关闭推理 |
+-| `CLAUDE_CODE_DISABLE_THINKING` | `EASY_AGENT_REASONING` | 使用 `auto`、`on`、`off` 表达通用推理意图；旧关闭标志迁移为 `off` |
+-| `CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING` | 所选 profile 的 Anthropic 协议选项 | 仅控制该协议如何实现推理，不再提供全局厂商品牌开关 |
+-| `DISABLE_INTERLEAVED_THINKING` | 所选 profile 的 Anthropic 协议选项 | 保留关闭对应协议特性的能力，作用域限制到对应连接 |
+-| `CLAUDE_CODE_ALWAYS_ENABLE_EFFORT` | 所选 profile 的能力覆盖 | 移除“所有模型都支持 effort”的全局假设；只对明确指定的 profile 声明能力 |
+-| `CLAUDE_CODE_MAX_CONTEXT_TOKENS` | `EASY_AGENT_MAX_CONTEXT_TOKENS` | 保留已有规范名称，旧别名只参与迁移 |
+-| `CLAUDE_CODE_MAX_RETRIES` | `EASY_AGENT_MAX_RETRIES` | 保留已有规范名称，允许 0 表示不重试 |
+-| `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS` | `EASY_AGENT_DISABLE_EXPERIMENTAL_BETAS` | 保留已有规范名称，实际实验特性由相应协议处理 |
++## 4. 推理与协议选项
+ 
+-新环境变量只覆盖常见通用需求。Adaptive、interleaved 等协议细节放进 profile，不为每个历史开关再创建一个新的全局变量。
++通用意图使用 `reasoning.mode: auto|on|off`、正整数 `budgetTokens`、`effort: low|medium|high|max`。协议适配器把意图映射为实际请求。显式不支持的意图报错；普通 `ultrathink` 文本不更改配置。
+ 
+-### 3.3 工具、资源与其他变量
++`protocolOptions.anthropic` 管理 countTokens、adaptiveThinking、interleavedThinking；OpenAI 协议选项管理 promptCacheKey。未知兼容服务需明确允许计数或缓存选项。
+ 
+-| 当前入口 | 目标处理 |
++未知模型使用标注为估算的 32000-token 窗口、未知价格，不自动开启未确认推理能力。Profile 可显式覆盖能力；工具、视觉和缓存禁用声明必须落实到请求。已知模型名不意味着具备对应云平台认证。
++
++## 5. 配置校验与错误恢复
++
++加载器保留可供编辑器显示的有效字段及通用诊断，未知字段不进入有效配置。首次加载非法配置时，在凭据 helper 和网络请求前报告错误。
++
++运行中无效修改保留上一份完整有效来源快照，并持续显示拒绝更新的诊断。修复文件后重新加载；不混合新字段和上一版兄弟字段。权限规则数组继续逐项校验。
++
++普通写入通过当前 schema 校验，失败时保留原文件。用户可明确删除未知字段并写入规范字段。修改无关设置不强迫编辑器同时修复已有的独立 Profile 错误。保存仍使用原子写入和私有权限。
++
++## 6. 各入口一致性
++
++| 入口 | 要求 |
+ | --- | --- |
+-| `WEB_SEARCH_ADAPTER` | 改为 `EASY_AGENT_WEB_SEARCH_BACKEND`；后端枚举、默认选择与 Harness 的 `tools.webSearchBackend` 对齐 |
+-| `MCP_CONNECT_TIMEOUT` | 改为 `EASY_AGENT_MCP_CONNECT_TIMEOUT_MS`，名称明确毫秒单位 |
+-| `EASY_AGENT_ENABLE_TOOL_SEARCH`、`ENABLE_TOOL_SEARCH` | 迁移到已有 `toolSearch`、`toolSearchAutoThreshold` 和 CLI 对应选项；不再增加另一组等价变量 |
+-| `EASY_AGENT_AUTO_MODE_MODEL` | 保留名称；值统一为 profile ID，不再隐式指向原始 Anthropic 模型名 |
+-| `EASY_AGENT_MAX_CONTEXT_TOKENS`、`EASY_AGENT_MAX_RETRIES` | 保留名称，统一解析、优先级、来源展示与生效时机 |
+-| `EASY_AGENT_DISABLE_PROMPT_CACHING`、`EASY_AGENT_DISABLE_EXPERIMENTAL_BETAS` | 保留名称，统一布尔解析；禁用作用于各协议支持的对应功能 |
+-| `EASY_AGENT_SKILL_CHAR_BUDGET`、`EASY_AGENT_TEAMS`、`EASY_AGENT_DISABLE_CHECKPOINTING` | 保留名称，与 settings、Harness 的等价配置共用解析结果 |
+-| `EASY_AGENT_DISABLE_HOOKS` | 保留名称；统一布尔解析，同时保留禁用类安全配置的收紧语义 |
+-| `EASY_AGENT_POWERSHELL` | 保留名称和可执行文件含义，保留信任范围限制 |
+-| `EASY_AGENT_DEBUG`、`EASY_AGENT_DEBUG_STREAM` | 保留名称，统一布尔语义与敏感信息处理 |
+-| `SHELL`、`HOME`、`VISUAL`、`EDITOR`、`PROGRAMDATA` | 保留系统约定，不改为 Easy Agent 前缀 |
++| CLI / Headless | 登录、模型选择、结构化配置错误和诊断共用核心解析 |
++| SDK | 配置读取和写入、模型检查与会话恢复遵循 Profile ID |
++| RPC / ACP | 共享生成接口与配置错误；不暴露秘密 |
++| 桌面 | 明确协议、单 API Key、自定义认证、helper、无认证和首次配置 |
++| 原型 | 同步当前模型页面和字段，不保留已删除的流程 |
++| 文档 | 双语说明当前字段、优先级、生效时机和错误恢复 |
+ 
+-上述清单覆盖当前正式目录中的所有条目与别名。实施时还需核对目录外的实际读取点、启动脚本、安装模板和测试夹具；发现未登记的产品级变量须补入目录。构建、测试框架和外部工具自有变量单独归类，不作为产品配置批量改名。
++## 7. 验收
+ 
+-### 3.4 所有规范变量共用的规则
++- 核心 schema、四协议认证、能力限制、环境隔离、信任和热更新测试。
++- 无配置启动、未知字段拒绝、未知 Profile、历史会话显式选择。
++- CLI、SDK、RPC、ACP 及安装包验证；确认生成接口无残留入口。
++- 桌面真实 Agent e2e：预算设置/清除、连接检测、保存重载、helper、自定义认证和无认证。
++- 完整发布门禁，桌面 unit/e2e/visual，原型与文档站类型、构建和链接检查。
++- 新截图人工检查；既有像素基线只覆盖首次启动和请求上下文/对比，不扩大声称覆盖范围。
++- 工作区补丁验证可正向应用及逆向还原，文件字节与 manifest 哈希一致。
++- 原 PR 最终提交的 CI 全通过后更新报告和交付包；不沿用前一实现的测试结果。
+ 
+-- 普通字符串去除首尾空白，空白值视为未设置；已声明但无法解析的凭据引用属于配置错误。
+-- 布尔值接受大小写无关的 `1/0`、`true/false`、`yes/no`、`on/off`，不得再把字符串 `false` 或 `0` 当作启用。
+-- 数值按完整内容校验整数、单位和范围；不能截取前半段数字接受非法输入。
+-- 枚举值与未知协议给出明确错误；显式提供的非法值不能悄悄回退为另一个模型或服务商。
+-- 每个变量登记用途、类型、默认值、配置归属、来源优先级、生效时机和迁移目标。
+-- 报错只展示变量名、来源和修复方式；API Key、认证头和可能携带秘密的 URL 不显示原值。
+-
+-## 4. 单一 API Key 与认证行为
+-
+-### 4.1 唯一凭据契约
+-
+-- 用户界面、CLI、SDK、profile 和帮助文档统一使用“API Key”；不再并列展示 Token 输入框。
+-- profile 的 `apiKey` 可以来自显式环境变量引用、安全存储或已选择的凭据 helper；这些是同一个凭据的来源，不是多份认证字段。
+-- 保留 `apiKeyHelper` 的凭据获取能力，但结果归属选定的 profile，不回写进程级厂商环境变量。新配置必须明确 helper 服务于哪个 profile。
+-- 显式配置的凭据来源失效时报告该来源错误，不自动借用另一个 profile、厂商变量或全局 helper 的秘密。
+-- 新保存的共享配置使用凭据引用；桌面端继续使用已有系统安全存储能力。现有配置对内联秘密的限制不得因改造而放宽。
+-
+-### 4.2 认证头由协议适配器决定
+-
+-| 协议 | 默认认证方式 |
+-| --- | --- |
+-| Anthropic | 将统一 API Key 写入 `x-api-key` |
+-| OpenAI Chat / Responses | 将统一 API Key 用作 Bearer 凭据 |
+-| Gemini | 将统一 API Key 写入协议要求的 API Key 认证头 |
+-| 明确允许无认证的本地或私有服务 | profile 显式选择无认证，凭据检查据此跳过 |
+-
+-- 官方服务的正常使用不要求用户选择 API Key 与 Token 的区别。
+-- 自定义网关允许在 profile 的高级认证策略中选择认证头或格式，但仍只引用同一个 `apiKey`。
+-- 普通 `headers` 不得绕过统一认证契约，隐式覆盖或追加另一套认证秘密；已有认证类自定义头纳入迁移检查。
+-- 阻断 SDK 对旧环境变量的隐式读取，避免即使核心已改名，底层仍读取 `ANTHROPIC_AUTH_TOKEN`。
+-- 默认不再发送两个等价认证头。依赖旧双头行为的网关必须在迁移报告中明确标出，确认其目标认证策略。
+-- 客户端缓存、连接测试、token 计数请求与实际生成请求使用相同的连接和认证规则；凭据刷新不能继续复用旧认证状态。
+-
+-## 5. 统一 model profile
+-
+-### 5.1 配置结构与字段归属
+-
+-保留现有 `models` 按 ID 保存 profile 的结构，避免本次同时引入新的必填 `providers` 配置层。桌面端可以继续按服务商分组，但保存结果必须满足同一份 profile 契约。
+-
+-| 内容 | 改造要求 |
+-| --- | --- |
+-| profile ID | 作为稳定的模型选择标识，不与发给上游的模型名混用 |
+-| `protocol` | 新 profile 必填；只接受支持的协议，不缺省为 Anthropic |
+-| `model` | 必填，保存上游真实模型名；网关自定义名称无需遵循某个厂商的命名格式 |
+-| `baseURL` | 可省略；仅由明确选择的协议补全官方地址 |
+-| `apiKey` | 唯一凭据入口，与该连接绑定 |
+-| `headers` | 额外非认证头，执行统一校验和脱敏 |
+-| `maxTokens` | 保留输出上限含义，与上下文窗口及推理预算分别校验 |
+-| `capabilities` | 保存必要的模型能力声明与显式覆盖 |
+-| `protocolOptions` | 保存对应协议的专用选项，不允许混入其他协议的请求参数 |
+-| 当前 `promptCacheKey`、`countTokens` | 分别归入适用协议的选项，迁移时保留原有开启状态 |
+-
+-模型窗口和可选价格信息与 profile 对应的模型元数据关联。模型元数据的来源可以是内置目录或显式覆盖；UI、预算计算和请求层读取相同的有效信息，不重复维护不同兜底表。
+-
+-### 5.2 模型选择与默认值
+-
+-- 持久化默认选择统一为 settings 的 `model`，其值为 profile ID；迁移 `defaultModel`，停止新写入两个默认字段。
+-- Harness 的 `model.main`、`model.roles`，CLI 的模型选择、SDK 的模型选择和桌面端选择器统一指向 profile ID。
+-- 临时直连必须同时提供明确协议和上游模型名，由同一解析入口形成临时 profile。
+-- 未找到指定 profile 时报告“profile 不存在”，不把这个字符串当作原始 Anthropic 模型继续请求。
+-- 删除固定的全局 Claude 兜底。没有指定默认值但只有一个有效 profile 时可自动使用它；多个有效 profile 时要求选定一个。
+-- 没有可用 profile 时仍能启动客户端、查看帮助、编辑配置和执行不依赖模型的操作；首次需要模型时提示配置，不能自动向某个厂商发送请求。
+-- 角色模型未配置时可以继承主 profile；角色显式引用的 profile 无效时必须报错，不能静默继承。
+-- 保留用户原来选定的 Claude 模型，通过迁移生成明确 profile，不借此次标准化自动升级型号。
+-
+-### 5.3 连接解析一致性
+-
+-- 协议、地址和凭据视为一个连接目标，不能跨 profile 拼接。
+-- 地址规范化只在对应协议边界执行，明确处理路径、尾斜杠与版本前缀，避免环境配置和 profile 配置得到不同 URL。
+-- 未解析的环境引用要保留错误来源，不能先变成空字符串，再意外采用其他凭据或默认地址。
+-- 同名 profile 的跨层合并要记录字段来源；更换协议或服务地址时，必须明确对应的凭据来源，不能静默把低层凭据带到新地址。
+-- 连接测试、模型列表、诊断和正式请求显示同一个有效 profile；“已配置”不能只靠发现一个 Anthropic 环境变量判断。
+-
+-## 6. 推理、能力与默认行为
+-
+-### 6.1 统一通用推理设置
+-
+-建议 settings 与 Harness 共用 `reasoning` 配置语义，包括 `mode`、`budgetTokens`、`effort`；环境变量与交互式控制都转换为这套语义。
+-
+-| 当前配置 | 目标处理 |
+-| --- | --- |
+-| `alwaysThinkingEnabled`、`features.thinking`、`features.thinkingInRequests` | 归并为推理模式，消除“已开启但请求禁止发送”的并列状态 |
+-| `features.thinkingBudget` | 迁移为推理预算 |
+-| `effortLevel`、`features.effort` | 迁移为推理强度 |
+-| `features.adaptiveThinking`、`features.interleavedThinking` | 移至适用 profile 的 Anthropic 协议选项 |
+-| `features.effortForAllModels` | 移至具体 profile 的能力覆盖，取消全模型强制开关 |
+-| 用户文本中的 `ultrathink` 自动触发 | 移除默认魔法触发；推理强度通过显式配置或交互控制表达 |
+-
+-- 默认推理模式为 `auto`，依据目标模型已知能力决定；`on` 和 `off` 表达用户意图，由适配器转换成合法参数。
+-- 内部是否保留 Thinking 类型、推理事件名称不作为此次统一要求；这些名称不等于必须改写厂商协议。
+-- 旧的推理开关存在冲突时，迁移器根据旧版实际行为生成等价设置并展示解释，不能简单逐字段改名。
 -- 文本魔法触发如需保留兼容，只能作为明确启用的兼容能力；新 profile 默认不启用。
-+- 普通文本魔法触发不改变推理配置。
- 
- ### 6.2 能力与模型元数据
- 
-@@ -269,7 +271,7 @@
- | 子 Agent、角色模型与辅助模型调用 | 引用对应 profile；压缩、摘要、分类器、后台请求不得偷偷回到全局 Anthropic 客户端 |
- | 会话持久化与恢复 | 保存稳定选择标识与必要的非敏感配置语义；恢复时重新解析凭据，缺失 profile 时明确提示 |
- 
+-
+-### 6.2 能力与模型元数据
+-
+-- 将“协议能表达什么”“具体模型支持什么”“本次用户希望启用什么”分开处理。
+-- 能力判定采用显式 profile 覆盖、已知模型元数据和协议基础能力；未知模型不能直接获得全部 Claude thinking 特性。
+-- Claude 的版本、系列以及 Bedrock、Vertex 风格名称识别保留在相应能力适配范围内；不据此暗示已新增这些云平台的认证支持。
+-- 对未知模型，`auto` 不发送未经确认的可选推理或实验字段；用户仍可在 profile 中明确声明其支持能力。
+-- 用户显式要求不支持或尚未确认的功能时，说明具体能力限制及配置方式，不静默换模型。
+-- 未知上下文窗口采用标注为“估算”的统一保守值，并支持覆盖；未知价格显示“未知”，不能套用 Claude 价格或表示为零成本。
+-- 推理预算、最大输出和上下文限制必须联合校验；供应商不支持的强度值由适配器明确拒绝或采用已公布的映射规则。
+-
+-### 6.3 缓存、计数、重试与搜索
+-
+-- 通用配置表达是否允许缓存，具体缓存标记、缓存键与使用量解释由各协议实现。
+-- 精确 token 计数是否可用，取决于所选 profile 和端点能力；不可用时展示估算，不调用默认 Anthropic 地址。
+-- WebSearch 的后端选择依据明确设置和当前连接能力，移除直接用全局 `ANTHROPIC_BASE_URL` 判断的路径。
+-- 重试次数与错误分类保持统一；厂商特有错误由适配器转成通用错误，不能把所有认证失败都解释为缺少 Anthropic Key。
+-
+-## 7. 优先级、信任与生效时机
+-
+-### 7.1 统一解析顺序
+-
+-在配置来源通过信任和作用域检查之后，普通可覆盖配置的优先级从低到高为：
+-
+-**内置默认 → 用户设置 → 所选 Harness → 项目设置 → 项目本地设置 → 进程环境 → 显式 CLI / SDK / 会话覆盖 → 管理策略。**
+-
+-- CLI、SDK 和会话覆盖表示各入口当前明确指定的值；恢复会话时，本次显式指定优先于历史选择。
+-- 环境变量不再存在 `default`、`override`、`top` 三种隐式等级；有效目录必须能解释最终采用哪个来源。
+-- 先解析选择了哪个 profile，再解析该 profile 的连接；上述顺序不意味着任意高层字段都能拼入不同连接。
+-- `deny`、规则排除、禁用 Hooks 等收紧型配置继续使用安全合并规则，不按普通最后写入覆盖。
+-- `harnesses`、工作区所选 `harness`、权限模式等现有来源限制继续保留；统一命名不扩大配置权限。
+-- 本顺序会改变部分历史环境变量的优先级，属于公开行为调整，必须在迁移报告和发布说明中说明。
+-
+-### 7.2 信任和进程环境
+-
+-- 未受信任项目不得注入服务地址、凭据、认证头、helper 或其他敏感配置。
+-- 项目与本地 `env` 不得替换父进程已提供的凭据；凭据名称识别要覆盖新规范变量和用户显式引用的变量。
+-- 父进程环境、项目 `.env`、settings 中的 `env` 应保留各自来源，不能因为最终写入同一个环境对象而丢失信任信息。
+-- 逐步消除核心对散落的 `process.env` 的直接依赖；模型相关配置通过 runtime 的有效配置传递。
+-- 子进程和外部工具需要的环境继承继续按其现有权限规则处理，不把模型连接环境与所有子进程环境混为一谈。
+-
+-### 7.3 生效时机
+-
+-- runtime 启动时解析环境、连接、凭据来源与信任结果，形成该 runtime 的配置快照。
+-- 一次请求使用一致快照；用户通过设置界面或 SDK 更新允许热更新的配置时，从下一次请求统一生效。
+-- helper 刷新和安全存储更新只能更新所属连接，重建必要的认证状态，不在请求执行中混用新旧配置。
+-- 进程环境和项目 `.env` 的修改通过重建 runtime 生效；不承诺编辑文件后现有请求立刻切换。
+-- 所有入口展示一致的“下一请求生效”“需重建运行环境”或资源专用生效提示。
+-- 本次只统一配置归属与生命周期；完整多 runtime 并发隔离继续按原 Harness 计划推进，保留现有 `runtime_active` 保护。
+-
+-## 8. 自有规则与命名清理
+-
+-- `claudeMdExcludes` 改为 `agentMdExcludes`，同步 schema、配置目录、类型、SDK、诊断、桌面规则页面与文档。
+-- `easy-agent/src/context/claudeMd.ts` 改为中立的规则加载模块名，相关函数、类型、测试名称一并整理。
+-- 继续加载实际约定的 `AGENTS.md`、`AGENT.md`；保留作用域、父目录遍历、文件排除与受信任加载行为。
+-- 新旧排除项同时出现时，迁移阶段按现有收紧语义合并，不能因新字段覆盖旧字段而重新加载用户已排除的规则。
+-- 当前产品的默认身份、说明文案、错误提示、示例和自动生成模板要核对是否把 Easy Agent 说成 Claude 或 Claude Code；发现后改为项目自己的身份与术语。
+-- 不机械删除字符串中的 Anthropic / Claude：真实模型名、协议字段、供应商图标、兼容格式和来源说明属于合理保留项。
+-
+-## 9. 各运行入口需要同步的行为
+-
+-| 入口 | 必须完成的改造 |
+-| --- | --- |
+-| CLI 登录与首次配置 | 选择协议或服务商模板、输入一个 API Key、创建 profile；不再只写 Anthropic 环境变量 |
+-| CLI 模型切换与配置查看 | 展示 profile ID、上游模型、协议与有效来源；默认模型、角色模型使用相同规则 |
+-| CLI doctor 与错误提示 | 根据当前连接判断缺失项、认证方式和地址；给出通用修复指引 |
+-| Headless / 管道模式 | 使用相同配置解析；缺少 profile、协议或凭据时给出结构化错误，不落入交互等待 |
+-| SDK bootstrap / runtime | 显式配置、凭据 helper、环境快照与刷新归属于 runtime；移除全局厂商变量回写 |
+-| SDK inventory / 上下文明细 / 请求对比 | 展示真实生效的连接与能力来源，统一脱敏；显示结果必须对应实际发出的请求 |
+-| RPC | 与核心共享 schema、校验和诊断，支持规范字段的读取、保存及迁移结果展示 |
+-| ACP | 鉴权状态、模型列表、错误消息和会话恢复使用同一 profile 契约 |
+-| 子 Agent、角色模型与辅助模型调用 | 引用对应 profile；压缩、摘要、分类器、后台请求不得偷偷回到全局 Anthropic 客户端 |
+-| 会话持久化与恢复 | 保存稳定选择标识与必要的非敏感配置语义；恢复时重新解析凭据，缺失 profile 时明确提示 |
+-
 -会话和请求记录不得保存 API Key 或 helper 输出。历史会话若仅记录原始模型名，须结合可确认的旧配置迁移；无法确认连接时要求重新选择，不仅凭模型名猜测服务商。
-+会话和请求记录不得保存 API Key 或 helper 输出。历史会话若仅记录原始模型名，恢复时须显式选择已配置的 Profile；即使只有一个上游模型名匹配，也不自动映射。
- 
- ## 10. 桌面端、原型、模板与文档
- 
-@@ -298,13 +300,13 @@
- 
- ### 11.1 采用集中迁移，不长期双轨
- 
+-
+-## 10. 桌面端、原型、模板与文档
+-
+-### 10.1 正式桌面客户端
+-
+-- 服务商编辑器与模型编辑器只显示一个 API Key 输入入口，并说明使用环境引用或系统安全存储的状态。
+-- 删除缺少协议时默认为 Anthropic 的路径；已保存的旧 profile 通过迁移补齐协议，新增配置必须明确选择。
+-- 将“Easy Agent 原生协议”等带有默认地位的文案改为准确协议名称；服务商模板只是填写便利，不决定核心协议地位。
+-- 模板不再引导依赖核心自动读取厂商变量；已有用户显式声明的变量引用保留。
+-- 服务商分组、模型复制、默认选择、角色选择、保存与重载均使用同一 profile 契约。
+-- 能力、窗口和价格展示读取统一元数据；未知值与估算值要能区分。
+-- Agent 配置页的推理设置、规则排除、资源库、设置页环境变量目录及请求明细同步改名和解释。
+-- 配置缺失、迁移冲突、未知 profile、无认证端点和待生效状态都要有可操作提示。
+-
+-### 10.2 原型与当前使用文档
+-
+-- 同步 `web-ui/` 的模型数据、设置元数据、profile 约定与相关状态，保持其作为桌面样式稿的用途。
+-- 更新 `doc-site/` 中模型配置、环境变量、CLI、SDK、客户端、参考和排障内容的中英文版本。
+-- 更新 Easy Agent README、当前示例、登录提示、帮助输出、配置示例、安装与发布相关模板。
+-- 更新工作区 `AGENTS.md` 中现行环境变量及 CLI 配置说明；旧计划中涉及兼容约束的内容增加本方案的变更说明。
+-- 普通入门文档只介绍规范入口，旧名称集中放在迁移指南，不并列列为推荐方案。
+-- Claude 可以继续出现在多服务商示例中；确保至少有非 Anthropic 的完整入门路径以及本地端点示例。
+-- 截图与视觉基线因字段、提示和状态变化而更新时，逐项记录设计变化，不能通过放宽阈值掩盖回归。
+-
+-## 11. 迁移与兼容规则
+-
+-### 11.1 采用集中迁移，不长期双轨
+-
 -建议采用“一个迁移版本兼容读取，下一次明确公告的破坏性版本停止旧入口生效”的方式。具体版本号在发布排期时填写。
 -
 -1. 迁移版本在独立入口识别旧变量、旧 settings、旧 Harness 字段与旧 profile，转换成规范配置后再交给核心。
@@ -1096,70 +1302,79 @@
 -3. 对旧配置给出一次可定位、已脱敏的迁移提示；诊断页可以完整查看，不在每个模型请求中反复刷屏。
 -4. 停止兼容读取后，旧配置仍可被诊断发现，但不再参与有效配置；用户显式声明的环境引用继续有效。
 -5. 用户配置迁移先提供差异和必要冲突说明，执行时备份可写配置；不修改 shell 配置、CI Secrets 或外部应用中的凭据。
-+本次升级直接停止旧入口生效，属于配置契约的破坏性变更；不保留自动兼容窗口。
-+
-+1. 仅显式 `config migrate` / SDK / RPC 迁移 API 转换旧变量、旧 settings、旧 Harness 字段与旧 profile；启动和普通保存不调用转换器。
-+2. 核心业务只读取新契约。旧字段及未被显式引用的旧环境变量报错，阻止模型连接及 helper 执行；配置页仍可使用。
-+3. 普通保存遇到旧字段保持原文件不变、不生成迁移备份；可明确删除旧字段并写入规范替代字段。
-+4. 诊断保留旧名称及替代项，不显示秘密。用户显式声明的任意环境引用、第三方 Skills 占位符与历史教程继续有效。
-+5. 手动迁移先提供差异和冲突说明，应用时校验修订并精确备份原文件；不修改 shell 配置、CI Secrets 或外部凭据，环境更新后重建 Runtime。
- 
- ### 11.2 关键迁移情形
- 
-@@ -314,7 +316,7 @@
- | 只有 `ANTHROPIC_AUTH_TOKEN` | 转成唯一 API Key 来源，同时提示核对网关认证策略；不能仅按 Token 名称推断 Bearer |
- | 两个旧凭据相同 | 合并为一个来源，说明已去除重复入口 |
- | 两个旧凭据不同，且当前连接需要从旧配置迁移 | 报告凭据冲突，暂停该连接迁移；不沿用隐式 Token 覆盖，也不显示秘密原值 |
+-
+-### 11.2 关键迁移情形
+-
+-| 旧配置情形 | 迁移要求 |
+-| --- | --- |
+-| 只有 `ANTHROPIC_API_KEY` | 转成唯一 API Key 来源，并补齐已确认的旧协议信息 |
+-| 只有 `ANTHROPIC_AUTH_TOKEN` | 转成唯一 API Key 来源，同时提示核对网关认证策略；不能仅按 Token 名称推断 Bearer |
+-| 两个旧凭据相同 | 合并为一个来源，说明已去除重复入口 |
+-| 两个旧凭据不同，且当前连接需要从旧配置迁移 | 报告凭据冲突，暂停该连接迁移；不沿用隐式 Token 覆盖，也不显示秘密原值 |
 -| 已有完整新配置，同时残留旧变量 | 采用规范配置，提示旧变量未参与该连接；不混合新旧字段补齐连接 |
-+| 已有完整新配置，同时残留旧变量 | 运行时报错；手动迁移可移除文件内未使用的旧变量，同时保持新连接原值；shell / .env 单独清理 |
- | 旧 profile 省略 `protocol` | 仅由迁移器按旧版确定的 Anthropic 语义补齐，并记录迁移；新解析器不继续保留默认 |
- | 原始模型字符串或硬编码默认 Claude | 结合旧连接形成稳定、可复用的显式 profile；避免 ID 冲突与重复生成 |
- | 同时存在 `model`、`defaultModel` | 保留旧版实际生效的选择写入 `model`，说明被覆盖项；迁移后只留一个默认选择 |
-@@ -350,7 +352,7 @@
- | C. 模型行为与核心调用方 | 默认模型、角色选择、推理、缓存、token 计数、WebSearch、规则命名 | 核心及辅助请求不再依赖散落的 Anthropic 全局配置 |
- | D. CLI / SDK / RPC / ACP | 登录、状态、诊断、结构化错误、会话恢复和外部接口 | 同一份配置在所有入口得到一致的有效结果 |
- | E. 桌面、原型与文档 | 服务商与模型页面、Agent 设置、迁移提示、模板、双语使用文档 | 界面保存规范配置，原型和文档一致，视觉变化有验收记录 |
+-| 旧 profile 省略 `protocol` | 仅由迁移器按旧版确定的 Anthropic 语义补齐，并记录迁移；新解析器不继续保留默认 |
+-| 原始模型字符串或硬编码默认 Claude | 结合旧连接形成稳定、可复用的显式 profile；避免 ID 冲突与重复生成 |
+-| 同时存在 `model`、`defaultModel` | 保留旧版实际生效的选择写入 `model`，说明被覆盖项；迁移后只留一个默认选择 |
+-| 旧全局 adaptive、interleaved、effort 强制配置 | 迁移到可确定的适用 profile；多个目标无法无歧义归属时逐项报告，不能广播到所有协议 |
+-| 旧全局 `apiKeyHelper` | 绑定到可确定的原使用 profile，不默认为所有新增连接提供凭据 |
+-| 旧字段与新字段都存在 | 普通标量采用规范字段并报告重复；规则排除等收紧项按安全合并语义处理 |
+-| 无法识别、无效或缺失环境引用 | 给出准确来源和修复项，保留原文件备份，不静默删除配置 |
+-
+-迁移应可重复执行：规范配置再次迁移不产生新 profile、不重复改写、不丢失用户自定义头和有效协议选项。回退到旧版本的方式通过备份说明，不在运行时永久反向生成旧变量。
+-
+-## 12. 有意改变的行为与回归边界
+-
+-原 Harness 计划要求兼容既有 0.x 行为、保持默认请求 golden 不变。本次是明确调整配置契约的专项改造，不能同时承诺所有默认行为保持原样。
+-
+-以下变化属于预期变更，必须在发布说明和验证记录中逐项列出：
+-
+-- 一个 API Key 取代两个自动读取的凭据入口，并修复默认重复认证头。
+-- 未知 profile 不再按 Anthropic 原始模型名解释。
+-- 未配置时不再选择内置固定 Claude 型号。
+-- 未知模型不再自动开启全部 Claude 推理特性。
+-- `ultrathink` 不再默认通过普通文本改变配置。
+-- 环境变量使用统一解析和优先级，移除“任意非空值为真”“可覆盖管理策略”等特例。
+-- 规则排除、默认模型和推理相关字段统一名称、归属与保存格式。
+-
+-对迁移后明确选择的同一模型和已知能力，应保持请求业务含义。golden 的调整必须对应上述预期差异；工具执行、权限、信任、会话、资源加载等无关行为继续执行原有回归要求。
+-
+-## 13. 实施拆分与交付物
+-
+-| 阶段 | 需要改造什么 | 阶段交付与完成条件 |
+-| --- | --- | --- |
+-| A. 统一配置契约 | 规范环境变量目录、profile schema、单凭据、推理语义、能力归属、优先级、生效时机 | 各入口可共享的规范定义与旧到新映射；没有未归属的历史字段 |
+-| B. 核心解析与迁移 | 集中解析、旧配置迁移、信任过滤、连接快照、单凭据认证、客户端缓存 | 四协议连接使用同一流程；旧凭据冲突、SDK 隐式读取和跨连接混用问题解决 |
+-| C. 模型行为与核心调用方 | 默认模型、角色选择、推理、缓存、token 计数、WebSearch、规则命名 | 核心及辅助请求不再依赖散落的 Anthropic 全局配置 |
+-| D. CLI / SDK / RPC / ACP | 登录、状态、诊断、结构化错误、会话恢复和外部接口 | 同一份配置在所有入口得到一致的有效结果 |
+-| E. 桌面、原型与文档 | 服务商与模型页面、Agent 设置、迁移提示、模板、双语使用文档 | 界面保存规范配置，原型和文档一致，视觉变化有验收记录 |
 -| F. 发布与退出兼容 | 回归、迁移指南、行为变更说明、旧入口退出排期 | 可验证的升级和回退路径；下个破坏性版本移除兼容读取有明确清单 |
-+| F. 发布与移除兼容 | 回归、迁移指南、行为变更说明、运行时旧入口清理 | 本次即停止兼容读取；手动升级和备份回退路径可验证 |
- 
- A 是后续改造的共同前提；B、C 完成后 D、E 接入同一结果。公开发布必须保证核心、CLI、SDK 和正式客户端支持同一契约，避免发布后出现新版配置无法被其中一个入口读取的状态。
- 
-@@ -358,7 +360,7 @@
- 
- ## 14. 完成验收
- 
+-
+-A 是后续改造的共同前提；B、C 完成后 D、E 接入同一结果。公开发布必须保证核心、CLI、SDK 和正式客户端支持同一契约，避免发布后出现新版配置无法被其中一个入口读取的状态。
+-
+-主要修改范围包括 `easy-agent/src/config/`、`src/harness/`、`src/services/api/`、`src/sdk/`、`src/entrypoint/`、`src/core/`、`src/context/`、`src/utils/`、`src/tools/`、`src/rpc/`、`src/acp/`，以及 `easy-agent/apps/desktop/`、`web-ui/`、`doc-site/` 和当前项目说明。
+-
+-## 14. 完成验收
+-
 -以下是实施阶段的验收要求，本次编写方案不表示这些检查已通过。
-+以下是实施阶段的验收要求，最终结果及覆盖边界见第 15 节。
- 
- | 验收面 | 必须验证的结果 |
- | --- | --- |
-@@ -377,3 +379,26 @@
- | 清理完整性 | 核心、客户端、模板和当前文档不再把旧变量列为正常入口；保留项仅属于协议实现、显式引用、迁移或历史资料 |
- 
- 实施完成时需附字段迁移表、受影响行为清单、验证报告及桌面截图。只有文档改名、保留底层旧变量读取，或只改 CLI 而遗漏 SDK / 桌面端，都不算完成本次统一改造。
-+
-+## 15. 实施与验收记录
-+
-+实施与复验日期：2026-11-22。本方案 A–F 均已落实，并按用户确认移除自动兼容；本轮本机完整验收和截图检查已完成。未发布 npm 包，变更进入原 PR #172 审查。
-+
-+| 阶段 | 实施结果 |
-+|---|---|
-+| A | 共享 profile / reasoning schema、规范环境目录、来源优先级与生效时机；旧字段运行时报错，仅手动迁移入口转换 |
-+| B | 完整连接及环境快照、单 API Key、四协议默认/自定义/无认证策略、私有备份与 revision 校验；计数和客户端缓存随所属认证刷新 |
-+| C | 主模型、角色与辅助请求使用 Profile ID；未知能力保守、窗口估算及未知价格；规则模块与排除字段中立命名 |
-+| D | CLI 登录、迁移与诊断；Headless 配置结构化错误；SDK / RPC / ACP 共用解析、校验、保存及恢复规则 |
-+| E | 正式客户端真实保存重载、迁移、helper、自定义认证、无认证及无模型状态；原型和双语文档同步；未设置预算显示为自动，窄页面保持可读 |
-+| F | 完整发布门禁、升级与回退指南、行为变化清单及本次直接移除自动兼容读取 |
-+
-+本轮完整发布门禁通过：生产回归 **91/91 组**（无跳过）、平台检查 **2/2 组**、请求记录性能 **2/2**（p95 0.34 ms，记录/会话字节比 0.77）、安装包及发布验证 **76/76 项**。客户端全套 **123/123**（63 unit、52 e2e、8 visual）；随后补上模型页及重载选择可见断言，迁移复验 **5/5**，重新截取并人工检查全部八张截图。另有连接与配置生命周期 **39/39**、Harness 解析 **53/53**、Harness 功能 **21/21**。桌面类型、lint、格式以及原型和文档站类型检查、构建、站点链接检查均通过。
-+
-+所有未显式引用的旧变量均阻止模型请求，普通保存不转换配置；独立旧角色凭据仅在手动迁移中保留，历史会话不再自动匹配原始模型名。新增 AST 检查限制离线转换器的生产引用入口。桌面回归检查迁移前零请求，迁移重启后使用规范认证头；修正提示层级，避免错误提示遮挡迁移按钮。Windows `Path`/`PATH` 的项目继承修复保留原信任断言。跨平台 CI 按最终提交记录在 PR 中，不沿用此前兼容实现的结果。
-+
-+四协议受控服务检查包含 12 个实际 HTTP 请求，分别覆盖默认、自定义认证头、无认证；真实 `.env`、历史教程与只读参考库未修改。只有第 12 节对应的五份 golden 调整，权限判定 golden、视觉基线、阈值与遮罩未变。
-+
-+字段迁移表及回退说明见 [`configuration-migration.md`](../easy-agent/docs/configuration-migration.md)，规范连接契约见 [`model-profiles.md`](../easy-agent/docs/model-profiles.md)。验收报告及完整日志在 [`config-standardization-validation/RESULTS.md`](../config-standardization-validation/RESULTS.md)。八张配置截图属于人工视觉检查；已有八个像素场景仅覆盖首次启动和请求上下文/对比，不能替代新增模型与迁移页的完整像素覆盖。
-+
-+非 Git 目录的原型、文档站、工作区说明及本方案通过 [`workspace.patch`](../easy-agent/docs/config-standardization/workspace.patch) 一并交付，附原始与结果校验值，已在干净副本验证应用和回退；当前开发工作区已经应用。
+-
+-| 验收面 | 必须验证的结果 |
+-| --- | --- |
+-| 单凭据认证 | 四种协议只使用所选 profile 的 API Key；规范与旧环境变量同时存在时无隐式 SDK 读取；默认没有重复认证头 |
+-| 自定义端点 | Anthropic 兼容网关、两类 OpenAI 接口、Gemini、自定义认证头和显式无认证端点分别覆盖 |
+-| 连接一致性 | 模型生成、连接测试、token 计数、搜索、诊断和上下文明细解析到一致目标 |
+-| 模型选择 | profile ID 与上游模型名明确区分；未知 ID、无默认、多 profile、角色引用失效均有确定结果 |
+-| 配置解析 | 新旧名、布尔 false、空值、非法数值、0 次重试、缺失引用与冲突来源得到规定行为 |
+-| 优先级与信任 | 环境、CLI、SDK、Harness、项目和策略顺序一致；未信任配置不能注入连接或凭据；收紧型规则不失效 |
+-| 模型能力 | 已知 Claude 型号、非 Anthropic 模型、网关自定义模型名、未知模型与显式能力覆盖分别验证 |
+-| 生命周期 | 活跃请求配置一致；下一请求更新可观测；helper 不改写全局凭据；顺序创建 runtime 不串配置 |
+-| 迁移 | 覆盖第 11 节全部情形；备份、重复执行、冲突报告和历史会话恢复不丢配置、不泄露秘密 |
+-| 各入口 | CLI、管道、SDK、RPC、ACP 与桌面端对同一配置给出一致结果；无模型配置时非模型功能仍可用 |
+-| 桌面界面 | 完成真实配置保存与重载 e2e，以及相关本机视觉验收；明确已有像素基线与人工检查各自覆盖范围 |
+-| 请求回归 | 四协议使用受控服务或夹具检查请求与认证头；默认请求差异均能对应第 12 节，保留无关回归约束 |
+-| 清理完整性 | 核心、客户端、模板和当前文档不再把旧变量列为正常入口；保留项仅属于协议实现、显式引用、迁移或历史资料 |
+-
+-实施完成时需附字段迁移表、受影响行为清单、验证报告及桌面截图。只有文档改名、保留底层旧变量读取，或只改 CLI 而遗漏 SDK / 桌面端，都不算完成本次统一改造。
++实际结果记录在[验收报告](../easy-agent/docs/config-standardization/validation.md)和[完整交付](../config-standardization-validation/RESULTS.md)。真实 `.env`、历史教程快照和只读参考仓库不在改动范围内。
 --- a/doc/0TODO-HARNESS-COMPOSITION-HANDOFF.md
 +++ b/doc/0TODO-HARNESS-COMPOSITION-HANDOFF.md
 @@ -1,4 +1,6 @@
@@ -1262,39 +1477,6 @@
                <div className="flex items-center justify-between rounded-lg border border-line bg-surface px-3 py-2">
                  <span className="text-[12.5px] text-fg-2">{selected.excluded ? "已排除，不加载" : "正在加载"}</span>
                  <Switch checked={!selected.excluded} onChange={(v) => setExcluded(selected, !v)} />
---- /dev/null
-+++ b/web-ui/src/components/settings/ConfigMigrationNotice.tsx
-@@ -0,0 +1,30 @@
-+import { useState } from "react";
-+import { CodeBlock } from "../chat/Markdown";
-+import { Modal } from "../customize/shared";
-+import { Button } from "../ui/primitives";
-+
-+/** URL-driven states keep the model editor's migration flow available in the style reference. */
-+export function ConfigMigrationNotice() {
-+  const state = new URLSearchParams(window.location.search).get("migration");
-+  const [preview, setPreview] = useState(false);
-+  const [applied, setApplied] = useState(false);
-+  if (!["legacy", "conflict"].includes(state ?? "") || applied) return null;
-+  const conflict = state === "conflict";
-+  return <div className="mx-10 mt-6 rounded-xl border border-warning/25 bg-warning/5 p-4 text-[12px] text-fg-2">
-+    <div className="flex items-center justify-between gap-4"><span className="font-medium text-fg">配置需要处理</span>
-+      <Button size="sm" variant="secondary" onClick={() => setPreview(true)}>预览迁移</Button></div>
-+    <p className="mt-2 text-fg-3">旧配置已停止生效。请预览差异后手动迁移；应用时备份原文件并重建运行环境。</p>
-+    <Modal open={preview} title="配置迁移预览" width={680} onOpenChange={setPreview} footer={<>
-+      <Button variant="ghost" onClick={() => setPreview(false)}>关闭</Button>
-+      <Button variant="primary" disabled={conflict} onClick={() => { setApplied(true); setPreview(false); }}>备份并应用</Button>
-+    </>}>
-+      <p className="mb-3 text-[12px] text-fg-3">~/.easy-agent/settings.json</p>
-+      <p className={`mb-3 text-[12px] ${conflict ? "text-danger" : "text-fg-2"}`}>{conflict
-+        ? "旧凭据来源不同：请选择一个 API Key，解决冲突后重新预览。"
-+        : "defaultModel → model；agentMdExcludes 保留全部排除项。认证只引用所属 Profile 的一个 API Key。"}</p>
-+      <CodeBlock code={JSON.stringify(conflict ? { connection: { apiKey: "[redacted]", conflict: true } } : {
-+        model: "main", agentMdExcludes: ["**/AGENT.md"], reasoning: { mode: "auto" },
-+      }, null, 2)} lang="json" />
-+    </Modal>
-+  </div>;
-+}
 --- a/web-ui/src/components/settings/ModelsPage.tsx
 +++ b/web-ui/src/components/settings/ModelsPage.tsx
 @@ -4,7 +4,7 @@
@@ -1306,15 +1488,7 @@
  import { TODO_KEYS } from "../../lib/agentSettings";
  import { useApp } from "../../lib/store";
  import { CodeBlock } from "../chat/Markdown";
-@@ -12,6 +12,7 @@
- import { type BrandId, BrandIcon, modelBrand } from "../ui/BrandIcon";
- import { Button, cn, IconButton, Segmented, Spinner, Switch, Tooltip } from "../ui/primitives";
- import { NumberInput, Row, ScopeTag, Select } from "./controls";
-+import { ConfigMigrationNotice } from "./ConfigMigrationNotice";
- 
- /* ------------------------------------------------------------------ */
- /* Shared bits                                                         */
-@@ -72,6 +73,7 @@
+@@ -72,6 +72,7 @@
      protocol: t.protocol,
      baseURL: t.baseURL,
      key: t.local ? { kind: "none" } : { kind: "keychain", masked: "" },
@@ -1322,7 +1496,7 @@
      enabled: false,
      headers: [],
      models: t.catalog.slice(0, 2).map((m) => ({ ...m })),
-@@ -96,7 +98,7 @@
+@@ -96,7 +97,7 @@
        <Popover.Trigger asChild>
          <button
            type="button"
@@ -1331,7 +1505,7 @@
          >
            {current ? (
              <>
-@@ -105,7 +107,7 @@
+@@ -105,7 +106,7 @@
                <span className="truncate text-[11.5px] text-fg-3">{current.provider}</span>
              </>
            ) : (
@@ -1340,7 +1514,7 @@
            )}
            <ChevronDown className="size-3.5 shrink-0 text-fg-3" />
          </button>
-@@ -177,7 +179,7 @@
+@@ -177,7 +178,7 @@
    const updateAgent = useApp((s) => s.updateAgent);
  
    const rows = [
@@ -1349,7 +1523,7 @@
      { key: "modelRoles.background", title: "后台任务", hint: "后台子 Agent 和团队队友。选一个便宜快速的模型能省不少钱", value: agent.modelRoles.background, role: "background" },
      { key: "modelRoles.think", title: "深度思考", hint: "开启扩展思考的请求改用这个模型", value: agent.modelRoles.think, role: "think" },
      { key: "modelRoles.longContext", title: "长上下文", hint: "对话快要超出默认模型的上下文时切换过去", value: agent.modelRoles.longContext, role: "longContext" },
-@@ -191,13 +193,13 @@
+@@ -191,13 +192,13 @@
      ) : null;
  
    return (
@@ -1365,7 +1539,7 @@
              <div className="min-w-0">
                <div className="flex items-center gap-2 text-[13.5px] font-medium text-fg">
                  {r.title}
-@@ -210,7 +212,7 @@
+@@ -210,7 +211,7 @@
                inherit={r.role ? "跟随默认模型" : undefined}
                onChange={(v) => {
                  if (r.role === null) {
@@ -1374,7 +1548,7 @@
                  } else if (r.role === "autoMode") updateAgent((a) => ({ ...a, autoModeModel: v }), ["autoModeModel"]);
                  else updateAgent((a) => ({ ...a, modelRoles: { ...a.modelRoles, [r.role]: v } }), [r.key]);
                }}
-@@ -221,17 +223,18 @@
+@@ -221,17 +222,18 @@
  
        <h3 className="mt-8 text-[14px] font-semibold text-fg">思考</h3>
        <div className="mt-3 divide-y divide-line rounded-xl border border-line bg-canvas">
@@ -1398,7 +1572,7 @@
            <div>
              <div className="flex items-center gap-2 text-[13.5px] font-medium text-fg">
                思考强度
-@@ -243,6 +246,7 @@
+@@ -243,6 +245,7 @@
              value={agent.effortLevel}
              onChange={(effortLevel) => updateAgent((a) => ({ ...a, effortLevel }), ["effortLevel"])}
              options={[
@@ -1406,7 +1580,7 @@
                { value: "low", label: "低" },
                { value: "medium", label: "中" },
                { value: "high", label: "高" },
-@@ -251,7 +255,7 @@
+@@ -251,7 +254,7 @@
            />
          </div>
          <div className="px-4">
@@ -1415,7 +1589,7 @@
              <NumberInput value={agent.thinkingBudget} min={1024} step={1024} suffix="tokens" width={160} onChange={(thinkingBudget) => updateAgent((a) => ({ ...a, thinkingBudget }), ["thinkingBudget"])} />
            </Row>
          </div>
-@@ -266,7 +270,7 @@
+@@ -266,7 +269,7 @@
  
  function ModelDialog({ entry, existing, onSave, onClose }: { entry: ModelEntry | null; existing: string[]; onSave: (m: ModelEntry) => void; onClose: () => void }) {
    const [m, setM] = useState<ModelEntry>(
@@ -1424,7 +1598,7 @@
    );
    const [advanced, setAdvanced] = useState(false);
    const handle = m.handle || m.model.split("/").pop()?.replace(/:/g, "-") || "";
-@@ -343,7 +347,7 @@
+@@ -343,7 +346,7 @@
        {advanced && (
          <div className="mt-3 grid grid-cols-2 gap-3 rounded-xl bg-surface p-3">
            <label className="col-span-2 block">
@@ -1433,7 +1607,7 @@
              <input
                value={m.handle}
                onChange={(e) => setM((x) => ({ ...x, handle: e.target.value.replace(/\s/g, "-") }))}
-@@ -353,8 +357,8 @@
+@@ -353,8 +356,8 @@
              {taken && <span className="mt-1 block text-[11.5px] text-danger">这个句柄已被别的模型使用</span>}
            </label>
            <label className="block">
@@ -1444,7 +1618,7 @@
            </label>
            <label className="block">
              <span className="mb-1 block text-[11.5px] text-fg-3">最大输出</span>
-@@ -597,7 +601,7 @@
+@@ -597,7 +600,7 @@
  
        <section className="mt-7">
          <div className="mb-2 flex items-center justify-between">
@@ -1453,7 +1627,7 @@
            {t.keyUrl && (
              <a href={`https://${t.keyUrl}`} target="_blank" rel="noreferrer" className="text-[12px] text-accent hover:underline">
                获取密钥
-@@ -609,9 +613,10 @@
+@@ -609,9 +612,10 @@
              <input
                type={showKey || isEnvRef(key) ? "text" : "password"}
                value={key}
@@ -1465,7 +1639,7 @@
                className="h-10 w-full rounded-[10px] border border-line bg-surface pl-3 pr-10 font-mono text-[13px] text-fg outline-none transition-colors focus:border-accent-line focus:bg-canvas"
              />
              {!isEnvRef(key) && (
-@@ -627,24 +632,41 @@
+@@ -627,24 +631,41 @@
          <div className="mt-1.5 flex min-h-[18px] items-center text-[12px]">
            {status ?? (
              <span className="text-fg-3">
@@ -1510,7 +1684,7 @@
              className="h-10 w-[160px] rounded-[10px] border border-line bg-surface px-2.5 text-[12.5px] text-fg outline-none focus:border-accent-line"
              title="接口类型"
            >
-@@ -662,12 +684,13 @@
+@@ -662,12 +683,13 @@
            </span>
            {t.endpoints?.map((e) =>
              e.baseURL === p.baseURL ? null : (
@@ -1525,7 +1699,7 @@
        </section>
  
        <section className="mt-7">
-@@ -683,7 +706,7 @@
+@@ -683,7 +705,7 @@
                <div key={family}>
                  <div className="border-b border-line bg-surface/60 px-3.5 py-1.5 text-[11.5px] font-medium text-fg-3">{family}</div>
                  {items.map((m) => {
@@ -1534,7 +1708,7 @@
                    return (
                      <div key={m.handle} className="group flex h-12 items-center gap-3 border-b border-line px-3.5 last:border-b-0">
                        <BrandIcon id={modelBrand(m.model) ?? p.icon} size={22} />
-@@ -692,11 +715,11 @@
+@@ -692,11 +714,11 @@
                          <Tags m={m} />
                          {isDefault && <span className="rounded-[5px] bg-accent-soft px-1.5 text-[10.5px] leading-[18px] text-accent">默认</span>}
                        </div>
@@ -1548,7 +1722,7 @@
                                <Star />
                              </IconButton>
                            </Tooltip>
-@@ -768,6 +791,12 @@
+@@ -768,6 +790,12 @@
                  </button>
                </div>
              </div>
@@ -1561,7 +1735,7 @@
              {p.protocol.startsWith("openai") && (
                <div className="flex items-center justify-between gap-6">
                  <div>
-@@ -820,7 +849,7 @@
+@@ -820,7 +848,7 @@
  export function ModelsPage() {
    const providers = useApp((s) => s.providers);
    const updateProviders = useApp((s) => s.updateProviders);
@@ -1570,18 +1744,17 @@
    const [selected, setSelected] = useState("defaults");
    const [q, setQ] = useState("");
    const [adding, setAdding] = useState(false);
-@@ -844,7 +873,9 @@
+@@ -844,7 +872,8 @@
      });
  
    return (
 -    <div className="flex h-full">
 +    <div className="flex h-full flex-col">
-+      <ConfigMigrationNotice />
 +      <div className="flex min-h-0 flex-1">
        <aside className="flex w-[248px] shrink-0 flex-col border-r border-line">
          <div className="p-3">
            <div className="relative">
-@@ -913,7 +944,7 @@
+@@ -913,7 +942,7 @@
            }}
          />
        )}

@@ -35,7 +35,6 @@ import { getManagedSettingsPath } from "./managedPath.js";
 import { isProjectTrusted } from "./globalState.js";
 import { validateSettings } from "./schema.js";
 import { bindRuntimeScope, defineRuntimeState, runtimeScopeClosed } from "../state/runtimeScope.js";
-import { declaredEnvironmentReferences, retiredSettingsNotices, type ConfigurationNotice } from "./retired.js";
 
 export type SettingSource = "user" | "project" | "local" | "flag" | "policy";
 
@@ -52,8 +51,8 @@ export interface LoadedSource {
   parseError?: string;
   /** Per-field schema repairs (dropped rules / ignored fields), if any. */
   validationErrors?: string[];
-  /** Removed configuration is diagnosed, never converted while loading. */
-  migrationNotices?: ConfigurationNotice[];
+  /** A rejected update keeps the preceding complete source snapshot. */
+  usingLastValid?: boolean;
 }
 
 // ─── flag source (set once by the CLI entrypoint) ────────────────────────
@@ -111,20 +110,16 @@ function buildSource(
   filePath: string | null,
   raw: Record<string, unknown> | null,
   parseError: string | undefined,
-  references: ReadonlySet<string>,
 ): LoadedSource {
   if (raw == null) {
     return { source, path: filePath, raw: null, ...(parseError ? { parseError } : {}) };
   }
-  const notices = retiredSettingsNotices(raw, references);
   const { value, errors } = validateSettings(raw, filePath ?? source, { partialProfiles: true });
-  errors.push(...notices.map((notice) => `${filePath ?? source}: ${notice.field}: ${notice.message}`));
   return {
     source,
     path: filePath,
     raw: value,
     ...(errors.length ? { validationErrors: errors } : {}),
-    ...(notices.length ? { migrationNotices: notices } : {}),
   };
 }
 
@@ -178,12 +173,6 @@ async function readSettingSources(cwd: string): Promise<LoadedSource[]> {
     readJsonSettingsFile<Record<string, unknown>>(policyPath),
   ]);
 
-  const references = declaredEnvironmentReferences([
-    user.raw,
-    ...(trusted ? [project.raw, local.raw] : []),
-    flag,
-    policy.raw,
-  ]);
   const sources: LoadedSource[] = [];
   for (const [source, filePath, raw, parseError] of [
     ["user", userPath, user.raw, user.parseError],
@@ -192,19 +181,18 @@ async function readSettingSources(cwd: string): Promise<LoadedSource[]> {
     ["flag", null, flag, undefined],
     ["policy", policyPath, policy.raw, policy.parseError],
   ] as const) {
-    sources.push(buildSource(source, filePath, raw, parseError, references));
+    sources.push(buildSource(source, filePath, raw, parseError));
   }
 
   // Publish a whole source snapshot, never a mixture of a new valid field and
   // stale siblings. Initial loads retain field-level diagnostics for repair.
   for (const src of sources) {
     const key = `${userPath}|${cwd}|${src.source}|${src.path ?? "flag"}`;
-    const invalid = Boolean(
-      src.parseError || src.validationErrors?.some((error) => !error.includes("unsupported setting")),
-    );
+    const invalid = Boolean(src.parseError || src.validationErrors?.length);
     const previous = lastValidSources.get(key);
     if (invalid && previous) {
       src.raw = structuredClone(previous);
+      src.usingLastValid = true;
       src.validationErrors = [
         ...(src.validationErrors ?? []),
         `${src.path ?? src.source}: update rejected; retained last valid source snapshot`,

@@ -59,7 +59,7 @@ export function featureSettingsOf(resolved: ResolvedHarness, diagnostics: readon
     }
   }
 
-  const warnings = [...resolved.issues.filter((issue) => issue.retired).map((issue) => issue.message), ...diagnostics];
+  const warnings = [...resolved.issues.map((issue) => issue.message), ...diagnostics];
 
   return {
     toolSearch: toolSearch.value as ToolSearchSetting,

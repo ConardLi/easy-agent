@@ -129,9 +129,6 @@ export class RpcServer {
     "marketplace/update": async ({ name }) => this.#requireRuntime().mutatePlugin({ op: "marketplace-update", name }),
     "marketplace/remove": async ({ name }) => this.#requireRuntime().mutatePlugin({ op: "marketplace-remove", name }),
     "config/read": async () => this.#requireRuntime().readConfig(),
-    "config/migrationPreview": async ({ scope }) => this.#requireRuntime().previewConfigMigration(scope),
-    "config/migrationApply": async ({ scope, revision }) =>
-      this.#requireRuntime().applyConfigMigration(scope, revision),
     "config/write": async ({ scope, key, value }) => this.#requireRuntime().writeConfig(scope, key, value ?? null),
     "workspace/trust": async ({ trusted }) => this.#requireRuntime().setWorkspaceTrust(trusted),
     "models/check": async ({ model }) => this.#requireRuntime().checkModel(model),

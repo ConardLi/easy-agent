@@ -1325,97 +1325,6 @@
             },
             "method": {
               "type": "string",
-              "const": "config/migrationPreview"
-            },
-            "params": {
-              "type": "object",
-              "properties": {
-                "scope": {
-                  "type": "string",
-                  "enum": [
-                    "user",
-                    "project",
-                    "local"
-                  ]
-                }
-              },
-              "required": [
-                "scope"
-              ]
-            }
-          },
-          "required": [
-            "jsonrpc",
-            "method"
-          ]
-        },
-        {
-          "type": "object",
-          "properties": {
-            "jsonrpc": {
-              "type": "string",
-              "const": "2.0"
-            },
-            "id": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "number"
-                }
-              ]
-            },
-            "method": {
-              "type": "string",
-              "const": "config/migrationApply"
-            },
-            "params": {
-              "type": "object",
-              "properties": {
-                "scope": {
-                  "type": "string",
-                  "enum": [
-                    "user",
-                    "project",
-                    "local"
-                  ]
-                },
-                "revision": {
-                  "type": "string",
-                  "minLength": 1
-                }
-              },
-              "required": [
-                "scope",
-                "revision"
-              ]
-            }
-          },
-          "required": [
-            "jsonrpc",
-            "method"
-          ]
-        },
-        {
-          "type": "object",
-          "properties": {
-            "jsonrpc": {
-              "type": "string",
-              "const": "2.0"
-            },
-            "id": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "number"
-                }
-              ]
-            },
-            "method": {
-              "type": "string",
               "const": "config/write"
             },
             "params": {
@@ -7938,99 +7847,6 @@
             "reload"
           ]
         },
-        "config/migrationPreview": {
-          "type": "object",
-          "properties": {
-            "path": {
-              "type": "string"
-            },
-            "revision": {
-              "type": "string"
-            },
-            "changed": {
-              "type": "boolean"
-            },
-            "changes": {
-              "type": "array",
-              "items": {
-                "type": "object",
-                "properties": {
-                  "field": {
-                    "type": "string"
-                  },
-                  "before": {},
-                  "after": {}
-                },
-                "required": [
-                  "field",
-                  "before",
-                  "after"
-                ]
-              }
-            },
-            "notices": {
-              "type": "array",
-              "items": {
-                "type": "object",
-                "properties": {
-                  "level": {
-                    "type": "string",
-                    "enum": [
-                      "info",
-                      "warning",
-                      "error"
-                    ]
-                  },
-                  "field": {
-                    "type": "string"
-                  },
-                  "message": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "level",
-                  "field",
-                  "message"
-                ]
-              }
-            }
-          },
-          "required": [
-            "path",
-            "revision",
-            "changed",
-            "changes",
-            "notices"
-          ]
-        },
-        "config/migrationApply": {
-          "type": "object",
-          "properties": {
-            "changed": {
-              "type": "boolean"
-            },
-            "backup": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "reload": {
-              "type": "string",
-              "const": "restart"
-            }
-          },
-          "required": [
-            "changed",
-            "backup",
-            "reload"
-          ]
-        },
         "workspace/trust": {
           "type": "object",
           "properties": {
@@ -9969,8 +9785,6 @@
         "marketplace/remove",
         "config/read",
         "config/write",
-        "config/migrationPreview",
-        "config/migrationApply",
         "workspace/trust",
         "models/check",
         "models/list",

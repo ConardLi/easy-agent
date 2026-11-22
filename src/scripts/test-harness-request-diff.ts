@@ -45,10 +45,7 @@ await Promise.all([
   mkdir(markers, { recursive: true }),
 ]);
 for (const key of Object.keys(process.env)) {
-  if (
-    /^(?:ANTHROPIC_|EASY_AGENT_|CLAUDE_CODE_|OPENAI_|GEMINI_)/.test(key) ||
-    /TOOL_SEARCH|THINKING|WEB_SEARCH/.test(key)
-  ) {
+  if (/^(?:ANTHROPIC_|EASY_AGENT_|OPENAI_|GEMINI_)/.test(key)) {
     delete process.env[key];
   }
 }

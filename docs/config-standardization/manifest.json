@@ -2,7 +2,7 @@
   {
     "path": "AGENTS.md",
     "before": "009c32f9345007b4d484a55a03c9dc37b84a15371525e6fc8a53542bec094410",
-    "after": "b626eb1d692e6de1ed285be2615f580539db2a82b834f9460e4d16575499b254"
+    "after": "59f337bd00a765958c28be7e9b1674e5855fb9465db02bcb64bc108dc0b877d9"
   },
   {
     "path": "doc-site/components/interactive/config-layers.tsx",
@@ -37,7 +37,7 @@
   {
     "path": "doc-site/content/docs/client/index.mdx",
     "before": "eb8d36e280254fdc5c78c55768c61fd5a07a547e132a48f4b4ae6c1f7aff02c3",
-    "after": "59fd636336399454ef193f228bab31b1ce0bff71f0ed4460729a84f4588664d6"
+    "after": "4dff8d90ca4a954a82bd379870f33eedce2b0515fba49689678ef1fec5db2f48"
   },
   {
     "path": "doc-site/content/docs/docs/config/feature-flags.mdx",
@@ -47,7 +47,7 @@
   {
     "path": "doc-site/content/docs/docs/config/index.en.mdx",
     "before": null,
-    "after": "7211b30f821a1826a0a4c69fcbbc759df8015ae22a10635cf18c3a6990aadca6"
+    "after": "30050b5111632d814d53bffc9d0b3cd8501ee7deee29e9ceaf4473e09ffa5e2e"
   },
   {
     "path": "doc-site/content/docs/docs/config/index.mdx",
@@ -57,27 +57,12 @@
   {
     "path": "doc-site/content/docs/docs/config/meta.en.json",
     "before": "1d4c0ce8108a0a00aac841780f4eddf86eb599cd0f1a090bb55d1c05a7af09de",
-    "after": "d5350cb6da0e178ed5fce31550b8ca8e783f3dcb625daa6fdc050e2d1691ca3d"
-  },
-  {
-    "path": "doc-site/content/docs/docs/config/meta.json",
-    "before": "933194bbf9112c879a40129efd319531a4392a3483722cf274be81a15d9daf15",
-    "after": "2f4e79c998f087887dc22fabde9d3d1197329f8720236385e6f516bdd7b2e818"
-  },
-  {
-    "path": "doc-site/content/docs/docs/config/migration.en.mdx",
-    "before": null,
-    "after": "6d2332dec7de81d94af1a87c98db282d7c65616ec27e6fed31c0f8cd4783e517"
-  },
-  {
-    "path": "doc-site/content/docs/docs/config/migration.mdx",
-    "before": null,
-    "after": "b97426dd3e1eedb81d9f4aa4f5e398f44c715e96eaf7cca67ce52ccfc89c8042"
+    "after": "9b16d209887906e701317bb554d8855ce64e01d424dad88a2aad72c334ea9705"
   },
   {
     "path": "doc-site/content/docs/docs/config/model-profiles.en.mdx",
     "before": null,
-    "after": "db5ec41dd3ab66a782db1415e7d61c453c97ed87a328c0eae4730fb308400eac"
+    "after": "e67a1f6f7ad5275a9f2354d29a21e1af9c28a2ba15edff708c92ef88fa9f52cb"
   },
   {
     "path": "doc-site/content/docs/docs/config/model-profiles.mdx",
@@ -97,12 +82,12 @@
   {
     "path": "doc-site/content/docs/docs/models.en.mdx",
     "before": "42e0f50b6d9664e9d38f5acf00f036b13bd5ee2aee61eebdb2538bf0f3d877fb",
-    "after": "8eca2a463ff9f34dc09376fb7a51c54b2143f8b54f79ffde5842f23d247efe98"
+    "after": "f53f9efc130866d9fd0485c08e477b6add5203fd9fe5d22923d362b2fd10fd5d"
   },
   {
     "path": "doc-site/content/docs/docs/models.mdx",
     "before": "8345c4cd446c6967448a79474e5e2510f8c160309718e92a8146a6fc9a17ef62",
-    "after": "5206d702ef43d21dc73cf5778dd2960da965a1029a84c10fb9def5752d5a3abd"
+    "after": "f35422483b798102b593d4ffd7b1ba68fbc10854a6207ab6c34ee72542c007bd"
   },
   {
     "path": "doc-site/content/docs/docs/quickstart.en.mdx",
@@ -117,17 +102,17 @@
   {
     "path": "doc-site/content/docs/docs/resources/troubleshooting.en.mdx",
     "before": null,
-    "after": "fb9ab918e91a82694e772e3465166bff76dd24d066fcf8eb05057c0af605a745"
+    "after": "a4962167963e1449d0e490ca91410e5031fd8e0f0b1bd153094c1cd291cf0c24"
   },
   {
     "path": "doc-site/content/docs/docs/resources/troubleshooting.mdx",
     "before": "527f0d5df8d1e812fd5dbf3f0d1211c0931cdf3deaaed9ce68d74862ae2364b4",
-    "after": "88436b409381287c0386eb6e117df20bb1c3bac1c5a72166b3541b377db12c71"
+    "after": "493dae8a51dacc33163584d997ec20595647224f057660563e779fe52d882696"
   },
   {
     "path": "doc-site/content/docs/docs/resources/upgrade.mdx",
     "before": "d65e80e6ca52ed0567e915a0980b1811b59047dc2e0327ac0586915132e0b747",
-    "after": "74f2fbe69a8b2b8470f3b5a22074cab2194b24ee92f795180bbac451276a793f"
+    "after": "53a670a6216c1b1e4d19064fd01044732da79015597c30bf3b620fe62aa4d43b"
   },
   {
     "path": "doc-site/content/docs/docs/security/trust.mdx",
@@ -142,27 +127,27 @@
   {
     "path": "doc-site/content/docs/reference/cli.en.mdx",
     "before": null,
-    "after": "b37d42c0779e322bf98fa5900fa8be450684a843ac511ab1f470d1daa8d92585"
+    "after": "943f90448beaba9a58d4ef6a605d28dbadc3d67a156edfea83c5e50383a13c4f"
   },
   {
     "path": "doc-site/content/docs/reference/cli.mdx",
     "before": "e525b5f08b13956c2d54507c97aee7082bd4a85842b9511f737f79c7ff252876",
-    "after": "a1c3f87eeb942bcbb1db93f29c16a354088c892541c1a06102f6c49e24c23857"
+    "after": "ce23c46de7e0ec933be8484cc8ac86a51da3122b61c20d46ff6d7552db916286"
   },
   {
     "path": "doc-site/content/docs/reference/env.en.mdx",
     "before": null,
-    "after": "1cf2ef1f6c58b7d8634ba3a45a03d683816eba94f5aee287cb5f02e9dd3b7d09"
+    "after": "ca91460a7f1af3c61d4c980c2dd35543dc28606a6606488bf2f87e58ec8da879"
   },
   {
     "path": "doc-site/content/docs/reference/env.mdx",
     "before": "6e865d4835cceefd044bb152df3c56fa42156a5dd5e2edfdd1bbf40f0c2eaaab",
-    "after": "1d0d073376b407948485eca0ae81fc7708dcaad392f0e225693e3acad0a178ba"
+    "after": "f0d8e8066256268dc9a7c71317b1ed468fd27702eec642e846c1a338681a43fd"
   },
   {
     "path": "doc-site/content/docs/reference/settings.en.mdx",
     "before": null,
-    "after": "5e64a0a1884a04d3a8243058e0008358f31905516d4fc6f769311a5555061382"
+    "after": "1a1488eebb98f01e0b46ed779e0e370cb6b5487a8018ad96e3ad02a50d27d40b"
   },
   {
     "path": "doc-site/content/docs/reference/settings.mdx",
@@ -172,17 +157,17 @@
   {
     "path": "doc-site/content/docs/sdk/node.en.mdx",
     "before": "20278c67f98fdea7e2a8c1d1760e80deeb3016d4c754bc30cd479c1e9cbc0579",
-    "after": "f4412b4dd3c29ce93c60a271fc56c65bf1b61703b192c981d92dd9b4eaf2b4dc"
+    "after": "5d624e4dd634d96082f5e733de75e9d40562afa5a42b94323f03c197dad3e12a"
   },
   {
     "path": "doc-site/content/docs/sdk/node.mdx",
     "before": "df2d215c1d0e2b80375f9e336129385f9e4ff9bada46cf1d5bd55934bd0d317a",
-    "after": "031df5339102969c1ee80397f6daa49b6af8f686ab3feb1bdfd5582f13db9b8d"
+    "after": "4486bc99b213da10e9647aada63463ca60f989f31112e3c221737717077be383"
   },
   {
     "path": "doc/0TODO-CONFIG-STANDARDIZATION-PLAN.md",
     "before": "9929807196bf24b5ab59f683f44e4e0192b472d69cc69d458f5c386e90c64f10",
-    "after": "d791e9b07978477b72d4d1dacc9a757cc04be8b95236b226f5bd3c205cf498a0"
+    "after": "4aefe864f5fd2f8e67eedd9ddf7afaaacc864acd23430eb552d291f2f8bcd270"
   },
   {
     "path": "doc/0TODO-HARNESS-COMPOSITION-HANDOFF.md",
@@ -215,14 +200,9 @@
     "after": "c2b42b32e49fc54eb6c27d4df556e79617a9d869aabba65841f625e92ffdb315"
   },
   {
-    "path": "web-ui/src/components/settings/ConfigMigrationNotice.tsx",
-    "before": null,
-    "after": "569d1736ae5c290f6b6c42d6377ef09ebbed551a62db9e5d6132b393886c7329"
-  },
-  {
     "path": "web-ui/src/components/settings/ModelsPage.tsx",
     "before": "4413eda2e98ca840c9d2aa7969f38cbead87db60e359e5190dcb6b6a5277073e",
-    "after": "d7d43604db5f28e62eeb679eda6bfacf49d301358efe414671bfedbe2d4e0eb7"
+    "after": "1df64e938286884e0e669b71eb64f36fc21298b05cf77473d5335d27c835fc2a"
   },
   {
     "path": "web-ui/src/components/settings/pages.tsx",

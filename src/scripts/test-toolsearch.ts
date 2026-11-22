@@ -12,7 +12,6 @@
 import type { MessageParam } from "@anthropic-ai/sdk/resources/messages.js";
 import type { Tool } from "../tools/Tool.js";
 import { installConfigurationEnvironment } from "../config/environment.js";
-import { migrateLegacyEnvironment } from "../config/migration.js";
 import { withHarness } from "../harness/active.js";
 import { resolveHarnessFromInputs } from "../harness/resolve.js";
 import {
@@ -66,10 +65,7 @@ function withEnv<T>(vars: Record<string, string | undefined>, fn: () => T): T {
 }
 
 const CLEAN_ENV = {
-  EASY_AGENT_ENABLE_TOOL_SEARCH: undefined,
-  ENABLE_TOOL_SEARCH: undefined,
   EASY_AGENT_DISABLE_EXPERIMENTAL_BETAS: undefined,
-  CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: undefined,
 };
 
 function withSettings<T>(toolSearch: "on" | "off" | "auto", fn: () => T, toolSearchAutoThreshold = 10): T {
@@ -131,20 +127,6 @@ function main(): void {
     withSettings("off", () => assert(getToolSearchMode() === "standard", "off → standard"));
     withSettings("auto", () => assert(getToolSearchMode() === "tst-auto", "auto → tst-auto"));
     withSettings("auto", () => assert(getToolSearchMode() === "tst-auto", "auto threshold 25 → tst-auto"), 25);
-    for (const [old, mode] of [
-      ["auto:0", "on"],
-      ["auto:100", "off"],
-    ] as const)
-      assert(
-        migrateLegacyEnvironment({ ENABLE_TOOL_SEARCH: old }).toolSearch?.toolSearch === mode,
-        `${old} is converted only by explicit migration`,
-      );
-    withEnv({ EASY_AGENT_ENABLE_TOOL_SEARCH: "auto:abc" }, () =>
-      assert(
-        migrateLegacyEnvironment(process.env).notices.some((notice) => notice.level === "error"),
-        "invalid legacy mode has a migration error",
-      ),
-    );
     withEnv({ EASY_AGENT_DISABLE_EXPERIMENTAL_BETAS: "1" }, () =>
       withSettings("on", () => assert(getToolSearchMode() === "standard", "kill switch wins over explicit on")),
     );

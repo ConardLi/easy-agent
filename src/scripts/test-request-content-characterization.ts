@@ -88,8 +88,7 @@ const DESCRIPTIONS: Record<ScenarioName, string> = {
 
 // ─── Child: run one scenario ─────────────────────────────────────────────
 
-const PROVIDER_ENV = /^(?:ANTHROPIC_|EASY_AGENT_|CLAUDE_CODE_|OPENAI_|GEMINI_|GOOGLE_|MCP_|WEB_SEARCH_)/;
-const PROVIDER_ENV_NAMES = new Set(["MAX_THINKING_TOKENS", "DISABLE_INTERLEAVED_THINKING", "ENABLE_TOOL_SEARCH"]);
+const PROVIDER_ENV = /^(?:ANTHROPIC_|EASY_AGENT_|OPENAI_|GEMINI_|GOOGLE_|MCP_|WEB_SEARCH_)/;
 
 function readBody(request: IncomingMessage): Promise<Record<string, unknown>> {
   return new Promise((resolve) => {
@@ -160,7 +159,7 @@ await server.connect(new StdioServerTransport());
 
 async function runScenario(name: ScenarioName): Promise<ScenarioOutput> {
   for (const key of Object.keys(process.env)) {
-    if (PROVIDER_ENV.test(key) || PROVIDER_ENV_NAMES.has(key)) delete process.env[key];
+    if (PROVIDER_ENV.test(key)) delete process.env[key];
   }
   const root = await realpath(await mkdtemp(path.join(os.tmpdir(), "easy-agent-request-char-")));
   const home = path.join(root, "home");

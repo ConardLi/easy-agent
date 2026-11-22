@@ -15,7 +15,7 @@
  *   [6] Single-source writers — updateProjectSettings / updateLocalSettings
  *       round-trip; local settings auto-added to .gitignore
  *   [7] Zod field-level validation — bad fields dropped (field-level + per-rule),
- *       unknown fields preserved, diagnostics report each repair
+ *       unknown fields rejected, diagnostics report each repair
  *   [8] Read cache — invalidates on file change / write / flag change
  *   [9] Tier 1 config — env injection, language→prompt, apiKeyHelper (executed),
  *       cleanupPeriodDays retention/disable, additionalDirectories boundary
@@ -204,7 +204,7 @@ async function main(): Promise<void> {
   assert(wprojRaw2.model === undefined, "undefined patch value deletes the key");
 
   // ─── [7] schema validation (P1) ──────────────────────────────────────────
-  section("[7] Zod field-level validation — bad fields dropped, unknown kept");
+  section("[7] Zod field-level validation — bad and unknown fields rejected");
   const vproj = await fs.mkdtemp(path.join(os.tmpdir(), "ea-cfg-vproj-"));
   await state.trustProjectForSession(vproj);
   await writeJson(userFile, { model: "fallback-model" });
@@ -213,7 +213,7 @@ async function main(): Promise<void> {
     mode: "bogus", // invalid enum → field dropped
     allow: ["GoodRule", 5, "   ", "Another"], // per-rule: keep 2, drop 2
     outputStyle: "vstyle", // valid
-    customKey: "keep-me", // unknown → preserved (passthrough)
+    customKey: "invalid-value",
   });
 
   assert(
@@ -234,9 +234,13 @@ async function main(): Promise<void> {
 
   const vsrcs = await sources.loadSettingSources(vproj);
   const vProjSrc = vsrcs.find((s) => s.source === "project");
-  assert(vProjSrc?.raw?.["customKey"] === "keep-me", "unknown field is preserved (passthrough)");
+  assert(vProjSrc?.raw?.["customKey"] === undefined, "unknown field is excluded");
 
   const vdiags = await settings.loadSettingsDiagnostics(vproj);
+  assert(
+    vdiags.some((d) => d.includes('unknown setting "customKey"')),
+    "unknown field has a diagnostic",
+  );
   assert(
     vdiags.some((d) => d.includes('ignored invalid field "model"')),
     "diagnostics report ignored model field",

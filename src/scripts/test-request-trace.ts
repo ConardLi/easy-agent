@@ -34,7 +34,7 @@ const home = path.join(root, "home");
 const cwd = path.join(root, "project");
 await Promise.all([mkdir(path.join(home, ".easy-agent"), { recursive: true }), mkdir(cwd, { recursive: true })]);
 for (const key of Object.keys(process.env)) {
-  if (/^(?:ANTHROPIC_|EASY_AGENT_|CLAUDE_CODE_|OPENAI_)/.test(key) || /TOOL_SEARCH|THINKING/.test(key)) {
+  if (/^(?:ANTHROPIC_|EASY_AGENT_|OPENAI_)/.test(key)) {
     delete process.env[key];
   }
 }

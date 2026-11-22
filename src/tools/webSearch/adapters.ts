@@ -10,7 +10,7 @@
  * scrapes public search HTML.
  *
  * Selection:
- *   - the Agent's tools.webSearchBackend (WEB_SEARCH_ADAPTER=api|bing) forces a backend
+ *   - the Agent's tools.webSearchBackend (EASY_AGENT_WEB_SEARCH_BACKEND=api|bing) forces a backend
  *   - first-party Anthropic endpoint → API server-side search
  *   - otherwise                      → Bing scrape fallback
  */

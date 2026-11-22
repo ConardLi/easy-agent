@@ -53,7 +53,6 @@ import { logWarn } from "../utils/log.js";
 import type { McpServerConfig } from "../types/mcp.js";
 import { activateWorkspace, agentErrors, consoleLogger, loadWorkspace, type WorkspaceReport } from "./bootstrap.js";
 import { checkModel, listModels, readConfig, setWorkspaceTrust, writeConfig } from "./config.js";
-import { applyConfigMigration, previewConfigMigration } from "../config/migrationFiles.js";
 import { ConfigurationError } from "../config/values.js";
 import { AgentSdkError } from "./errors.js";
 import { approveMcpServer, reconnectMcpServer, reloadExtensions } from "./extensions.js";
@@ -136,8 +135,6 @@ export class AgentRuntime {
     this.connectMcpServers = bindRuntimeScope(this.connectMcpServers.bind(this));
     this.hasModelCredentials = bindRuntimeScope(this.hasModelCredentials.bind(this));
     this.readConfig = bindRuntimeScope(this.readConfig.bind(this));
-    this.previewConfigMigration = bindRuntimeScope(this.previewConfigMigration.bind(this));
-    this.applyConfigMigration = bindRuntimeScope(this.applyConfigMigration.bind(this));
     this.writeConfig = bindRuntimeScope(this.writeConfig.bind(this));
     this.setWorkspaceTrust = bindRuntimeScope(this.setWorkspaceTrust.bind(this));
     this.checkModel = bindRuntimeScope(this.checkModel.bind(this));
@@ -426,16 +423,6 @@ export class AgentRuntime {
   readConfig(): Promise<ConfigSnapshot> {
     this.#assertActive();
     return readConfig(this.cwd);
-  }
-
-  previewConfigMigration(scope: ConfigScope) {
-    this.#assertActive();
-    return previewConfigMigration(this.cwd, scope);
-  }
-
-  applyConfigMigration(scope: ConfigScope, revision: string) {
-    this.#assertActive();
-    return applyConfigMigration(this.cwd, scope, revision);
   }
 
   /**

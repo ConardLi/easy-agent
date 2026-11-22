@@ -10,7 +10,7 @@
 import * as readline from "node:readline";
 import { getUserSettingsPath } from "../utils/paths.js";
 import { readJsonSettingsFile, updateUserSettings } from "../utils/settings.js";
-import { retiredSettingsNotices } from "../config/retired.js";
+import { validateSettings } from "../config/schema.js";
 import { MODEL_PROTOCOLS, ModelProfileSchema, type ModelProfileConfig } from "../config/modelSchema.js";
 import { configEnum, ConfigurationError } from "../config/values.js";
 
@@ -26,9 +26,9 @@ export async function runLogin(): Promise<number> {
     return 1;
   }
   const saved = raw ?? {};
-  const retired = retiredSettingsNotices(saved);
-  if (retired.length) {
-    process.stderr.write(`${retired.map((notice) => notice.message).join("\n")}\n`);
+  const { errors } = validateSettings(saved, settingsPath);
+  if (errors.length) {
+    process.stderr.write(`${errors.join("\n")}\n`);
     return 1;
   }
   const savedEnv = { ...((saved.env ?? {}) as Record<string, string>) };

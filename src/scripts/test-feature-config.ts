@@ -24,9 +24,6 @@ await mkdir(home, { recursive: true });
 await mkdir(cwd, { recursive: true });
 process.env.HOME = home;
 process.env.USERPROFILE = home;
-const savedEnv = process.env.EASY_AGENT_ENABLE_TOOL_SEARCH;
-delete process.env.EASY_AGENT_ENABLE_TOOL_SEARCH;
-delete process.env.ENABLE_TOOL_SEARCH;
 const source = (name: LoadedSource["source"], raw: Record<string, unknown>): LoadedSource => ({
   source: name,
   path: null,
@@ -36,7 +33,8 @@ try {
   assert.equal(SettingsSchema.safeParse({ toolSearch: "invalid" }).success, false);
   const invalid = validateSettings({ toolSearch: "invalid", unknownField: true }, "fixture");
   assert(invalid.errors.some((error) => error.includes("toolSearch")));
-  assert(invalid.errors.some((error) => error.includes('unsupported setting "unknownField"')));
+  assert(invalid.errors.some((error) => error.includes('unknown setting "unknownField"')));
+  assert.equal(Object.hasOwn(invalid.value, "unknownField"), false);
 
   const resolved = resolveFeatureSettings(
     [
@@ -54,10 +52,10 @@ try {
   assert.equal(resolved.modelRoles.think, "project-think");
   const envResolved = resolveFeatureSettings(
     [source("user", { toolSearch: "off" }), source("flag", { toolSearch: "on" })],
-    { EASY_AGENT_ENABLE_TOOL_SEARCH: "auto:25" },
+    {},
   );
   assert.equal(envResolved.toolSearch, "on", "CLI flag supplies the canonical value");
-  assert(envResolved.warnings.some((warning) => warning.includes("Retired configuration")));
+  assert.deepEqual(envResolved.warnings, []);
 
   await trustProjectForSession(cwd);
   const projectFile = getProjectSettingsPath(cwd);
@@ -186,8 +184,6 @@ try {
   assert.match(String(forkResult.content), /FORK_OK/);
   console.log("Feature configuration, atomic reload, LSP and fork-skill checks passed.");
 } finally {
-  if (savedEnv === undefined) delete process.env.EASY_AGENT_ENABLE_TOOL_SEARCH;
-  else process.env.EASY_AGENT_ENABLE_TOOL_SEARCH = savedEnv;
   await stopAllLspServers();
   resetGlobalStateCache();
   setFlagSettings(null);

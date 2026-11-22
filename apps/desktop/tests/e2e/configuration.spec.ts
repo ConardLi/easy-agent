@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { createAgentWorld, openProject, send, type AgentWorld } from "../helpers/agent";
@@ -57,68 +57,24 @@ test("no-profile startup keeps settings available and explains the first model r
   }
 });
 
-test("migration previews safely, backs up exact bytes, reloads and keeps the selected model", async ({ baseURL: _baseURL }, info) => {
-  const original = JSON.stringify(
-    {
-      ...settings(),
-      defaultModel: "fixture-model",
-      model: undefined,
-      claudeMdExcludes: ["**/AGENT.md"],
-      models: { "fixture-model": { ...profile(), protocol: undefined, countTokens: false } },
-    },
-    null,
-    3,
-  );
-  writeFileSync(file(), original);
-  let { app, page } = await openProject(world);
-  try {
-    await models(page);
-    await page.getByRole("button", { name: "预览迁移" }).click();
-    await expect(page.getByRole("dialog", { name: "配置迁移预览" })).toBeVisible();
-    expect(await page.getByRole("dialog").innerText()).not.toContain("fixture-token");
-    expect(readFileSync(file(), "utf8")).toBe(original);
-    expect(world.fixture.requests).toHaveLength(0);
-    await page.screenshot({ path: info.outputPath("migration-preview.png"), animations: "disabled" });
-    await page.getByRole("button", { name: "备份并应用" }).click();
-    await expect.poll(() => settings().agentMdExcludes).toEqual(["**/AGENT.md"]);
-    expect(settings().defaultModel).toBeUndefined();
-    expect(settings().model).toBe("fixture-model");
-    expect(profile().protocol).toBe("anthropic");
-    expect(profile().protocolOptions).toEqual({ anthropic: { countTokens: false } });
-    const backup = readdirSync(join(world.home, ".easy-agent")).find((name) => name.startsWith("settings.json.pre-standardization-"))!;
-    expect(readFileSync(join(world.home, ".easy-agent", backup), "utf8")).toBe(original);
-    if (process.platform !== "win32") expect(statSync(join(world.home, ".easy-agent", backup)).mode & 0o777).toBe(0o600);
-    await app.close();
-    ({ app, page } = await openProject(world));
-    await models(page);
-    await expect(page.getByRole("button", { name: /^fixture-model/ })).toBeVisible();
-    await expect(page.getByRole("button", { name: "预览迁移" })).toHaveCount(0);
-    await page.screenshot({ path: info.outputPath("migration-reloaded.png"), animations: "disabled" });
-  } finally {
-    await app.close();
-  }
-});
-
-test("conflicting legacy credentials disable apply without displaying either secret", async ({ baseURL: _baseURL }, info) => {
-  const original = JSON.stringify({ model: "old", env: { ANTHROPIC_API_KEY: "first-private", ANTHROPIC_AUTH_TOKEN: "second-private" } });
+test("unknown settings remain visible as diagnostics and block model use without rewriting the file", async () => {
+  const original = JSON.stringify({ ...settings(), unknownOption: "private-invalid-value" });
   writeFileSync(file(), original);
   const { app, page } = await openProject(world);
   try {
+    await send(page, "检查配置");
+    await expect(page.getByRole("main").getByText(/unknown setting "unknownOption"/)).toBeVisible();
+    expect(world.fixture.requests).toHaveLength(0);
     await models(page);
-    await page.getByRole("button", { name: "预览迁移" }).click();
-    const dialog = page.getByRole("dialog", { name: "配置迁移预览" });
-    await expect(dialog).toContainText("disagree");
-    expect(await dialog.innerText()).not.toMatch(/first-private|second-private/);
-    await expect(page.getByRole("button", { name: "备份并应用" })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Anthropic", exact: true })).toBeVisible();
+    expect(await page.locator("body").innerText()).not.toContain("private-invalid-value");
     expect(readFileSync(file(), "utf8")).toBe(original);
-    expect(existsSync(`${file()}.bak`)).toBe(false);
-    await page.screenshot({ path: info.outputPath("migration-conflict.png"), animations: "disabled" });
   } finally {
     await app.close();
   }
 });
 
-test("retired credentials block requests until explicit migration and restart", async () => {
+test("ambient vendor credentials do not override the selected profile", async () => {
   const canonical = { ...profile(), apiKey: "${EASY_AGENT_API_KEY}" };
   writeFileSync(
     file(),
@@ -126,33 +82,15 @@ test("retired credentials block requests until explicit migration and restart", 
       ...settings(),
       models: { "fixture-model": canonical },
       harnesses: { default: { model: { main: "fixture-model" } } },
-      env: { EASY_AGENT_API_KEY: "fixture-token", ANTHROPIC_API_KEY: "unused-old-key", ANTHROPIC_AUTH_TOKEN: "unused-old-token" },
+      env: { EASY_AGENT_API_KEY: "fixture-token", ANTHROPIC_API_KEY: "ambient-key", ANTHROPIC_AUTH_TOKEN: "ambient-token" },
     }),
   );
-  world.fixture.script([{ kind: "text", text: "重载后仍使用规范连接" }]);
-  let { app, page } = await openProject(world);
+  world.fixture.script([{ kind: "text", text: "使用所选连接" }]);
+  const { app, page } = await openProject(world);
   try {
     await send(page, "检查已保存连接");
-    await expect(page.getByRole("main").getByText(/Retired configuration/)).toBeVisible();
-    expect(world.fixture.requests).toHaveLength(0);
-    await models(page);
-    await page.getByRole("button", { name: "预览迁移" }).click();
-    const dialog = page.getByRole("dialog", { name: "配置迁移预览" });
-    expect(await dialog.innerText()).not.toMatch(/unused-old-key|unused-old-token|disagree/);
-    await expect(dialog).toContainText(file());
-    await expect(page.getByRole("button", { name: "备份并应用" })).toBeEnabled();
-    await page.getByRole("button", { name: "备份并应用" }).click();
-    await expect
-      .poll(async () => ({
-        error: await dialog.getByRole("alert").allTextContents(),
-        env: settings().env,
-      }))
-      .toEqual({ error: [], env: { EASY_AGENT_API_KEY: "fixture-token" } });
     expect(profile()).toEqual(canonical);
-    await app.close();
-    ({ app, page } = await openProject(world));
-    await send(page, "检查重载连接");
-    await expect(page.getByRole("main").getByText("重载后仍使用规范连接", { exact: true })).toBeVisible();
+    await expect(page.getByRole("main").getByText("使用所选连接", { exact: true })).toBeVisible();
     expect(world.fixture.requests.at(-1)?.headers["x-api-key"]).toBe("fixture-token");
     expect(world.fixture.requests.at(-1)?.headers.authorization).toBeUndefined();
   } finally {

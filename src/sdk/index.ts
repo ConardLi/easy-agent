@@ -22,7 +22,6 @@ export type {
   ProtocolOptions,
   ReasoningSettings,
 } from "../config/modelSchema.js";
-export type { ConfigMigrationPreview, ConfigMigrationResult } from "../config/migrationFiles.js";
 export type {
   HarnessContribution,
   HarnessIgnoredValue,

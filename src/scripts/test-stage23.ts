@@ -315,13 +315,13 @@ async function main(): Promise<void> {
     // Seed an existing key to confirm shallow merge keeps it
     await writeFileEnsuringDir(
       path.join(home, ".easy-agent", "settings.json"),
-      JSON.stringify({ existing: "keep-me" }, null, 2),
+      JSON.stringify({ language: "en" }, null, 2),
     );
     await updateUserSettings({ outputStyle: "Explanatory" });
 
     const written = JSON.parse(await fs.readFile(path.join(home, ".easy-agent", "settings.json"), "utf-8"));
     assert(written.outputStyle === "Explanatory", "outputStyle persisted");
-    assert(written.existing === "keep-me", "existing keys preserved (shallow merge)");
+    assert(written.language === "en", "existing settings preserved (shallow merge)");
 
     const merged = await readMergedStringSetting(cwd, "outputStyle");
     assert(merged === "Explanatory", "readMergedStringSetting reads it back");

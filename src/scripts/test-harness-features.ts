@@ -46,24 +46,13 @@ const FEATURE_ENV = [
   "EASY_AGENT_REASONING",
   "EASY_AGENT_REASONING_BUDGET_TOKENS",
   "EASY_AGENT_TEAMS",
-  "EASY_AGENT_ENABLE_TOOL_SEARCH",
-  "ENABLE_TOOL_SEARCH",
-  "MAX_THINKING_TOKENS",
-  "CLAUDE_CODE_DISABLE_THINKING",
-  "CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING",
-  "DISABLE_INTERLEAVED_THINKING",
-  "CLAUDE_CODE_ALWAYS_ENABLE_EFFORT",
   "EASY_AGENT_DISABLE_PROMPT_CACHING",
   "EASY_AGENT_DISABLE_EXPERIMENTAL_BETAS",
   "EASY_AGENT_MAX_RETRIES",
   "EASY_AGENT_DISABLE_CHECKPOINTING",
 ] as const;
 for (const key of Object.keys(process.env)) {
-  if (
-    /^(?:ANTHROPIC_|EASY_AGENT_|CLAUDE_CODE_)/.test(key) ||
-    /TOOL_SEARCH|THINKING|WEB_SEARCH/.test(key) ||
-    (FEATURE_ENV as readonly string[]).includes(key)
-  ) {
+  if (/^(?:ANTHROPIC_|EASY_AGENT_)/.test(key) || (FEATURE_ENV as readonly string[]).includes(key)) {
     delete process.env[key];
   }
 }
@@ -297,7 +286,7 @@ try {
     );
   });
 
-  await check("features.toolSearch matches settings; retired variables block requests", async () => {
+  await check("features.toolSearch matches settings", async () => {
     // The fixture is a custom endpoint, where ToolSearch is used only when a layer turns it on.
     await sameEffect("toolSearch", first, {
       spec: { spec: { features: { toolSearch: "on" } } },
@@ -311,9 +300,6 @@ try {
     assert.ok(
       !toolNames((await run({ spec: { features: { toolSearch: "off" } } })).requests[0]).includes("ToolSearch"),
     );
-    const retired = await run({ env: { EASY_AGENT_ENABLE_TOOL_SEARCH: "true" } });
-    assert.equal(retired.requests.length, 0);
-    assert.match(retired.errors.join("\n"), /Retired configuration "EASY_AGENT_ENABLE_TOOL_SEARCH"/);
   });
 
   await check("reasoning.mode and EASY_AGENT_REASONING select the same request behavior", async () => {
@@ -341,24 +327,11 @@ try {
     assert.deepEqual(result.requests[0]?.body.thinking, { type: "enabled", budget_tokens: 2048 });
   });
 
-  await check("retired thinking variables block requests even with a canonical reasoning intent", async () => {
-    const result = await run({ spec: { reasoning: { mode: "on" } }, env: { CLAUDE_CODE_DISABLE_THINKING: "1" } });
-    assert.equal(result.requests.length, 0);
-    assert.match(result.errors.join("\n"), /Retired configuration "CLAUDE_CODE_DISABLE_THINKING"/);
+  await check("unknown Harness fields cannot send requests", async () => {
+    await assert.rejects(run({ spec: { features: { unknownFeature: false } } }), /Unrecognized/i);
   });
 
-  await check("retired Harness features and protocol switches cannot send requests", async () => {
-    for (const options of [
-      { spec: { features: { interleavedThinking: false, adaptiveThinking: false } } },
-      { env: { DISABLE_INTERLEAVED_THINKING: "1", CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING: "1" } },
-    ]) {
-      const result = await run(options);
-      assert.equal(result.requests.length, 0);
-      assert.match(result.errors.join("\n"), /Retired configuration/);
-    }
-  });
-
-  await check("effort requires an explicit profile capability and rejects a retired global override", async () => {
+  await check("effort requires an explicit profile capability", async () => {
     const spec = { model: { main: "claude-sonnet-4-5" }, reasoning: { effort: "high" } };
     const effort = (result: RunResult) => result.requests[0]?.body.output_config ?? null;
     const unsupported = await run({ spec });
@@ -376,9 +349,6 @@ try {
       },
     });
     assert.deepEqual(effort(explicit), { effort: "high" });
-    const ambiguous = await run({ spec, env: { CLAUDE_CODE_ALWAYS_ENABLE_EFFORT: "1" } });
-    assert.equal(ambiguous.requests.length, 0);
-    assert.match(ambiguous.errors.join("\n"), /Retired configuration "CLAUDE_CODE_ALWAYS_ENABLE_EFFORT"/);
   });
 
   await check("reasoning.effort uses the spec above user and below project settings", async () => {

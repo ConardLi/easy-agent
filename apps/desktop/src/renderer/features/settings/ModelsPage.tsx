@@ -26,7 +26,6 @@ import { type AgentSettings, type SettingKey, TODO_SETTINGS } from "./agentSetti
 import { changeProviderConnection, keyName } from "./providers";
 import { AgentSettingRow } from "./AgentSettingRow";
 import { NumberInput, ScopeTag, Select } from "./controls";
-import { ConfigMigrationNotice } from "./ConfigMigrationNotice";
 
 /* ------------------------------------------------------------------ */
 /* Shared bits                                                         */
@@ -1259,7 +1258,6 @@ export function ModelsPage() {
       </aside>
 
       <div className="scroll-thin min-w-0 flex-1 overflow-y-auto">
-        <ConfigMigrationNotice />
         {current ? <ProviderPane key={current.id} p={current} save={save(current.id)} /> : <DefaultsPane />}
       </div>
 

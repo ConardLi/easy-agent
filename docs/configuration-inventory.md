@@ -58,9 +58,9 @@ Layers are user (`~/.easy-agent/settings.json`), project (`.easy-agent/settings.
 
 | Variable | Category | Security | Read | Default | Settings or flag | Summary | Read in |
 |---|---|---|---|---|---|---|---|
-| `EASY_AGENT_API_KEY` | environment | yes | runtime | unset |  | Single credential for the temporary connection or an explicit profile reference. | `src/config/migration.ts`, `src/services/api/providers/profile.ts` |
+| `EASY_AGENT_API_KEY` | environment | yes | runtime | unset |  | Single credential for the temporary connection or an explicit profile reference. | `src/services/api/providers/profile.ts` |
 | `EASY_AGENT_AUTO_MODE_MODEL` | agent |  | runtime | main profile |  | Profile ID for the Auto Mode classifier. | `src/harness/keys.ts` |
-| `EASY_AGENT_BASE_URL` | environment | yes | runtime | official URL of the selected protocol |  | Service URL for the temporary connection. | `src/config/migration.ts`, `src/services/api/providers/profile.ts` |
+| `EASY_AGENT_BASE_URL` | environment | yes | runtime | official URL of the selected protocol |  | Service URL for the temporary connection. | `src/services/api/providers/profile.ts` |
 | `EASY_AGENT_DEBUG` | environment |  | runtime | false |  | Enable debug logs with credential redaction. | `src/utils/log.ts` |
 | `EASY_AGENT_DEBUG_STREAM` | environment |  | runtime | false |  | Write model stream diagnostics to a private log. | `src/utils/streamDebug.ts` |
 | `EASY_AGENT_DISABLE_CHECKPOINTING` | agent |  | runtime | false |  | Disable file checkpoints. | `src/harness/keys.ts` |
@@ -70,12 +70,12 @@ Layers are user (`~/.easy-agent/settings.json`), project (`.easy-agent/settings.
 | `EASY_AGENT_MAX_CONTEXT_TOKENS` | agent |  | runtime | model metadata; unknown: 32000 (estimate) |  | Positive context window used by token budgeting. | `src/harness/keys.ts` |
 | `EASY_AGENT_MAX_RETRIES` | agent |  | runtime | 10 |  | Non-negative retry count; 0 disables retries. | `src/harness/keys.ts` |
 | `EASY_AGENT_MCP_CONNECT_TIMEOUT_MS` | resource |  | runtime | 30000 |  | Positive connection timeout in milliseconds. | `src/services/mcp/client.ts` |
-| `EASY_AGENT_MODEL` | environment |  | runtime | unset |  | Upstream model name for the temporary connection; requires an explicit protocol. | `src/config/migration.ts`, `src/services/api/providers/profile.ts` |
+| `EASY_AGENT_MODEL` | environment |  | runtime | unset |  | Upstream model name for the temporary connection; requires an explicit protocol. | `src/services/api/providers/profile.ts` |
 | `EASY_AGENT_POWERSHELL` | environment | yes | runtime | powershell.exe |  | Trusted PowerShell executable. | `src/tools/powerShellTool.ts` |
 | `EASY_AGENT_PROFILE` | agent |  | runtime | unset |  | Select a saved profile ID; shortcut target variables cannot accompany it. | `src/harness/keys.ts`, `src/services/api/providers/profile.ts`, `src/utils/loadEnv.ts` |
-| `EASY_AGENT_PROTOCOL` | environment |  | runtime | unset |  | Temporary connection: anthropic, openai-chat, openai-responses, or gemini. | `src/config/migration.ts`, `src/services/api/providers/profile.ts` |
-| `EASY_AGENT_REASONING` | agent |  | runtime | auto |  | Reasoning intent: auto, on, or off. | `src/config/migration.ts`, `src/harness/keys.ts` |
-| `EASY_AGENT_REASONING_BUDGET_TOKENS` | agent |  | runtime | unset |  | Positive reasoning budget, within output and context limits. | `src/config/migration.ts`, `src/harness/keys.ts` |
+| `EASY_AGENT_PROTOCOL` | environment |  | runtime | unset |  | Temporary connection: anthropic, openai-chat, openai-responses, or gemini. | `src/services/api/providers/profile.ts` |
+| `EASY_AGENT_REASONING` | agent |  | runtime | auto |  | Reasoning intent: auto, on, or off. | `src/harness/keys.ts` |
+| `EASY_AGENT_REASONING_BUDGET_TOKENS` | agent |  | runtime | unset |  | Positive reasoning budget, within output and context limits. | `src/harness/keys.ts` |
 | `EASY_AGENT_SKILL_CHAR_BUDGET` | agent |  | runtime | 8000 |  | Positive character budget for the skill listing. | `src/harness/keys.ts` |
 | `EASY_AGENT_TEAMS` | agent |  | runtime | false |  | Enable Agent Teams. | `src/harness/keys.ts` |
 | `EASY_AGENT_WEB_SEARCH_BACKEND` | agent |  | runtime | selected connection capabilities |  | WebSearch backend: bing or api. | `src/harness/keys.ts` |
@@ -88,8 +88,6 @@ Variables named by configuration are read too:
 
 - `src/config/values.ts`: Strict `${VAR}` references and credential source validation against the runtime snapshot.
 - `src/config/environment.ts`: Runtime snapshot, credential protection and owned process environment restoration.
-- `src/config/migration.ts`: Offline conversion used only by the explicit migration command/API.
-- `src/config/retired.ts`: Diagnoses removed names without applying or converting their values.
 - `src/harness/keys.ts`: Strict parsers for canonical names declared in the Harness key table.
 - `src/services/api/providers/profile.ts`: Complete connection selection from the runtime environment snapshot.
 - `src/services/mcp/remoteHeaders.ts`: `headersEnv` of a remote MCP server names the variables to send as headers.

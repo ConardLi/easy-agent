@@ -20,18 +20,19 @@ export async function detectWorkspaceRisks(cwd: string): Promise<string[]> {
     if (raw["env"] && typeof raw["env"] === "object" && Object.keys(raw["env"] as Record<string, unknown>).length > 0) {
       risks.add("environment variables");
     }
-    if (
-      raw["models"] &&
-      typeof raw["models"] === "object" &&
-      Object.values(raw["models"] as Record<string, unknown>).some((profile) => {
-        if (!profile || typeof profile !== "object" || Array.isArray(profile)) return false;
+    if (raw["models"] && typeof raw["models"] === "object" && !Array.isArray(raw["models"])) {
+      for (const profile of Object.values(raw["models"] as Record<string, unknown>)) {
+        if (!profile || typeof profile !== "object" || Array.isArray(profile)) continue;
         const value = profile as Record<string, unknown>;
-        return ["protocol", "baseURL", "apiKey", "headers"].some((key) => value[key] !== undefined);
-      })
-    ) {
-      risks.add("model provider endpoints or credentials");
+        if (["protocol", "baseURL", "apiKey", "headers"].some((key) => value[key] !== undefined)) {
+          risks.add("model provider endpoints or credentials");
+        }
+        const apiKey = value.apiKey;
+        if (apiKey && typeof apiKey === "object" && typeof (apiKey as Record<string, unknown>).helper === "string") {
+          risks.add("an API key helper command");
+        }
+      }
     }
-    if (raw["apiKeyHelper"]) risks.add("an API key helper command");
     if (Array.isArray(raw["additionalDirectories"]) && raw["additionalDirectories"].length > 0) {
       risks.add("additional filesystem roots");
     }

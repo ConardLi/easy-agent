@@ -1,45 +1,46 @@
 # Configuration standardization validation
 
-Acceptance date: 2026-11-22, macOS. This report covers the canonical-only runtime, including removal of automatic legacy conversion. Earlier compatibility-mode results are not evidence for this version. Exact-commit CI results are recorded in [PR #172](https://github.com/ConardLi/easy-agent/pull/172).
+Acceptance date: 2026-11-22, macOS. This report covers the removal of configuration converters, retired-name registries and migration entry points. Earlier compatibility and manual-migration results do not validate this version. Final-commit CI evidence is recorded in [PR #172](https://github.com/ConardLi/easy-agent/pull/172).
 
 | Check | Result |
 |---|---|
 | Core types, lint, format, source hygiene, frontend boundaries, inventory and build | Passed |
 | Production regressions | 91/91 groups, no skips |
 | Local platform/sandbox checks | 2/2 |
-| Request-record performance | 2/2; p95 0.34 ms, record/transcript ratio 0.77 |
-| Release/package/installed CLI, SDK, RPC, ACP and installer | 76/76 |
-| Connection and configuration lifecycle checks | 39/39 |
-| Harness resolver | 53/53 |
-| Harness features and controlled requests | 21/21 |
-| Desktop types, lint and formatting | Passed |
-| Full desktop acceptance | 123/123: 63 unit, 52 e2e, 8 pixel visual |
-| Final migration and screenshot checks | 5/5 after asserting the model page and reloaded selection are visible |
+| Request-record performance | 2/2; p95 0.35 ms, record/transcript ratio 0.77 |
+| Release/package/installed CLI, SDK, RPC, ACP and installer | 73/73 |
+| Connection and configuration lifecycle checks | 25/25 |
+| Harness resolver | 42/42 |
+| Harness features and controlled requests | 20/20 |
+| Desktop types, lint, format and build | Passed |
+| Full desktop suite | 122/122: 63 unit, 51 e2e, 8 pixel visual |
+| Configuration screenshots | Five refreshed from the passing e2e run and manually inspected |
 | Style reference | Typecheck and build passed |
 | Bilingual documentation site | Typecheck, static build and link check passed |
-| Workspace companion patch | 52 files; forward/reverse application and exact bytes verified with SHA-256 manifest |
+| Workspace companion patch | 48 files; forward/reverse application and exact bytes verified with SHA-256 manifest |
 
-Runtime loading, model requests and ordinary saves use the canonical contract only. Retired fields and unreferenced retired environment variables produce actionable errors before helpers or model requests run. A malformed live edit preserves the last valid values while retaining diagnostics that block requests. Missing protocols and unknown profile IDs cannot fall back to Anthropic. Historical sessions do not infer a profile from an upstream model name, even if exactly one profile matches.
+Only the current schema governs configuration. Unknown settings, Profile and Harness fields use generic validation; no retired-name registry or format converter remains. Unrelated environment variables do not configure the program. Explicit `${VAR}` references can use any name, including vendor names.
 
-The explicit CLI/SDK/RPC migration entry points read original file bytes, preview redacted changes, check revisions, and create exact private backups. Ordinary saves reject retired fields without converting or backing up the file; an explicit edit can remove them. Independent old roles and classifiers retain their original connections only through manual migration. Explicit arbitrary environment references remain valid and never borrow another connection's key. An AST inventory guard prevents production runtime modules from importing the offline converter. The installed-package gate additionally verifies retired environment rejection before HTTP, unchanged old settings on startup, a redacted read-only preview, and explicit migration with an exact original-byte backup.
+The complete `npm run verify:release` command passed after updating the persistence fixtures. The installed-package checks confirm that unknown configuration is rejected before HTTP, without rewriting the original file or exposing its values.
 
-Four-protocol authentication checks send 12 controlled HTTP requests: default, custom header and none for each protocol. They verify that only the selected profile's credential is sent. Connection lifecycle coverage also checks helper ownership, cache invalidation, runtime isolation, source precedence and missing references. Trust and permission checks retain their existing assertions, including Windows `Path`/`PATH` inheritance.
+CLI, SDK, RPC, desktop and style-reference migration entry points, their types, generated routes, dedicated tests, guides and screenshots have been removed. Normal editing, connection checks and diagnostics remain available. Invalid initial configuration is reported before credential helpers or model requests execute. A live edit rejected by settings validation preserves the preceding complete source snapshot and exposes the rejection diagnostics. Correcting the file applies the new snapshot. Ordinary writes validate the current schema and preserve the file on failure.
 
-The real Electron suite runs the built app and real Agent processes with isolated HOME directories and a controlled model. It checks no-model configuration, canonical save/reload, connection checks, migration preview, exact backup, conflicts, helper/custom authentication and explicit no-auth behavior. The retired-credential scenario asserts zero requests before migration, then restarts and verifies the canonical authentication header. Error toasts remain below modal dialogs so they cannot intercept the migration button. An unset reasoning budget displays as automatic and can be set and cleared without writing zero.
+Four-protocol authentication checks send 12 controlled HTTP requests: default, custom header and no authentication for each protocol. Only the selected Profile's credential is sent. Coverage also checks helper ownership, cache invalidation, runtime isolation, source priority, explicit references and missing Profile IDs. Historical sessions require a saved Profile or explicit selection; they do not infer one from the upstream model name.
 
-The five golden updates correspond to intentional behavior changes in the plan: CLI help/diagnostics, canonical Harness hashes, valid known-model reasoning and conservative unknown-model reasoning. This follow-up did not change those goldens. Permission-decision goldens, pixel baselines, thresholds and masks were unchanged.
+Trust, permissions, parent credential protection, environment isolation, atomic writes and private storage remain. The workspace trust prompt identifies helpers inside Profiles without executing them. Third-party Skill `${CLAUDE_SKILL_DIR}` and `${CLAUDE_SESSION_ID}` substitutions remain, along with the Anthropic SDK, protocol fields and supported model-name normalization.
 
-The eight existing pixel scenarios cover first launch and request context/comparison. All eight screenshots below were refreshed from the final five migration e2e checks and manually inspected. Those tests now wait for the model page and the reloaded selection to be visible before capturing results, avoiding a screenshot taken during page loading. These screenshots do not constitute a full pixel baseline for model and migration pages.
+Persistence and settings-merge fixtures now use actual schema fields. Eight concurrent settings writers still verify that no writes are lost, while crash recovery, unchanged invalid files and preservation of existing fields retain their assertions.
+
+The real Electron suite uses isolated HOME directories, real Agent processes and a controlled model. The four configuration cases cover first configuration and reasoning-budget edit/clear, unknown settings with zero model requests and unchanged original bytes, ambient vendor credentials that cannot override the selected Profile, and helper/custom authentication save/reload followed by explicit no-auth.
+
+The eight existing pixel scenarios cover first launch and request context/comparison. The model settings screenshots below are separate configuration e2e artifacts; they do not expand the pixel-baseline coverage. Pixel baselines, thresholds and masks are unchanged.
 
 | Screenshot | Coverage |
 |---|---|
-| [No model configured](./screenshots/no-profile-configuration.png) | Usable settings before the first profile is configured |
-| [Migration preview](./screenshots/migration-preview.png) | Redacted diff, notices and explicit backup/apply action |
-| [Reload after migration](./screenshots/migration-reloaded.png) | Canonical saved selection survives restart |
-| [Credential conflict](./screenshots/migration-conflict.png) | Neither secret displayed; apply disabled |
+| [No model configured](./screenshots/no-profile-configuration.png) | Settings remain usable before the first Profile |
 | [Custom authentication](./screenshots/profile-helper-custom-auth.png) | One API Key source and a declared header/prefix |
-| [Profile helper](./screenshots/profile-helper-advanced.png) | Helper ownership and protected command |
+| [Profile helper](./screenshots/profile-helper-advanced.png) | Profile-owned helper command |
 | [No authentication](./screenshots/profile-no-auth.png) | Explicit no-auth endpoint without a credential header |
-| [Automatic budget](./screenshots/reasoning-budget-auto.png) | Unset state after positive-budget edit and clear |
+| [Automatic budget](./screenshots/reasoning-budget-auto.png) | Unset state after a positive-budget edit and clear |
 
-Full raw logs accompany the workspace delivery in `config-standardization-validation/logs/`. See the [migration and rollback guide](../configuration-migration.md), [profile contract](../model-profiles.md), and [companion patch instructions](./README.md). This upgrade removes automatic compatibility immediately; only explicit migration remains. Real `.env` files, historical tutorial snapshots and the read-only reference repository were not modified. No npm package was published.
+Full raw logs accompany the workspace delivery in `config-standardization-validation/logs/`. See the [Profile contract](../model-profiles.md) and [companion patch instructions](./README.md). Real `.env` files, historical tutorial snapshots and the read-only reference repository were not modified. No npm package was published.

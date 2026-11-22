@@ -28,7 +28,7 @@ const home = path.join(root, "home");
 const cwd = path.join(root, "project");
 await Promise.all([mkdir(path.join(home, ".easy-agent"), { recursive: true }), mkdir(cwd, { recursive: true })]);
 for (const key of Object.keys(process.env)) {
-  if (/^(?:ANTHROPIC_|EASY_AGENT_|CLAUDE_CODE_)/.test(key)) delete process.env[key];
+  if (/^(?:ANTHROPIC_|EASY_AGENT_)/.test(key)) delete process.env[key];
 }
 process.env.HOME = home;
 process.env.USERPROFILE = home;

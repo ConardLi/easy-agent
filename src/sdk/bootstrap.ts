@@ -169,9 +169,7 @@ export const loadWorkspace = withRuntimeScope(async (options: AgentRuntimeOption
     cwd,
     resolve: async (dir: string) => {
       const resolved = await resolveHarness({ cwd: dir, env, ...selection });
-      const problem = selected
-        ? agentErrors({ ...resolved, issues: resolved.issues.filter((issue) => !issue.retired) })
-        : undefined;
+      const problem = selected ? agentErrors(resolved) : undefined;
       if (problem === undefined) {
         if (nodePath.resolve(dir) === nodePath.resolve(cwd)) reported = undefined;
         return resolved;

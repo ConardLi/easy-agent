@@ -22,7 +22,6 @@ import { trustProjectForSession } from "../config/globalState.js";
 import { resetSettingsCache } from "../config/sources.js";
 import { validateDeclaredCapabilities } from "../services/api/providers/capabilities.js";
 import { shouldSendPromptCacheKey } from "../services/api/providers/providerStream.js";
-import { legacyProfileId } from "../config/migration.js";
 
 const emptyHarness = () => resolveHarnessFromInputs({ layers: [], workspaceTrusted: false, env: {} });
 
@@ -297,12 +296,6 @@ test("profile resolution freezes environment, rejects missing IDs and never borr
       resetSettingsCache();
       assert.equal((await resolveProfile("helper", cwd)).apiKey, "helper-value");
       assert.equal(process.env.ANTHROPIC_AUTH_TOKEN, undefined);
-      installConfigurationEnvironment({ ANTHROPIC_API_KEY: "legacy", EASY_AGENT_AUTO_MODE_MODEL: "old-classifier" });
-      const loaded = await loadProfiles(cwd);
-      assert.equal(loaded.profiles[legacyProfileId("old-classifier")], undefined);
-      assert.ok(
-        loaded.configurationErrors?.some((error) => error.includes('Retired configuration "ANTHROPIC_API_KEY"')),
-      );
       assert.equal(
         resolveHarnessFromInputs({
           layers: [],

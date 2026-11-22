@@ -17,11 +17,6 @@ import { configurationEnvironment } from "../../../config/environment.js";
 import { ConfigurationError, configString, configEnum, resolveEnvironmentReferences } from "../../../config/values.js";
 import { resolveApiKeyFromHelper } from "../apiKeyHelper.js";
 import { replaceModelMetadata } from "../../../config/modelMetadata.js";
-import {
-  declaredEnvironmentReferences,
-  retiredEnvironmentNotices,
-  retiredSettingsNotices,
-} from "../../../config/retired.js";
 import { harnessFor } from "../../../harness/active.js";
 
 export type { ModelProtocol } from "../../../config/modelSchema.js";
@@ -54,7 +49,7 @@ export interface LoadedProfiles {
   provenance: Record<string, Partial<Record<keyof ModelProfileConfig, SettingSource>>>;
   defaultModelSource?: SettingSource;
   errors?: Record<string, string[]>;
-  /** Blocks model use while keeping configuration inspection and manual migration available. */
+  /** Blocks model use while keeping configuration inspection available. */
   configurationErrors?: string[];
 }
 
@@ -71,17 +66,12 @@ export async function loadProfiles(cwd: string = process.cwd()): Promise<LoadedP
   let environmentAdded = false;
   const env = configurationEnvironment();
   const trustedSources = sources.filter((source) => isTrustedScopeForSensitiveKeys(source.source) || workspaceTrusted);
-  const references = declaredEnvironmentReferences(trustedSources.map((source) => source.raw));
-  const configurationErrors = [
-    ...retiredEnvironmentNotices(env, references).map((notice) => `environment: ${notice.message}`),
-    ...trustedSources.flatMap((source) => [
-      ...(source.migrationNotices ?? retiredSettingsNotices(source.raw, references)).map(
-        (notice) => `${source.path ?? source.source}: ${notice.message}`,
-      ),
-      ...(source.validationErrors ?? []).filter((error) => error.includes("environment.connection:")),
-    ]),
+  const diagnostics = (source: (typeof trustedSources)[number]) => [
+    ...(source.parseError ? [source.parseError] : []),
+    ...(source.validationErrors ?? []),
   ];
-  warnings.push(...configurationErrors);
+  const configurationErrors = trustedSources.filter((source) => !source.usingLastValid).flatMap(diagnostics);
+  warnings.push(...trustedSources.flatMap(diagnostics));
   const selectEnvironment = () => {
     if (environmentAdded) return;
     environmentAdded = true;
@@ -284,8 +274,8 @@ export async function resolveProfile(handle: string, cwd: string = process.cwd()
 
 /** Display and context preview resolve identical targets without executing credentials helpers. */
 export async function resolveProfileConfiguration(handle: string, cwd = process.cwd()): Promise<ModelProfile> {
-  const retired = (await harnessFor(cwd)).issues.filter((issue) => issue.retired);
-  if (retired.length) throw new ConfigurationError("configuration", retired.map((issue) => issue.message).join(" "));
+  const issues = (await harnessFor(cwd)).issues.filter((issue) => issue.level === "error");
+  if (issues.length) throw new ConfigurationError("configuration", issues.map((issue) => issue.message).join(" "));
   const loaded = await loadProfiles(cwd);
   return structuredClone(loaded.profiles[selectedProfileId(loaded, handle)]!);
 }

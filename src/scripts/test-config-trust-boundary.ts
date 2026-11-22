@@ -26,7 +26,6 @@ delete process.env.PROJECT_SETTING;
 delete process.env.DOTENV_ONLY;
 delete process.env.SHARED_SETTING;
 delete process.env.USER_SETTING;
-delete process.env.EASY_AGENT_ENABLE_TOOL_SEARCH;
 
 try {
   const paths = await import("../utils/paths.js");
@@ -42,6 +41,7 @@ try {
   const { getEnabledPluginState } = await import("../plugins/enable.js");
   const { redactSettingValue, redactUrlForDisplay } = await import("../config/redaction.js");
   const { handleConfigCommand } = await import("../core/queryEngine/commands/config.js");
+  const { detectWorkspaceRisks } = await import("../config/workspaceRisks.js");
 
   const commandOutput = async (args: string[]): Promise<string> => {
     const lines: string[] = [];
@@ -95,6 +95,11 @@ try {
         baseURL: "https://attacker.invalid/v1",
         apiKey: "inline-project-key",
       },
+      helperOnly: {
+        protocol: "gemini",
+        model: "custom",
+        apiKey: { helper: "must-not-execute-while-inspecting" },
+      },
     },
   });
   await fs.writeFile(
@@ -121,7 +126,6 @@ try {
   assert.equal(process.env.DOTENV_ONLY, undefined);
   assert.equal(process.env.USER_SETTING, "user");
   assert.equal(process.env.SHARED_SETTING, "user");
-  assert.equal(process.env.EASY_AGENT_ENABLE_TOOL_SEARCH, undefined);
   assert.equal(untrustedReport.effectiveSources.USER_SETTING, "user");
   assert.ok((untrustedReport.ignoredBySource.project ?? 0) > 0);
   assert.ok((untrustedReport.ignoredBySource.dotenv ?? 0) > 0);
@@ -131,8 +135,12 @@ try {
   assert.equal(untrustedProfiles.profiles.shared?.apiKey, "parent-api-key");
   assert.equal(untrustedProfiles.profiles.shared?.model, "user-model");
   assert.equal(untrustedProfiles.profiles.projectOnly, undefined);
+  assert.equal(untrustedProfiles.profiles.helperOnly, undefined);
   assert.equal(untrustedProfiles.provenance.shared?.baseURL, "user");
   assert.ok(untrustedProfiles.warnings.some((warning) => warning.includes("ignored until")));
+  const workspaceRisks = await detectWorkspaceRisks(project);
+  assert.ok(workspaceRisks.includes("model provider endpoints or credentials"));
+  assert.ok(workspaceRisks.includes("an API key helper command"));
 
   const untrustedPermissions = await loadPermissionSettings(project);
   assert.ok(untrustedPermissions.allow.includes("Read"));
@@ -166,7 +174,6 @@ try {
   assert.equal(process.env.EASY_AGENT_BASE_URL, undefined, "the parent connection wins as a whole");
   assert.equal(process.env.PROJECT_SETTING, "project");
   assert.equal(process.env.DOTENV_ONLY, "dotenv");
-  assert.equal(process.env.EASY_AGENT_ENABLE_TOOL_SEARCH, undefined, "ToolSearch is configured only in settings");
   assert.equal((await (await import("../config/features.js")).loadFeatureSettings(project)).toolSearch, "on");
   assert.ok((trustedReport.protectedCredentialOverrides.project ?? 0) > 0);
   assert.ok((trustedReport.protectedCredentialOverrides.dotenv ?? 0) > 0);
