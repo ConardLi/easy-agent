@@ -53,6 +53,9 @@ export function ConfigMigrationNotice() {
         </Button>
       </div>
       <p className="mt-2 text-fg-3">当前文件：{SCOPE_FILE[writeScope]}。迁移先展示差异，应用前保留原文件备份。</p>
+      {(migration || notices.some((notice) => notice.includes("Retired configuration"))) && (
+        <p className="mt-2 text-fg-3">旧配置已停止生效，请手动迁移后再使用模型。Shell 或 .env 中的旧变量需要单独修改并重启。</p>
+      )}
       {notices.length > 0 && (
         <details className="mt-2">
           <summary className="cursor-pointer">查看 {notices.length} 条诊断</summary>

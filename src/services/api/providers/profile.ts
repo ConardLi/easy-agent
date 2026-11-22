@@ -13,11 +13,16 @@ import {
   type ModelProfileConfig,
   type ModelProtocol,
 } from "../../../config/modelSchema.js";
-import { configurationEnvironment, configurationEnvironmentMigration } from "../../../config/environment.js";
+import { configurationEnvironment } from "../../../config/environment.js";
 import { ConfigurationError, configString, configEnum, resolveEnvironmentReferences } from "../../../config/values.js";
 import { resolveApiKeyFromHelper } from "../apiKeyHelper.js";
 import { replaceModelMetadata } from "../../../config/modelMetadata.js";
-import { legacyClassifierConnection, savedProfileOwnsConnection } from "../../../config/migration.js";
+import {
+  declaredEnvironmentReferences,
+  retiredEnvironmentNotices,
+  retiredSettingsNotices,
+} from "../../../config/retired.js";
+import { harnessFor } from "../../../harness/active.js";
 
 export type { ModelProtocol } from "../../../config/modelSchema.js";
 export interface ModelProfile extends Omit<ModelProfileConfig, "apiKey"> {
@@ -49,6 +54,8 @@ export interface LoadedProfiles {
   provenance: Record<string, Partial<Record<keyof ModelProfileConfig, SettingSource>>>;
   defaultModelSource?: SettingSource;
   errors?: Record<string, string[]>;
+  /** Blocks model use while keeping configuration inspection and manual migration available. */
+  configurationErrors?: string[];
 }
 
 /** No helper execution: this path is safe for configuration editors and first launch. */
@@ -62,8 +69,19 @@ export async function loadProfiles(cwd: string = process.cwd()): Promise<LoadedP
   let defaultModel: string | undefined;
   let defaultModelSource: SettingSource | undefined;
   let environmentAdded = false;
-  const migration = configurationEnvironmentMigration();
-  const env = migration.env;
+  const env = configurationEnvironment();
+  const trustedSources = sources.filter((source) => isTrustedScopeForSensitiveKeys(source.source) || workspaceTrusted);
+  const references = declaredEnvironmentReferences(trustedSources.map((source) => source.raw));
+  const configurationErrors = [
+    ...retiredEnvironmentNotices(env, references).map((notice) => `environment: ${notice.message}`),
+    ...trustedSources.flatMap((source) => [
+      ...(source.migrationNotices ?? retiredSettingsNotices(source.raw, references)).map(
+        (notice) => `${source.path ?? source.source}: ${notice.message}`,
+      ),
+      ...(source.validationErrors ?? []).filter((error) => error.includes("environment.connection:")),
+    ]),
+  ];
+  warnings.push(...configurationErrors);
   const selectEnvironment = () => {
     if (environmentAdded) return;
     environmentAdded = true;
@@ -71,28 +89,6 @@ export async function loadProfiles(cwd: string = process.cwd()): Promise<LoadedP
     const hasTarget = ["EASY_AGENT_PROTOCOL", "EASY_AGENT_MODEL", "EASY_AGENT_BASE_URL"].some(
       (key) => configString(env[key]) !== undefined,
     );
-    const savedSelection =
-      migration.legacyConnection &&
-      savedProfileOwnsConnection(
-        [{ models: merged, ...(defaultModel ? { model: defaultModel } : {}) }],
-        undefined,
-        new Set(
-          sources
-            .filter((source) => isTrustedScopeForSensitiveKeys(source.source) || workspaceTrusted)
-            .flatMap((source) => source.canonicalProfileIds ?? []),
-        ),
-      );
-    const relevantNotices = migration.notices.filter(
-      (notice) => !savedSelection || notice.field !== "environment.connection",
-    );
-    const environmentErrors = relevantNotices.filter((notice) => notice.level === "error");
-    if (environmentErrors.length) {
-      errors[ENVIRONMENT_PROFILE_ID] = environmentErrors.map((notice) => `${notice.field}: ${notice.message}`);
-      defaultModel = ENVIRONMENT_PROFILE_ID;
-      defaultModelSource = undefined;
-      return;
-    }
-    warnings.push(...relevantNotices.map((notice) => `${notice.field}: ${notice.message}`));
     if (profileId && hasTarget) {
       errors[ENVIRONMENT_PROFILE_ID] = [
         "environment.connection: choose EASY_AGENT_PROFILE or EASY_AGENT_PROTOCOL/EASY_AGENT_MODEL, not both.",
@@ -101,14 +97,10 @@ export async function loadProfiles(cwd: string = process.cwd()): Promise<LoadedP
       defaultModelSource = undefined;
       return;
     }
-    if (savedSelection) {
-      warnings.push("Legacy environment connection did not replace the explicitly selected saved profile.");
-      return;
-    }
     if (profileId) {
       defaultModel = profileId;
       defaultModelSource = undefined;
-    } else if (hasTarget || environmentErrors.length) {
+    } else if (hasTarget) {
       defaultModel = ENVIRONMENT_PROFILE_ID;
       defaultModelSource = undefined;
       try {
@@ -120,28 +112,12 @@ export async function loadProfiles(cwd: string = process.cwd()): Promise<LoadedP
             "provide both EASY_AGENT_PROTOCOL and EASY_AGENT_MODEL.",
           );
         }
-        const legacyOptions = migration.legacyConnection ? migration.profileOptions : {};
         const id = ENVIRONMENT_PROFILE_ID;
         const selected = {
           protocol,
           model,
           ...(configString(env.EASY_AGENT_BASE_URL) ? { baseURL: configString(env.EASY_AGENT_BASE_URL) } : {}),
           ...(configString(env.EASY_AGENT_API_KEY) ? { apiKey: "${EASY_AGENT_API_KEY}" } : {}),
-          ...(legacyOptions.effort !== undefined ? { capabilities: { effort: legacyOptions.effort } } : {}),
-          ...(legacyOptions.adaptiveThinking !== undefined || legacyOptions.interleavedThinking !== undefined
-            ? {
-                protocolOptions: {
-                  anthropic: {
-                    ...(legacyOptions.adaptiveThinking !== undefined
-                      ? { adaptiveThinking: legacyOptions.adaptiveThinking }
-                      : {}),
-                    ...(legacyOptions.interleavedThinking !== undefined
-                      ? { interleavedThinking: legacyOptions.interleavedThinking }
-                      : {}),
-                  },
-                },
-              }
-            : {}),
         };
         if (merged[id])
           throw new ConfigurationError("models", `${ENVIRONMENT_PROFILE_ID} is reserved for environment connections.`);
@@ -160,14 +136,6 @@ export async function loadProfiles(cwd: string = process.cwd()): Promise<LoadedP
     if (!trusted) {
       if (src.raw.models) warnings.push(`models: "${src.source}" profiles ignored until the workspace is trusted.`);
       continue;
-    }
-    for (const notice of src.migrationNotices ?? []) {
-      warnings.push(`${src.path ?? src.source}: ${notice.field}: ${notice.message}`);
-      if (notice.level === "error" && notice.field === "environment.connection") {
-        const message = `${src.path ?? src.source}: ${notice.message}`;
-        errors[ENVIRONMENT_PROFILE_ID] = [message];
-        if (typeof src.raw.model === "string") errors[src.raw.model] = [message];
-      }
     }
     const models = src.raw.models;
     if (models && typeof models === "object" && !Array.isArray(models)) {
@@ -220,19 +188,6 @@ export async function loadProfiles(cwd: string = process.cwd()): Promise<LoadedP
     }
   }
   selectEnvironment();
-  const legacyClassifier = legacyClassifierConnection(migration, new Set(Object.keys(merged)));
-  if (legacyClassifier) {
-    const { id, profile, notices } = legacyClassifier;
-    const connectionErrors = notices.filter((notice) => notice.level === "error");
-    if (connectionErrors.length)
-      errors[id] = connectionErrors.map((notice) => `EASY_AGENT_AUTO_MODE_MODEL: ${notice.message}`);
-    else if (merged[id] && merged[id].model !== profile.model)
-      errors[id] = ["Legacy classifier profile ID collision; choose a distinct explicit profile ID."];
-    else merged[id] ??= profile;
-    warnings.push(
-      "EASY_AGENT_AUTO_MODE_MODEL: preserved the historical raw classifier model as an explicit profile; save its profile ID.",
-    );
-  }
 
   const profiles: Record<string, ModelProfile> = {};
   for (const [id, raw] of Object.entries(merged)) {
@@ -284,6 +239,7 @@ export async function loadProfiles(cwd: string = process.cwd()): Promise<LoadedP
     warnings,
     provenance,
     errors,
+    configurationErrors,
     ...(defaultModelSource ? { defaultModelSource } : {}),
   };
 }
@@ -301,6 +257,8 @@ export async function resolveProfileId(handle: string | undefined, cwd = process
 }
 
 function selectedProfileId(loaded: LoadedProfiles, handle: string | undefined): string {
+  if (loaded.configurationErrors?.length)
+    throw new ConfigurationError("configuration", loaded.configurationErrors.join(" "));
   const id = configString(handle) ?? loaded.defaultModel;
   if (!id) {
     throw new ConfigurationError(
@@ -326,6 +284,8 @@ export async function resolveProfile(handle: string, cwd: string = process.cwd()
 
 /** Display and context preview resolve identical targets without executing credentials helpers. */
 export async function resolveProfileConfiguration(handle: string, cwd = process.cwd()): Promise<ModelProfile> {
+  const retired = (await harnessFor(cwd)).issues.filter((issue) => issue.retired);
+  if (retired.length) throw new ConfigurationError("configuration", retired.map((issue) => issue.message).join(" "));
   const loaded = await loadProfiles(cwd);
   return structuredClone(loaded.profiles[selectedProfileId(loaded, handle)]!);
 }

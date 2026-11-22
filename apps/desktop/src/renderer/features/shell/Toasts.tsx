@@ -7,7 +7,7 @@ export function Toasts() {
   const toasts = useUi((s) => s.toasts);
   const dismiss = useUi((s) => s.dismissToast);
   return (
-    <div className="pointer-events-none fixed bottom-5 left-1/2 z-[100] flex -translate-x-1/2 flex-col items-center gap-2">
+    <div className="pointer-events-none fixed bottom-5 left-1/2 z-[80] flex -translate-x-1/2 flex-col items-center gap-2">
       <AnimatePresence initial={false}>
         {toasts.map((t) => {
           const Icon = t.tone === "success" ? CircleCheck : t.tone === "danger" ? CircleAlert : Info;

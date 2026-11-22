@@ -157,6 +157,8 @@ eagent
 
 Profile 支持单一 API Key 来源、明确的自定义认证或无认证策略、能力覆盖和协议选项。通用推理配置是 `reasoning.mode`（`auto`、`on`、`off`）、`budgetTokens` 和 `effort`。未知模型使用标注为估算的 32000-token 窗口、未知价格和保守的自动推理。详见[模型 Profile](./docs/model-profiles.md)、[环境变量目录](./docs/configuration-inventory.md)和[迁移及回退指南](./docs/configuration-migration.md)。
 
+本次升级已移除旧配置的自动兼容读取。旧字段和变量会明确报错；可先运行 `eagent config migrate` 预览，再加 `--apply` 备份并转换指定文件。普通启动和保存不会自动迁移配置。
+
 ## 数据存放位置
 
 | 位置 | 内容 |

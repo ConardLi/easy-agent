@@ -1,12 +1,20 @@
 import { createHash, randomUUID } from "node:crypto";
 import * as fs from "node:fs/promises";
 import { z } from "zod";
-import { migrateSettings } from "./migration.js";
-import { configurationEnvironmentMigration } from "./environment.js";
+import {
+  migrateSettings,
+  migrateLegacyEnvironment,
+  legacyDefaultModelIsShadowed,
+  savedProfileOwnsConnection,
+} from "./migration.js";
+import { configurationEnvironment } from "./environment.js";
 import { redactSettingValue } from "./redaction.js";
 import { validateSettings } from "./schema.js";
 import { ConfigurationError } from "./values.js";
-import { loadSettingSources, resetSettingsCache } from "./sources.js";
+import { getFlagSettings, resetSettingsCache, type LoadedSource } from "./sources.js";
+import { getManagedSettingsPath } from "./managedPath.js";
+import { isProjectTrusted } from "./globalState.js";
+import { readJsonSettingsFile } from "../utils/settings.js";
 import { getLocalSettingsPath, getProjectSettingsPath, getUserSettingsPath } from "../utils/paths.js";
 import { atomicWriteFile, withFileLock } from "../utils/atomicFile.js";
 import { writePrivateFile } from "../utils/privateData.js";
@@ -53,25 +61,48 @@ async function readMigration(file: string, scope: Scope, cwd: string) {
   } catch {
     throw new ConfigurationError("migration", "fix JSON syntax and use an object before previewing migration.", file);
   }
-  const sources = await loadSettingSources(cwd);
-  const originalSelectionShadowed =
-    raw.defaultModel !== undefined &&
-    raw.model === undefined &&
-    sources.find((source) => source.source === scope)?.raw?.model === undefined;
+  // Explicit migration reads the original documents, including fields runtime
+  // validation rejects. It never reuses a last-valid runtime source snapshot.
+  const sources: LoadedSource[] = await Promise.all(
+    (
+      [
+        ["user", getUserSettingsPath()],
+        ["project", getProjectSettingsPath(cwd)],
+        ["local", getLocalSettingsPath(cwd)],
+        ["flag", null],
+        ["policy", getManagedSettingsPath()],
+      ] as const
+    ).map(async ([source, sourcePath]) => ({
+      source,
+      path: sourcePath,
+      ...(sourcePath ? await readJsonSettingsFile<Record<string, unknown>>(sourcePath) : { raw: getFlagSettings() }),
+    })),
+  );
+  const trusted = await isProjectTrusted(cwd);
+  const eligible = sources.filter(
+    (source) => !["project", "local"].includes(source.source) || trusted || source.source === scope,
+  );
+  const originalSelectionShadowed = legacyDefaultModelIsShadowed(
+    sources
+      .filter((source) => ["user", "project", "local"].includes(source.source))
+      .map((source) => ({ raw: source.raw, trusted: source.source === "user" || trusted })),
+  );
+  const savedProfileSelected = savedProfileOwnsConnection(eligible.map((source) => source.raw));
   const migration = migrateSettings(raw, {
     inheritedProfileIds: new Set(
-      sources
+      eligible
         .slice(
           0,
-          sources.findIndex((source) => source.source === scope),
+          eligible.findIndex((source) => source.source === scope),
         )
         .flatMap((source) => Object.keys((source.raw?.models as object | undefined) ?? {})),
     ),
     knownProfileIds: new Set(
-      sources.flatMap((source) => Object.keys((source.raw?.models as object | undefined) ?? {})),
+      eligible.flatMap((source) => Object.keys((source.raw?.models as object | undefined) ?? {})),
     ),
-    legacyEnvironment: configurationEnvironmentMigration(),
+    legacyEnvironment: migrateLegacyEnvironment(configurationEnvironment(), { savedProfileSelected }),
     legacyDefaultModelShadowed: originalSelectionShadowed,
+    savedProfileSelected,
   });
   if (scope === "project") {
     const profiles = migration.value.models;

@@ -28,7 +28,7 @@ Project and local settings that can execute code, redirect providers, or widen r
 - `auto`: defer schemas when their estimated size reaches the configured percentage of the context window.
 - `on`: always defer eligible tool schemas.
 
-`--tool-search off|auto|on` overrides file settings, below managed policy. Retired variables are handled only by the [central migration boundary](./configuration-migration.md).
+`--tool-search off|auto|on` overrides file settings, below managed policy. Retired variables report configuration errors; conversion is available only through [explicit migration](./configuration-migration.md).
 
 ## Model roles
 

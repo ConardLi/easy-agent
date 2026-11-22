@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { mkdtemp, mkdir, writeFile, readFile, rm, stat } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, readFile, readdir, rm, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { createRuntimeScope, runInRuntimeScope, disposeRuntimeScope } from "../state/runtimeScope.js";
@@ -14,16 +14,12 @@ import { loadEnv } from "../utils/loadEnv.js";
 import { setFlagSettings, resetSettingsCache } from "../config/sources.js";
 import { trustProjectForSession } from "../config/globalState.js";
 import { previewConfigMigration, applyConfigMigration } from "../config/migrationFiles.js";
-import {
-  migrateLegacyEnvironment,
-  migrateSettings,
-  migrateSessionModelSelection,
-  legacyProfileId,
-} from "../config/migration.js";
+import { migrateLegacyEnvironment, migrateSettings, legacyProfileId } from "../config/migration.js";
 import { resolveHarnessFromInputs } from "../harness/resolve.js";
 import { withHarness } from "../harness/active.js";
 import { prepareRequest } from "../services/api/providers/providerStream.js";
 import { buildDefaultThinkingConfig } from "../utils/thinking.js";
+import { RETIRED_ENVIRONMENT_TARGETS } from "../config/retired.js";
 
 async function fixture(fn: (root: string, workspace: string) => Promise<void>) {
   const root = await mkdtemp(path.join(os.tmpdir(), "eagent-config-lifecycle-"));
@@ -49,6 +45,82 @@ async function fixture(fn: (root: string, workspace: string) => Promise<void>) {
 }
 const write = (file: string, value: unknown) => writeFile(file, JSON.stringify(value, null, 2));
 const localProfile = { protocol: "openai-chat", model: "fixture", authentication: { type: "none" } };
+
+test("every retired environment input is diagnosed without conversion or exposing its value", () => {
+  for (const name of Object.keys(RETIRED_ENVIRONMENT_TARGETS)) {
+    const resolved = resolveHarnessFromInputs({
+      workspaceTrusted: false,
+      layers: [],
+      env: { [name]: "private-retired-value" },
+    });
+    assert.ok(
+      resolved.issues.some((issue) => issue.retired && issue.path === name),
+      name,
+    );
+    assert.equal(JSON.stringify(resolved).includes("private-retired-value"), false, name);
+    assert.equal(resolved.values["model.main"]?.value, "");
+    assert.equal(resolved.values["reasoning.mode"]?.value, "auto");
+  }
+});
+
+for (const kind of ["settings", "default-harness", "selected-harness", "inline-harness", "implicit-protocol"] as const)
+  test(`${kind} remains inspectable but cannot execute a credential helper before repair`, async () =>
+    fixture(async (root, cwd) => {
+      const { createAgentRuntime } = await import("../sdk/runtime.js");
+      const file = path.join(root, ".easy-agent", "settings.json");
+      const marker = path.join(root, "helper-ran");
+      const helper = `${JSON.stringify(process.execPath)} -e "require('node:fs').writeFileSync(process.argv[1], 'ran')" ${JSON.stringify(marker)}`;
+      const spec = { features: { thinking: false } };
+      await write(file, {
+        model: "main",
+        models: {
+          main: { protocol: kind === "implicit-protocol" ? undefined : "anthropic", model: "m", apiKey: { helper } },
+        },
+        ...(kind === "settings" ? { defaultModel: "main" } : {}),
+        ...(kind === "default-harness" ? { harnesses: { default: spec } } : {}),
+        ...(kind === "selected-harness" ? { harnesses: { old: spec } } : {}),
+      });
+      const original = await readFile(file, "utf8");
+      const runtime = await createAgentRuntime({
+        cwd,
+        services: false,
+        hardenPrivateData: false,
+        logger: { warn() {}, error() {} },
+        ...(kind === "selected-harness" ? { harness: { name: "old" } } : {}),
+        ...(kind === "inline-harness" ? { harness: { spec } } : {}),
+      });
+      try {
+        await runtime.readConfig();
+        await assert.rejects(runtime.hasModelCredentials("main"), /Retired configuration|protocol/);
+        await assert.rejects(resolveProfile("main", cwd), /Retired configuration|protocol/);
+        await assert.rejects(readFile(marker), { code: "ENOENT" });
+        assert.equal(await readFile(file, "utf8"), original);
+        assert.deepEqual(await readdir(path.dirname(file)), ["settings.json"]);
+      } finally {
+        await runtime.dispose();
+      }
+    }));
+
+test("a live retired-field edit is diagnosed even when the last valid source is retained", async () =>
+  fixture(async (root, cwd) => {
+    const { createAgentRuntime } = await import("../sdk/runtime.js");
+    const file = path.join(root, ".easy-agent", "settings.json");
+    const current = { model: "main", models: { main: localProfile } };
+    await write(file, current);
+    const runtime = await createAgentRuntime({ cwd, services: false, hardenPrivateData: false });
+    try {
+      assert.equal(await runtime.hasModelCredentials(), true);
+      await write(file, { ...current, alwaysThinkingEnabled: false });
+      resetSettingsCache();
+      await assert.rejects(runtime.hasModelCredentials(), /Retired configuration "alwaysThinkingEnabled"/);
+      const preview = await runtime.previewConfigMigration("user");
+      assert.ok(preview.changes.some((change) => change.field === "alwaysThinkingEnabled"));
+      await runtime.applyConfigMigration("user", preview.revision);
+      assert.equal(await runtime.hasModelCredentials(), true);
+    } finally {
+      await runtime.dispose();
+    }
+  }));
 
 test("sequential runtimes restore injected variables and recapture the changed parent", async () =>
   fixture(async (root, cwd) => {
@@ -228,7 +300,7 @@ test("no-profile startup supports configuration, conflicting selection fails, pr
     }
   }));
 
-test("a complete saved connection ignores unrelated conflicting legacy credentials", async () =>
+test("a complete saved connection rejects unreferenced retired credentials without changing files", async () =>
   fixture(async (root, cwd) => {
     const { createAgentRuntime } = await import("../sdk/runtime.js");
     await write(path.join(root, ".easy-agent", "settings.json"), {
@@ -247,7 +319,9 @@ test("a complete saved connection ignores unrelated conflicting legacy credentia
     try {
       assert.equal(await runtime.resolveModel(), "canonical");
       assert.equal((await runtime.readConfig()).models.defaultModel, "canonical");
-      assert.equal((await resolveProfile("canonical", cwd)).apiKey, "canonical-key");
+      await assert.rejects(resolveProfile("canonical", cwd), /Retired configuration "ANTHROPIC_API_KEY"/);
+      await assert.rejects(runtime.hasModelCredentials(), /ANTHROPIC_AUTH_TOKEN/);
+      assert.equal(configurationEnvironment().EASY_AGENT_API_KEY, undefined);
     } finally {
       await runtime.dispose();
     }
@@ -262,7 +336,7 @@ for (const mode of [
   "agent",
   "inline",
 ] as const) {
-  test(`saved connection ownership preserves ${mode} with conflicting legacy credentials`, async () =>
+  test(`saved connection ${mode} cannot silently ignore retired credentials`, async () =>
     fixture(async (root, cwd) => {
       const { createAgentRuntime } = await import("../sdk/runtime.js");
       process.env.ANTHROPIC_API_KEY = "old-key";
@@ -286,9 +360,9 @@ for (const mode of [
           ? { harnesses: { custom: { model: { main: "canonical", roles: { compaction: "second" } } } } }
           : {}),
       });
-      const runtime = await createAgentRuntime({
+      const options = {
         cwd,
-        services: false,
+        services: false as const,
         hardenPrivateData: false,
         ...(mode === "flag" ? { flagSettings: { model: "canonical" } } : {}),
         harness:
@@ -298,21 +372,31 @@ for (const mode of [
               ? { spec: { model: { main: "canonical" } } }
               : { name: "default" },
         logger: { warn() {}, error() {} },
-      });
+      };
+      const runtime = await createAgentRuntime(options);
       try {
         assert.equal(await runtime.resolveModel(), "canonical");
         assert.equal(configurationEnvironment().EASY_AGENT_API_KEY, "saved-key");
         assert.equal(process.env.ANTHROPIC_AUTH_TOKEN, "old-token");
         assert.equal((await loadProfiles(cwd)).errors?.["@environment"], undefined);
-        if (mode === "missing-reference")
+        await assert.rejects(resolveProfile("canonical", cwd), /ANTHROPIC_AUTH_TOKEN/);
+      } finally {
+        await runtime.dispose();
+      }
+      delete process.env.ANTHROPIC_AUTH_TOKEN;
+      if (mode !== "vendor-reference") delete process.env.ANTHROPIC_API_KEY;
+      const restarted = await createAgentRuntime(options);
+      try {
+        if (mode === "missing-reference") {
           await assert.rejects(resolveProfile("canonical", cwd), /MISSING_KEY is unset/);
-        else
+        } else {
           assert.equal(
             (await resolveProfile("canonical", cwd)).apiKey,
             mode === "vendor-reference" ? "old-key" : "saved-key",
           );
+        }
       } finally {
-        await runtime.dispose();
+        await restarted.dispose();
       }
     }));
 }
@@ -330,7 +414,7 @@ test("same-file unused legacy conflicts can migrate without modifying the saved 
     try {
       await runInRuntimeScope(scope, async () => {
         await loadEnv(cwd);
-        assert.equal((await resolveProfile("canonical", cwd)).apiKey, "saved-key");
+        await assert.rejects(resolveProfile("canonical", cwd), /Retired configuration/);
         const preview = await previewConfigMigration(cwd, "user");
         assert.equal(
           preview.notices.some((notice) => notice.level === "error"),
@@ -341,13 +425,16 @@ test("same-file unused legacy conflicts can migrate without modifying the saved 
         assert.deepEqual(saved.models.canonical, profile);
         assert.deepEqual(saved.env, { EASY_AGENT_API_KEY: "saved-key" });
         assert.equal((await previewConfigMigration(cwd, "user")).changed, false);
+        await assert.rejects(resolveProfile("canonical", cwd), /Retired configuration/);
+        installConfigurationEnvironment({ EASY_AGENT_API_KEY: "saved-key" });
+        assert.equal((await resolveProfile("canonical", cwd)).apiKey, "saved-key");
       });
     } finally {
       await disposeRuntimeScope(scope);
     }
   }));
 
-test("saved targets cannot hide invalid canonical inputs or conflicts in a needed legacy connection", async () =>
+test("configuration-only startup diagnoses old inputs but still rejects invalid active configuration", async () =>
   fixture(async (root, cwd) => {
     const { createAgentRuntime } = await import("../sdk/runtime.js");
     const options = {
@@ -359,9 +446,20 @@ test("saved targets cannot hide invalid canonical inputs or conflicts in a neede
     };
     process.env.ANTHROPIC_API_KEY = "old-key";
     process.env.ANTHROPIC_AUTH_TOKEN = "old-token";
-    await assert.rejects(createAgentRuntime(options), /disagree/);
+    let runtime = await createAgentRuntime(options);
+    try {
+      await assert.rejects(runtime.hasModelCredentials(), /Retired configuration/);
+    } finally {
+      await runtime.dispose();
+    }
     await write(path.join(root, ".easy-agent", "settings.json"), { model: "raw-legacy-model" });
-    await assert.rejects(createAgentRuntime(options), /disagree/);
+    runtime = await createAgentRuntime(options);
+    try {
+      assert.equal(await runtime.resolveModel(), "raw-legacy-model");
+      await assert.rejects(runtime.hasModelCredentials(), /Retired configuration/);
+    } finally {
+      await runtime.dispose();
+    }
     await write(path.join(root, ".easy-agent", "settings.json"), {
       model: "canonical",
       models: { canonical: localProfile },
@@ -372,7 +470,7 @@ test("saved targets cannot hide invalid canonical inputs or conflicts in a neede
     await assert.rejects(createAgentRuntime({ ...options, harness: { name: "missing-agent" } }), /no Agent named/);
   }));
 
-test("managed selection owns its connection above flags and legacy environment", () => {
+test("managed selection remains above flags while retired environment is diagnosed", () => {
   const resolved = resolveHarnessFromInputs({
     workspaceTrusted: false,
     env: { ANTHROPIC_API_KEY: "old-key", ANTHROPIC_AUTH_TOKEN: "old-token" },
@@ -386,11 +484,12 @@ test("managed selection owns its connection above flags and legacy environment",
   assert.equal(resolved.values["model.main"]?.source, "policy");
   assert.equal(
     resolved.issues.some((issue) => issue.level === "error"),
-    false,
+    true,
   );
+  assert.ok(resolved.issues.every((issue) => issue.retired));
 });
 
-test("a newly generated legacy profile still receives its migrated credential", async () =>
+test("raw models require explicit migration and a new canonical environment", async () =>
   fixture(async (root, cwd) => {
     const { createAgentRuntime } = await import("../sdk/runtime.js");
     process.env.ANTHROPIC_API_KEY = "original-key";
@@ -404,14 +503,26 @@ test("a newly generated legacy profile still receives its migrated credential", 
     });
     try {
       const id = legacyProfileId("raw-legacy-model");
-      assert.equal(await runtime.resolveModel(), id);
-      assert.equal((await resolveProfile(id, cwd)).apiKey, "original-key");
+      assert.equal(await runtime.resolveModel(), "raw-legacy-model");
+      assert.equal((await loadProfiles(cwd)).profiles[id], undefined);
+      await assert.rejects(resolveProfile(id, cwd), /Retired configuration/);
+      const preview = await runtime.previewConfigMigration("user");
+      await runtime.applyConfigMigration("user", preview.revision);
     } finally {
       await runtime.dispose();
     }
+    delete process.env.ANTHROPIC_API_KEY;
+    process.env.EASY_AGENT_API_KEY = "original-key";
+    const restarted = await createAgentRuntime({ cwd, services: false, hardenPrivateData: false });
+    try {
+      assert.equal(await restarted.resolveModel(), legacyProfileId("raw-legacy-model"));
+      assert.equal((await resolveProfile(legacyProfileId("raw-legacy-model"), cwd)).apiKey, "original-key");
+    } finally {
+      await restarted.dispose();
+    }
   }));
 
-test("a saved main profile preserves an independently configured raw legacy role", async () =>
+test("a raw role is never generated by runtime loading", async () =>
   fixture(async (root, cwd) => {
     const { createAgentRuntime } = await import("../sdk/runtime.js");
     process.env.ANTHROPIC_API_KEY = "original-role-key";
@@ -430,9 +541,11 @@ test("a saved main profile preserves an independently configured raw legacy role
     try {
       assert.equal(await runtime.resolveModel(), "canonical");
       const id = legacyProfileId("old-summary-model");
-      assert.equal((await runtime.getHarness()).values["model.roles.compaction"]?.value, id);
-      assert.equal((await resolveProfile(id, cwd)).apiKey, "original-role-key");
-      assert.equal((await resolveProfile("canonical", cwd)).apiKey, "main-key");
+      assert.equal((await runtime.getHarness()).values["model.roles.compaction"]?.value, "old-summary-model");
+      assert.equal((await loadProfiles(cwd)).profiles[id], undefined);
+      await assert.rejects(resolveProfile(id, cwd), /Retired configuration/);
+      const preview = await runtime.previewConfigMigration("user");
+      await runtime.applyConfigMigration("user", preview.revision);
     } finally {
       await runtime.dispose();
     }
@@ -465,6 +578,20 @@ for (const source of ["parent", "settings"] as const)
         try {
           const harness = await runtime.getHarness();
           assert.equal(await runtime.resolveModel(), "canonical");
+          if (run === 0) {
+            await assert.rejects(resolveProfile("canonical", cwd), /Retired configuration/);
+            assert.equal(harness.values["model.roles.compaction"]?.value, "old-summary");
+            const preview = await previewConfigMigration(cwd, "user");
+            assert.equal(
+              preview.notices.some((notice) => notice.level === "error"),
+              false,
+            );
+            await applyConfigMigration(cwd, "user", preview.revision);
+            const saved = JSON.parse(await readFile(file, "utf8"));
+            assert.equal(saved.models[legacyProfileId("old-summary")].apiKey, "${ANTHROPIC_AUTH_TOKEN}");
+            if (source === "settings") assert.equal(saved.env.ANTHROPIC_AUTH_TOKEN, "role-key");
+            continue;
+          }
           for (const [role, model] of [
             ["compaction", "old-summary"],
             ["classifier", "old-classifier"],
@@ -476,24 +603,16 @@ for (const source of ["parent", "settings"] as const)
             assert.equal(profile.baseURL, "https://legacy.invalid", `${role}, runtime ${run}`);
           }
           assert.equal((await resolveProfile("canonical", cwd)).apiKey, "main-key");
-          if (run === 0) {
-            const preview = await previewConfigMigration(cwd, "user");
-            assert.equal(
-              preview.notices.some((notice) => notice.level === "error"),
-              false,
-            );
-            await applyConfigMigration(cwd, "user", preview.revision);
-            const saved = JSON.parse(await readFile(file, "utf8"));
-            assert.equal(saved.models[legacyProfileId("old-summary")].apiKey, "${ANTHROPIC_AUTH_TOKEN}");
-            if (source === "settings") assert.equal(saved.env.ANTHROPIC_AUTH_TOKEN, "role-key");
-          }
         } finally {
           await runtime.dispose();
+          // The migration API never mutates the caller's shell environment.
+          process.env.EASY_AGENT_AUTO_MODE_MODEL = legacyProfileId("old-classifier");
+          delete process.env.ANTHROPIC_BASE_URL;
         }
       }
     }));
 
-test("legacy credential ambiguity fails only when an independently configured role uses that connection", async () =>
+test("manual role migration rejects ambiguous legacy credentials and leaves the file intact", async () =>
   fixture(async (root, cwd) => {
     const { createAgentRuntime } = await import("../sdk/runtime.js");
     process.env.ANTHROPIC_API_KEY = "first-role-key";
@@ -511,14 +630,18 @@ test("legacy credential ambiguity fails only when an independently configured ro
     const runtime = await createAgentRuntime(options);
     try {
       assert.equal(await runtime.resolveModel(), "canonical");
+      await assert.rejects(runtime.hasModelCredentials(), /Retired configuration/);
+      for (const role of ["compaction", "classifier"] as const) {
+        await write(file, { ...main, modelRoles: { [role]: "old-summary" } });
+        const original = await readFile(file, "utf8");
+        const preview = await runtime.previewConfigMigration("user");
+        assert.ok(preview.notices.some((notice) => notice.level === "error" && /disagree/.test(notice.message)));
+        await assert.rejects(runtime.applyConfigMigration("user", preview.revision), /disagree/);
+        assert.equal(await readFile(file, "utf8"), original);
+      }
     } finally {
       await runtime.dispose();
     }
-    await write(file, { ...main, modelRoles: { compaction: "old-summary" } });
-    await assert.rejects(createAgentRuntime(options), /disagree/);
-    await write(file, main);
-    process.env.EASY_AGENT_AUTO_MODE_MODEL = "old-classifier";
-    await assert.rejects(createAgentRuntime(options), /disagree/);
   }));
 
 test("reasoning auto stays auto, supported off sends disabling parameters, unsupported off reports why", () => {
@@ -553,14 +676,11 @@ test("reasoning auto stays auto, supported off sends disabling parameters, unsup
   });
 });
 
-test("historical selections require a confirmed connection and session ambiguity never guesses", () => {
+test("explicit historical migration requires a confirmed connection", () => {
   const legacy = migrateLegacyEnvironment({ ANTHROPIC_API_KEY: "key", ANTHROPIC_MODEL: "old" });
   const migrated = migrateSettings({ model: "original" }, { legacyEnvironment: legacy });
   assert.equal(migrated.value.model, legacyProfileId("original"));
   assert.equal(migrateSettings({ model: "typo" }).value.model, "typo");
-  assert.equal(migrateSessionModelSelection("raw", { saved: { model: "raw" } }), "saved");
-  assert.equal(migrateSessionModelSelection("raw", { a: { model: "raw" }, b: { model: "raw" } }), undefined);
-  assert.equal(migrateSessionModelSelection("missing", { saved: { model: "raw" } }), undefined);
   const roles = migrateSettings(
     {
       model: "original",
@@ -583,6 +703,25 @@ test("historical selections require a confirmed connection and session ambiguity
   );
   assert.equal(migrateSettings(roles.value).changed, false);
 });
+
+test("historical session raw models are not matched to even one saved profile", async () =>
+  fixture(async (root, cwd) => {
+    const { createAgentRuntime } = await import("../sdk/runtime.js");
+    await write(path.join(root, ".easy-agent", "settings.json"), {
+      models: { saved: { ...localProfile, model: "raw-historical-model" } },
+    });
+    const runtime = await createAgentRuntime({ cwd, services: false, hardenPrivateData: false });
+    try {
+      const old = await runtime.createSession({ model: "raw-historical-model" });
+      await old.close();
+      await assert.rejects(runtime.resumeSession(old.id), /Raw historical model names are not resolved automatically/);
+      const resumed = await runtime.resumeSession(old.id, { model: "saved" });
+      assert.equal(resumed.getState().model, "saved");
+      await resumed.close();
+    } finally {
+      await runtime.dispose();
+    }
+  }));
 
 test("a migration approval cannot survive a runtime or connection snapshot change", async () =>
   fixture(async (root, cwd) => {
@@ -659,7 +798,10 @@ test("migrating a higher legacy default preserves the model an older version act
         await write(local, { defaultModel: "fallback" });
         resetSettingsCache();
         const { updateLocalSettings } = await import("../utils/settings.js");
-        await updateLocalSettings(cwd, { language: "English" });
+        const before = await readFile(local, "utf8");
+        await assert.rejects(updateLocalSettings(cwd, { language: "English" }), /Retired configuration "defaultModel"/);
+        assert.equal(await readFile(local, "utf8"), before);
+        await updateLocalSettings(cwd, { defaultModel: undefined, language: "English" });
         assert.equal((await loadProfiles(cwd)).defaultModel, "selected");
         assert.deepEqual(JSON.parse(await readFile(local, "utf8")), { language: "English" });
       });

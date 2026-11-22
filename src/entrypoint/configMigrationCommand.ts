@@ -1,4 +1,5 @@
 import { applyConfigMigration, previewConfigMigration, ConfigScopeSchema } from "../config/migrationFiles.js";
+import { loadEnv } from "../utils/loadEnv.js";
 
 export async function runConfigMigrationCommand(argv: string[]): Promise<number> {
   const scopeIndex = argv.indexOf("--scope");
@@ -11,6 +12,7 @@ export async function runConfigMigrationCommand(argv: string[]): Promise<number>
     return 1;
   }
   try {
+    await loadEnv(process.cwd());
     const preview = await previewConfigMigration(process.cwd(), scope.data);
     const result = argv.includes("--apply")
       ? await applyConfigMigration(process.cwd(), scope.data, preview.revision)

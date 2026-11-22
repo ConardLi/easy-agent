@@ -300,7 +300,7 @@ const environmentEntry = (
         : "user → Harness → project → local → environment → CLI/SDK/session → policy",
 });
 
-/** Canonical product variables only. Retired names live in the migration module. */
+/** Canonical product variables only. Removed names are diagnosed by config/retired. */
 export const ENVIRONMENT_VARIABLES: readonly EnvironmentVariableEntry[] = [
   environmentEntry(
     "EASY_AGENT_PROFILE",

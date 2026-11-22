@@ -17,7 +17,6 @@
 import type { SettingScope } from "../config/catalog.js";
 import type { HarnessComponent } from "./spec.js";
 import { configBoolean, configInteger, configEnum, configString } from "../config/values.js";
-import { migrateLegacyEnvironment, parseLegacyToolSearch } from "../config/migration.js";
 import { ENVIRONMENT_PROFILE_ID } from "../config/modelSchema.js";
 
 /** Retries for a failed model request when nothing sets `features.maxRetries`. */
@@ -63,8 +62,6 @@ export interface HarnessKey {
   /** `union` concatenates every accepted layer (rule lists); `replace` keeps the last one. */
   merge: "replace" | "union";
   settings?: HarnessSettingsInput;
-  /** Read only when no layer and no spec sets the main value, as `defaultModel` after `model`. */
-  fallbackSettings?: HarnessSettingsInput;
   env?: HarnessEnvInput;
   /** Set by `--agent-teams` on the command line. */
   argvAgentTeams?: boolean;
@@ -118,8 +115,6 @@ function positiveInteger(raw: Record<string, unknown>, key: string): number | un
 
 // ─── Environment readers ───────────────────────────────────────────────
 
-export { parseLegacyToolSearch };
-
 function envValue(name: string, parse: (value: string | undefined, name: string) => unknown): HarnessEnvInput {
   return {
     names: [name],
@@ -167,11 +162,7 @@ export const HARNESS_KEYS: readonly HarnessKey[] = [
     env: {
       names: ["EASY_AGENT_PROFILE", "EASY_AGENT_PROTOCOL", "EASY_AGENT_MODEL", "EASY_AGENT_BASE_URL"],
       read: (env) => {
-        const migration = migrateLegacyEnvironment(env);
-        const canonical = migration.env;
-        // Legacy model variables used to be a fallback, not an override of a
-        // saved selection. The profile migration preserves that relationship.
-        if (migration.legacyConnection) return undefined;
+        const canonical = env;
         if (
           configString(canonical.EASY_AGENT_PROFILE) &&
           ["EASY_AGENT_PROTOCOL", "EASY_AGENT_MODEL", "EASY_AGENT_BASE_URL"].some((name) =>

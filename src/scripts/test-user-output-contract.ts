@@ -28,6 +28,7 @@ const originalHome = process.env.HOME;
 const originalUserProfile = process.env.USERPROFILE;
 const originalToken = process.env.ANTHROPIC_AUTH_TOKEN;
 const originalApiKey = process.env.ANTHROPIC_API_KEY;
+const originalEnvironment = { ...process.env };
 const originalFetch = globalThis.fetch;
 
 try {
@@ -124,8 +125,16 @@ try {
   setFlagSettings(null);
   const raw = new QueryEngine({ model: "@environment", toolContext: { cwd } });
   const apiKeyDoctor = await commandOutput(raw, "/doctor");
-  assert.match(apiKeyDoctor, /API Key source configured/);
-  assert.doesNotMatch(apiKeyDoctor, /sdk-env-key/);
+  assert.match(apiKeyDoctor, /Retired configuration "ANTHROPIC_API_KEY"/);
+  assert.doesNotMatch(apiKeyDoctor, /API Key source configured|sdk-env-key/);
+  delete process.env.ANTHROPIC_API_KEY;
+  process.env.EASY_AGENT_PROTOCOL = "anthropic";
+  process.env.EASY_AGENT_MODEL = "diagnostic-model";
+  process.env.EASY_AGENT_API_KEY = "sdk-env-key";
+  installConfigurationEnvironment(process.env);
+  const canonicalDoctor = await commandOutput(raw, "/doctor");
+  assert.match(canonicalDoctor, /API Key source configured/);
+  assert.doesNotMatch(canonicalDoctor, /sdk-env-key/);
   const nodeDescriptor = Object.getOwnPropertyDescriptor(process.versions, "node")!;
   Object.defineProperty(process.versions, "node", { ...nodeDescriptor, value: "20.0.0" });
   try {
@@ -146,6 +155,10 @@ try {
   else process.env.ANTHROPIC_AUTH_TOKEN = originalToken;
   if (originalApiKey === undefined) delete process.env.ANTHROPIC_API_KEY;
   else process.env.ANTHROPIC_API_KEY = originalApiKey;
+  for (const name of ["EASY_AGENT_PROTOCOL", "EASY_AGENT_MODEL", "EASY_AGENT_API_KEY"]) {
+    if (originalEnvironment[name] === undefined) delete process.env[name];
+    else process.env[name] = originalEnvironment[name];
+  }
   resetGlobalStateCache();
   await rm(root, { recursive: true, force: true });
 }

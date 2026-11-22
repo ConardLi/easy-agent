@@ -59,7 +59,7 @@ Layers are user (`~/.easy-agent/settings.json`), project (`.easy-agent/settings.
 | Variable | Category | Security | Read | Default | Settings or flag | Summary | Read in |
 |---|---|---|---|---|---|---|---|
 | `EASY_AGENT_API_KEY` | environment | yes | runtime | unset |  | Single credential for the temporary connection or an explicit profile reference. | `src/config/migration.ts`, `src/services/api/providers/profile.ts` |
-| `EASY_AGENT_AUTO_MODE_MODEL` | agent |  | runtime | main profile |  | Profile ID for the Auto Mode classifier. | `src/harness/keys.ts`, `src/harness/resolve.ts` |
+| `EASY_AGENT_AUTO_MODE_MODEL` | agent |  | runtime | main profile |  | Profile ID for the Auto Mode classifier. | `src/harness/keys.ts` |
 | `EASY_AGENT_BASE_URL` | environment | yes | runtime | official URL of the selected protocol |  | Service URL for the temporary connection. | `src/config/migration.ts`, `src/services/api/providers/profile.ts` |
 | `EASY_AGENT_DEBUG` | environment |  | runtime | false |  | Enable debug logs with credential redaction. | `src/utils/log.ts` |
 | `EASY_AGENT_DEBUG_STREAM` | environment |  | runtime | false |  | Write model stream diagnostics to a private log. | `src/utils/streamDebug.ts` |
@@ -88,7 +88,8 @@ Variables named by configuration are read too:
 
 - `src/config/values.ts`: Strict `${VAR}` references and credential source validation against the runtime snapshot.
 - `src/config/environment.ts`: Runtime snapshot, credential protection and owned process environment restoration.
-- `src/config/migration.ts`: The centralized, temporary compatibility boundary for retired environment names.
+- `src/config/migration.ts`: Offline conversion used only by the explicit migration command/API.
+- `src/config/retired.ts`: Diagnoses removed names without applying or converting their values.
 - `src/harness/keys.ts`: Strict parsers for canonical names declared in the Harness key table.
 - `src/services/api/providers/profile.ts`: Complete connection selection from the runtime environment snapshot.
 - `src/services/mcp/remoteHeaders.ts`: `headersEnv` of a remote MCP server names the variables to send as headers.

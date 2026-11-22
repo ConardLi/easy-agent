@@ -34,7 +34,7 @@ import { loadSettingSources, loadTrustedSettingSources, resetSettingsCache } fro
 import { isInheritedCredentialProtected } from "../config/environment.js";
 import { writePrivateFile } from "./privateData.js";
 import { atomicWriteFile, PersistentDataError, withFileLock } from "./atomicFile.js";
-import { migrateSettings } from "../config/migration.js";
+import { declaredEnvironmentReferences, retiredSettingsNotices } from "../config/retired.js";
 import { validateSettings } from "../config/schema.js";
 import { ConfigurationError } from "../config/values.js";
 
@@ -145,39 +145,35 @@ async function writeSettingsPatch(
     if (raw !== null && (typeof raw !== "object" || Array.isArray(raw))) {
       throw new PersistentDataError(filePath, "settings root must be a JSON object");
     }
-    const source = (await loadSettingSources(cwd)).find((source) => source.path === filePath);
-    const current = migrateSettings(raw ?? {}, {
-      legacyDefaultModelShadowed:
-        raw?.defaultModel !== undefined && raw.model === undefined && source?.raw?.model === undefined,
-    });
-    const patch = typeof patchOrBuild === "function" ? patchOrBuild(current.value) : patchOrBuild;
-    const merged: Record<string, unknown> = { ...current.value };
+    const current = raw ?? {};
+    const patch = typeof patchOrBuild === "function" ? patchOrBuild(current) : patchOrBuild;
+    const merged: Record<string, unknown> = { ...current };
     for (const [key, value] of Object.entries(patch)) {
       if (value === undefined) delete merged[key];
       else merged[key] = value;
     }
-    const canonical = migrateSettings(merged);
-    const migrationErrors = canonical.notices.filter((notice) => notice.level === "error");
-    if (migrationErrors.length) {
-      throw new ConfigurationError(
-        "migration",
-        migrationErrors.map((notice) => `${notice.field}: ${notice.message}`).join(" "),
-        filePath,
-      );
+    const references = declaredEnvironmentReferences([
+      merged,
+      ...(await loadTrustedSettingSources(cwd))
+        .filter((source) => source.path !== filePath)
+        .map((source) => source.raw),
+    ]);
+    const retired = retiredSettingsNotices(merged, references);
+    if (retired.length) {
+      throw new ConfigurationError("settings", retired.map((notice) => notice.message).join(" "), filePath);
     }
-    const { errors } = validateSettings(canonical.value, filePath);
-    const previousErrors = new Set(validateSettings(current.value, filePath).errors);
+    const { errors } = validateSettings(merged, filePath);
+    const previousErrors = new Set(validateSettings(current, filePath).errors);
     const unchangedModels =
-      !Object.hasOwn(patch, "models") &&
-      JSON.stringify(current.value.models) === JSON.stringify(canonical.value.models);
+      !Object.hasOwn(patch, "models") && JSON.stringify(current.models) === JSON.stringify(merged.models);
     const invalid = errors.filter(
       (error) =>
         !error.includes("unsupported setting") &&
         !(unchangedModels && error.includes(".models.") && previousErrors.has(error)),
     );
     if (invalid.length) throw new ConfigurationError("settings", invalid.join(" "), filePath);
-    if (storage === "shared-project" && canonical.value.models && typeof canonical.value.models === "object") {
-      for (const [id, profile] of Object.entries(canonical.value.models)) {
+    if (storage === "shared-project" && merged.models && typeof merged.models === "object") {
+      for (const [id, profile] of Object.entries(merged.models)) {
         const key = (profile as { apiKey?: unknown }).apiKey;
         if (typeof key === "string" && !/^\$\{[A-Za-z_][A-Za-z0-9_]*\}$/.test(key)) {
           throw new ConfigurationError(
@@ -187,11 +183,7 @@ async function writeSettingsPatch(
         }
       }
     }
-    if (raw && current.changed) {
-      const backup = `${filePath}.pre-standardization-${Date.now()}.bak`;
-      await writePrivateFile(backup, await fs.readFile(filePath), { secureParent: false });
-    }
-    const content = JSON.stringify(canonical.value, null, 2) + "\n";
+    const content = JSON.stringify(merged, null, 2) + "\n";
     if (storage === "shared-project") {
       await atomicWriteFile(filePath, content);
     } else {
@@ -334,7 +326,7 @@ export async function isAllHooksDisabled(cwd: string): Promise<boolean> {
 /**
  * Read a single top-level string setting from TRUSTED sources only (project +
  * local dropped until the folder is trusted), later source winning. Use this
- * for settings whose value is EXECUTED (e.g. `apiKeyHelper` runs a script), so
+ * for settings whose value is executed as a command, so
  * an untrusted repo can't run code or redirect auth.
  */
 export async function readTrustedStringSetting(cwd: string, key: string): Promise<string | undefined> {
@@ -395,8 +387,8 @@ export async function readTrustedStringArraySetting(cwd: string, key: string): P
 /**
  * Aggregate parse + schema-validation diagnostics across every settings source
  * for `cwd`. The UI calls this at startup to surface a single non-fatal notice
- * when a settings file is malformed or has invalid fields — a bad file/field
- * degrades to "ignored", it never crashes the CLI.
+ * when a settings file is malformed or has invalid fields. This diagnostic
+ * read keeps configuration inspection available; model-use validation is separate.
  */
 export async function loadSettingsDiagnostics(cwd: string): Promise<string[]> {
   const sources = await loadSettingSources(cwd);

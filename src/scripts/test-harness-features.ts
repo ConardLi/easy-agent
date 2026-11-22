@@ -28,6 +28,7 @@ import assert from "node:assert/strict";
 import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { ConfigurationError } from "../config/values.js";
 
 const root = await realpath(await mkdtemp(path.join(os.tmpdir(), "easy-agent-harness-features-")));
 const home = path.join(root, "home");
@@ -212,7 +213,12 @@ async function run(options: RunOptions): Promise<RunResult> {
     });
     fixture.requests.length = 0;
     fixture.script(options.script ?? [{ kind: "text", text: "ok" }]);
-    await session.send(options.prompt ?? "hello");
+    try {
+      await session.send(options.prompt ?? "hello");
+    } catch (error) {
+      if (!(error instanceof ConfigurationError)) throw error;
+      if (!errors.includes(error.message)) errors.push(error.message);
+    }
     const requests = [...fixture.requests];
     const result: RunResult = {
       requests,
@@ -291,20 +297,23 @@ try {
     );
   });
 
-  await check("features.toolSearch and EASY_AGENT_ENABLE_TOOL_SEARCH; the variable wins", async () => {
+  await check("features.toolSearch matches settings; retired variables block requests", async () => {
     // The fixture is a custom endpoint, where ToolSearch is used only when a layer turns it on.
     await sameEffect("toolSearch", first, {
       spec: { spec: { features: { toolSearch: "on" } } },
-      other: { env: { EASY_AGENT_ENABLE_TOOL_SEARCH: "true" } },
+      other: { user: { toolSearch: "on" } },
       both: {
-        options: { spec: { features: { toolSearch: "on" } }, env: { EASY_AGENT_ENABLE_TOOL_SEARCH: "false" } },
-        expect: first(await run({ env: { EASY_AGENT_ENABLE_TOOL_SEARCH: "false" } })),
+        options: { spec: { features: { toolSearch: "on" } }, project: { toolSearch: "off" } },
+        expect: first(await run({ project: { toolSearch: "off" } })),
       },
     });
     assert.ok(toolNames((await run({ spec: { features: { toolSearch: "on" } } })).requests[0]).includes("ToolSearch"));
     assert.ok(
       !toolNames((await run({ spec: { features: { toolSearch: "off" } } })).requests[0]).includes("ToolSearch"),
     );
+    const retired = await run({ env: { EASY_AGENT_ENABLE_TOOL_SEARCH: "true" } });
+    assert.equal(retired.requests.length, 0);
+    assert.match(retired.errors.join("\n"), /Retired configuration "EASY_AGENT_ENABLE_TOOL_SEARCH"/);
   });
 
   await check("reasoning.mode and EASY_AGENT_REASONING select the same request behavior", async () => {
@@ -332,34 +341,31 @@ try {
     assert.deepEqual(result.requests[0]?.body.thinking, { type: "enabled", budget_tokens: 2048 });
   });
 
-  await check("legacy request prohibition migrates to the canonical off intent", async () => {
-    await sameEffect("thinkingInRequests", first, {
-      spec: { spec: { reasoning: { mode: "off" } } },
-      other: { env: { CLAUDE_CODE_DISABLE_THINKING: "1" } },
-      both: {
-        options: { spec: { reasoning: { mode: "on" } }, env: { CLAUDE_CODE_DISABLE_THINKING: "1" } },
-        expect: first(await run({ env: { CLAUDE_CODE_DISABLE_THINKING: "1" } })),
-      },
-    });
+  await check("retired thinking variables block requests even with a canonical reasoning intent", async () => {
+    const result = await run({ spec: { reasoning: { mode: "on" } }, env: { CLAUDE_CODE_DISABLE_THINKING: "1" } });
+    assert.equal(result.requests.length, 0);
+    assert.match(result.errors.join("\n"), /Retired configuration "CLAUDE_CODE_DISABLE_THINKING"/);
   });
 
-  await check("features.interleavedThinking and DISABLE_INTERLEAVED_THINKING drop the beta header", async () => {
-    // Without adaptive thinking, so the request carries a thinking budget and the header applies.
-    await sameEffect("interleavedThinking", first, {
-      spec: { spec: { features: { interleavedThinking: false, adaptiveThinking: false } } },
-      other: { env: { DISABLE_INTERLEAVED_THINKING: "1", CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING: "1" } },
-    });
+  await check("retired Harness features and protocol switches cannot send requests", async () => {
+    for (const options of [
+      { spec: { features: { interleavedThinking: false, adaptiveThinking: false } } },
+      { env: { DISABLE_INTERLEAVED_THINKING: "1", CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING: "1" } },
+    ]) {
+      const result = await run(options);
+      assert.equal(result.requests.length, 0);
+      assert.match(result.errors.join("\n"), /Retired configuration/);
+    }
   });
 
-  await check("effort requires a verified model capability, with scoped legacy migration", async () => {
-    const legacy = { model: { main: "claude-sonnet-4-5" }, features: { effort: "high" } };
+  await check("effort requires an explicit profile capability and rejects a retired global override", async () => {
+    const spec = { model: { main: "claude-sonnet-4-5" }, reasoning: { effort: "high" } };
     const effort = (result: RunResult) => result.requests[0]?.body.output_config ?? null;
-    const unsupported = await run({ spec: legacy });
+    const unsupported = await run({ spec });
     assert.equal(unsupported.requests.length, 0);
     assert.match(unsupported.errors.join("\n"), /effort is unsupported or unconfirmed/);
-    const fromSpec = await run({ spec: { ...legacy, features: { ...legacy.features, effortForAllModels: true } } });
     const explicit = await run({
-      spec: legacy,
+      spec,
       user: {
         models: {
           "claude-sonnet-4-5": {
@@ -369,12 +375,10 @@ try {
         },
       },
     });
-    assert.deepEqual(effort(fromSpec), { effort: "high" });
-    assert.deepEqual(first(fromSpec), first(explicit));
-    const ambiguous = await run({ spec: legacy, env: { CLAUDE_CODE_ALWAYS_ENABLE_EFFORT: "1" } });
+    assert.deepEqual(effort(explicit), { effort: "high" });
+    const ambiguous = await run({ spec, env: { CLAUDE_CODE_ALWAYS_ENABLE_EFFORT: "1" } });
     assert.equal(ambiguous.requests.length, 0);
-    assert.match(ambiguous.errors.join("\n"), /effort is unsupported or unconfirmed/);
-    assert.match(ambiguous.warnings.join("\n"), /unambiguous Anthropic profile/);
+    assert.match(ambiguous.errors.join("\n"), /Retired configuration "CLAUDE_CODE_ALWAYS_ENABLE_EFFORT"/);
   });
 
   await check("reasoning.effort uses the spec above user and below project settings", async () => {

@@ -13,7 +13,7 @@ export type ModelRole = "background" | "think" | "longContext" | "compaction" | 
 export interface FeatureSettings {
   toolSearch: ToolSearchSetting;
   toolSearchAutoThreshold: number;
-  /** A settings layer, the Agent, or the legacy variable set `toolSearch`. */
+  /** A settings layer or the Agent explicitly set `toolSearch`. */
   toolSearchExplicit: boolean;
   modelRoles: Partial<Record<ModelRole, string>>;
   sources: Record<string, string>;
@@ -59,16 +59,7 @@ export function featureSettingsOf(resolved: ResolvedHarness, diagnostics: readon
     }
   }
 
-  const warnings: string[] = [];
-  const legacy = toolSearch.contributions.find((contribution) => contribution.source === "environment");
-  if (legacy) {
-    warnings.push(
-      `${legacy.detail} is deprecated; use toolSearch/toolSearchAutoThreshold in settings or --tool-search. Compatibility reading ends at the next announced breaking release; see the migration guide.`,
-    );
-  }
-  const invalid = toolSearch.ignored.find((ignored) => ignored.source === "environment");
-  if (invalid) warnings.push(`${invalid.detail}: invalid mode ignored; expected on, off, auto or auto:N.`);
-  warnings.push(...diagnostics);
+  const warnings = [...resolved.issues.filter((issue) => issue.retired).map((issue) => issue.message), ...diagnostics];
 
   return {
     toolSearch: toolSearch.value as ToolSearchSetting,

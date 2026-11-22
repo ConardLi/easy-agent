@@ -119,11 +119,11 @@ async function drive(
 
 try {
   for (const key of envKeys) delete process.env[key];
-  process.env.EASY_AGENT_ENABLE_TOOL_SEARCH = "true";
   process.env.EASY_AGENT_DISABLE_HOOKS = "1";
   installConfigurationEnvironment(process.env);
   setSessionThinkingConfig({ type: "disabled" });
   setFlagSettings({
+    toolSearch: "on",
     models: {
       "toolsearch-test": {
         protocol: "anthropic",
@@ -308,9 +308,9 @@ try {
   }
   console.log("✓ final OpenAI Chat / Responses / Gemini request bodies retain schemas without beta shapes");
 
-  for (const mode of ["false", "true"]) {
-    process.env.EASY_AGENT_ENABLE_TOOL_SEARCH = mode;
-    if (mode === "true") process.env.EASY_AGENT_DISABLE_EXPERIMENTAL_BETAS = "1";
+  for (const mode of ["off", "on"]) {
+    setFlagSettings({ ...getFlagSettings(), toolSearch: mode });
+    if (mode === "on") process.env.EASY_AGENT_DISABLE_EXPERIMENTAL_BETAS = "1";
     installConfigurationEnvironment(process.env);
     requests.length = 0;
     await drive("toolsearch-test", pool, restored);

@@ -2,7 +2,7 @@
   {
     "path": "AGENTS.md",
     "before": "009c32f9345007b4d484a55a03c9dc37b84a15371525e6fc8a53542bec094410",
-    "after": "ce806ec319290107640fd40191f4cc5291c9638383cb1eac58f2d8c4fcb7efc7"
+    "after": "b626eb1d692e6de1ed285be2615f580539db2a82b834f9460e4d16575499b254"
   },
   {
     "path": "doc-site/components/interactive/config-layers.tsx",
@@ -67,12 +67,12 @@
   {
     "path": "doc-site/content/docs/docs/config/migration.en.mdx",
     "before": null,
-    "after": "db36aa93c460868fa8d7f91b2f1a1fa37ead221e88b80479be41d94ddc93d6d9"
+    "after": "6d2332dec7de81d94af1a87c98db282d7c65616ec27e6fed31c0f8cd4783e517"
   },
   {
     "path": "doc-site/content/docs/docs/config/migration.mdx",
     "before": null,
-    "after": "418f86158f09c8ea63a0d5bde8ece7854cd13bfa9f1539426dbe6c78f670249a"
+    "after": "b97426dd3e1eedb81d9f4aa4f5e398f44c715e96eaf7cca67ce52ccfc89c8042"
   },
   {
     "path": "doc-site/content/docs/docs/config/model-profiles.en.mdx",
@@ -182,7 +182,7 @@
   {
     "path": "doc/0TODO-CONFIG-STANDARDIZATION-PLAN.md",
     "before": "9929807196bf24b5ab59f683f44e4e0192b472d69cc69d458f5c386e90c64f10",
-    "after": "7015bb7604e0f3222753a31ca52313f04075fd38d77107dbd313da273af77f66"
+    "after": "d791e9b07978477b72d4d1dacc9a757cc04be8b95236b226f5bd3c205cf498a0"
   },
   {
     "path": "doc/0TODO-HARNESS-COMPOSITION-HANDOFF.md",
@@ -200,6 +200,11 @@
     "after": "8e48a5895096d0263d711d665b7881b8a9e51b0029ad78a5416c33ff9021aa47"
   },
   {
+    "path": "web-ui/src/components/app/Toasts.tsx",
+    "before": "61442c1835b55c846e031d027d24d1d92adad2221957013af5f501163b13c302",
+    "after": "6449665b4a3ea43024805c8949c71f14803101a18760885438252307a4f81961"
+  },
+  {
     "path": "web-ui/src/components/composer/Pickers.tsx",
     "before": "487366b76a80ad36fdb91aef2492bab8c03b5d6287212f3b364139c3eef75b82",
     "after": "a733e65cc4f92c20a0c8922430ea4a35844845e217da74a3e713b1d6e6fd79aa"
@@ -212,7 +217,7 @@
   {
     "path": "web-ui/src/components/settings/ConfigMigrationNotice.tsx",
     "before": null,
-    "after": "6fc345219aeb9a7835712f1e59561fda95c94ff39fa8745f791298a352e5fb35"
+    "after": "569d1736ae5c290f6b6c42d6377ef09ebbed551a62db9e5d6132b393886c7329"
   },
   {
     "path": "web-ui/src/components/settings/ModelsPage.tsx",

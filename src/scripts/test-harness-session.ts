@@ -92,10 +92,10 @@ const metaRecords = async (sessionId: string) =>
   (await transcriptOf(sessionId)).filter((entry) => entry.type === "session_meta");
 
 /** Open a saved session in a runtime started with `harness` and return its check and the runtime's Agent. */
-const reopen = (sessionId: string, harness: HarnessTarget = { session: sessionId }) =>
+const reopen = (sessionId: string, harness: HarnessTarget = { session: sessionId }, model?: string) =>
   withRuntime(harness, async (runtime) => {
     const agent = await runtime.getHarness();
-    const session = await runtime.resumeSession(sessionId);
+    const session = await runtime.resumeSession(sessionId, model ? { model } : {});
     await session.close();
     return { agent, check: session.harnessCheck! };
   });
@@ -174,7 +174,8 @@ try {
       await writeJson(localSettings, { harness: "reviewer" });
       await trustProject(cwd);
       try {
-        const { agent, check: result } = await reopen(sessionId);
+        await assert.rejects(reopen(sessionId), /Raw historical model names are not resolved automatically/);
+        const { agent, check: result } = await reopen(sessionId, { session: sessionId }, "historical");
         assert.equal(agent.name, "default", "not the workspace default");
         assert.deepEqual(agent.selectedBy, { source: "session", sessionId });
         assert.deepEqual(

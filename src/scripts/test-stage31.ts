@@ -341,9 +341,10 @@ async function main(): Promise<void> {
 
   console.log("\n[11] Optional live fetch (set LIVE=1)");
   if (process.env.LIVE === "1") {
+    const { resolveProfileId } = await import("../services/api/providers/profile.js");
     const live = await webFetchTool.call(
       { url: "https://example.com/", prompt: "What is the title of this page?" },
-      { cwd: ctx.cwd, defaultModel: process.env.ANTHROPIC_MODEL },
+      { cwd: ctx.cwd, defaultModel: await resolveProfileId(undefined, ctx.cwd) },
     );
     assert(!live.isError && live.content.length > 0, "live WebFetch returns content");
     console.log("    live result preview:", toolResultText(live.content).slice(0, 160).replace(/\n/g, " "));

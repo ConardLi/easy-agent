@@ -28,14 +28,14 @@ import { getUserSettingsPath } from "../utils/paths.js";
 import { HARNESS_KEYS, type HarnessKey, type HarnessLayerSource, type HarnessSettingsInput } from "./keys.js";
 import { BUILT_IN_HARNESSES, HARNESS_NAME, HarnessSpecSchema, type HarnessSpec, type TextSource } from "./spec.js";
 import {
-  legacyDefaultModelIsShadowed,
-  migrateSettings,
-  migrateLegacyEnvironment,
-  LEGACY_ENVIRONMENT_NAMES,
-  savedProfileOwnsConnection,
-  legacyClassifierConnection,
-} from "../config/migration.js";
-import { configurationInputEnvironment } from "../config/environment.js";
+  declaredEnvironmentReferences,
+  retiredEnvironmentNotices,
+  retiredHarnessNotices,
+  retiredSettingsNotices,
+  RETIRED_ENVIRONMENT_TARGETS,
+  type ConfigurationNotice,
+} from "../config/retired.js";
+import { configurationEnvironment } from "../config/environment.js";
 import { ConfigurationError } from "../config/values.js";
 
 export interface HarnessContribution {
@@ -63,6 +63,8 @@ export interface ResolvedHarnessValue {
 }
 
 export interface HarnessIssue {
+  /** Removed configuration can be inspected and migrated, but cannot execute a model request. */
+  retired?: boolean;
   level: "error" | "warning";
   message: string;
   harness?: string;
@@ -90,6 +92,7 @@ export interface HarnessSettingsLayer {
   source: SettingSource;
   path: string | null;
   raw: Record<string, unknown> | null;
+  migrationNotices?: readonly ConfigurationNotice[];
 }
 
 export interface HarnessInputs {
@@ -110,8 +113,6 @@ export interface HarnessInputs {
   /** Base for relative `file` paths. */
   configDir?: string;
   home?: string;
-  /** IDs explicitly declared before compatibility conversion. */
-  canonicalProfileIds?: readonly string[];
 }
 
 const INLINE = "(inline)";
@@ -151,16 +152,18 @@ function readHarnessDefinitions(inputs: HarnessInputs, issues: HarnessIssue[]): 
 }
 
 function parseSpec(name: string, raw: unknown, issues: HarnessIssue[]): HarnessSpec | undefined {
-  const migration = migrateSettings({ harnesses: { [name]: raw } });
-  for (const notice of migration.notices) {
+  const notices = retiredHarnessNotices(raw);
+  for (const notice of notices) {
     issues.push({
-      level: notice.level === "error" ? "error" : "warning",
+      level: "error",
       harness: name,
       path: notice.field,
       message: notice.message,
+      retired: true,
     });
   }
-  const result = HarnessSpecSchema.safeParse((migration.value.harnesses as Record<string, unknown>)[name]);
+  if (notices.length) return undefined;
+  const result = HarnessSpecSchema.safeParse(raw);
   if (result.success) return result.data;
   for (const issue of result.error.issues) {
     const where = issue.path.join(".");
@@ -371,15 +374,7 @@ function resolveKey(
   issues: HarnessIssue[],
 ): ResolvedHarnessValue {
   const layer = (source: SettingSource) => inputs.layers.find((candidate) => candidate.source === source);
-  let envRead = key.env?.read(inputs.env);
-  if (key.path === "features.toolSearch" || key.path === "features.toolSearchAutoThreshold") {
-    const migrated = migrateLegacyEnvironment(inputs.env).toolSearch;
-    if (migrated)
-      envRead = {
-        value: key.path.endsWith("Threshold") ? migrated.toolSearchAutoThreshold : migrated.toolSearch,
-        name: "legacy ToolSearch migration",
-      };
-  }
+  const envRead = key.env?.read(inputs.env);
   if (envRead && "invalid" in envRead) throw new ConfigurationError(envRead.name, envRead.invalid, "environment");
   const envCandidate: Candidate | undefined = envRead
     ? "invalid" in envRead
@@ -410,10 +405,7 @@ function resolveKey(
       settingsAt(input, "policy"),
     ].filter((candidate): candidate is Candidate => candidate !== undefined);
 
-  let candidates = ordered(key.settings, true);
-  if (key.fallbackSettings && !candidates.some((candidate) => !candidate.ignoredReason)) {
-    candidates = [...candidates, ...ordered(key.fallbackSettings, false)];
-  }
+  const candidates = ordered(key.settings, true);
 
   const base: HarnessContribution = { source: "built-in", value: key.defaultValue };
   const accepted = candidates.filter((candidate) => !candidate.ignoredReason);
@@ -485,73 +477,24 @@ function deepFreeze<T>(value: T): T {
 
 /** Resolve a harness from already-loaded inputs. Pure apart from reading referenced text files. */
 export function resolveHarnessFromInputs(inputs: HarnessInputs): ResolvedHarness {
-  const originalInputs = inputs;
   const issues: HarnessIssue[] = [];
-  const migration = migrateLegacyEnvironment(inputs.env);
-  const env = { ...migration.env };
-  const configuredIds = new Set(
-    inputs.layers.flatMap((layer) => Object.keys((layer.raw?.models as object | undefined) ?? {})),
+  const eligible = inputs.layers.filter(
+    (layer) => !["project", "local"].includes(layer.source) || inputs.workspaceTrusted,
   );
-  const legacyClassifier = legacyClassifierConnection(migration, configuredIds);
-  if (legacyClassifier) {
-    env.EASY_AGENT_AUTO_MODE_MODEL = legacyClassifier.id;
-    for (const notice of legacyClassifier.notices.filter((notice) => notice.level === "error"))
-      issues.push({ level: "error", path: "model.roles.classifier", message: notice.message });
-  }
-  const legacyDefaultModelShadowed = legacyDefaultModelIsShadowed(
-    inputs.layers
-      .filter((layer) => ["user", "project", "local"].includes(layer.source))
-      .map((layer) => ({ raw: layer.raw, trusted: layer.source === "user" || inputs.workspaceTrusted })),
-  );
-  if (migration.legacyConnection) {
-    for (const key of ["EASY_AGENT_PROTOCOL", "EASY_AGENT_MODEL", "EASY_AGENT_BASE_URL", "EASY_AGENT_API_KEY"])
-      delete env[key];
-  }
-  const roleMigrationIssues: HarnessIssue[] = [];
-  inputs = {
-    ...inputs,
-    env,
-    layers: inputs.layers.map((layer) => {
-      if (!layer.raw) return layer;
-      const migrated = migrateSettings(layer.raw, {
-        knownProfileIds: configuredIds,
-        ...(layer.source === "flag" ? {} : { legacyEnvironment: migration }),
-        legacyDefaultModelShadowed,
+  const references = declaredEnvironmentReferences([...eligible.map((layer) => layer.raw), inputs.spec]);
+  for (const notice of retiredEnvironmentNotices(inputs.env, references))
+    issues.push({ level: "error", path: notice.field, message: notice.message, retired: true });
+  for (const layer of eligible)
+    for (const notice of layer.migrationNotices ?? retiredSettingsNotices(layer.raw, references))
+      issues.push({
+        level: "error",
+        path: notice.field,
+        message: `${layer.path ?? layer.source}: ${notice.message}`,
+        retired: true,
       });
-      if (!["project", "local"].includes(layer.source) || inputs.workspaceTrusted) {
-        for (const notice of migrated.notices.filter((notice) => notice.level === "error")) {
-          const scoped = /^harnesses\.([^.]+)\.model\.roles\./.exec(notice.field);
-          if (scoped || notice.field.startsWith("modelRoles.") || notice.field === "env.EASY_AGENT_AUTO_MODE_MODEL")
-            roleMigrationIssues.push({
-              level: "error",
-              path: notice.field,
-              ...(scoped ? { harness: scoped[1] } : {}),
-              message: notice.message,
-            });
-        }
-      }
-      return { ...layer, raw: migrated.value };
-    }),
-  };
   const { name, chain, selectedBy } = buildChain(inputs, issues);
-  issues.push(
-    ...roleMigrationIssues.filter((issue) => !issue.harness || chain.some((entry) => entry.name === issue.harness)),
-  );
   const values: Record<string, ResolvedHarnessValue> = {};
   for (const key of HARNESS_KEYS) values[key.path] = resolveKey(key, chain, inputs, issues);
-  const savedProfileSelected = savedProfileOwnsConnection(
-    originalInputs.layers
-      .filter((layer) => !["project", "local"].includes(layer.source) || inputs.workspaceTrusted)
-      .map((layer) => layer.raw),
-    typeof values["model.main"]?.value === "string" ? values["model.main"].value : undefined,
-    originalInputs.canonicalProfileIds ? new Set(originalInputs.canonicalProfileIds) : undefined,
-  );
-  for (const notice of migrateLegacyEnvironment(originalInputs.env, { savedProfileSelected }).notices)
-    issues.push({
-      level: notice.level === "error" ? "error" : "warning",
-      path: notice.field,
-      message: notice.message,
-    });
   if (values["trace.level"]?.value === "full") {
     issues.push({
       level: "warning",
@@ -591,12 +534,9 @@ export async function resolveHarness(options: ResolveHarnessOptions): Promise<Re
     isProjectTrusted(options.cwd),
   ]);
   return resolveHarnessFromInputs({
-    layers: sources.map(({ source, path: file, raw }: LoadedSource) => ({ source, path: file, raw })),
+    layers: sources,
     workspaceTrusted,
-    canonicalProfileIds: sources
-      .filter((source) => !["project", "local"].includes(source.source) || workspaceTrusted)
-      .flatMap((source) => source.canonicalProfileIds ?? []),
-    env: options.env ?? configurationInputEnvironment(),
+    env: options.env ?? configurationEnvironment(),
     agentTeamsFlag: hasAgentTeamsFlag(),
     ...(options.name !== undefined ? { name: options.name } : {}),
     ...(options.spec !== undefined ? { spec: options.spec } : {}),
@@ -630,12 +570,12 @@ export async function harnessDefined(cwd: string, name: string): Promise<boolean
 }
 
 const ENVIRONMENT_NAMES = [
-  ...new Set([...HARNESS_KEYS.flatMap((key) => key.env?.names ?? []), ...LEGACY_ENVIRONMENT_NAMES]),
+  ...new Set([...HARNESS_KEYS.flatMap((key) => key.env?.names ?? []), ...Object.keys(RETIRED_ENVIRONMENT_TARGETS)]),
 ];
 let processHarness: { fingerprint: string; resolved: ResolvedHarness } | undefined;
 
-/** A copy of the variables Harness keys read, so later changes to the process environment do not apply. */
-export function harnessEnvironment(env: NodeJS.ProcessEnv = configurationInputEnvironment()): NodeJS.ProcessEnv {
+/** Capture canonical and retired inputs so later process mutations do not apply. */
+export function harnessEnvironment(env: NodeJS.ProcessEnv = configurationEnvironment()): NodeJS.ProcessEnv {
   return Object.fromEntries(
     ENVIRONMENT_NAMES.filter((name) => env[name] !== undefined).map((name) => [name, env[name]]),
   );
@@ -647,7 +587,7 @@ export function harnessEnvironment(env: NodeJS.ProcessEnv = configurationInputEn
  * reused until one of the variables it reads changes.
  */
 export function resolveProcessHarness(): ResolvedHarness {
-  const env = configurationInputEnvironment();
+  const env = configurationEnvironment();
   const agentTeamsFlag = hasAgentTeamsFlag();
   const fingerprint = JSON.stringify([agentTeamsFlag, ...ENVIRONMENT_NAMES.map((name) => env[name] ?? null)]);
   if (processHarness?.fingerprint !== fingerprint) {

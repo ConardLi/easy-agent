@@ -1,6 +1,6 @@
 # Configuration migration and rollback
 
-This migration release reads retired settings only at one compatibility boundary and converts them to the canonical profile contract. All new writes use canonical fields. Compatibility will stop participating in effective configuration in the **next explicitly announced breaking release**. Its version number and release date must be announced before removal; no specific version is promised here.
+**This upgrade is a breaking configuration change.** Runtime loading, model requests and ordinary saves accept the canonical contract only. Retired fields and unreferenced retired environment variables produce actionable errors; they are never converted automatically. Conversion is available only through the explicit migration command/API below. Configuration inspection and the desktop settings page remain available so you can repair or migrate an old file.
 
 ## Preview and apply
 
@@ -14,7 +14,7 @@ Scopes are `user`, `project` and `local`. The desktop Models page offers **Previ
 
 Apply locks the file, verifies the displayed revision against both the file and runtime context, and writes an exact original-byte backup beside it: `settings.json.pre-standardization-<timestamp>.bak` (or the local file's corresponding name). Backups are private, `0600` on POSIX; Windows uses account ACLs. A changed file or a restarted runtime requires another preview. Repeating a canonical migration creates neither another profile nor another backup.
 
-Shell configuration, CI Secrets and external credentials are never rewritten. Update those explicitly using the table below. Rebuild the runtime after migrating environment; supported setting edits otherwise apply to the next request. Normal settings saves also canonicalize retired fields with a private original-file backup.
+Shell configuration, CI Secrets and external credentials are never rewritten. Update those explicitly using the table below, including classifier selections that previously named raw models. Rebuild the runtime after migrating environment; supported setting edits otherwise apply to the next request. Ordinary saves reject retired fields and leave the original file untouched; they neither convert fields nor create migration backups. You can explicitly remove a retired field while writing its replacement.
 
 ## Field mapping
 
@@ -48,13 +48,13 @@ Existing canonical feature, debug, proxy, OS and external-tool variables keep th
 
 ## Conflicts and intentional changes
 
-Two equal old credentials merge. Two different old credentials block the connection migration without displaying either secret. A complete canonical connection wins over residual old connection variables; it is never filled with an old key or address. A token name does not imply Bearer authentication: verify gateways that depended on the previous duplicate `Authorization` and `x-api-key` headers, then explicitly choose their authentication policy.
+During explicit migration, two equal old credentials merge. Two different old credentials block conversion of a connection that needs them, without displaying either secret. A complete canonical connection keeps its own fields; the migration can remove unused old variables from the selected file. Runtime model use remains blocked until unreferenced retired variables have been removed from the file, shell or `.env`. A token name does not imply Bearer authentication: verify gateways that depended on the previous duplicate `Authorization` and `x-api-key` headers, then explicitly choose their authentication policy.
 
-Saved profiles selected by settings, an Agent, CLI/SDK overrides, managed policy or the single-profile default own their declared credential source. An unused old credential conflict does not prevent startup or migration, including when the old variables appear in the same file. An explicit `${EASY_AGENT_API_KEY}` or vendor-variable reference keeps its own value; a missing reference remains an error and never borrows the old connection's key. Profiles newly created from an actual legacy connection retain the credential produced by that migration.
+Saved profiles selected by settings, an Agent, CLI/SDK overrides, managed policy or the single-profile default own their declared credential source. An explicit `${EASY_AGENT_API_KEY}` or vendor-variable reference such as `${ANTHROPIC_API_KEY}` keeps its own value; these are ordinary references, not aliases. A missing reference remains an error and never borrows an old connection's key. Profiles created by an explicit migration retain the confirmed old connection. No profile is generated during startup.
 
-An independently configured legacy role or classifier retains its original model, endpoint and credential even when the main profile uses a canonical connection. Migration may preserve an explicit vendor-variable reference for that role; it never substitutes the main profile's API Key. Conflicting old credentials still prevent migration when a role actually needs that old connection.
+Explicit migration can preserve an independently configured legacy role or classifier's original model, endpoint and credential even when the main profile uses a canonical connection. It may preserve an explicit vendor-variable reference for that role; it never substitutes the main profile's API Key. Conflicting old credentials prevent migration when a role needs that connection.
 
-Unknown profile IDs no longer mean raw Anthropic models. With no configuration there is no fixed Claude fallback; one valid profile can be auto-selected, several require a default. Historical sessions map raw names only to a unique confirmed profile, otherwise request a new selection.
+Unknown profile IDs no longer mean raw Anthropic models. With no configuration there is no fixed Claude fallback; one valid profile can be auto-selected, several require a default. Historical sessions use saved profile IDs only. When an old session contains a raw model name, explicitly select a configured profile while resuming; even a unique upstream-model match is not selected automatically.
 
 Unknown models no longer get all Claude reasoning features automatically. `reasoning.mode=auto` is conservative; explicitly requested unsupported reasoning reports how to configure capabilities. Ordinary `ultrathink` text does not change reasoning. Adaptive/interleaved details belong to the selected Anthropic adapter, not a global switch.
 
@@ -64,6 +64,6 @@ Boolean false/0 now mean false. Integers, enums and credential references are fu
 
 Stop active runtimes. Restore each migrated file from its printed backup, preserving the private permissions. Install the previous known-good package version (record it with `eagent --version` before upgrading), and restore any shell or CI variable changes you made separately. Do not publish backups: they may contain old inline secrets. Backups are exact originals, so rollback does not reconstruct or guess old fields. Canonical profiles are not reverse-translated at runtime.
 
-## Compatibility removal checklist
+## Remaining old names
 
-Before the next announced breaking release: publish its version/date and this mapping, require canonical writes from CLI/SDK/RPC/ACP/desktop, retain the backup/rollback path, remove retired names from effective parsing, keep diagnostic detection and explicit user references, and rerun authentication, trust, migration and request regressions. Remove the old fixed model only from compatibility conversion after users have been notified. Historical tutorials and third-party formats remain unchanged.
+Old names remain in diagnostics, the explicit offline converter and its tests. Arbitrary explicit environment references, historical tutorials, real provider/protocol names and third-party Skill placeholders retain their meaning. They do not enable legacy runtime configuration. There is no automatic compatibility window in this upgrade.

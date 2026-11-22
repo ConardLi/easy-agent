@@ -1,11 +1,13 @@
 /**
- * The only compatibility reader for retired product configuration.
+ * Explicit, offline conversion of retired product configuration.
+ * Normal startup, settings writes and model requests never call this module.
  * Conversion is pure: callers preview the report before writing a backup and
  * applying it. Re-reading a canonical document makes no further changes.
  */
 import { createHash } from "node:crypto";
 import { configString } from "./values.js";
 import { isAuthenticationHeader, MODEL_PROTOCOLS } from "./modelSchema.js";
+import { RETIRED_ENVIRONMENT_TARGETS } from "./retired.js";
 
 /** A saved target owns its credentials, even if a declared reference is missing. */
 export function savedProfileOwnsConnection(
@@ -54,41 +56,7 @@ export function legacyDefaultModelIsShadowed(
   return layers.some((layer) => layer.trusted && typeof layer.raw?.model === "string" && layer.raw.model.trim() !== "");
 }
 
-export const LEGACY_ENVIRONMENT_NAMES = [
-  "ANTHROPIC_API_KEY",
-  "ANTHROPIC_AUTH_TOKEN",
-  "ANTHROPIC_BASE_URL",
-  "ANTHROPIC_MODEL",
-  "MAX_THINKING_TOKENS",
-  "CLAUDE_CODE_DISABLE_THINKING",
-  "CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING",
-  "DISABLE_INTERLEAVED_THINKING",
-  "CLAUDE_CODE_ALWAYS_ENABLE_EFFORT",
-  "CLAUDE_CODE_MAX_CONTEXT_TOKENS",
-  "CLAUDE_CODE_MAX_RETRIES",
-  "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS",
-  "WEB_SEARCH_ADAPTER",
-  "MCP_CONNECT_TIMEOUT",
-  "EASY_AGENT_ENABLE_TOOL_SEARCH",
-  "ENABLE_TOOL_SEARCH",
-] as const;
-
-export const CONNECTION_ENVIRONMENT_NAMES = [
-  "EASY_AGENT_PROFILE",
-  "EASY_AGENT_PROTOCOL",
-  "EASY_AGENT_MODEL",
-  "EASY_AGENT_BASE_URL",
-  "EASY_AGENT_API_KEY",
-  "ANTHROPIC_MODEL",
-  "ANTHROPIC_BASE_URL",
-  "ANTHROPIC_API_KEY",
-  "ANTHROPIC_AUTH_TOKEN",
-] as const;
-
-/** Legacy key-only connections count as a target only at the migration boundary. */
-export function environmentDeclaresConnection(env: Readonly<NodeJS.ProcessEnv>): boolean {
-  return CONNECTION_ENVIRONMENT_NAMES.some((name) => name !== "EASY_AGENT_API_KEY" && configString(env[name]));
-}
+export const LEGACY_ENVIRONMENT_NAMES = Object.keys(RETIRED_ENVIRONMENT_TARGETS);
 
 /** Used only to preserve the old selection when an actual legacy connection exists. */
 const LEGACY_DEFAULT_MODEL = "claude-sonnet-4-20250514";
@@ -283,33 +251,6 @@ export function legacyRoleConnection(migration: EnvironmentMigration | undefined
       ? "ANTHROPIC_AUTH_TOKEN"
       : undefined;
   return { ...legacy, apiKeyReference: credential ? `\${${credential}}` : undefined };
-}
-
-/** A raw legacy classifier selection is converted only with confirmed connection evidence. */
-export function legacyClassifierConnection(migration: EnvironmentMigration, configuredIds: ReadonlySet<string>) {
-  const model = configString(migration.env.EASY_AGENT_AUTO_MODE_MODEL);
-  const connection = legacyRoleConnection(migration);
-  if (!model || configuredIds.has(model) || !connection) return undefined;
-  return {
-    id: legacyProfileId(model),
-    notices: connection.notices,
-    profile: {
-      protocol: "anthropic" as const,
-      model,
-      ...(connection.env.EASY_AGENT_BASE_URL ? { baseURL: connection.env.EASY_AGENT_BASE_URL } : {}),
-      ...(connection.env.EASY_AGENT_API_KEY ? { apiKey: connection.apiKeyReference } : {}),
-    },
-  };
-}
-
-/** Saved raw names may be mapped only to a unique, already configured connection. */
-export function migrateSessionModelSelection(
-  saved: string,
-  profiles: Readonly<Record<string, { model: string }>>,
-): string | undefined {
-  if (profiles[saved]) return saved;
-  const matches = Object.entries(profiles).filter(([, profile]) => profile.model === saved);
-  return matches.length === 1 ? matches[0]![0] : undefined;
 }
 
 function migrateReasoning(

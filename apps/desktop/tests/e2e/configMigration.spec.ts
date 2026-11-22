@@ -10,6 +10,7 @@ const profile = () => (settings().models as Record<string, Record<string, unknow
 async function models(page: Page) {
   await page.getByRole("button", { name: "设置", exact: true }).click();
   await page.getByRole("button", { name: "模型", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "默认模型", exact: true })).toBeVisible();
 }
 test.beforeEach(async () => {
   world = await createAgentWorld();
@@ -90,6 +91,7 @@ test("migration previews safely, backs up exact bytes, reloads and keeps the sel
     await app.close();
     ({ app, page } = await openProject(world));
     await models(page);
+    await expect(page.getByRole("button", { name: /^fixture-model/ })).toBeVisible();
     await expect(page.getByRole("button", { name: "预览迁移" })).toHaveCount(0);
     await page.screenshot({ path: info.outputPath("migration-reloaded.png"), animations: "disabled" });
   } finally {
@@ -116,7 +118,7 @@ test("conflicting legacy credentials disable apply without displaying either sec
   }
 });
 
-test("a saved profile runs and migrates with unrelated legacy credential conflicts", async () => {
+test("retired credentials block requests until explicit migration and restart", async () => {
   const canonical = { ...profile(), apiKey: "${EASY_AGENT_API_KEY}" };
   writeFileSync(
     file(),
@@ -127,23 +129,25 @@ test("a saved profile runs and migrates with unrelated legacy credential conflic
       env: { EASY_AGENT_API_KEY: "fixture-token", ANTHROPIC_API_KEY: "unused-old-key", ANTHROPIC_AUTH_TOKEN: "unused-old-token" },
     }),
   );
-  world.fixture.script([
-    { kind: "text", text: "规范连接仍可用" },
-    { kind: "text", text: "重载后仍使用规范连接" },
-  ]);
+  world.fixture.script([{ kind: "text", text: "重载后仍使用规范连接" }]);
   let { app, page } = await openProject(world);
   try {
     await send(page, "检查已保存连接");
-    await expect(page.getByRole("main").getByText("规范连接仍可用", { exact: true })).toBeVisible();
-    expect(world.fixture.requests.at(-1)?.headers["x-api-key"]).toBe("fixture-token");
-    expect(world.fixture.requests.at(-1)?.headers.authorization).toBeUndefined();
+    await expect(page.getByRole("main").getByText(/Retired configuration/)).toBeVisible();
+    expect(world.fixture.requests).toHaveLength(0);
     await models(page);
     await page.getByRole("button", { name: "预览迁移" }).click();
     const dialog = page.getByRole("dialog", { name: "配置迁移预览" });
     expect(await dialog.innerText()).not.toMatch(/unused-old-key|unused-old-token|disagree/);
+    await expect(dialog).toContainText(file());
     await expect(page.getByRole("button", { name: "备份并应用" })).toBeEnabled();
     await page.getByRole("button", { name: "备份并应用" }).click();
-    await expect.poll(() => settings().env).toEqual({ EASY_AGENT_API_KEY: "fixture-token" });
+    await expect
+      .poll(async () => ({
+        error: await dialog.getByRole("alert").allTextContents(),
+        env: settings().env,
+      }))
+      .toEqual({ error: [], env: { EASY_AGENT_API_KEY: "fixture-token" } });
     expect(profile()).toEqual(canonical);
     await app.close();
     ({ app, page } = await openProject(world));

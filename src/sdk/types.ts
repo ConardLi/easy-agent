@@ -183,7 +183,7 @@ export interface ConfigSourceInfo {
   values: Record<string, unknown>;
   parseError?: string;
   validationErrors?: string[];
-  migrationNotices?: import("../config/migration.js").MigrationNotice[];
+  migrationNotices?: import("../config/retired.js").ConfigurationNotice[];
 }
 
 export interface EffectiveSetting {

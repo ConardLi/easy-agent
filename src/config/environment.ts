@@ -1,7 +1,18 @@
 import type { SettingSource } from "./sources.js";
 import { defineRuntimeState } from "../state/runtimeScope.js";
-import { migrateLegacyEnvironment, type EnvironmentMigration } from "./migration.js";
 import { environmentReferences } from "./values.js";
+
+export const CONNECTION_ENVIRONMENT_NAMES = [
+  "EASY_AGENT_PROFILE",
+  "EASY_AGENT_PROTOCOL",
+  "EASY_AGENT_MODEL",
+  "EASY_AGENT_BASE_URL",
+  "EASY_AGENT_API_KEY",
+] as const;
+
+export function environmentDeclaresConnection(env: Readonly<NodeJS.ProcessEnv>): boolean {
+  return CONNECTION_ENVIRONMENT_NAMES.some((name) => name !== "EASY_AGENT_API_KEY" && env[name]?.trim());
+}
 
 export type EnvironmentConfigSource = SettingSource | "dotenv";
 
@@ -17,8 +28,7 @@ const state = defineRuntimeState(
   () => ({
     inherited: null as Readonly<NodeJS.ProcessEnv> | null,
     report: null as EnvironmentLoadReport | null,
-    snapshot: null as EnvironmentMigration | null,
-    input: null as Readonly<NodeJS.ProcessEnv> | null,
+    snapshot: null as Readonly<NodeJS.ProcessEnv> | null,
     credentialReferences: new Set<string>(),
     writes: new Map<string, { original: string | undefined; applied: string | undefined }>(),
   }),
@@ -45,28 +55,12 @@ export function writeRuntimeEnvironment(key: string, value: string | undefined):
 }
 
 /** Model configuration reads this immutable runtime snapshot, never ambient mutations. */
-export function installConfigurationEnvironment(
-  env: Readonly<NodeJS.ProcessEnv>,
-  options: { savedProfileSelected?: boolean } = {},
-): EnvironmentMigration {
-  state().input = Object.freeze({ ...env });
-  const migrated = migrateLegacyEnvironment(env, options);
-  Object.freeze(migrated.env);
-  state().snapshot = migrated;
-  return migrated;
-}
-
-/** Unconverted snapshot for the centralized migration boundary. */
-export function configurationInputEnvironment(): Readonly<NodeJS.ProcessEnv> {
-  configurationEnvironmentMigration();
-  return state().input!;
+export function installConfigurationEnvironment(env: Readonly<NodeJS.ProcessEnv>): Readonly<NodeJS.ProcessEnv> {
+  state().snapshot = Object.freeze({ ...env });
+  return state().snapshot!;
 }
 
 export function configurationEnvironment(): Readonly<NodeJS.ProcessEnv> {
-  return configurationEnvironmentMigration().env;
-}
-
-export function configurationEnvironmentMigration(): EnvironmentMigration {
   return state().snapshot ?? installConfigurationEnvironment(process.env);
 }
 
@@ -128,6 +122,5 @@ export function resetEnvironmentStateForTests(): void {
   state().inherited = null;
   state().report = null;
   state().snapshot = null;
-  state().input = null;
   state().credentialReferences.clear();
 }

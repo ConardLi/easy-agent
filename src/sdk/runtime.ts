@@ -54,7 +54,6 @@ import type { McpServerConfig } from "../types/mcp.js";
 import { activateWorkspace, agentErrors, consoleLogger, loadWorkspace, type WorkspaceReport } from "./bootstrap.js";
 import { checkModel, listModels, readConfig, setWorkspaceTrust, writeConfig } from "./config.js";
 import { applyConfigMigration, previewConfigMigration } from "../config/migrationFiles.js";
-import { migrateSessionModelSelection } from "../config/migration.js";
 import { ConfigurationError } from "../config/values.js";
 import { AgentSdkError } from "./errors.js";
 import { approveMcpServer, reconnectMcpServer, reloadExtensions } from "./extensions.js";
@@ -251,12 +250,11 @@ export class AgentRuntime {
       (explicitHarness === "policy" || explicitHarness === "flag" || explicitHarness === "harness"
         ? harnessValue<string>(harness, "model.main")
         : undefined);
-    const model =
-      override ?? (savedModel ? migrateSessionModelSelection(savedModel, loaded.profiles) : await this.resolveModel());
+    const model = override ?? (savedModel || (await this.resolveModel()));
     if (!model || !loaded.profiles[model]) {
       throw new ConfigurationError(
         "session.model",
-        "the saved profile is missing or its historical connection is ambiguous; pass a configured profile ID when resuming.",
+        "the saved profile ID is missing; pass a configured profile ID when resuming. Raw historical model names are not resolved automatically.",
       );
     }
     const harnessCheck = await this.#bindHarness(restored, harness, options.persist !== false);
@@ -414,6 +412,8 @@ export class AgentRuntime {
    * disables authentication. This checks presence without executing helpers.
    */
   async hasModelCredentials(model?: string): Promise<boolean> {
+    const problems = (await loadProfiles(this.cwd)).configurationErrors;
+    if (problems?.length) throw new ConfigurationError("configuration", problems.join(" "));
     const id = model ?? (await this.resolveModel());
     if (!id.trim()) return false;
     const profile = await resolveProfileConfiguration(id, this.cwd);

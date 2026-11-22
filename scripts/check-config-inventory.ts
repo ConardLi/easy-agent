@@ -77,7 +77,11 @@ const DYNAMIC_ENV_READS: DynamicEnvRead[] = [
   },
   {
     file: "src/config/migration.ts",
-    reason: "The centralized, temporary compatibility boundary for retired environment names.",
+    reason: "Offline conversion used only by the explicit migration command/API.",
+  },
+  {
+    file: "src/config/retired.ts",
+    reason: "Diagnoses removed names without applying or converting their values.",
   },
   {
     file: "src/harness/keys.ts",
@@ -282,6 +286,7 @@ interface ScanResult {
   dynamicEnvReads: Located[];
   argvReads: (Located & { flags: string[] })[];
   settingKeys: (Located & { key: string })[];
+  offlineMigrationImports: Located[];
 }
 
 const ENV_NAME = /^[A-Z][A-Z0-9_]*$/;
@@ -303,9 +308,7 @@ function isEnvObject(node: ts.Expression): boolean {
     (ts.isIdentifier(node) && node.text === "env") ||
     (ts.isCallExpression(node) &&
       ts.isIdentifier(node.expression) &&
-      ["configurationEnvironment", "configurationInputEnvironment", "captureInheritedEnvironment"].includes(
-        node.expression.text,
-      ))
+      ["configurationEnvironment", "captureInheritedEnvironment"].includes(node.expression.text))
   );
 }
 
@@ -338,7 +341,13 @@ function flagLiterals(node: ts.Node): string[] {
 }
 
 export function scanSource(file: string, text: string): ScanResult {
-  const result: ScanResult = { envReads: [], dynamicEnvReads: [], argvReads: [], settingKeys: [] };
+  const result: ScanResult = {
+    envReads: [],
+    dynamicEnvReads: [],
+    argvReads: [],
+    settingKeys: [],
+    offlineMigrationImports: [],
+  };
   const source = ts.createSourceFile(
     file,
     text,
@@ -367,6 +376,14 @@ export function scanSource(file: string, text: string): ScanResult {
     isEnvObject(node) || (ts.isIdentifier(node) && aliases.has(node.text));
 
   const visit = (node: ts.Node) => {
+    const module =
+      ts.isImportDeclaration(node) || ts.isExportDeclaration(node)
+        ? node.moduleSpecifier
+        : ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword
+          ? node.arguments[0]
+          : undefined;
+    if (module && ts.isStringLiteralLike(module) && path.posix.basename(module.text) === "migration.js")
+      result.offlineMigrationImports.push({ file, line: lineOf(node) });
     if (ts.isPropertyAccessExpression(node) && environmentObject(node.expression) && ENV_NAME.test(node.name.text)) {
       result.envReads.push({ name: node.name.text, file, line: lineOf(node) });
     } else if (ts.isElementAccessExpression(node) && environmentObject(node.expression)) {
@@ -416,7 +433,13 @@ async function listSourceFiles(dir: string): Promise<string[]> {
 }
 
 async function scanTree(): Promise<{ scan: ScanResult; texts: Map<string, string> }> {
-  const scan: ScanResult = { envReads: [], dynamicEnvReads: [], argvReads: [], settingKeys: [] };
+  const scan: ScanResult = {
+    envReads: [],
+    dynamicEnvReads: [],
+    argvReads: [],
+    settingKeys: [],
+    offlineMigrationImports: [],
+  };
   const texts = new Map<string, string>();
   for (const file of await listSourceFiles(SCAN_ROOT)) {
     const text = await readFile(path.join(PROJECT_ROOT, file), "utf8");
@@ -426,6 +449,7 @@ async function scanTree(): Promise<{ scan: ScanResult; texts: Map<string, string
     scan.dynamicEnvReads.push(...result.dynamicEnvReads);
     scan.argvReads.push(...result.argvReads);
     scan.settingKeys.push(...result.settingKeys);
+    scan.offlineMigrationImports.push(...result.offlineMigrationImports);
   }
   return { scan, texts };
 }
@@ -466,6 +490,12 @@ export function findProblems(scan: ScanResult, texts: ReadonlyMap<string, string
   const listedEnv = listedEnvironmentNames();
   const catalogKeys = new Set(Object.keys(SETTING_CATALOG));
   const loc = (item: Located) => `${item.file}:${item.line}`;
+  for (const entry of scan.offlineMigrationImports) {
+    if (entry.file !== "src/config/migrationFiles.ts")
+      problems.push(
+        `${loc(entry)} imports offline migration into runtime code; only config/migrationFiles.ts may convert retired configuration`,
+      );
+  }
 
   for (const read of scan.envReads) {
     if (
@@ -553,6 +583,8 @@ function selfTest(): void {
     "const h = configurationEnvironment().UNLISTED_SNAPSHOT;",
     "const i = process.env.EASY_AGENT_MAX_RETRIES;",
     "const snapshot = configurationEnvironment(); const j = snapshot.UNLISTED_ALIAS;",
+    'import { migrateSettings } from "./config/migration.js";',
+    '// import { migrateSettings } from "./config/migration.js";',
   ].join("\n");
   const problems = findProblems(scanSource("src/sample.ts", sample), new Map(), false);
   const expected = [
@@ -566,6 +598,7 @@ function selfTest(): void {
     "reads EASY_AGENT_MAX_RETRIES directly; read features.maxRetries",
     "UNLISTED_SNAPSHOT",
     "UNLISTED_ALIAS",
+    "imports offline migration into runtime code",
   ];
   const missing = expected.filter((fragment) => !problems.some((problem) => problem.includes(fragment)));
   const unexpected = problems.filter((problem) => /IN_A_COMMENT/.test(problem));

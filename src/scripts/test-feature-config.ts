@@ -56,8 +56,8 @@ try {
     [source("user", { toolSearch: "off" }), source("flag", { toolSearch: "on" })],
     { EASY_AGENT_ENABLE_TOOL_SEARCH: "auto:25" },
   );
-  assert.equal(envResolved.toolSearch, "on", "CLI flag wins over legacy environment");
-  assert(envResolved.warnings.some((warning) => warning.includes("deprecated")));
+  assert.equal(envResolved.toolSearch, "on", "CLI flag supplies the canonical value");
+  assert(envResolved.warnings.some((warning) => warning.includes("Retired configuration")));
 
   await trustProjectForSession(cwd);
   const projectFile = getProjectSettingsPath(cwd);

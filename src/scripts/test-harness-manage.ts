@@ -29,7 +29,6 @@ for (const key of Object.keys(process.env)) {
 process.env.HOME = home;
 process.env.USERPROFILE = home;
 process.env.EASY_AGENT_DISABLE_HOOKS = "1";
-process.env.ANTHROPIC_MODEL = "claude-test-model";
 process.chdir(cwd);
 
 const sdk = await import("../sdk/index.js");
@@ -54,7 +53,7 @@ const harnessesOf = async () => ((await readJson(userSettings)).harnesses ?? {})
 /** User settings with a credential and other keys the Agent writes must leave alone. */
 const BASE_SETTINGS = {
   outputStyle: "Explanatory",
-  models: { work: { protocol: "openai", model: "gpt-test", apiKey: "sk-inline-secret-value" } },
+  models: { work: { protocol: "openai-chat", model: "gpt-test", apiKey: "sk-inline-secret-value" } },
   deny: ["WebFetch"],
 };
 

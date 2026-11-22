@@ -706,10 +706,71 @@ try {
     const provider = await startFixtureProvider();
     try {
       const providerEnv = isolatedCliEnv(cliHome, {
-        ANTHROPIC_AUTH_TOKEN: "release-fixture-token",
-        ANTHROPIC_BASE_URL: provider.baseURL,
-        ANTHROPIC_MODEL: FIXTURE_MODEL,
+        EASY_AGENT_API_KEY: "release-fixture-token",
+        EASY_AGENT_BASE_URL: provider.baseURL,
+        EASY_AGENT_PROTOCOL: "anthropic",
+        EASY_AGENT_MODEL: FIXTURE_MODEL,
       });
+
+      const retired = await runAsync(eagentBin, ["-p", "Say hello."], {
+        cwd: cliProject,
+        env: { ...providerEnv, ANTHROPIC_AUTH_TOKEN: "retired-private-token" },
+      });
+      assert(
+        retired.status !== 0 &&
+          /Retired configuration/.test(retired.stderr + retired.stdout) &&
+          !/retired-private-token/.test(retired.stderr + retired.stdout) &&
+          provider.requests() === 0,
+        "installed CLI rejects retired environment before HTTP without exposing credentials",
+        retired.stderr || retired.stdout,
+      );
+
+      const migrationHome = path.join(tempRoot, "migration-home");
+      const migrationDir = path.join(migrationHome, ".easy-agent");
+      await fs.mkdir(migrationDir, { recursive: true });
+      const migrationFile = path.join(migrationDir, "settings.json");
+      const original = JSON.stringify(
+        {
+          defaultModel: "saved",
+          models: { saved: { model: FIXTURE_MODEL, baseURL: provider.baseURL, apiKey: "migration-fixture-secret" } },
+        },
+        null,
+        3,
+      );
+      await fs.writeFile(migrationFile, original);
+      const migrationEnv = isolatedCliEnv(migrationHome);
+      const blocked = await runAsync(eagentBin, ["-p", "Say hello."], { cwd: cliProject, env: migrationEnv });
+      assert(
+        blocked.status !== 0 && (await fs.readFile(migrationFile, "utf8")) === original && provider.requests() === 0,
+        "installed startup rejects the old file without modifying or using it",
+      );
+      const preview = await runAsync(eagentBin, ["config", "migrate", "--json"], {
+        cwd: cliProject,
+        env: migrationEnv,
+      });
+      assert(
+        preview.status === 0 &&
+          !preview.stdout.includes("migration-fixture-secret") &&
+          (await fs.readFile(migrationFile, "utf8")) === original &&
+          provider.requests() === 0,
+        "installed migration preview is redacted and read-only",
+        preview.stderr || preview.stdout,
+      );
+      const applied = await runAsync(eagentBin, ["config", "migrate", "--apply", "--json"], {
+        cwd: cliProject,
+        env: migrationEnv,
+      });
+      const migrationResult = applied.status === 0 ? JSON.parse(applied.stdout).result : undefined;
+      const canonical = JSON.parse(await fs.readFile(migrationFile, "utf8"));
+      assert(
+        migrationResult?.changed &&
+          (await fs.readFile(migrationResult.backup, "utf8")) === original &&
+          canonical.model === "saved" &&
+          canonical.models.saved.protocol === "anthropic" &&
+          canonical.defaultModel === undefined,
+        "installed explicit migration backs up original bytes and writes the canonical profile",
+        applied.stderr || applied.stdout,
+      );
 
       const text = await runAsync(eagentBin, ["-p", "Say hello."], { cwd: cliProject, env: providerEnv });
       assert(

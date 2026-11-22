@@ -52,8 +52,6 @@ import { AgentSdkError } from "./errors.js";
 import type { AgentRuntimeOptions, RuntimeLogger } from "./types.js";
 import { withRuntimeScope } from "../state/runtimeScope.js";
 import { ConfigurationError } from "../config/values.js";
-import { configurationEnvironmentMigration } from "../config/environment.js";
-import { loadSettingSources } from "../config/sources.js";
 
 export interface WorkspaceReport {
   projectTrusted: boolean;
@@ -160,18 +158,7 @@ export const loadWorkspace = withRuntimeScope(async (options: AgentRuntimeOption
       selection = { name: project.selection.name, selectedBy: { source: "local", path: project.selection.path } };
     }
   }
-  const environmentReport = await loadEnv(cwd, { harness: selection });
-  const migrationMessages = new Set([
-    ...configurationEnvironmentMigration().notices.map((notice) => `${notice.field}: ${notice.message}`),
-    ...(await loadSettingSources(cwd)).flatMap((source) =>
-      (source.source !== "project" && source.source !== "local") || projectTrusted
-        ? (source.migrationNotices ?? []).map(
-            (notice) => `${source.path ?? source.source}: ${notice.field}: ${notice.message}`,
-          )
-        : [],
-    ),
-  ]);
-  for (const message of migrationMessages) logger.warn(`[easy-agent] Configuration migration: ${message}`);
+  const environmentReport = await loadEnv(cwd);
   const env = harnessEnvironment();
   const selected = "spec" in selection || "name" in selection;
   // A selected Agent that stops resolving (its definition was edited or
@@ -182,7 +169,9 @@ export const loadWorkspace = withRuntimeScope(async (options: AgentRuntimeOption
     cwd,
     resolve: async (dir: string) => {
       const resolved = await resolveHarness({ cwd: dir, env, ...selection });
-      const problem = selected ? agentErrors(resolved) : undefined;
+      const problem = selected
+        ? agentErrors({ ...resolved, issues: resolved.issues.filter((issue) => !issue.retired) })
+        : undefined;
       if (problem === undefined) {
         if (nodePath.resolve(dir) === nodePath.resolve(cwd)) reported = undefined;
         return resolved;

@@ -10,7 +10,7 @@
 import * as readline from "node:readline";
 import { getUserSettingsPath } from "../utils/paths.js";
 import { readJsonSettingsFile, updateUserSettings } from "../utils/settings.js";
-import { migrateSettings } from "../config/migration.js";
+import { retiredSettingsNotices } from "../config/retired.js";
 import { MODEL_PROTOCOLS, ModelProfileSchema, type ModelProfileConfig } from "../config/modelSchema.js";
 import { configEnum, ConfigurationError } from "../config/values.js";
 
@@ -25,8 +25,12 @@ export async function runLogin(): Promise<number> {
     process.stderr.write(`Cannot update ${settingsPath}: ${parseError}\n`);
     return 1;
   }
-  const migrated = migrateSettings(raw ?? {});
-  const saved = migrated.value;
+  const saved = raw ?? {};
+  const retired = retiredSettingsNotices(saved);
+  if (retired.length) {
+    process.stderr.write(`${retired.map((notice) => notice.message).join("\n")}\n`);
+    return 1;
+  }
   const savedEnv = { ...((saved.env ?? {}) as Record<string, string>) };
   const models = { ...((saved.models ?? {}) as Record<string, ModelProfileConfig>) };
 

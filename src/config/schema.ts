@@ -116,6 +116,20 @@ export function validateSettings(
   }
 
   const errors: string[] = [];
+  const settings = raw as Record<string, unknown>;
+  if (
+    typeof settings.model === "string" &&
+    settings.env &&
+    typeof settings.env === "object" &&
+    ["EASY_AGENT_PROTOCOL", "EASY_AGENT_MODEL", "EASY_AGENT_BASE_URL"].some(
+      (name) =>
+        typeof (settings.env as Record<string, unknown>)[name] === "string" &&
+        (settings.env as Record<string, string>)[name]?.trim(),
+    )
+  )
+    errors.push(
+      `${label}: environment.connection: this layer selects model and a shortcut connection; keep one complete connection source.`,
+    );
   for (const key of Object.keys(raw as Record<string, unknown>)) {
     if (!Object.hasOwn(SettingsSchema.shape, key) && key !== "sandbox") {
       errors.push(`${label}: unsupported setting "${key}"; retained for compatibility but not applied by this build`);

@@ -19,7 +19,6 @@ import assert from "node:assert/strict";
 import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { legacyProfileId } from "../config/migration.js";
 
 const root = await realpath(await mkdtemp(path.join(os.tmpdir(), "easy-agent-harness-")));
 const home = path.join(root, "home");
@@ -83,7 +82,6 @@ const { readMergedStringSetting, readMergedBooleanSetting } = await import("../u
 const { validateSettings } = await import("../config/schema.js");
 const { writeConfig } = await import("../sdk/config.js");
 const { installConfigurationEnvironment } = await import("../config/environment.js");
-const { migrateLegacyEnvironment } = await import("../config/migration.js");
 const { ConfigurationError } = await import("../config/values.js");
 
 let passed = 0;
@@ -139,11 +137,8 @@ async function apply(testCase: Case): Promise<void> {
 
 // Keys the code already reads from the resolved harness cannot be compared
 // with that code. These readers are what it did before, kept as the
-// specification the resolver has to match. Deliberate changes: a
-// MAX_THINKING_TOKENS that is not a number is ignored, like other invalid
-// environment values (it used to turn thinking on with no budget), and the
-// Auto Mode classifier role (EASY_AGENT_AUTO_MODE_MODEL) wins over the
-// session's model instead of applying only when a caller passed none.
+// specification the resolver has to match under the canonical contract.
+// The Auto Mode classifier role wins over the session's model.
 const truthySwitch = (value: string | undefined) => /^(1|true|yes|on)$/i.test(value?.trim() ?? "");
 const positiveInteger = (value: string | undefined) => {
   const parsed = value ? Number.parseInt(value, 10) : Number.NaN;
@@ -159,7 +154,7 @@ function referenceClassifierModel(env: NodeJS.ProcessEnv): string | undefined {
 }
 
 function referenceMaxRetries(env: NodeJS.ProcessEnv): number {
-  const raw = env.EASY_AGENT_MAX_RETRIES ?? env.CLAUDE_CODE_MAX_RETRIES;
+  const raw = env.EASY_AGENT_MAX_RETRIES;
   const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : 10;
 }
@@ -194,10 +189,11 @@ async function referencePermissions(): Promise<{ allow: string[]; deny: string[]
 }
 
 /** ToolSearch and role settings as `resolveFeatureSettings` read them from trusted sources and the environment. */
-function referenceFeatures(
-  sources: readonly { source: string; raw: Record<string, unknown> | null }[],
-  env: NodeJS.ProcessEnv,
-): { toolSearch: unknown; toolSearchAutoThreshold: unknown; modelRoles: Record<string, unknown> } {
+function referenceFeatures(sources: readonly { source: string; raw: Record<string, unknown> | null }[]): {
+  toolSearch: unknown;
+  toolSearchAutoThreshold: unknown;
+  modelRoles: Record<string, unknown>;
+} {
   const result = {
     toolSearch: "on" as unknown,
     toolSearchAutoThreshold: 10 as unknown,
@@ -210,22 +206,6 @@ function referenceFeatures(
     if (raw.modelRoles && typeof raw.modelRoles === "object") Object.assign(result.modelRoles, raw.modelRoles);
   };
   for (const source of sources) if (source.source !== "flag" && source.source !== "policy") applySource(source.raw);
-  const legacy = (env.EASY_AGENT_ENABLE_TOOL_SEARCH ?? env.ENABLE_TOOL_SEARCH)?.trim().toLowerCase();
-  if (legacy !== undefined) {
-    if (["true", "1", "yes", "on"].includes(legacy))
-      Object.assign(result, { toolSearch: "on", toolSearchAutoThreshold: 10 });
-    else if (["false", "0", "no", "off"].includes(legacy))
-      Object.assign(result, { toolSearch: "off", toolSearchAutoThreshold: 10 });
-    else if (legacy === "auto") Object.assign(result, { toolSearch: "auto", toolSearchAutoThreshold: 10 });
-    else if (legacy.startsWith("auto:")) {
-      const n = Number.parseInt(legacy.slice(5), 10);
-      const threshold = Number.isFinite(n) ? Math.max(0, Math.min(100, n)) : 10;
-      Object.assign(result, {
-        toolSearch: threshold === 0 ? "on" : threshold === 100 ? "off" : "auto",
-        toolSearchAutoThreshold: threshold,
-      });
-    }
-  }
   for (const source of sources) if (source.source === "flag" || source.source === "policy") applySource(source.raw);
   return result;
 }
@@ -234,14 +214,13 @@ function referenceFeatures(
 async function currentValues(): Promise<Record<string, unknown>> {
   const permissions = await referencePermissions();
   const trustedSources = await loadTrustedSettingSources(cwd);
-  const features = referenceFeatures(trustedSources, process.env);
+  const features = referenceFeatures(trustedSources);
   let maxTurns: number | undefined;
   for (const source of trustedSources) {
     const value = source.raw?.maxTurns;
     if (typeof value === "number" && Number.isSafeInteger(value) && value >= 1) maxTurns = value;
   }
-  const migration = migrateLegacyEnvironment(process.env);
-  const env = migration.env;
+  const env = process.env;
   const reasoning: Record<string, unknown> = { mode: "auto" };
   for (const source of trustedSources) {
     if (source.source === "flag" || source.source === "policy") continue;
@@ -269,11 +248,8 @@ async function currentValues(): Promise<Record<string, unknown>> {
     "features.maxTurns": maxTurns,
     "model.main":
       (await readMergedStringSetting(cwd, "model")) ??
-      (env.EASY_AGENT_PROFILE?.trim() || (!migration.legacyConnection && env.EASY_AGENT_MODEL ? "@environment" : "")),
-    "model.roles.classifier":
-      migration.legacyConnection && referenceClassifierModel(env)
-        ? legacyProfileId(referenceClassifierModel(env)!)
-        : referenceClassifierModel(env),
+      (env.EASY_AGENT_PROFILE?.trim() || (env.EASY_AGENT_MODEL ? "@environment" : "")),
+    "model.roles.classifier": referenceClassifierModel(env),
     outputStyle: await readMergedStringSetting(cwd, "outputStyle"),
     "prompt.language": await readMergedStringSetting(cwd, "language"),
     "tools.respectGitignore": (await readMergedBooleanSetting(cwd, "respectGitignore")) !== false,
@@ -285,10 +261,7 @@ async function currentValues(): Promise<Record<string, unknown>> {
     "reasoning.effort": reasoning.effort,
     "features.agentTeams": process.argv.includes("--agent-teams") || truthySwitch(env.EASY_AGENT_TEAMS),
     "features.promptCaching": !truthySwitch(env.EASY_AGENT_DISABLE_PROMPT_CACHING),
-    "features.experimentalBetas": ![
-      env.EASY_AGENT_DISABLE_EXPERIMENTAL_BETAS,
-      env.CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS,
-    ].some(truthySwitch),
+    "features.experimentalBetas": !truthySwitch(env.EASY_AGENT_DISABLE_EXPERIMENTAL_BETAS),
     "features.maxRetries": referenceMaxRetries(env),
     "skills.listingBudgetChars": positiveInteger(env.EASY_AGENT_SKILL_CHAR_BUDGET) ?? 8000,
     "compaction.contextWindow": referenceContextWindow(env),
@@ -350,8 +323,7 @@ const CASES: Case[] = [
       language: "Chinese",
       respectGitignore: false,
       checkpointingEnabled: false,
-      alwaysThinkingEnabled: false,
-      effortLevel: "high",
+      reasoning: { mode: "off", effort: "high" },
     },
     expect: {
       "model.main": "user-model",
@@ -392,7 +364,7 @@ const CASES: Case[] = [
       modelRoles: { think: "p" },
       language: "French",
     },
-    local: { allow: ["Bash"], model: "local-model", respectGitignore: false, effortLevel: "low" },
+    local: { allow: ["Bash"], model: "local-model", respectGitignore: false, reasoning: { effort: "low" } },
     expect: {
       "permissions.allow": ["Read", "Write", "Bash"],
       "permissions.mode": "plan",
@@ -413,6 +385,7 @@ const CASES: Case[] = [
     trusted: true,
     user: { defaultModel: "user-default" },
     project: { defaultModel: "project-default" },
+    invalid: true,
   },
   {
     name: "defaultModel loses to any model",
@@ -420,22 +393,29 @@ const CASES: Case[] = [
     local: { defaultModel: "x" },
     trusted: true,
     expect: { "model.main": "user-model" },
+    invalid: true,
   },
   {
     name: "ANTHROPIC_MODEL below settings",
     env: { ANTHROPIC_MODEL: "env-model" },
     expect: { "model.main": "", "model.roles.classifier": undefined },
+    invalid: true,
   },
-  { name: "ANTHROPIC_MODEL loses to a setting", env: { ANTHROPIC_MODEL: "env-model" }, user: { defaultModel: "d" } },
+  {
+    name: "ANTHROPIC_MODEL and defaultModel are retired",
+    env: { ANTHROPIC_MODEL: "env-model" },
+    user: { defaultModel: "d" },
+    invalid: true,
+  },
   {
     name: "EASY_AGENT_AUTO_MODE_MODEL names the classifier, not the main model",
-    env: { EASY_AGENT_AUTO_MODE_MODEL: "judge", ANTHROPIC_MODEL: "env-model" },
+    env: { EASY_AGENT_AUTO_MODE_MODEL: "judge" },
     user: { model: "user-model" },
-    expect: { "model.roles.classifier": legacyProfileId("judge"), "model.main": "user-model" },
+    expect: { "model.roles.classifier": "judge", "model.main": "user-model" },
   },
   {
     name: "an empty EASY_AGENT_AUTO_MODE_MODEL is unset",
-    env: { EASY_AGENT_AUTO_MODE_MODEL: "", ANTHROPIC_MODEL: "env-model" },
+    env: { EASY_AGENT_AUTO_MODE_MODEL: "" },
     expect: { "model.roles.classifier": undefined },
   },
   {
@@ -449,21 +429,23 @@ const CASES: Case[] = [
     user: { toolSearch: "off", toolSearchAutoThreshold: 40 },
     project: { toolSearch: "on" },
     env: { EASY_AGENT_ENABLE_TOOL_SEARCH: "auto:30" },
-    expect: { "features.toolSearch": "auto", "features.toolSearchAutoThreshold": 30 },
+    invalid: true,
   },
   {
     name: "legacy ToolSearch environment loses to a flag",
     user: { toolSearch: "off" },
     env: { ENABLE_TOOL_SEARCH: "true" },
     flag: { toolSearch: "auto" },
+    invalid: true,
   },
   { name: "invalid legacy ToolSearch value is diagnosed", env: { ENABLE_TOOL_SEARCH: "sometimes" }, invalid: true },
   {
     name: "thinking from MAX_THINKING_TOKENS beats settings",
     user: { alwaysThinkingEnabled: false },
     env: { MAX_THINKING_TOKENS: "4096" },
+    invalid: true,
   },
-  { name: "MAX_THINKING_TOKENS=0 turns thinking off", env: { MAX_THINKING_TOKENS: "0" } },
+  { name: "MAX_THINKING_TOKENS=0 is retired", env: { MAX_THINKING_TOKENS: "0" }, invalid: true },
   {
     name: "invalid MAX_THINKING_TOKENS is diagnosed",
     user: { alwaysThinkingEnabled: false },
@@ -482,15 +464,12 @@ const CASES: Case[] = [
     env: {
       EASY_AGENT_TEAMS: "1",
       EASY_AGENT_DISABLE_PROMPT_CACHING: "true",
-      CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: "on",
+      EASY_AGENT_DISABLE_EXPERIMENTAL_BETAS: "on",
       EASY_AGENT_MAX_RETRIES: "3",
       EASY_AGENT_SKILL_CHAR_BUDGET: "4000",
-      CLAUDE_CODE_MAX_CONTEXT_TOKENS: "120000",
-      WEB_SEARCH_ADAPTER: "bing",
-      CLAUDE_CODE_DISABLE_THINKING: "1",
-      CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING: "1",
-      DISABLE_INTERLEAVED_THINKING: "1",
-      CLAUDE_CODE_ALWAYS_ENABLE_EFFORT: "1",
+      EASY_AGENT_MAX_CONTEXT_TOKENS: "120000",
+      EASY_AGENT_WEB_SEARCH_BACKEND: "bing",
+      EASY_AGENT_REASONING: "off",
     },
   },
   {
@@ -803,7 +782,7 @@ await check("keys this build does not apply yet are reported when set", () => {
 
 await check("layer order: environment, flags, and managed policy", () => {
   const resolved = resolve({
-    user: { toolSearch: "off", mode: "plan", checkpointingEnabled: true, alwaysThinkingEnabled: true },
+    user: { toolSearch: "off", mode: "plan", checkpointingEnabled: true, reasoning: { mode: "on" } },
     layers: [
       { source: "flag", path: null, raw: { mode: "auto" } },
       {
@@ -812,7 +791,7 @@ await check("layer order: environment, flags, and managed policy", () => {
         raw: { mode: "default", toolSearch: "on", checkpointingEnabled: true },
       },
     ],
-    env: { ENABLE_TOOL_SEARCH: "auto", EASY_AGENT_DISABLE_CHECKPOINTING: "1", MAX_THINKING_TOKENS: "0" },
+    env: { EASY_AGENT_DISABLE_CHECKPOINTING: "1", EASY_AGENT_REASONING: "off" },
     agentTeamsFlag: true,
   });
   assert.equal(harnessValue(resolved, "permissions.mode"), "default", "policy wins over the flag");
@@ -835,11 +814,11 @@ await check("layer order: environment, flags, and managed policy", () => {
     user: { harnesses: { a: { features: { toolSearch: "off" } } } },
     env: { EASY_AGENT_ENABLE_TOOL_SEARCH: "on" },
   });
-  assert.equal(harnessValue(envOverHarness, "features.toolSearch"), "on");
-  assert.equal(envOverHarness.values["features.toolSearch"]!.detail, "legacy ToolSearch migration");
+  assert.equal(harnessValue(envOverHarness, "features.toolSearch"), "off");
+  assert.ok(errors(envOverHarness).some((issue) => issue.retired && issue.path === "EASY_AGENT_ENABLE_TOOL_SEARCH"));
 
   const invalidEnv = resolve({ env: { ENABLE_TOOL_SEARCH: "sometimes" } });
-  assert.ok(errors(invalidEnv).some((issue) => issue.path === "toolSearch"));
+  assert.ok(errors(invalidEnv).some((issue) => issue.path === "ENABLE_TOOL_SEARCH"));
 });
 
 await check("an inline spec resolves over its extends", () => {
@@ -924,9 +903,9 @@ await check("a configuration snapshot changes only when explicitly rebuilt", () 
 
     process.env.EASY_AGENT_MAX_RETRIES = "4";
     process.env.EASY_AGENT_DISABLE_PROMPT_CACHING = "yes";
-    process.env.CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS = "1";
-    process.env.CLAUDE_CODE_ALWAYS_ENABLE_EFFORT = "1";
-    process.env.MAX_THINKING_TOKENS = "2048";
+    process.env.EASY_AGENT_DISABLE_EXPERIMENTAL_BETAS = "1";
+    process.env.EASY_AGENT_REASONING = "on";
+    process.env.EASY_AGENT_REASONING_BUDGET_TOKENS = "2048";
     assert.equal(getMaxRetries(), 10, "ambient changes do not alter the existing snapshot");
     installConfigurationEnvironment(process.env);
     assert.equal(getMaxRetries(), 4);
@@ -938,7 +917,7 @@ await check("a configuration snapshot changes only when explicitly rebuilt", () 
       "a global switch cannot grant another model capabilities",
     );
     assert.deepEqual(thinking.buildDefaultThinkingConfig(), { type: "enabled", budgetTokens: 2048 });
-    process.env.MAX_THINKING_TOKENS = "0";
+    process.env.EASY_AGENT_REASONING = "off";
     installConfigurationEnvironment(process.env);
     assert.deepEqual(thinking.buildDefaultThinkingConfig(), { type: "disabled" });
     process.env.MAX_THINKING_TOKENS = "lots";
@@ -951,12 +930,11 @@ await check("an installed harness is the only source; the environment no longer 
   withEnvironment({}, () => {
     installHarness(
       resolve({
-        user: { alwaysThinkingEnabled: false, effortLevel: "high" },
+        user: { reasoning: { mode: "off", effort: "high" } },
         env: {
           EASY_AGENT_MAX_RETRIES: "2",
           EASY_AGENT_DISABLE_PROMPT_CACHING: "1",
           EASY_AGENT_DISABLE_EXPERIMENTAL_BETAS: "on",
-          CLAUDE_CODE_ALWAYS_ENABLE_EFFORT: "1",
         },
       }),
     );
@@ -968,7 +946,7 @@ await check("an installed harness is the only source; the environment no longer 
       assert.equal(areExperimentalBetasDisabled(), true);
       assert.equal(thinking.modelSupportsEffort(OLD_HAIKU), false);
       assert.equal(thinking.shouldEnableThinkingByDefault(), false);
-      assert.deepEqual(thinking.buildDefaultThinkingConfig(), { type: "disabled" }, "alwaysThinkingEnabled: false");
+      assert.deepEqual(thinking.buildDefaultThinkingConfig(), { type: "disabled" }, "reasoning.mode: off");
       assert.equal(thinking.getSessionEffortLevel(), "high");
     } finally {
       uninstallHarness();
@@ -1058,7 +1036,7 @@ await check("a refresh re-reads the settings files; the environment stays as it 
     let user: Record<string, unknown> = { model: "first" };
     const again = async () => resolve({ user, env: { EASY_AGENT_MAX_RETRIES: "2" } });
     installHarness(await again(), via(again));
-    user = { model: "second", alwaysThinkingEnabled: false };
+    user = { model: "second", reasoning: { mode: "off" } };
     process.env.EASY_AGENT_MAX_RETRIES = "8";
     assert.equal(getDefaultModel(), "first", "reads keep the snapshot until a refresh");
     assert.equal(await refreshHarness(), activeHarness());
@@ -1117,7 +1095,7 @@ await check("session reasoning overrides ordinary settings, while managed policy
   withEnvironment({}, () => {
     try {
       thinking.setSessionThinkingConfig({ type: "adaptive" });
-      installHarness(resolve({ user: { alwaysThinkingEnabled: false } }));
+      installHarness(resolve({ user: { reasoning: { mode: "off" } } }));
       assert.deepEqual(thinking.buildDefaultThinkingConfig(), { type: "adaptive" });
       installHarness(resolve({ layers: [{ source: "policy", path: null, raw: { reasoning: { mode: "off" } } }] }));
       assert.deepEqual(thinking.buildDefaultThinkingConfig(), { type: "disabled" });
@@ -1140,8 +1118,7 @@ await check("session reasoning overrides ordinary settings, while managed policy
 await check("a runtime resolves its Agent when it starts and removes it when disposed", async () => {
   const { createAgentRuntime } = await import("../sdk/index.js");
   await writeJson(path.join(home, ".easy-agent", "settings.json"), {
-    alwaysThinkingEnabled: false,
-    effortLevel: "medium",
+    reasoning: { mode: "off", effort: "medium" },
   });
   await writeJson(path.join(cwd, ".easy-agent", "settings.json"), {});
   await writeJson(path.join(cwd, ".easy-agent", "settings.local.json"), {});
@@ -1227,12 +1204,12 @@ await check("a runtime applies edited settings files to new sessions and to the 
       { kind: "text", text: "two" },
     ]);
     await session.send("first");
-    assert.equal(thinkingSent(), undefined, "alwaysThinkingEnabled: false");
+    assert.equal(thinkingSent(), undefined, "reasoning.mode: off");
 
     await writeJson(userSettings, {
       model: "edited-model",
       models,
-      alwaysThinkingEnabled: true,
+      reasoning: { mode: "on" },
       language: "Klingon",
       mode: "plan",
     });
@@ -1243,7 +1220,7 @@ await check("a runtime applies edited settings files to new sessions and to the 
     assert.match(JSON.stringify(fixture.requests.at(-1)?.body.messages), /Klingon/, "and the next turn's language");
     assert.equal(session.getState().permissionMode, "default", "an open session keeps its permission mode");
     assert.equal(fixture.requests.at(-1)?.body.model, FIXTURE_MODEL, "an open session keeps its model");
-    assert.equal(harnessValue(await runtime.getHarness(), "reasoning.mode"), "auto");
+    assert.equal(harnessValue(await runtime.getHarness(), "reasoning.mode"), "on");
     await session.close();
 
     const next = await runtime.createSession({ persist: false });
