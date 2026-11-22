@@ -25,9 +25,9 @@ const PROJECT_ROOT = path.resolve(import.meta.dirname, "../..");
 const CLI_PATH = path.join(PROJECT_ROOT, "src", "entrypoint", "cli.ts");
 const TSX_IMPORT = import.meta.resolve("tsx");
 
-const { createAnthropicFixture, FIXTURE_MODEL } = await import("./fixtures/anthropicFixture.js");
+const { createAnthropicFixture } = await import("./fixtures/anthropicFixture.js");
 const fixture = createAnthropicFixture();
-await fixture.start();
+await fixture.start(home);
 
 let passed = 0;
 async function check(name: string, fn: () => Promise<void>): Promise<void> {
@@ -44,9 +44,7 @@ function runCli(args: string[]): Promise<{ code: number | null; stdout: string; 
         ...process.env,
         HOME: home,
         USERPROFILE: home,
-        ANTHROPIC_MODEL: FIXTURE_MODEL,
         EASY_AGENT_DISABLE_HOOKS: "1",
-        EASY_AGENT_ENABLE_TOOL_SEARCH: "false",
         NO_COLOR: "1",
       },
       stdio: ["ignore", "pipe", "pipe"],
@@ -138,7 +136,10 @@ try {
     const serverPath = await writeEchoServer();
     await writeFile(
       path.join(home, ".easy-agent", "settings.json"),
-      JSON.stringify({ mcpServers: { echo: { command: process.execPath, args: [serverPath] } } }),
+      JSON.stringify({
+        ...JSON.parse(await readFile(path.join(home, ".easy-agent", "settings.json"), "utf8")),
+        mcpServers: { echo: { command: process.execPath, args: [serverPath] } },
+      }),
     );
     fixture.script([
       { kind: "tool", name: "mcp__echo__echo", input: { message: "pong" } },

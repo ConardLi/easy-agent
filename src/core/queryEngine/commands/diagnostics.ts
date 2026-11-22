@@ -8,14 +8,8 @@
 
 import * as path from "node:path";
 import { getAllTools } from "../../../tools/index.js";
-import {
-  getProfileBaseURL,
-  loadProfiles,
-  resolveProfile,
-  type LoadedProfiles,
-} from "../../../services/api/providers/profile.js";
-import { loadTrustedSettingSources } from "../../../config/sources.js";
-import { activeHarness, harnessSetting } from "../../../harness/active.js";
+import { getProfileBaseURL, loadProfiles, type LoadedProfiles } from "../../../services/api/providers/profile.js";
+import { harnessSetting } from "../../../harness/active.js";
 import { MIN_NODE_MAJOR } from "../../../version.js";
 import { getMcpRegistry } from "../../../services/mcp/registry.js";
 import { getTaskMode } from "../../../state/taskModeStore.js";
@@ -329,88 +323,43 @@ export async function* handleDoctorCommand(
     provenance: {},
     defaultModelSource: undefined,
   }));
-  const declaredProfile = loadedProfiles.profiles[activeHandle];
-  const profile = declaredProfile ?? (await resolveProfile(activeHandle, cwd));
-  const fieldSources = declaredProfile
-    ? [...new Set(Object.values(loadedProfiles.provenance[activeHandle] ?? {}))]
-    : [];
-  const profileSources = await loadTrustedSettingSources(cwd).catch(() => []);
-  const effectiveSources = [...profileSources].reverse();
-  const modelSource = effectiveSources.find((source) => typeof source.raw?.model === "string");
-  const defaultSource = effectiveSources.find((source) => typeof source.raw?.defaultModel === "string");
-  const selected = modelSource ?? defaultSource;
-  const selectedValue = modelSource?.raw?.model ?? defaultSource?.raw?.defaultModel;
-  const environmentModel = activeHarness().values["model.main"]?.contributions.find(
-    (contribution) => contribution.source === "environment",
-  );
-  const selectionSource =
-    ctx.getModelSource() === "session"
-      ? "session override"
-      : selectedValue === activeHandle
-        ? selected!.source
-        : environmentModel?.value === activeHandle
-          ? environmentModel.detail
-          : "runtime default";
-  lines.push(
-    `${ICON.ok} Active model: ${activeHandle}${profile.model !== activeHandle ? ` → ${profile.model}` : ""}`,
-    `  Provider: ${profile.protocol}`,
-    declaredProfile
-      ? `  Profile: ${activeHandle} (configuration: ${fieldSources.join("+") || "unknown"}; selection: ${selectionSource})`
-      : `  Profile: raw model name (source: ${ctx.getModelSource()})`,
-  );
+  const profile = loadedProfiles.profiles[activeHandle || loadedProfiles.defaultModel || ""];
   for (const warning of loadedProfiles.warnings) lines.push(`  ${ICON.warn} ${warning}`);
-
-  const profileKeySource = declaredProfile ? loadedProfiles.provenance[activeHandle]?.apiKey : undefined;
-  const envKeyName = process.env.ANTHROPIC_AUTH_TOKEN
-    ? "ANTHROPIC_AUTH_TOKEN"
-    : !profile.baseURL && process.env.ANTHROPIC_API_KEY
-      ? "ANTHROPIC_API_KEY"
-      : undefined;
-  const usesAnthropicEnvironmentKey = profile.protocol === "anthropic" && !!envKeyName;
-  const authHeaderNames =
-    profile.protocol === "gemini"
-      ? ["x-goog-api-key", "authorization"]
-      : profile.protocol === "anthropic"
-        ? ["x-api-key", "authorization"]
-        : ["authorization"];
-  const hasAuthHeader = Object.entries(profile.headers ?? {}).some(
-    ([name, value]) => authHeaderNames.includes(name.toLowerCase()) && value.trim().length > 0,
-  );
-  if (hasAuthHeader) {
+  for (const errors of Object.values(loadedProfiles.errors ?? {})) {
+    for (const error of errors) lines.push(`  ${ICON.fail} ${error}`);
+  }
+  if (!profile) {
     lines.push(
-      `${ICON.ok} API auth configured (active profile headers, source: ${loadedProfiles.provenance[activeHandle]?.headers ?? "unknown"})`,
-    );
-  } else if (profile.apiKey) {
-    lines.push(
-      `${ICON.ok} API auth configured (active profile${profileKeySource ? `, source: ${profileKeySource}` : ""})`,
-    );
-  } else if (usesAnthropicEnvironmentKey) {
-    lines.push(`${ICON.ok} API auth configured (${envKeyName})`);
-  } else if (profile.baseURL) {
-    lines.push(
-      `${ICON.warn} No API auth configured for the active profile; the custom endpoint must allow keyless access.`,
+      `${ICON.fail} No valid model profile selected. Run eagent --login, or configure models and select a profile ID.`,
     );
   } else {
-    const hint =
-      profile.protocol === "anthropic"
-        ? "set ANTHROPIC_AUTH_TOKEN or configure apiKey on the active profile"
-        : `configure apiKey on profile '${activeHandle}'`;
-    lines.push(`${ICON.fail} No API auth configured for the active ${profile.protocol} provider — ${hint}.`);
+    const fields = loadedProfiles.provenance[profile.id] ?? {};
+    const selection =
+      ctx.getModelSource() === "default" && profile.id === loadedProfiles.defaultModel
+        ? (loadedProfiles.defaultModelSource ?? "default")
+        : ctx.getModelSource();
+    lines.push(
+      `${ICON.ok} Active profile: ${profile.id} → ${profile.model}`,
+      `  Protocol: ${profile.protocol}`,
+      `  Configuration: ${[...new Set(Object.values(fields))].join("+") || "environment"}; selection: ${selection}`,
+    );
+    if (profile.authentication?.type === "none")
+      lines.push(`${ICON.ok} Authentication explicitly disabled for this profile.`);
+    else if (profile.apiKey || profile.apiKeyHelper)
+      lines.push(
+        `${ICON.ok} API Key source configured${profile.apiKeyHelper ? " (profile helper; not executed by doctor)" : ""}.`,
+      );
+    else
+      lines.push(
+        `${ICON.fail} Configure apiKey on the selected profile, or explicitly select authentication.type=none.`,
+      );
+    lines.push("  Credential presence only; authentication has not been verified.");
+    const baseURL = getProfileBaseURL(profile);
+    lines.push(`  Endpoint: ${redactUrlForDisplay(baseURL)} (source: ${fields.baseURL ?? "selected protocol"})`);
+    const reach = await probeEndpoint(baseURL);
+    if (reach.ok) lines.push(`${ICON.ok} Endpoint reachable (HTTP ${reach.status})`);
+    else lines.push(`${ICON.warn} Endpoint not reachable: ${reach.error}`);
   }
-
-  // Endpoint + reachability. Any HTTP response proves network reachability;
-  // provider APIs are not required to accept an unauthenticated GET at root.
-  lines.push("  Credential presence only; authentication has not been verified.");
-  const baseURL = getProfileBaseURL(profile);
-  const endpointSource = profile.baseURL
-    ? (loadedProfiles.provenance[activeHandle]?.baseURL ?? "profile")
-    : profile.protocol === "anthropic" && process.env.ANTHROPIC_BASE_URL
-      ? "ANTHROPIC_BASE_URL"
-      : "provider default";
-  lines.push(`  Endpoint: ${redactUrlForDisplay(baseURL)} (source: ${endpointSource})`);
-  const reach = await probeEndpoint(baseURL);
-  if (reach.ok) lines.push(`${ICON.ok} Endpoint reachable (HTTP ${reach.status})`);
-  else lines.push(`${ICON.warn} Endpoint not reachable: ${reach.error}`);
 
   // MCP servers
   const mcp = getMcpRegistry();

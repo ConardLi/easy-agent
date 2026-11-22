@@ -16,6 +16,7 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { rejects } from "node:assert/strict";
 
 let pass = 0;
 let fail = 0;
@@ -59,7 +60,7 @@ async function main(): Promise<void> {
     path.join(projDir, ".easy-agent", "settings.json"),
     JSON.stringify(
       {
-        defaultModel: "gpt5",
+        model: "gpt5",
         models: {
           gpt5: {
             protocol: "openai-chat",
@@ -87,7 +88,7 @@ async function main(): Promise<void> {
   assert(untrusted.defaultModel === undefined, "untrusted project defaultModel is inactive");
   assert(untrusted.profiles.gpt5 === undefined, "untrusted project provider profile is inactive");
   assert(
-    untrusted.warnings.some((w) => w.includes("gpt5") && w.includes("ignored until")),
+    untrusted.warnings.some((w) => w.includes("models") && w.includes("ignored until")),
     "untrusted provider fields emit a trust warning",
   );
 
@@ -101,11 +102,8 @@ async function main(): Promise<void> {
     "profile field provenance records its source without the credential value",
   );
 
-  const synthetic = await resolveProfile("claude-sonnet-4-20250514", projDir);
-  assert(
-    synthetic.protocol === "anthropic" && synthetic.model === "claude-sonnet-4-20250514",
-    "unknown handle → synthetic anthropic profile (backwards compatible)",
-  );
+  await rejects(resolveProfile("claude-sonnet-4-20250514", projDir), /profile .* does not exist/);
+  assert(true, "an unknown profile never becomes an implicit Anthropic connection");
 
   // ── [2] Request translation (Anthropic → OpenAI / Gemini) ─────────────────
   section("[2] Request translation via llm-bridge");
@@ -537,11 +535,11 @@ async function main(): Promise<void> {
         "openai-responses: /effort medium → reasoning.effort:medium",
       );
 
-      // /think off → OpenAI "minimal" (lowest, observable toggle).
+      // These GPT models explicitly support disabling reasoning with "none".
       setSessionEffortLevel(undefined);
       setSessionThinkingConfig({ type: "disabled" });
       await run(chat, chatDone);
-      assert(capturedBody.reasoning_effort === "minimal", "openai-chat: /think off → reasoning_effort:minimal");
+      assert(capturedBody.reasoning_effort === "none", "openai-chat: /think off → reasoning_effort:none");
 
       // Gemini /effort high → thinkingLevel (NOT the deprecated thinkingBudget).
       setSessionEffortLevel("high");
@@ -552,14 +550,11 @@ async function main(): Promise<void> {
       assert(gcfg?.thinkingLevel === "high", "gemini: /effort high → thinkingConfig.thinkingLevel:high");
       assert(gcfg?.thinkingBudget === undefined, "gemini: thinkingLevel not mixed with thinkingBudget (avoids 400)");
 
-      // Gemini /think off → no thinkingConfig at all.
+      // Always-on Gemini models reject an unverified off request.
       setSessionEffortLevel(undefined);
       setSessionThinkingConfig({ type: "disabled" });
-      await run(gem, gemDone);
-      assert(
-        (capturedBody.generationConfig as { thinkingConfig?: unknown } | undefined)?.thinkingConfig === undefined,
-        "gemini: /think off → no thinkingConfig",
-      );
+      await rejects(run(gem, gemDone), /cannot be confirmed to disable reasoning/);
+      assert(true, "Gemini cannot silently ignore an explicit off intent");
     } finally {
       setSessionEffortLevel(undefined);
       setSessionThinkingConfig(undefined);
@@ -606,6 +601,9 @@ async function main(): Promise<void> {
     try {
       resetClient();
       const client = getAnthropicClientForProfile({
+        id: "gateway",
+        protocol: "anthropic",
+        model: "claude-test",
         baseURL: "https://gateway.test/v1",
         apiKey: "test-key",
         headers: { "x-profile-header": "present" },
@@ -622,6 +620,9 @@ async function main(): Promise<void> {
       assert(capturedHeaders.get("x-profile-header") === "present", "Anthropic profile headers reach the SDK request");
 
       const overridden = getAnthropicClientForProfile({
+        id: "gateway",
+        protocol: "anthropic",
+        model: "claude-test",
         baseURL: "https://gateway.test/v1",
         apiKey: "test-key",
         headers: { "User-Agent": "gateway-required-agent" },

@@ -28,6 +28,7 @@ import assert from "node:assert/strict";
 import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { ConfigurationError } from "../config/values.js";
 
 const root = await realpath(await mkdtemp(path.join(os.tmpdir(), "easy-agent-harness-features-")));
 const home = path.join(root, "home");
@@ -42,25 +43,16 @@ await Promise.all([
   mkdir(path.join(pluginDir, "agents"), { recursive: true }),
 ]);
 const FEATURE_ENV = [
+  "EASY_AGENT_REASONING",
+  "EASY_AGENT_REASONING_BUDGET_TOKENS",
   "EASY_AGENT_TEAMS",
-  "EASY_AGENT_ENABLE_TOOL_SEARCH",
-  "ENABLE_TOOL_SEARCH",
-  "MAX_THINKING_TOKENS",
-  "CLAUDE_CODE_DISABLE_THINKING",
-  "CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING",
-  "DISABLE_INTERLEAVED_THINKING",
-  "CLAUDE_CODE_ALWAYS_ENABLE_EFFORT",
   "EASY_AGENT_DISABLE_PROMPT_CACHING",
   "EASY_AGENT_DISABLE_EXPERIMENTAL_BETAS",
   "EASY_AGENT_MAX_RETRIES",
   "EASY_AGENT_DISABLE_CHECKPOINTING",
 ] as const;
 for (const key of Object.keys(process.env)) {
-  if (
-    /^(?:ANTHROPIC_|EASY_AGENT_|CLAUDE_CODE_)/.test(key) ||
-    /TOOL_SEARCH|THINKING|WEB_SEARCH/.test(key) ||
-    (FEATURE_ENV as readonly string[]).includes(key)
-  ) {
+  if (/^(?:ANTHROPIC_|EASY_AGENT_)/.test(key) || (FEATURE_ENV as readonly string[]).includes(key)) {
     delete process.env[key];
   }
 }
@@ -69,12 +61,11 @@ process.env.USERPROFILE = home;
 process.env.EASY_AGENT_DISABLE_HOOKS = "1";
 process.chdir(cwd);
 
-const { createAnthropicFixture, FIXTURE_MODEL } = await import("./fixtures/anthropicFixture.js");
+const { createAnthropicFixture, fixtureProfile, FIXTURE_MODEL } = await import("./fixtures/anthropicFixture.js");
 type ScriptStep = import("./fixtures/anthropicFixture.js").ScriptStep;
 type RecordedRequest = import("./fixtures/anthropicFixture.js").RecordedRequest;
 const fixture = createAnthropicFixture();
 await fixture.start();
-process.env.ANTHROPIC_MODEL = FIXTURE_MODEL;
 
 const { resolveHarnessFromInputs } = await import("../harness/resolve.js");
 const { installHarness, uninstallHarness } = await import("../harness/active.js");
@@ -139,6 +130,7 @@ interface RunOptions {
 }
 
 interface RunResult {
+  errors: string[];
   requests: RecordedRequest[];
   outputs: string[];
   warnings: string[];
@@ -149,7 +141,25 @@ interface RunResult {
 }
 
 async function startRuntime(options: RunOptions, warnings: string[]): Promise<AgentRuntime> {
-  await writeJson(userSettings, { ...options.user, harnesses: { probe: options.spec ?? {} } });
+  await writeJson(userSettings, {
+    model: FIXTURE_MODEL,
+    ...options.user,
+    models: {
+      [FIXTURE_MODEL]: {
+        ...fixtureProfile(fixture.baseURL),
+        capabilities: {
+          contextWindow: 200_000,
+          reasoning: true,
+          adaptiveReasoning: true,
+          interleavedReasoning: true,
+          effort: true,
+        },
+      },
+      "claude-sonnet-4-5": fixtureProfile(fixture.baseURL, "claude-sonnet-4-5"),
+      ...(options.user?.models as object | undefined),
+    },
+    harnesses: { probe: options.spec ?? {} },
+  });
   await writeJson(projectSettings, options.project ?? {});
   resetSettingsCache();
   for (const name of FEATURE_ENV) delete process.env[name];
@@ -185,16 +195,24 @@ async function run(options: RunOptions): Promise<RunResult> {
       },
     });
     const outputs: string[] = [];
+    const errors: string[] = [];
     session.subscribe((event) => {
       if (event.type === "command_output") outputs.push(event.message);
+      if (event.type === "error") errors.push(event.message);
     });
     fixture.requests.length = 0;
     fixture.script(options.script ?? [{ kind: "text", text: "ok" }]);
-    await session.send(options.prompt ?? "hello");
+    try {
+      await session.send(options.prompt ?? "hello");
+    } catch (error) {
+      if (!(error instanceof ConfigurationError)) throw error;
+      if (!errors.includes(error.message)) errors.push(error.message);
+    }
     const requests = [...fixture.requests];
     const result: RunResult = {
       requests,
       outputs,
+      errors,
       warnings,
       permissionAsks,
       checkpointFiles: session.listCheckpoints()[0]?.files,
@@ -268,14 +286,14 @@ try {
     );
   });
 
-  await check("features.toolSearch and EASY_AGENT_ENABLE_TOOL_SEARCH; the variable wins", async () => {
+  await check("features.toolSearch matches settings", async () => {
     // The fixture is a custom endpoint, where ToolSearch is used only when a layer turns it on.
     await sameEffect("toolSearch", first, {
       spec: { spec: { features: { toolSearch: "on" } } },
-      other: { env: { EASY_AGENT_ENABLE_TOOL_SEARCH: "true" } },
+      other: { user: { toolSearch: "on" } },
       both: {
-        options: { spec: { features: { toolSearch: "on" } }, env: { EASY_AGENT_ENABLE_TOOL_SEARCH: "false" } },
-        expect: first(await run({ env: { EASY_AGENT_ENABLE_TOOL_SEARCH: "false" } })),
+        options: { spec: { features: { toolSearch: "on" } }, project: { toolSearch: "off" } },
+        expect: first(await run({ project: { toolSearch: "off" } })),
       },
     });
     assert.ok(toolNames((await run({ spec: { features: { toolSearch: "on" } } })).requests[0]).includes("ToolSearch"));
@@ -284,69 +302,67 @@ try {
     );
   });
 
-  await check("features.thinking and MAX_THINKING_TOKENS=0 leave thinking out; the variable wins", async () => {
+  await check("reasoning.mode and EASY_AGENT_REASONING select the same request behavior", async () => {
     const thinking = (result: RunResult) => result.requests[0]?.body.thinking ?? null;
     await sameEffect("thinking", first, {
-      spec: { spec: { features: { thinking: false } } },
-      other: { env: { MAX_THINKING_TOKENS: "0" } },
+      spec: { spec: { reasoning: { mode: "off" } } },
+      other: { env: { EASY_AGENT_REASONING: "off" } },
       both: {
         options: {
-          spec: { features: { thinking: false, adaptiveThinking: false } },
-          env: { MAX_THINKING_TOKENS: "4096" },
+          spec: { reasoning: { mode: "off" } },
+          env: { EASY_AGENT_REASONING: "on", EASY_AGENT_REASONING_BUDGET_TOKENS: "4096" },
         },
-        expect: first(await run({ env: { MAX_THINKING_TOKENS: "4096", CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING: "1" } })),
+        expect: first(await run({ env: { EASY_AGENT_REASONING: "on", EASY_AGENT_REASONING_BUDGET_TOKENS: "4096" } })),
       },
     });
-    assert.equal(thinking(await run({ spec: { features: { thinking: false } } })), null);
+    assert.equal(thinking(await run({ spec: { reasoning: { mode: "off" } } })), null);
   });
 
-  await check("features.thinkingBudget and adaptiveThinking match MAX_THINKING_TOKENS and its switch", async () => {
+  await check("reasoning budget is equivalent in Harness and environment and selects manual reasoning", async () => {
     await sameEffect("thinkingBudget", first, {
-      spec: { spec: { features: { thinkingBudget: 2048, adaptiveThinking: false } } },
-      other: { env: { MAX_THINKING_TOKENS: "2048", CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING: "1" } },
+      spec: { spec: { reasoning: { mode: "on", budgetTokens: 2048 } } },
+      other: { env: { EASY_AGENT_REASONING: "on", EASY_AGENT_REASONING_BUDGET_TOKENS: "2048" } },
     });
-    const result = await run({ spec: { features: { thinkingBudget: 2048, adaptiveThinking: false } } });
+    const result = await run({ spec: { reasoning: { mode: "on", budgetTokens: 2048 } } });
     assert.deepEqual(result.requests[0]?.body.thinking, { type: "enabled", budget_tokens: 2048 });
   });
 
-  await check("features.thinkingInRequests and CLAUDE_CODE_DISABLE_THINKING; the variable wins", async () => {
-    await sameEffect("thinkingInRequests", first, {
-      spec: { spec: { features: { thinkingInRequests: false } } },
-      other: { env: { CLAUDE_CODE_DISABLE_THINKING: "1" } },
-      both: {
-        options: { spec: { features: { thinkingInRequests: true } }, env: { CLAUDE_CODE_DISABLE_THINKING: "1" } },
-        expect: first(await run({ env: { CLAUDE_CODE_DISABLE_THINKING: "1" } })),
+  await check("unknown Harness fields cannot send requests", async () => {
+    await assert.rejects(run({ spec: { features: { unknownFeature: false } } }), /Unrecognized/i);
+  });
+
+  await check("effort requires an explicit profile capability", async () => {
+    const spec = { model: { main: "claude-sonnet-4-5" }, reasoning: { effort: "high" } };
+    const effort = (result: RunResult) => result.requests[0]?.body.output_config ?? null;
+    const unsupported = await run({ spec });
+    assert.equal(unsupported.requests.length, 0);
+    assert.match(unsupported.errors.join("\n"), /effort is unsupported or unconfirmed/);
+    const explicit = await run({
+      spec,
+      user: {
+        models: {
+          "claude-sonnet-4-5": {
+            ...fixtureProfile(fixture.baseURL, "claude-sonnet-4-5"),
+            capabilities: { effort: true },
+          },
+        },
       },
     });
+    assert.deepEqual(effort(explicit), { effort: "high" });
   });
 
-  await check("features.interleavedThinking and DISABLE_INTERLEAVED_THINKING drop the beta header", async () => {
-    // Without adaptive thinking, so the request carries a thinking budget and the header applies.
-    await sameEffect("interleavedThinking", first, {
-      spec: { spec: { features: { interleavedThinking: false, adaptiveThinking: false } } },
-      other: { env: { DISABLE_INTERLEAVED_THINKING: "1", CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING: "1" } },
-    });
-  });
-
-  await check("features.effortForAllModels and CLAUDE_CODE_ALWAYS_ENABLE_EFFORT send effort to any model", async () => {
-    const legacy = { model: { main: "claude-sonnet-4-5" }, features: { effort: "high" } };
-    const effort = (result: RunResult) => result.requests[0]?.body.output_config ?? null;
-    assert.equal(effort(await run({ spec: legacy })), null, "this model does not take effort by default");
-    const fromSpec = await run({ spec: { ...legacy, features: { ...legacy.features, effortForAllModels: true } } });
-    const fromEnv = await run({ spec: legacy, env: { CLAUDE_CODE_ALWAYS_ENABLE_EFFORT: "1" } });
-    assert.deepEqual(effort(fromSpec), { effort: "high" });
-    assert.deepEqual(first(fromSpec), first(fromEnv));
-  });
-
-  await check("features.effort matches effortLevel; the spec is above user and below project settings", async () => {
+  await check("reasoning.effort uses the spec above user and below project settings", async () => {
     const effort = (result: RunResult) => (result.requests[0]?.body.output_config as { effort?: string })?.effort;
     await sameEffect("effort", first, {
-      spec: { spec: { features: { effort: "low" } } },
-      other: { user: { effortLevel: "low" } },
+      spec: { spec: { reasoning: { effort: "low" } } },
+      other: { user: { reasoning: { effort: "low" } } },
     });
-    assert.equal(effort(await run({ spec: { features: { effort: "low" } }, user: { effortLevel: "high" } })), "low");
     assert.equal(
-      effort(await run({ spec: { features: { effort: "low" } }, project: { effortLevel: "max" } })),
+      effort(await run({ spec: { reasoning: { effort: "low" } }, user: { reasoning: { effort: "high" } } })),
+      "low",
+    );
+    assert.equal(
+      effort(await run({ spec: { reasoning: { effort: "low" } }, project: { reasoning: { effort: "max" } } })),
       "max",
       "a trusted project setting overrides the Agent",
     );

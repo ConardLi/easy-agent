@@ -21,6 +21,9 @@ const TEST_TIMEOUT_MS = 180_000;
 const MAX_CAPTURE_BYTES = 1_000_000;
 
 const TESTS: TestDefinition[] = [
+  { id: "config-contract", group: "core", file: "src/scripts/test-config-contract.ts" },
+  { id: "config-connections", group: "core", file: "src/scripts/test-config-connections.ts" },
+  { id: "config-lifecycle", group: "core", file: "src/scripts/test-config-lifecycle.ts" },
   { id: "cli-headless", group: "core", file: "src/scripts/test-cli-headless-characterization.ts" },
   { id: "user-output", group: "core", file: "src/scripts/test-user-output-contract.ts" },
   { id: "config-session", group: "core", file: "src/scripts/test-config-session-characterization.ts" },
@@ -133,12 +136,14 @@ const TESTS: TestDefinition[] = [
 
 interface CliOptions {
   groups: TestGroup[];
+  tests: string[];
   list: boolean;
   keepTemp: boolean;
 }
 
 function parseArgs(argv: string[]): CliOptions {
   const groups: TestGroup[] = [];
+  const tests: string[] = [];
   let list = false;
   let keepTemp = false;
 
@@ -160,10 +165,16 @@ function parseArgs(argv: string[]): CliOptions {
       if (!groups.includes(value)) groups.push(value);
       continue;
     }
+    if (arg === "--test") {
+      const id = argv[++index];
+      if (!id || !TESTS.some((test) => test.id === id)) throw new Error(`Unknown test: ${id ?? "(missing)"}`);
+      tests.push(id);
+      continue;
+    }
     throw new Error(`Unknown argument: ${arg}`);
   }
 
-  return { groups: groups.length > 0 ? groups : DEFAULT_GROUPS, list, keepTemp };
+  return { groups: groups.length > 0 ? groups : DEFAULT_GROUPS, tests, list, keepTemp };
 }
 
 function isolatedEnvironment(home: string, live: boolean): NodeJS.ProcessEnv {
@@ -273,7 +284,9 @@ function formatDuration(durationMs: number): string {
 
 async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
-  const selected = TESTS.filter((test) => options.groups.includes(test.group));
+  const selected = TESTS.filter((test) =>
+    options.tests.length ? options.tests.includes(test.id) : options.groups.includes(test.group),
+  );
 
   if (options.list) {
     for (const test of selected) {

@@ -51,6 +51,8 @@ export interface LoadedSource {
   parseError?: string;
   /** Per-field schema repairs (dropped rules / ignored fields), if any. */
   validationErrors?: string[];
+  /** A rejected update keeps the preceding complete source snapshot. */
+  usingLastValid?: boolean;
 }
 
 // ─── flag source (set once by the CLI entrypoint) ────────────────────────
@@ -112,7 +114,7 @@ function buildSource(
   if (raw == null) {
     return { source, path: filePath, raw: null, ...(parseError ? { parseError } : {}) };
   }
-  const { value, errors } = validateSettings(raw, filePath ?? source);
+  const { value, errors } = validateSettings(raw, filePath ?? source, { partialProfiles: true });
   return {
     source,
     path: filePath,
@@ -147,6 +149,7 @@ async function readSettingSources(cwd: string): Promise<LoadedSource[]> {
   const localPath = getLocalSettingsPath(cwd);
   const policyPath = getManagedSettingsPath();
   const flag = getFlagSettings();
+  const trusted = await isProjectTrusted(cwd);
 
   // Cache key off file fingerprints + the flag layer. A write (which changes
   // mtime/size) or a flag change invalidates the entry; an external hand-edit
@@ -158,7 +161,7 @@ async function readSettingSources(cwd: string): Promise<LoadedSource[]> {
     fileSignature(localPath),
     fileSignature(policyPath),
   ]);
-  const signature = [userSig, projectSig, localSig, policySig, JSON.stringify(flag)].join("|");
+  const signature = [userSig, projectSig, localSig, policySig, JSON.stringify(flag), trusted].join("|");
 
   const cached = sourceCache.get(cwd);
   if (cached && cached.signature === signature) return cached.sources;
@@ -170,24 +173,26 @@ async function readSettingSources(cwd: string): Promise<LoadedSource[]> {
     readJsonSettingsFile<Record<string, unknown>>(policyPath),
   ]);
 
-  const sources: LoadedSource[] = [
-    buildSource("user", userPath, user.raw, user.parseError),
-    buildSource("project", projectPath, project.raw, project.parseError),
-    buildSource("local", localPath, local.raw, local.parseError),
-    buildSource("flag", null, flag, undefined),
-    buildSource("policy", policyPath, policy.raw, policy.parseError),
-  ];
+  const sources: LoadedSource[] = [];
+  for (const [source, filePath, raw, parseError] of [
+    ["user", userPath, user.raw, user.parseError],
+    ["project", projectPath, project.raw, project.parseError],
+    ["local", localPath, local.raw, local.parseError],
+    ["flag", null, flag, undefined],
+    ["policy", policyPath, policy.raw, policy.parseError],
+  ] as const) {
+    sources.push(buildSource(source, filePath, raw, parseError));
+  }
 
   // Publish a whole source snapshot, never a mixture of a new valid field and
-  // stale siblings. Initial loads retain field-level tolerance for compatibility.
+  // stale siblings. Initial loads retain field-level diagnostics for repair.
   for (const src of sources) {
     const key = `${userPath}|${cwd}|${src.source}|${src.path ?? "flag"}`;
-    const invalid = Boolean(
-      src.parseError || src.validationErrors?.some((error) => !error.includes("unsupported setting")),
-    );
+    const invalid = Boolean(src.parseError || src.validationErrors?.length);
     const previous = lastValidSources.get(key);
     if (invalid && previous) {
       src.raw = structuredClone(previous);
+      src.usingLastValid = true;
       src.validationErrors = [
         ...(src.validationErrors ?? []),
         `${src.path ?? src.source}: update rejected; retained last valid source snapshot`,

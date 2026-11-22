@@ -187,7 +187,7 @@ async function main(): Promise<void> {
   assert(is529Error(apiError(529, "x")) === true, "is529Error true for status 529");
   assert(is529Error(apiError(500, '{"type":"overloaded_error"}')) === true, "is529Error true for overloaded body");
   assert(is529Error(apiError(429, "x")) === false, "is529Error false for 429");
-  assert(getUserFacingErrorMessage(apiError(401, "x-api-key")).includes("API key"), "auth message mentions API key");
+  assert(getUserFacingErrorMessage(apiError(401, "x-api-key")).includes("API Key"), "auth message mentions API Key");
   const forbiddenMessage = getUserFacingErrorMessage(apiError(403, "Your request was blocked."));
   assert(forbiddenMessage.includes("Your request was blocked."), "403 message preserves upstream block reason");
   assert(!forbiddenMessage.includes("API key"), "403 message is not mislabeled as an API-key failure");
@@ -199,6 +199,7 @@ async function main(): Promise<void> {
 
   section("[7] callWithRetry — real re-invocation behavior");
   process.env.EASY_AGENT_MAX_RETRIES = "5"; // fast + deterministic
+  (await import("../config/environment.js")).installConfigurationEnvironment(process.env);
   // (a) fails twice with 500, then succeeds → returns the success value
   {
     let calls = 0;
@@ -263,12 +264,15 @@ async function main(): Promise<void> {
     assert(threw && calls === 1, "callWithRetry: background 529 bails on first attempt");
   }
   delete process.env.EASY_AGENT_MAX_RETRIES;
+  (await import("../config/environment.js")).installConfigurationEnvironment(process.env);
 
   section("[8] getMaxRetries env override");
   assert(getMaxRetries() === DEFAULT_MAX_RETRIES, `default maxRetries = ${DEFAULT_MAX_RETRIES}`);
   process.env.EASY_AGENT_MAX_RETRIES = "2";
+  (await import("../config/environment.js")).installConfigurationEnvironment(process.env);
   assert(getMaxRetries() === 2, "EASY_AGENT_MAX_RETRIES overrides default");
   delete process.env.EASY_AGENT_MAX_RETRIES;
+  (await import("../config/environment.js")).installConfigurationEnvironment(process.env);
 
   console.log(
     failures === 0

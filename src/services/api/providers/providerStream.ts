@@ -42,8 +42,9 @@ import type {
   Usage,
 } from "../../../types/message.js";
 import { writeStreamDebug } from "../../../utils/streamDebug.js";
-import { harnessSetting } from "../../../harness/active.js";
-import { buildDefaultThinkingConfig, getSessionEffortLevel, type EffortLevel } from "../../../utils/thinking.js";
+import type { EffortLevel } from "../../../utils/thinking.js";
+import { resolveRequestReasoning } from "./reasoning.js";
+import { validateDeclaredCapabilities } from "./capabilities.js";
 import { applyCachedPromptTokens, normalizeStopReason, observeOpenAIChatCachedTokens } from "./translateShared.js";
 import { renderToolReferencesAsText, stripDeferLoading } from "../../../utils/toolSearch.js";
 import {
@@ -55,6 +56,7 @@ import {
 import { universalToOpenAIChatMessages, universalToOpenAIResponsesInput } from "./openaiTranslate.js";
 import { assembleOpenAIResponses } from "./openaiResponsesNative.js";
 import { isPromptCachingDisabled } from "../promptCache.js";
+import { profileRequestHeaders } from "./authentication.js";
 
 // ─── Protocol → llm-bridge provider + endpoint defaults ────────────────────
 
@@ -94,13 +96,6 @@ function toGeminiThinkingLevel(level: EffortLevel): string {
  * the toggle is observable, and the default (thinking on, no effort) sends
  * nothing so the server applies its own reasoning default.
  */
-function resolveOpenAIReasoningEffort(params: StreamRequestParams): string | undefined {
-  const effort = params.effortLevel ?? getSessionEffortLevel();
-  if (effort) return toOpenAIReasoningEffort(effort);
-  const thinkingCfg = params.thinking ?? buildDefaultThinkingConfig();
-  if (thinkingCfg.type === "disabled") return "minimal";
-  return undefined;
-}
 
 /**
  * Whether extended thinking is active for this request (mirrors the
@@ -111,10 +106,6 @@ function resolveOpenAIReasoningEffort(params: StreamRequestParams): string | und
  * stream is parsed. Chat Completions has no summary equivalent and never
  * returns reasoning content regardless (doc/CURL_EXAMPLES.md §1).
  */
-function isThinkingActive(params: StreamRequestParams): boolean {
-  const thinkingCfg = params.thinking ?? buildDefaultThinkingConfig();
-  return thinkingCfg.type !== "disabled";
-}
 
 /**
  * Whether to send OpenAI `prompt_cache_key`. The official API documents it;
@@ -124,7 +115,9 @@ function isThinkingActive(params: StreamRequestParams): boolean {
 export function shouldSendPromptCacheKey(profile: ModelProfile): boolean {
   if (profile.protocol !== "openai-chat" && profile.protocol !== "openai-responses") return false;
   if (isPromptCachingDisabled()) return false;
-  if (profile.promptCacheKey !== undefined) return profile.promptCacheKey;
+  if (profile.capabilities?.cache === false) return false;
+  const option = profile.protocolOptions?.[profile.protocol]?.promptCacheKey;
+  if (option !== undefined) return option;
   try {
     return new URL(getProfileBaseURL(profile)).hostname === "api.openai.com";
   } catch {
@@ -143,6 +136,7 @@ interface PreparedRequest {
 
 /** Translate Anthropic-shaped params into a ready-to-fetch provider request. */
 export function prepareRequest(profile: ModelProfile, params: StreamRequestParams): PreparedRequest {
+  validateDeclaredCapabilities(profile, params);
   if (profile.protocol === "anthropic") {
     // Defensive: callers route anthropic elsewhere. Keep the type total.
     throw new Error("prepareRequest called with anthropic profile");
@@ -157,6 +151,7 @@ export function prepareRequest(profile: ModelProfile, params: StreamRequestParam
   const providerMessages = renderToolReferencesAsText(params.messages, params.tools ?? []);
 
   const maxTokens = profile.maxTokens ?? params.maxTokens ?? DEFAULT_MAX_TOKENS;
+  const reasoning = resolveRequestReasoning(profile, maxTokens, params.thinking, params.effortLevel);
   const source = {
     ...(params.system ? { system: params.system } : {}),
     ...(providerTools ? { tools: providerTools } : {}),
@@ -175,7 +170,7 @@ export function prepareRequest(profile: ModelProfile, params: StreamRequestParam
   const universal = toUniversal("anthropic", anthropicBody);
   const translated = fromUniversal(provider, universal) as unknown as Record<string, unknown>;
 
-  const extraHeaders = profile.headers ?? {};
+  const headers = profileRequestHeaders(profile);
 
   if (profile.protocol === "gemini") {
     // Rebuild `contents` from our own blocks so each functionCall keeps its
@@ -189,15 +184,15 @@ export function prepareRequest(profile: ModelProfile, params: StreamRequestParam
     // numeric `thinkingBudget` is only used when an explicit budget is set
     // (and never alongside thinkingLevel, which 400s per doc §3).
     // Source: doc/CURL_EXAMPLES.md §3.
-    const thinkingCfg = params.thinking ?? buildDefaultThinkingConfig();
-    if (thinkingCfg.type !== "disabled" && harnessSetting<boolean>("features.thinkingInRequests")) {
+    if (reasoning.enabled || reasoning.off === "budget-zero") {
       const genConfig = (translated.generationConfig as Record<string, unknown>) ?? {};
-      const thinkingConfig: Record<string, unknown> = { includeThoughts: true };
-      const effort = params.effortLevel ?? getSessionEffortLevel();
+      const thinkingConfig: Record<string, unknown> =
+        reasoning.off === "budget-zero" ? { thinkingBudget: 0, includeThoughts: false } : { includeThoughts: true };
+      const effort = reasoning.effort;
       if (effort) {
         thinkingConfig.thinkingLevel = toGeminiThinkingLevel(effort);
-      } else if (thinkingCfg.type === "enabled" && thinkingCfg.budgetTokens) {
-        thinkingConfig.thinkingBudget = thinkingCfg.budgetTokens;
+      } else if (reasoning.budgetTokens !== undefined) {
+        thinkingConfig.thinkingBudget = reasoning.budgetTokens;
       }
       genConfig.thinkingConfig = thinkingConfig;
       translated.generationConfig = genConfig;
@@ -210,8 +205,7 @@ export function prepareRequest(profile: ModelProfile, params: StreamRequestParam
       url,
       headers: {
         "content-type": "application/json",
-        ...(profile.apiKey ? { "x-goog-api-key": profile.apiKey } : {}),
-        ...extraHeaders,
+        ...headers,
       },
       body: translated,
       source,
@@ -225,12 +219,13 @@ export function prepareRequest(profile: ModelProfile, params: StreamRequestParam
   // Request-side reasoning effort. Chat Completions takes a top-level
   // `reasoning_effort` string; the Responses API takes a nested `reasoning.effort`.
   // Source: doc/CURL_EXAMPLES.md §1–§2.
-  const reasoningEffort = resolveOpenAIReasoningEffort(params);
+  const reasoningEffort =
+    reasoning.off === "none" ? "none" : reasoning.effort ? toOpenAIReasoningEffort(reasoning.effort) : undefined;
   if (profile.protocol === "openai-responses") {
     // Rebuild `input[]` from the universal IR so multi-turn tool calls keep
     // their function_call / function_call_output pairing (llm-bridge drops it).
     body.input = universalToOpenAIResponsesInput(universal);
-    const thinkingOn = isThinkingActive(params);
+    const thinkingOn = reasoning.enabled;
     if (reasoningEffort || thinkingOn) {
       body.reasoning = {
         ...(reasoningEffort ? { effort: reasoningEffort } : {}),
@@ -254,8 +249,7 @@ export function prepareRequest(profile: ModelProfile, params: StreamRequestParam
     url: base + path,
     headers: {
       "content-type": "application/json",
-      ...(profile.apiKey ? { authorization: `Bearer ${profile.apiKey}` } : {}),
-      ...extraHeaders,
+      ...headers,
     },
     body,
     source,

@@ -37,20 +37,18 @@ await Promise.all([
   mkdir(cwd, { recursive: true }),
 ]);
 for (const key of Object.keys(process.env)) {
-  if (/^(?:ANTHROPIC_|EASY_AGENT_|CLAUDE_CODE_)/.test(key) || /TOOL_SEARCH|THINKING|WEB_SEARCH/.test(key)) {
+  if (/^(?:ANTHROPIC_|EASY_AGENT_)/.test(key)) {
     delete process.env[key];
   }
 }
 process.env.HOME = home;
 process.env.USERPROFILE = home;
-process.env.ANTHROPIC_AUTH_TOKEN = "test-token";
 process.env.EASY_AGENT_DISABLE_HOOKS = "1";
 process.chdir(cwd);
 
-const { createAnthropicFixture, FIXTURE_MODEL } = await import("./fixtures/anthropicFixture.js");
+const { createAnthropicFixture, fixtureProfile } = await import("./fixtures/anthropicFixture.js");
 const fixture = createAnthropicFixture();
 await fixture.start();
-process.env.ANTHROPIC_MODEL = FIXTURE_MODEL;
 
 const { resolveHarnessFromInputs } = await import("../harness/resolve.js");
 const { arrangePromptSections, promptSectionProblems, promptSectionOffReason } = await import("../harness/prompt.js");
@@ -65,7 +63,21 @@ const { createAgentRuntime } = await import("../sdk/index.js");
 type AgentRuntime = Awaited<ReturnType<typeof createAgentRuntime>>;
 
 const userSettings = path.join(home, ".easy-agent", "settings.json");
-const writeJson = (file: string, value: unknown) => writeFile(file, JSON.stringify(value, null, 2));
+const writeJson = (file: string, value: unknown) =>
+  writeFile(
+    file,
+    JSON.stringify(
+      file === userSettings
+        ? {
+            model: "fixture-model",
+            models: { "fixture-model": fixtureProfile(fixture.baseURL) },
+            ...(value as object),
+          }
+        : value,
+      null,
+      2,
+    ),
+  );
 
 let passed = 0;
 async function check(name: string, fn: () => Promise<void> | void): Promise<void> {

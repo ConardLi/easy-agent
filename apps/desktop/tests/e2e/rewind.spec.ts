@@ -9,7 +9,8 @@ let world: AgentWorld;
 test.beforeEach(async () => {
   world = await createAgentWorld();
   // User settings apply in an untrusted workspace, so writes go through without a card.
-  writeFileSync(join(world.home, ".easy-agent", "settings.json"), JSON.stringify({ allow: ["Write"] }));
+  const file = join(world.home, ".easy-agent", "settings.json");
+  writeFileSync(file, JSON.stringify({ ...JSON.parse(readFileSync(file, "utf8")), allow: ["Write"] }));
 });
 
 test.afterEach(async () => {

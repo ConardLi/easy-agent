@@ -1,19 +1,14 @@
 /**
  * API error classification + user-facing messages.
  *
- * The source file is ~1200 lines because it covers Bedrock/Vertex/OAuth,
- * media-size rejections, subscription tiers, and a dozen provider-specific
- * branches. Easy Agent only talks to the first-party Anthropic API with a
- * static token, so this is the裁剪 core: classify an error into a small set
- * of categories, decide retryability, and render one friendly sentence.
- *
  * The whole point is "error classification drives recovery strategy" — the
  * retry loop, the max_tokens recovery state machine, and the reactive-compact
  * path all key off the category returned here rather than re-parsing errors.
  */
 
 import { APIConnectionError, APIConnectionTimeoutError, APIError } from "@anthropic-ai/sdk";
-import { redactUrlForDisplay } from "../../config/redaction.js";
+import { REDACTED, redactUrlForDisplay } from "../../config/redaction.js";
+import type { ModelProfile } from "./providers/profile.js";
 
 // ─── Categories ────────────────────────────────────────────────────
 
@@ -36,7 +31,7 @@ export type APIErrorCategory =
 
 export const API_ERROR_MESSAGE_PREFIX = "API Error";
 export const INVALID_API_KEY_MESSAGE =
-  "Invalid or missing API key. Set ANTHROPIC_AUTH_TOKEN (and ANTHROPIC_BASE_URL if using a custom endpoint) and try again.";
+  "Invalid or missing API Key. Check the selected profile's apiKey source and authentication policy, then try again.";
 export const CREDIT_BALANCE_TOO_LOW_MESSAGE =
   "Credit balance is too low. Top up your account or switch to a different key.";
 export const API_TIMEOUT_MESSAGE = "Request timed out. This is usually transient — try again.";
@@ -105,6 +100,7 @@ export function getRetryAfterMs(error: unknown): number | null {
  * fallbacks. Only categories the retry and recovery layers act on exist.
  */
 export function classifyAPIError(error: unknown): APIErrorCategory {
+  if (error instanceof APIError && error.status === 403) return "permission_denied";
   if (error instanceof Error && error.name === "AbortError") return "aborted";
   if (error instanceof Error && (error.message === "Request was aborted." || error.message.includes("aborted"))) {
     // APIUserAbortError-style messages
@@ -178,9 +174,19 @@ export function isRetryableError(error: unknown): boolean {
  * model sees. Maps each category to a concrete, actionable message; falls
  * back to the raw error text prefixed with "API Error".
  */
-export function getUserFacingErrorMessage(error: unknown, model?: string): string {
+export function redactConnectionMessage(message: string, profile?: ModelProfile): string {
+  for (const secret of [profile?.apiKey, ...Object.values(profile?.headers ?? {})]) {
+    if (!secret) continue;
+    for (const encoded of new Set([secret, encodeURIComponent(secret), JSON.stringify(secret).slice(1, -1)])) {
+      message = message.split(encoded).join(REDACTED);
+    }
+  }
+  return message.replace(/https?:\/\/[^\s"'<>]+/g, (url) => redactUrlForDisplay(url));
+}
+
+export function getUserFacingErrorMessage(error: unknown, model?: string, profile?: ModelProfile): string {
   const category = classifyAPIError(error);
-  const rawMessage = error instanceof Error ? error.message : String(error);
+  const rawMessage = redactConnectionMessage(error instanceof Error ? error.message : String(error), profile);
 
   switch (category) {
     case "auth_error":
@@ -205,7 +211,7 @@ export function getUserFacingErrorMessage(error: unknown, model?: string): strin
     case "model_not_found":
       return `${API_ERROR_MESSAGE_PREFIX}: The model${model ? ` "${model}"` : ""} was not found or is not accessible. Use /model to pick a different one.`;
     case "connection_error":
-      return `${API_ERROR_MESSAGE_PREFIX}: Could not reach the API (network error). Check your connection${process.env.ANTHROPIC_BASE_URL ? ` and ANTHROPIC_BASE_URL (${redactUrlForDisplay(process.env.ANTHROPIC_BASE_URL)})` : ""}.`;
+      return `${API_ERROR_MESSAGE_PREFIX}: Could not reach the API (network error). Check your connection and the selected profile's baseURL.`;
     case "aborted":
       return rawMessage;
     default:
@@ -217,10 +223,10 @@ export function getUserFacingErrorMessage(error: unknown, model?: string): strin
  * Wrap an arbitrary thrown value into an Error whose message is the friendly,
  * category-mapped text. Preserves the original via `cause` for debugging.
  */
-export function toFriendlyError(error: unknown, model?: string): Error {
-  const friendly = new Error(getUserFacingErrorMessage(error, model));
+export function toFriendlyError(error: unknown, model?: string, profile?: ModelProfile): Error {
+  const friendly = new Error(getUserFacingErrorMessage(error, model, profile));
   if (error instanceof Error) {
-    friendly.stack = error.stack;
+    friendly.stack = error.stack ? redactConnectionMessage(error.stack, profile) : undefined;
     (friendly as Error & { cause?: unknown }).cause = error;
   }
   return friendly;

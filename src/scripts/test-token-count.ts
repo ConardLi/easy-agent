@@ -31,7 +31,7 @@ const home = path.join(root, "home");
 const cwd = path.join(root, "project");
 await Promise.all([mkdir(path.join(home, ".easy-agent"), { recursive: true }), mkdir(cwd, { recursive: true })]);
 for (const key of Object.keys(process.env)) {
-  if (/^(?:ANTHROPIC_|EASY_AGENT_|CLAUDE_CODE_|OPENAI_)/.test(key) || /TOOL_SEARCH|THINKING/.test(key)) {
+  if (/^(?:ANTHROPIC_|EASY_AGENT_|OPENAI_)/.test(key)) {
     delete process.env[key];
   }
 }
@@ -44,12 +44,11 @@ process.chdir(cwd);
 await writeFile(path.join(cwd, "AGENT.md"), "Project rule: keep answers short.\n");
 await writeFile(path.join(cwd, "notes.txt"), "file body\n");
 
-const { createAnthropicFixture, fixtureTokens, FIXTURE_MODEL } = await import("./fixtures/anthropicFixture.js");
+const { createAnthropicFixture, fixtureTokens } = await import("./fixtures/anthropicFixture.js");
 type RecordedRequest = import("./fixtures/anthropicFixture.js").RecordedRequest;
 const fixture = createAnthropicFixture();
 await fixture.start();
-process.env.ANTHROPIC_MODEL = FIXTURE_MODEL;
-const baseURL = process.env.ANTHROPIC_BASE_URL!;
+const baseURL = fixture.baseURL;
 
 const sdk = await import("../sdk/index.js");
 const { runInScopeOf } = await import("../sdk/session.js");
@@ -67,7 +66,8 @@ const profile = (model: string, extra: Record<string, unknown> = {}) => ({
   protocol: "anthropic",
   model,
   baseURL,
-  countTokens: true,
+  apiKey: "fixture-token",
+  protocolOptions: { anthropic: { countTokens: true } },
   ...extra,
 });
 const PROFILES = {
@@ -76,11 +76,11 @@ const PROFILES = {
   gateway: profile("fixture-gateway"),
   flaky: profile("fixture-flaky"),
   quiet: profile("fixture-quiet"),
-  plain: profile("fixture-plain", { countTokens: undefined }),
+  plain: profile("fixture-plain", { protocolOptions: undefined }),
 };
 await writeFile(
   path.join(home, ".easy-agent", "settings.json"),
-  `${JSON.stringify({ models: PROFILES, harnesses: { quiet: { trace: { level: "off" } } } }, null, 2)}\n`,
+  `${JSON.stringify({ model: "plain", models: PROFILES, harnesses: { quiet: { trace: { level: "off" } } } }, null, 2)}\n`,
 );
 resetSettingsCache();
 
@@ -161,10 +161,24 @@ try {
   await check("the first-party API counts by default; other endpoints and protocols only on opt-in", () => {
     const anthropic = { id: "a", protocol: "anthropic" as const, model: "claude" };
     assert.equal(shouldCountTokens({ ...anthropic, baseURL: "https://api.anthropic.com" }), true);
-    assert.equal(shouldCountTokens({ ...anthropic, baseURL: "https://api.anthropic.com", countTokens: false }), false);
+    assert.equal(
+      shouldCountTokens({
+        ...anthropic,
+        baseURL: "https://api.anthropic.com",
+        protocolOptions: { anthropic: { countTokens: false } },
+      }),
+      false,
+    );
     assert.equal(shouldCountTokens({ ...anthropic, baseURL: "https://gateway.example" }), false);
-    assert.equal(shouldCountTokens({ ...anthropic, baseURL: "https://gateway.example", countTokens: true }), true);
-    assert.equal(shouldCountTokens({ id: "o", protocol: "openai-chat", model: "gpt", countTokens: true }), false);
+    assert.equal(
+      shouldCountTokens({
+        ...anthropic,
+        baseURL: "https://gateway.example",
+        protocolOptions: { anthropic: { countTokens: true } },
+      }),
+      true,
+    );
+    assert.equal(shouldCountTokens({ id: "o", protocol: "openai-chat", model: "gpt" }), false);
   });
 
   await check("an endpoint that did not opt in sends nothing extra and keeps the estimate", async () => {
@@ -355,6 +369,42 @@ try {
       assert.deepEqual(records[0]!.tokenCount, { status: "failed" });
       assert.equal(records[1]!.tokenCount?.status, "counted");
       await session.close();
+    });
+  });
+
+  await check("a refreshed credential and a rebuilt runtime do not reuse rejected count state", async () => {
+    const { countRequestTokens } = await import("../services/api/tokenCount.js");
+    const { getAnthropicClientForProfile } = await import("../services/api/client.js");
+    const { resolveProfile } = await import("../services/api/providers/profile.js");
+    await withRuntime(undefined, async () => {
+      const selected = await resolveProfile("gateway", cwd);
+      const request = { model: selected.model, messages: [{ role: "user" as const, content: "Hi" }] };
+      fixture.countTokens("off");
+      assert.equal(
+        (await countRequestTokens(getAnthropicClientForProfile(selected), selected, request, {})).status,
+        "unsupported",
+      );
+      fixture.countTokens("on");
+      const next = { ...selected, apiKey: "new-fixture-key" };
+      assert.equal((await countRequestTokens(getAnthropicClientForProfile(next), next, request, {})).status, "counted");
+      assert.equal(fixture.countRequests.at(-1)?.headers["x-api-key"], "new-fixture-key");
+    });
+    await withRuntime(undefined, async () => {
+      const selected = await resolveProfile("gateway", cwd);
+      assert.equal(
+        (
+          await countRequestTokens(
+            getAnthropicClientForProfile(selected),
+            selected,
+            {
+              model: selected.model,
+              messages: [{ role: "user", content: "Hi" }],
+            },
+            {},
+          )
+        ).status,
+        "counted",
+      );
     });
   });
 

@@ -187,21 +187,23 @@ export function BehaviorPage() {
           render={(value, set) => <Switch checked={value !== false} onChange={set} />}
         />
       </Group>
-      <Group title="网络搜索" description="WebSearch 工具用的搜索后端。">
-        <Row title="后端" k="webSearch.adapter">
-          <Segmented
-            value="auto"
-            onChange={() => {}}
-            options={[
-              { value: "auto", label: "自动" },
-              { value: "api", label: "搜索 API" },
-              { value: "bing", label: "Bing" },
-            ]}
-          />
-        </Row>
-        <Row title="API Key" hint="选「自动」时有 Key 就用搜索 API，没有就用 Bing" k="webSearch.apiKey">
-          <TextInput value="" onChange={() => {}} type="password" mono width={240} />
-        </Row>
+      <Group title="网络搜索" description="未设置时按当前连接的能力选择；API 搜索使用所选 profile 的 API Key。">
+        <AgentSettingRow<string | undefined>
+          title="后端"
+          hint="API 搜索要求 Anthropic 端点支持；Bing 不需要另一个 API Key"
+          path="tools.webSearchBackend"
+          render={(value, set) => (
+            <Segmented
+              value={value ?? "auto"}
+              onChange={(value) => set(value === "auto" ? undefined : value)}
+              options={[
+                { value: "auto", label: "自动" },
+                { value: "api", label: "搜索 API" },
+                { value: "bing", label: "Bing" },
+              ]}
+            />
+          )}
+        />
       </Group>
     </>
   );
@@ -684,15 +686,8 @@ export function EnvPage() {
           </form>
         </div>
       </Group>
-      <Group title="API Key 辅助命令" description="每次请求 Anthropic 前运行这个命令，用它的输出作为密钥。适合公司的短期令牌。">
-        <Row title="命令" k="apiKeyHelper" stack>
-          <Draft
-            value={agent.apiKeyHelper}
-            onCommit={(apiKeyHelper) => set(["apiKeyHelper"], (a) => ({ ...a, apiKeyHelper }))}
-            placeholder="~/bin/get-anthropic-token"
-            mono
-          />
-        </Row>
+      <Group title="API Key 来源" description="每个 profile 独立选择环境引用、系统安全存储或辅助命令。在模型设置的服务商高级选项中配置辅助命令。">
+        <p className="py-2 text-[12px] text-fg-3">环境变量变化需重启 Agent 进程；profile 和推理设置从下一次请求统一生效。</p>
       </Group>
       <Group
         title="受信任的工作区"

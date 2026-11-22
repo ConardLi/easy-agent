@@ -34,7 +34,7 @@ const home = path.join(root, "home");
 const cwd = path.join(root, "project");
 await Promise.all([mkdir(path.join(home, ".easy-agent"), { recursive: true }), mkdir(cwd, { recursive: true })]);
 for (const key of Object.keys(process.env)) {
-  if (/^(?:ANTHROPIC_|EASY_AGENT_|CLAUDE_CODE_|OPENAI_)/.test(key) || /TOOL_SEARCH|THINKING/.test(key)) {
+  if (/^(?:ANTHROPIC_|EASY_AGENT_|OPENAI_)/.test(key)) {
     delete process.env[key];
   }
 }
@@ -48,11 +48,10 @@ const SECRET = "TRACE-SECRET-7f3a91";
 await writeFile(path.join(cwd, "AGENT.md"), `Project rule: mention ${SECRET}-rules when asked.\n`);
 await writeFile(path.join(cwd, "notes.txt"), `file body ${SECRET}-file\n`);
 
-const { createAnthropicFixture, FIXTURE_MODEL } = await import("./fixtures/anthropicFixture.js");
+const { createAnthropicFixture, fixtureProfile, FIXTURE_MODEL } = await import("./fixtures/anthropicFixture.js");
 type RecordedRequest = import("./fixtures/anthropicFixture.js").RecordedRequest;
 const fixture = createAnthropicFixture();
-await fixture.start();
-process.env.ANTHROPIC_MODEL = FIXTURE_MODEL;
+await fixture.start(home);
 
 const sdk = await import("../sdk/index.js");
 const { runInScopeOf } = await import("../sdk/session.js");
@@ -69,7 +68,11 @@ const writeJson = (file: string, value: unknown) => writeFile(file, `${JSON.stri
 const digest = (text: string) => createHash("sha256").update(text).digest("hex").slice(0, 16);
 
 async function setUserSettings(settings: Record<string, unknown>): Promise<void> {
-  await writeJson(userSettings, settings);
+  await writeJson(userSettings, {
+    ...settings,
+    model: settings.model ?? FIXTURE_MODEL,
+    models: { [FIXTURE_MODEL]: fixtureProfile(fixture.baseURL), ...(settings.models as object | undefined) },
+  });
   resetSettingsCache();
 }
 
@@ -429,14 +432,13 @@ try {
     await withRuntime(undefined, async (runtime) => {
       const session = await runtime.createSession();
       id = session.id;
-      // The Anthropic SDK retries a 500 twice within one attempt; the third
-      // failure reaches Easy Agent's retry, which sends the request again.
+      // Easy Agent owns retries; the SDK must not multiply the configured budget.
       const failure = { kind: "error" as const, status: 500, message: "overloaded for a moment" };
-      fixture.script([failure, failure, failure, { kind: "text", text: "Got through." }]);
+      fixture.script([failure, { kind: "text", text: "Got through." }]);
       await session.send("Try");
       await session.close();
     });
-    assert.equal(fixture.requests.length - start, 4);
+    assert.equal(fixture.requests.length - start, 2);
     const [record] = requestsOf(await readTrace(id));
     assert.equal(record!.result!.attempts, 2);
     assert.equal(record!.result!.retries.length, 1);

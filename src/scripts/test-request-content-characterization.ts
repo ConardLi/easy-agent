@@ -88,8 +88,7 @@ const DESCRIPTIONS: Record<ScenarioName, string> = {
 
 // ─── Child: run one scenario ─────────────────────────────────────────────
 
-const PROVIDER_ENV = /^(?:ANTHROPIC_|EASY_AGENT_|CLAUDE_CODE_|OPENAI_|GEMINI_|GOOGLE_|MCP_|WEB_SEARCH_)/;
-const PROVIDER_ENV_NAMES = new Set(["MAX_THINKING_TOKENS", "DISABLE_INTERLEAVED_THINKING", "ENABLE_TOOL_SEARCH"]);
+const PROVIDER_ENV = /^(?:ANTHROPIC_|EASY_AGENT_|OPENAI_|GEMINI_|GOOGLE_|MCP_|WEB_SEARCH_)/;
 
 function readBody(request: IncomingMessage): Promise<Record<string, unknown>> {
   return new Promise((resolve) => {
@@ -160,7 +159,7 @@ await server.connect(new StdioServerTransport());
 
 async function runScenario(name: ScenarioName): Promise<ScenarioOutput> {
   for (const key of Object.keys(process.env)) {
-    if (PROVIDER_ENV.test(key) || PROVIDER_ENV_NAMES.has(key)) delete process.env[key];
+    if (PROVIDER_ENV.test(key)) delete process.env[key];
   }
   const root = await realpath(await mkdtemp(path.join(os.tmpdir(), "easy-agent-request-char-")));
   const home = path.join(root, "home");
@@ -260,7 +259,7 @@ async function runScenario(name: ScenarioName): Promise<ScenarioOutput> {
           apiKey: "test-key",
         },
       };
-      userSettings.defaultModel = "remote";
+      userSettings.model = "remote";
       break;
     }
     default:
@@ -270,9 +269,14 @@ async function runScenario(name: ScenarioName): Promise<ScenarioOutput> {
     await writeFile(path.join(userDir, "settings.json"), JSON.stringify(userSettings, null, 2));
   }
 
-  const { createAnthropicFixture } = await import("./fixtures/anthropicFixture.js");
+  const { createAnthropicFixture, fixtureProfile } = await import("./fixtures/anthropicFixture.js");
   const fixture = createAnthropicFixture();
   await fixture.start();
+  if (!userSettings.model) {
+    userSettings.model = "main";
+    userSettings.models = { main: fixtureProfile(fixture.baseURL, "claude-sonnet-4-20250514") };
+  }
+  await writeFile(path.join(userDir, "settings.json"), JSON.stringify(userSettings, null, 2));
 
   if (name === "project-memory" || name === "agent-no-memory") {
     const { getProjectMemoryDir } = await import("../context/memory/memdir.js");

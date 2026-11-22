@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { config } from "dotenv";
 import { createMessage } from "../services/api/streaming.js";
-import { loadProfiles, resolveProfile } from "../services/api/providers/profile.js";
+import { resolveProfileId, resolveProfile } from "../services/api/providers/profile.js";
 import { toolSearchTool } from "../tools/toolSearchTool.js";
 import type { Tool } from "../tools/Tool.js";
 import { prepareToolSearchRequest } from "../utils/toolSearch.js";
@@ -15,11 +15,7 @@ setTimeout(() => {
   process.exit(1);
 }, 60_000).unref();
 const modelIndex = process.argv.indexOf("--model");
-const model =
-  (modelIndex >= 0 ? process.argv[modelIndex + 1] : undefined) ??
-  (await loadProfiles()).defaultModel ??
-  process.env.ANTHROPIC_MODEL;
-if (!model) throw new Error("Set ANTHROPIC_MODEL or pass --model <profile-or-model>.");
+const model = await resolveProfileId(modelIndex >= 0 ? process.argv[modelIndex + 1] : undefined);
 const profile = await resolveProfile(model);
 const probe: Tool = {
   name: "ToolSearchProbe",
@@ -51,13 +47,11 @@ const shape = () =>
     tools,
     messages,
     model: profile.model,
-    env: { protocol: profile.protocol, baseURL: profile.baseURL ?? process.env.ANTHROPIC_BASE_URL },
+    env: { protocol: profile.protocol, baseURL: profile.baseURL },
   });
 const first = shape();
 if (!first.enabled)
-  throw new Error(
-    "ToolSearch is disabled for this profile. Check the model, gateway and EASY_AGENT_ENABLE_TOOL_SEARCH=true.",
-  );
+  throw new Error("ToolSearch is disabled for this profile. Check the model, gateway and toolSearch setting.");
 assert(!first.tools.some((tool) => tool.name === probe.name));
 const result = await createMessage({
   model,

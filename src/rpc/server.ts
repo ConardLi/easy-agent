@@ -12,6 +12,7 @@
  */
 
 import type { z } from "zod";
+import { ConfigurationError } from "../config/values.js";
 import { JsonRpcError as RpcError, JsonRpcPeer } from "../jsonrpc/peer.js";
 import {
   AgentSdkError,
@@ -390,6 +391,12 @@ function harnessOf(target: HarnessTarget | undefined): { harness: HarnessTarget 
 }
 
 function toRpcError(error: unknown): RpcError | undefined {
+  if (error instanceof ConfigurationError)
+    return new RpcError(RpcErrorCode.AgentError, error.message, {
+      code: error.code,
+      field: error.field,
+      ...(error.source ? { source: error.source } : {}),
+    });
   if (error instanceof AgentSdkError) return new RpcError(RpcErrorCode.AgentError, error.message, { code: error.code });
   // The SDK throws TypeError for a response that does not answer the request's kind.
   if (error instanceof TypeError) return new RpcError(RpcErrorCode.InvalidParams, error.message);

@@ -20,6 +20,7 @@
 
 import { z } from "zod";
 import { SESSION_EVENT_TYPES } from "../sdk/types.js";
+import { ModelProtocolSchema, AuthenticationSchema, ProtocolOptionsSchema } from "../config/modelSchema.js";
 
 export const RPC_PROTOCOL_VERSION = 1;
 export const SUPPORTED_RPC_PROTOCOL_VERSIONS: readonly number[] = [RPC_PROTOCOL_VERSION];
@@ -823,7 +824,33 @@ export const MethodResults = {
         z.object({ source: z.string(), sources: z.array(z.string()), reload: z.string() }).loose(),
       ),
       models: z.object({
-        profiles: z.record(z.string(), z.object({}).loose()),
+        profiles: z.record(
+          z.string(),
+          z
+            .object({
+              protocol: ModelProtocolSchema,
+              model: z.string(),
+              baseURL: z.string(),
+              apiKey: z.string().nullable(),
+              hasApiKey: z.boolean(),
+              authentication: AuthenticationSchema,
+              protocolOptions: ProtocolOptionsSchema.optional(),
+              credentialSource: z.enum(["helper", "apiKey", "none"]),
+              metadata: z
+                .object({
+                  reasoning: z.boolean(),
+                  adaptiveReasoning: z.boolean(),
+                  interleavedReasoning: z.boolean(),
+                  effort: z.boolean(),
+                  contextWindow: z.number(),
+                  contextWindowSource: z.enum(["profile", "catalog", "estimate"]),
+                })
+                .loose(),
+              headers: z.array(z.string()),
+              source: z.string(),
+            })
+            .loose(),
+        ),
         defaultModel: z.string().nullable(),
         warnings: z.array(z.string()),
       }),

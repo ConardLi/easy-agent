@@ -45,5 +45,5 @@ fi
 
 installed_version="$(eagent --version 2>/dev/null || true)"
 printf '\nInstalled %s successfully.\n' "${installed_version:-$package_spec}"
-printf 'Next: set ANTHROPIC_AUTH_TOKEN (or configure a model profile), then run eagent.\n'
+printf 'Next: run eagent --login to create a profile with one API Key, or set EASY_AGENT_PROTOCOL, EASY_AGENT_MODEL and EASY_AGENT_API_KEY.\n'
 printf 'Upgrade: run this installer again.  Uninstall: npm uninstall -g eagent\n'

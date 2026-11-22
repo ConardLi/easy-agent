@@ -24,12 +24,11 @@ await Promise.all([
   mkdir(path.join(cwd, ".easy-agent"), { recursive: true }),
 ]);
 for (const key of Object.keys(process.env)) {
-  if (/^(?:ANTHROPIC_|EASY_AGENT_|CLAUDE_CODE_)/.test(key) || /TOOL_SEARCH|THINKING/.test(key)) delete process.env[key];
+  if (/^(?:ANTHROPIC_|EASY_AGENT_)/.test(key)) delete process.env[key];
 }
 process.env.HOME = home;
 process.env.USERPROFILE = home;
 process.env.EASY_AGENT_DISABLE_HOOKS = "1";
-process.env.ANTHROPIC_MODEL = "claude-test-model";
 process.chdir(cwd);
 
 const sdk = await import("../sdk/index.js");
@@ -54,7 +53,7 @@ const harnessesOf = async () => ((await readJson(userSettings)).harnesses ?? {})
 /** User settings with a credential and other keys the Agent writes must leave alone. */
 const BASE_SETTINGS = {
   outputStyle: "Explanatory",
-  models: { work: { protocol: "openai", model: "gpt-test", apiKey: "sk-inline-secret-value" } },
+  models: { work: { protocol: "openai-chat", model: "gpt-test", apiKey: "sk-inline-secret-value" } },
   deny: ["WebFetch"],
 };
 
@@ -233,7 +232,8 @@ try {
       const written = await experimental.writeHarness("default", {
         extends: "default",
         outputStyle: "Explanatory", // the top-level user setting already gives this
-        features: { thinking: true, maxTurns: 30 }, // thinking is on by default
+        reasoning: { mode: "auto" },
+        features: { maxTurns: 30 },
         permissions: { deny: ["WebFetch"], ask: ["Bash"] }, // WebFetch is denied at the top level already
       });
       assert.deepEqual(written.spec, { features: { maxTurns: 30 }, permissions: { ask: ["Bash"] } });

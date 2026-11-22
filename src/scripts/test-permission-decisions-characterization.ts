@@ -33,7 +33,7 @@ await Promise.all([
   mkdir(path.join(cwd, ".easy-agent"), { recursive: true }),
 ]);
 for (const key of Object.keys(process.env)) {
-  if (/^(?:ANTHROPIC_|EASY_AGENT_|CLAUDE_CODE_|OPENAI_|GEMINI_)/.test(key)) delete process.env[key];
+  if (/^(?:ANTHROPIC_|EASY_AGENT_|OPENAI_|GEMINI_)/.test(key)) delete process.env[key];
 }
 process.env.HOME = home;
 process.env.USERPROFILE = home;
@@ -44,7 +44,7 @@ const GOLDEN_PATH = path.join(import.meta.dirname, "__golden__", "permission-dec
 
 const { createAnthropicFixture } = await import("./fixtures/anthropicFixture.js");
 const fixture = createAnthropicFixture();
-await fixture.start();
+await fixture.start(home);
 
 const { checkPermission } = await import("../permissions/permissions.js");
 type PermissionMode = import("../permissions/permissions.js").PermissionMode;

@@ -595,7 +595,7 @@ export class AcpAgent {
 function authRequired(): JsonRpcError {
   return new JsonRpcError(
     AcpErrorCode.AuthRequired,
-    "Authentication required: no model API key is configured. Run `eagent --login`, or set ANTHROPIC_AUTH_TOKEN.",
+    "The selected model profile needs an API Key. Run `eagent --login`, or configure a profile with an explicit protocol, upstream model and API Key source.",
   );
 }
 

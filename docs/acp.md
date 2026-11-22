@@ -13,7 +13,7 @@ npm install -g eagent
 eagent --login
 ```
 
-`eagent --login` asks for an Anthropic (or Anthropic-compatible) API key, an optional base URL, and an optional model, and saves them in the `env` block of `~/.easy-agent/settings.json`, which only you can read. Keys already in the environment, such as `ANTHROPIC_AUTH_TOKEN`, work without it. OpenAI-compatible, Gemini, and local models are configured as model profiles; see [Configuration](./configuration.md).
+`eagent --login` selects one of the four supported protocols, asks for one API Key and an upstream model, and creates a profile in your private user settings. A saved profile selected with `EASY_AGENT_PROFILE`, or a complete `EASY_AGENT_PROTOCOL` / `EASY_AGENT_MODEL` temporary connection, works without login. Local endpoints explicitly select `authentication.type: "none"`. ACP model lists, authentication state, restores and prompts use the same [profile contract](./model-profiles.md); a missing profile is a configuration error.
 
 ### Zed
 

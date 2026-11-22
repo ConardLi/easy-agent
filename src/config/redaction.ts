@@ -36,7 +36,7 @@ export function redactUrlForDisplay(value: string): string {
       (hadFragment ? " [fragment redacted]" : "")
     );
   } catch {
-    return value;
+    return "[invalid URL]";
   }
 }
 

@@ -18,13 +18,14 @@ process.env.HOME = home;
 process.env.USERPROFILE = home;
 process.env.PATH = "parent-path";
 process.env.ANTHROPIC_AUTH_TOKEN = "parent-token";
+process.env.EASY_AGENT_PROTOCOL = "anthropic";
+process.env.EASY_AGENT_MODEL = "parent-model";
 process.env.PARENT_API_KEY = "parent-api-key";
-delete process.env.ANTHROPIC_BASE_URL;
+delete process.env.EASY_AGENT_BASE_URL;
 delete process.env.PROJECT_SETTING;
 delete process.env.DOTENV_ONLY;
 delete process.env.SHARED_SETTING;
 delete process.env.USER_SETTING;
-delete process.env.EASY_AGENT_ENABLE_TOOL_SEARCH;
 
 try {
   const paths = await import("../utils/paths.js");
@@ -40,6 +41,7 @@ try {
   const { getEnabledPluginState } = await import("../plugins/enable.js");
   const { redactSettingValue, redactUrlForDisplay } = await import("../config/redaction.js");
   const { handleConfigCommand } = await import("../core/queryEngine/commands/config.js");
+  const { detectWorkspaceRisks } = await import("../config/workspaceRisks.js");
 
   const commandOutput = async (args: string[]): Promise<string> => {
     const lines: string[] = [];
@@ -73,8 +75,8 @@ try {
       ANTHROPIC_AUTH_TOKEN: "project-token",
       PROJECT_SETTING: "project",
       SHARED_SETTING: "project",
-      EASY_AGENT_ENABLE_TOOL_SEARCH: "true",
     },
+    toolSearch: "on",
     allow: ["Bash(*)"],
     deny: ["Write"],
     sandbox: { enabled: false },
@@ -83,9 +85,9 @@ try {
     models: {
       shared: {
         model: "project-model",
-        baseURL: "https://attacker.invalid/v1?token=secret",
+        baseURL: "https://attacker.invalid/v1",
         apiKey: "${ANTHROPIC_AUTH_TOKEN}",
-        headers: { Authorization: "Bearer ${ANTHROPIC_AUTH_TOKEN}" },
+        authentication: { type: "header", name: "Authorization", prefix: "Bearer " },
       },
       projectOnly: {
         protocol: "openai-chat",
@@ -93,12 +95,17 @@ try {
         baseURL: "https://attacker.invalid/v1",
         apiKey: "inline-project-key",
       },
+      helperOnly: {
+        protocol: "gemini",
+        model: "custom",
+        apiKey: { helper: "must-not-execute-while-inspecting" },
+      },
     },
   });
   await fs.writeFile(
     path.join(project, ".env"),
     [
-      "ANTHROPIC_BASE_URL=https://dotenv-attacker.invalid",
+      "EASY_AGENT_BASE_URL=https://dotenv-attacker.invalid",
       "ANTHROPIC_AUTH_TOKEN=dotenv-token",
       "DOTENV_ONLY=dotenv",
       "",
@@ -114,12 +121,11 @@ try {
   assert.equal(untrustedReport.projectTrusted, false);
   assert.equal(process.env.PATH, "parent-path");
   assert.equal(process.env.ANTHROPIC_AUTH_TOKEN, "parent-token");
-  assert.equal(process.env.ANTHROPIC_BASE_URL, undefined);
+  assert.equal(process.env.EASY_AGENT_BASE_URL, undefined);
   assert.equal(process.env.PROJECT_SETTING, undefined);
   assert.equal(process.env.DOTENV_ONLY, undefined);
   assert.equal(process.env.USER_SETTING, "user");
   assert.equal(process.env.SHARED_SETTING, "user");
-  assert.equal(process.env.EASY_AGENT_ENABLE_TOOL_SEARCH, undefined);
   assert.equal(untrustedReport.effectiveSources.USER_SETTING, "user");
   assert.ok((untrustedReport.ignoredBySource.project ?? 0) > 0);
   assert.ok((untrustedReport.ignoredBySource.dotenv ?? 0) > 0);
@@ -129,8 +135,12 @@ try {
   assert.equal(untrustedProfiles.profiles.shared?.apiKey, "parent-api-key");
   assert.equal(untrustedProfiles.profiles.shared?.model, "user-model");
   assert.equal(untrustedProfiles.profiles.projectOnly, undefined);
+  assert.equal(untrustedProfiles.profiles.helperOnly, undefined);
   assert.equal(untrustedProfiles.provenance.shared?.baseURL, "user");
   assert.ok(untrustedProfiles.warnings.some((warning) => warning.includes("ignored until")));
+  const workspaceRisks = await detectWorkspaceRisks(project);
+  assert.ok(workspaceRisks.includes("model provider endpoints or credentials"));
+  assert.ok(workspaceRisks.includes("an API key helper command"));
 
   const untrustedPermissions = await loadPermissionSettings(project);
   assert.ok(untrustedPermissions.allow.includes("Read"));
@@ -152,7 +162,7 @@ try {
 
   process.env.PATH = "parent-path";
   process.env.ANTHROPIC_AUTH_TOKEN = "parent-token";
-  delete process.env.ANTHROPIC_BASE_URL;
+  delete process.env.EASY_AGENT_BASE_URL;
   delete process.env.PROJECT_SETTING;
   delete process.env.DOTENV_ONLY;
   process.env.SHARED_SETTING = "user";
@@ -161,17 +171,22 @@ try {
   assert.equal(trustedReport.projectTrusted, true);
   assert.equal(process.env.PATH, "project-path");
   assert.equal(process.env.ANTHROPIC_AUTH_TOKEN, "parent-token");
-  assert.equal(process.env.ANTHROPIC_BASE_URL, "https://dotenv-attacker.invalid");
+  assert.equal(process.env.EASY_AGENT_BASE_URL, undefined, "the parent connection wins as a whole");
   assert.equal(process.env.PROJECT_SETTING, "project");
   assert.equal(process.env.DOTENV_ONLY, "dotenv");
-  assert.equal(process.env.EASY_AGENT_ENABLE_TOOL_SEARCH, "true");
+  assert.equal((await (await import("../config/features.js")).loadFeatureSettings(project)).toolSearch, "on");
   assert.ok((trustedReport.protectedCredentialOverrides.project ?? 0) > 0);
   assert.ok((trustedReport.protectedCredentialOverrides.dotenv ?? 0) > 0);
 
   const trustedProfiles = await loadProfiles(project);
-  assert.equal(trustedProfiles.profiles.shared?.baseURL, "https://attacker.invalid/v1?token=secret");
+  assert.equal(trustedProfiles.profiles.shared?.baseURL, "https://attacker.invalid/v1");
   assert.equal(trustedProfiles.profiles.shared?.apiKey, "parent-token");
-  assert.equal(trustedProfiles.profiles.shared?.headers?.Authorization, "Bearer parent-token");
+  assert.equal(trustedProfiles.profiles.shared?.headers?.Authorization, undefined);
+  assert.deepEqual(trustedProfiles.profiles.shared?.authentication, {
+    type: "header",
+    name: "Authorization",
+    prefix: "Bearer ",
+  });
   assert.equal(trustedProfiles.profiles.projectOnly?.protocol, "openai-chat");
   assert.equal(trustedProfiles.provenance.shared?.baseURL, "project");
 
@@ -212,9 +227,9 @@ try {
 
   const { APIConnectionError } = await import("@anthropic-ai/sdk");
   const { getUserFacingErrorMessage } = await import("../services/api/errors.js");
-  process.env.ANTHROPIC_BASE_URL = "https://user:pass@example.com/v1?token=secret";
+  process.env.EASY_AGENT_BASE_URL = "https://user:pass@example.com/v1?token=secret";
   const connectionMessage = getUserFacingErrorMessage(new APIConnectionError({ message: "connection failed" }));
-  assert.ok(connectionMessage.includes("https://example.com/…"));
+  assert.ok(connectionMessage.includes("selected profile's baseURL"));
   assert.ok(!connectionMessage.includes("user:pass"));
   assert.ok(!connectionMessage.includes("token=secret"));
 

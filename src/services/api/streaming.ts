@@ -10,7 +10,8 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import type { MessageParam, TextBlockParam } from "@anthropic-ai/sdk/resources/messages.js";
 import { getAnthropicClientForProfile, getDefaultModel, DEFAULT_MAX_TOKENS } from "./client.js";
-import { resolveProfile } from "./providers/profile.js";
+import { resolveProfile, type ModelProfile } from "./providers/profile.js";
+import { profileRequestHeaders } from "./providers/authentication.js";
 import { streamViaProvider, collectViaProvider } from "./providers/providerStream.js";
 import type {
   AssistantMessage,
@@ -23,19 +24,13 @@ import type {
   Usage,
 } from "../../types/message.js";
 import type { ThinkingConfig, EffortLevel } from "../../utils/thinking.js";
-import {
-  modelSupportsThinking,
-  modelSupportsAdaptiveThinking,
-  modelSupportsInterleavedThinking,
-  modelSupportsEffort,
-  buildDefaultThinkingConfig,
-  getSessionEffortLevel,
-} from "../../utils/thinking.js";
+import { resolveRequestReasoning, validateRequestLimits } from "./providers/reasoning.js";
+import { validateDeclaredCapabilities } from "./providers/capabilities.js";
 import { writeStreamDebug } from "../../utils/streamDebug.js";
 import { harnessSetting } from "../../harness/active.js";
 import type { ApiToolParam } from "../../tools/Tool.js";
 import { normalizeToolReferencesForAPI } from "../../utils/toolSearch.js";
-import { classifyAPIError, getUserFacingErrorMessage, toFriendlyError } from "./errors.js";
+import { classifyAPIError, getUserFacingErrorMessage, redactConnectionMessage, toFriendlyError } from "./errors.js";
 import { callWithRetry, decideRetry, getMaxRetries, sleep, type QuerySource } from "./withRetry.js";
 import { applyAnthropicPromptCache, isPromptCachingDisabled } from "./promptCache.js";
 import { countRequestTokens, shouldCountTokens } from "./tokenCount.js";
@@ -49,6 +44,8 @@ import {
 // ─── Request Parameters ────────────────────────────────────────────
 
 export interface StreamRequestParams {
+  /** Internal immutable connection for a request and all its retry attempts. */
+  profile?: ModelProfile;
   messages: MessageParam[];
   model?: string;
   maxTokens?: number;
@@ -132,50 +129,44 @@ async function* streamOnce(
 ): AsyncGenerator<StreamEvent, StreamResult> {
   // Resolve the model handle into a profile. Non-Anthropic protocols
   // (OpenAI Chat/Responses, Gemini) are translated at the edge via llm-bridge;
-  // the Anthropic path below is unchanged except it sources its client/model
-  // from the (possibly synthetic) profile.
-  const profile = await resolveProfile(params.model ?? getDefaultModel());
+  // each path sources its client and model from the explicitly resolved profile.
+  const profile = params.profile ?? (await resolveProfile(params.model ?? getDefaultModel()));
   if (profile.protocol !== "anthropic") {
     return yield* streamViaProvider(profile, params, trace);
   }
 
-  const client = getAnthropicClientForProfile(profile);
+  profileRequestHeaders(profile);
   const model = profile.model;
   const maxTokens = profile.maxTokens ?? params.maxTokens ?? DEFAULT_MAX_TOKENS;
 
   // ─── Thinking + interleaved beta + effort ─────────────────────────
-  const thinkingCfg: ThinkingConfig = params.thinking ?? buildDefaultThinkingConfig();
-  const hasThinking =
-    thinkingCfg.type !== "disabled" &&
-    harnessSetting<boolean>("features.thinkingInRequests") &&
-    modelSupportsThinking(model);
+  const reasoning = resolveRequestReasoning(profile, maxTokens, params.thinking, params.effortLevel);
+  const hasThinking = reasoning.enabled;
 
   let thinkingParam: Record<string, unknown> | undefined;
   if (hasThinking) {
-    if (harnessSetting<boolean>("features.adaptiveThinking") && modelSupportsAdaptiveThinking(model)) {
+    if (reasoning.adaptive) {
       thinkingParam = { type: "adaptive" };
     } else {
-      let budget =
-        thinkingCfg.type === "enabled" && thinkingCfg.budgetTokens ? thinkingCfg.budgetTokens : maxTokens - 1;
-      budget = Math.min(maxTokens - 1, budget);
+      const budget = reasoning.budgetTokens ?? maxTokens - 1;
+      if (budget < 1024)
+        throw new Error(
+          "Anthropic reasoning requires maxTokens greater than 1024; increase the output limit or turn reasoning off.",
+        );
       thinkingParam = { type: "enabled", budget_tokens: budget };
     }
   }
 
   const betaHeaders: string[] = [...(params.betaHeaders ?? [])];
-  if (
-    hasThinking &&
-    modelSupportsInterleavedThinking(model) &&
-    harnessSetting<boolean>("features.interleavedThinking")
-  ) {
+  if (hasThinking && reasoning.interleaved && harnessSetting<boolean>("features.experimentalBetas")) {
     betaHeaders.push("interleaved-thinking-2025-05-14");
   }
 
-  const effortLevel = params.effortLevel ?? getSessionEffortLevel();
+  const effortLevel = reasoning.effort;
   let outputConfig: Record<string, unknown> | undefined;
-  if (effortLevel && modelSupportsEffort(model)) {
+  if (effortLevel) {
     outputConfig = { effort: effortLevel };
-    betaHeaders.push("effort-2025-11-24");
+    if (harnessSetting<boolean>("features.experimentalBetas")) betaHeaders.push("effort-2025-11-24");
   }
 
   // Build the API request
@@ -190,7 +181,8 @@ async function* streamOnce(
       availableToolNames: new Set((params.tools ?? []).map((t) => t.name)),
     },
   );
-  const promptCaching = !isPromptCachingDisabled();
+  validateDeclaredCapabilities(profile, params);
+  const promptCaching = profile.capabilities?.cache !== false && !isPromptCachingDisabled();
   const baseParams = {
     model,
     max_tokens: maxTokens,
@@ -235,7 +227,7 @@ async function* streamOnce(
     output_config: outputConfig,
     betas: betaHeaders,
     promptCaching,
-    hasApiKey: Boolean(profile.apiKey || process.env.ANTHROPIC_AUTH_TOKEN),
+    hasApiKey: Boolean(profile.apiKey || profile.apiKeyHelper),
   });
 
   trace?.sent({
@@ -260,6 +252,7 @@ async function* streamOnce(
     },
   });
 
+  const client = getAnthropicClientForProfile(profile);
   // Initiate the stream
   const stream = client.messages.stream(requestParams, {
     signal: params.signal,
@@ -522,6 +515,7 @@ async function* streamOnce(
  * pre-Stage-27 contract: the caller sees one `error` event and stops).
  */
 export async function* streamMessage(params: StreamRequestParams): AsyncGenerator<StreamEvent, StreamResult> {
+  params = { ...params, profile: params.profile ?? (await resolveProfile(params.model ?? getDefaultModel())) };
   const maxRetries = getMaxRetries();
   const model = params.model ?? getDefaultModel();
   const trace = startRequestTrace(params.trace, model);
@@ -550,7 +544,7 @@ export async function* streamMessage(params: StreamRequestParams): AsyncGenerato
     } catch (error) {
       writeStreamDebug("stream_error", {
         attempt,
-        message: error instanceof Error ? error.message : String(error),
+        message: redactConnectionMessage(error instanceof Error ? error.message : String(error), params.profile),
       });
 
       // Aborted requests are never retried — surface the original error and
@@ -581,7 +575,7 @@ export async function* streamMessage(params: StreamRequestParams): AsyncGenerato
           attempt,
           maxRetries,
           delayMs: decision.delayMs,
-          errorMessage: getUserFacingErrorMessage(error, model),
+          errorMessage: getUserFacingErrorMessage(error, model, params.profile),
           category: classifyAPIError(error),
         };
         await sleep(decision.delayMs, params.signal);
@@ -592,7 +586,7 @@ export async function* streamMessage(params: StreamRequestParams): AsyncGenerato
       trace.fail(classifyAPIError(error));
       yield {
         type: "error",
-        error: toFriendlyError(error, model),
+        error: toFriendlyError(error, model, params.profile),
         category: classifyAPIError(error),
       };
       return errorStreamResult();
@@ -619,6 +613,7 @@ function errorStreamResult(): StreamResult {
 export async function createMessage(
   params: Omit<StreamRequestParams, "signal">,
 ): Promise<{ content: ContentBlock[]; usage: Usage; stopReason: string }> {
+  params = { ...params, profile: params.profile ?? (await resolveProfile(params.model ?? getDefaultModel())) };
   const trace = startRequestTrace(params.trace, params.model ?? getDefaultModel());
   try {
     const result = await createMessageTraced(params, trace);
@@ -626,6 +621,10 @@ export async function createMessage(
     return result;
   } catch (error) {
     trace.fail(classifyAPIError(error));
+    if (error instanceof Error) {
+      error.message = redactConnectionMessage(error.message, params.profile);
+      if (error.stack) error.stack = redactConnectionMessage(error.stack, params.profile);
+    }
     throw error;
   }
 }
@@ -634,7 +633,8 @@ async function createMessageTraced(
   params: Omit<StreamRequestParams, "signal">,
   trace: RequestTrace,
 ): Promise<{ content: ContentBlock[]; usage: Usage; stopReason: string }> {
-  const profile = await resolveProfile(params.model ?? getDefaultModel());
+  const profile = params.profile ?? (await resolveProfile(params.model ?? getDefaultModel()));
+  validateDeclaredCapabilities(profile, params);
   const onRetry = ({ attempt, delayMs, category }: { attempt: number; delayMs: number; category: string }) => {
     trace.retry({ attempt, category, delayMs });
     writeStreamDebug("createMessage_retry", { attempt, delayMs, category });
@@ -650,9 +650,11 @@ async function createMessageTraced(
     });
   }
 
-  const client = getAnthropicClientForProfile(profile);
+  profileRequestHeaders(profile);
   const model = profile.model;
   const maxTokens = profile.maxTokens ?? params.maxTokens ?? DEFAULT_MAX_TOKENS;
+
+  validateRequestLimits(profile, maxTokens);
 
   // Single-shot calls (compaction summaries, etc.) get the same transient-
   // failure resilience as streaming, via the shared backoff policy. These are
@@ -667,7 +669,8 @@ async function createMessageTraced(
     toolSearchEnabled: params.toolSearchEnabled === true,
     availableToolNames: new Set((params.tools ?? []).map((t) => t.name)),
   });
-  const cachePrefix = params.cacheStablePrefix === true && !isPromptCachingDisabled();
+  const cachePrefix =
+    params.cacheStablePrefix === true && profile.capabilities?.cache !== false && !isPromptCachingDisabled();
   const prompt: { system?: string | TextBlockParam[]; tools?: ApiToolParam[]; messages: MessageParam[] } = cachePrefix
     ? applyAnthropicPromptCache({
         system: params.system,
@@ -707,6 +710,7 @@ async function createMessageTraced(
           promptCacheKey: false,
         },
       });
+      const client = getAnthropicClientForProfile(profile);
       return client.messages.create(
         body,
         params.betaHeaders?.length ? { headers: { "anthropic-beta": params.betaHeaders.join(",") } } : undefined,

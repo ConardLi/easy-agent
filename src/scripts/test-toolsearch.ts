@@ -11,6 +11,9 @@
  */
 import type { MessageParam } from "@anthropic-ai/sdk/resources/messages.js";
 import type { Tool } from "../tools/Tool.js";
+import { installConfigurationEnvironment } from "../config/environment.js";
+import { withHarness } from "../harness/active.js";
+import { resolveHarnessFromInputs } from "../harness/resolve.js";
 import {
   runToolSearch,
   searchToolsWithKeywords,
@@ -50,21 +53,31 @@ function withEnv<T>(vars: Record<string, string | undefined>, fn: () => T): T {
     else process.env[k] = v;
   }
   try {
+    installConfigurationEnvironment(process.env);
     return fn();
   } finally {
     for (const [k, v] of Object.entries(saved)) {
       if (v === undefined) delete process.env[k];
       else process.env[k] = v;
     }
+    installConfigurationEnvironment(process.env);
   }
 }
 
 const CLEAN_ENV = {
-  EASY_AGENT_ENABLE_TOOL_SEARCH: undefined,
-  ENABLE_TOOL_SEARCH: undefined,
   EASY_AGENT_DISABLE_EXPERIMENTAL_BETAS: undefined,
-  CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: undefined,
 };
+
+function withSettings<T>(toolSearch: "on" | "off" | "auto", fn: () => T, toolSearchAutoThreshold = 10): T {
+  return withHarness(
+    resolveHarnessFromInputs({
+      layers: [{ source: "user", path: null, raw: { toolSearch, toolSearchAutoThreshold } }],
+      workspaceTrusted: true,
+      env: process.env,
+    }),
+    fn,
+  );
+}
 
 function mkTool(name: string, extra: Partial<Tool> = {}): Tool {
   return {
@@ -110,25 +123,12 @@ function main(): void {
   console.log("\n[1] mode parsing");
   withEnv(CLEAN_ENV, () => {
     assert(getToolSearchMode() === "tst", "unset → tst (default on)");
-    withEnv({ EASY_AGENT_ENABLE_TOOL_SEARCH: "true" }, () => assert(getToolSearchMode() === "tst", "true → tst"));
-    withEnv({ EASY_AGENT_ENABLE_TOOL_SEARCH: "false" }, () =>
-      assert(getToolSearchMode() === "standard", "false → standard"),
-    );
-    withEnv({ EASY_AGENT_ENABLE_TOOL_SEARCH: "auto" }, () =>
-      assert(getToolSearchMode() === "tst-auto", "auto → tst-auto"),
-    );
-    withEnv({ EASY_AGENT_ENABLE_TOOL_SEARCH: "auto:25" }, () =>
-      assert(getToolSearchMode() === "tst-auto", "auto:25 → tst-auto"),
-    );
-    withEnv({ EASY_AGENT_ENABLE_TOOL_SEARCH: "auto:0" }, () => assert(getToolSearchMode() === "tst", "auto:0 → tst"));
-    withEnv({ EASY_AGENT_ENABLE_TOOL_SEARCH: "auto:100" }, () =>
-      assert(getToolSearchMode() === "standard", "auto:100 → standard"),
-    );
-    withEnv({ EASY_AGENT_ENABLE_TOOL_SEARCH: "auto:abc" }, () =>
-      assert(getToolSearchMode() === "tst-auto", "auto:abc → tst-auto (default 10%)"),
-    );
-    withEnv({ EASY_AGENT_DISABLE_EXPERIMENTAL_BETAS: "1", EASY_AGENT_ENABLE_TOOL_SEARCH: "true" }, () =>
-      assert(getToolSearchMode() === "standard", "kill switch wins over explicit true"),
+    withSettings("on", () => assert(getToolSearchMode() === "tst", "on → tst"));
+    withSettings("off", () => assert(getToolSearchMode() === "standard", "off → standard"));
+    withSettings("auto", () => assert(getToolSearchMode() === "tst-auto", "auto → tst-auto"));
+    withSettings("auto", () => assert(getToolSearchMode() === "tst-auto", "auto threshold 25 → tst-auto"), 25);
+    withEnv({ EASY_AGENT_DISABLE_EXPERIMENTAL_BETAS: "1" }, () =>
+      withSettings("on", () => assert(getToolSearchMode() === "standard", "kill switch wins over explicit on")),
     );
   });
 
@@ -154,23 +154,29 @@ function main(): void {
     );
     const proxy = { protocol: "anthropic" as const, baseURL: "https://gateway.example.com/v1" };
     assert(!isToolSearchEnabled("claude-sonnet-4-5", pool, proxy), "anthropic via proxy, env unset → disabled");
-    withEnv({ EASY_AGENT_ENABLE_TOOL_SEARCH: "true" }, () =>
-      assert(isToolSearchEnabled("claude-sonnet-4-5", pool, proxy), "proxy + explicit true → enabled"),
+    withSettings("on", () =>
+      assert(isToolSearchEnabled("claude-sonnet-4-5", pool, proxy), "proxy + explicit on → enabled"),
     );
     assert(
       isToolSearchEnabled("gpt-5.1", pool, { protocol: "openai-chat", baseURL: "https://api.openai.com/v1" }),
       "openai-chat protocol → enabled (client-side fallback, no gateway gate)",
     );
-    withEnv({ EASY_AGENT_ENABLE_TOOL_SEARCH: "auto:100" }, () =>
-      assert(!isToolSearchEnabled("claude-sonnet-4-5", pool, FIRST_PARTY), "auto:100 → disabled"),
+    withSettings(
+      "auto",
+      () => assert(!isToolSearchEnabled("claude-sonnet-4-5", pool, FIRST_PARTY), "auto threshold 100 → disabled"),
+      100,
     );
-    withEnv({ EASY_AGENT_ENABLE_TOOL_SEARCH: "auto:0" }, () =>
-      assert(isToolSearchEnabled("claude-sonnet-4-5", pool, FIRST_PARTY), "auto:0 → enabled"),
+    withSettings(
+      "auto",
+      () => assert(isToolSearchEnabled("claude-sonnet-4-5", pool, FIRST_PARTY), "auto threshold 0 → enabled"),
+      0,
     );
-    withEnv({ EASY_AGENT_ENABLE_TOOL_SEARCH: "auto", EASY_AGENT_MAX_CONTEXT_TOKENS: "1000" }, () =>
-      assert(isToolSearchEnabled("claude-sonnet-4-5", pool, FIRST_PARTY), "auto with tiny context → above threshold"),
+    withEnv({ EASY_AGENT_MAX_CONTEXT_TOKENS: "1000" }, () =>
+      withSettings("auto", () =>
+        assert(isToolSearchEnabled("claude-sonnet-4-5", pool, FIRST_PARTY), "auto with tiny context → above threshold"),
+      ),
     );
-    withEnv({ EASY_AGENT_ENABLE_TOOL_SEARCH: "auto" }, () =>
+    withSettings("auto", () =>
       assert(!isToolSearchEnabled("claude-sonnet-4-5", pool, FIRST_PARTY), "auto with 200k context → below threshold"),
     );
   });
@@ -277,17 +283,14 @@ function main(): void {
       pending.enabled && pending.tools.some((t) => t.name === "ToolSearch"),
       "empty pool but pending MCP → ToolSearch kept",
     );
-    withEnv({ EASY_AGENT_ENABLE_TOOL_SEARCH: "false" }, () => {
+    withSettings("off", () => {
       const off = prepareToolSearchRequest({
         tools: pool,
         messages: [userMsg("hi")],
         model: "claude-sonnet-4-5",
         env: FIRST_PARTY,
       });
-      assert(
-        !off.enabled && off.tools.length === pool.length - 1,
-        "EASY_AGENT_ENABLE_TOOL_SEARCH=false → standard, all but ToolSearch",
-      );
+      assert(!off.enabled && off.tools.length === pool.length - 1, "toolSearch=off → standard, all but ToolSearch");
     });
   });
 
@@ -437,7 +440,7 @@ function main(): void {
     );
     assert(buildSchemaNotSentHint(read, [userMsg("hi")], pool) === null, "non-deferred → no hint");
     assert(buildSchemaNotSentHint(taskCreate, [userMsg("hi")], [read]) === null, "ToolSearch unavailable → no hint");
-    withEnv({ EASY_AGENT_ENABLE_TOOL_SEARCH: "false" }, () =>
+    withSettings("off", () =>
       assert(buildSchemaNotSentHint(taskCreate, [userMsg("hi")], pool) === null, "standard mode → no hint"),
     );
   });

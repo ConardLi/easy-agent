@@ -12,7 +12,7 @@ const readJson = (file: string) => JSON.parse(readFileSync(file, "utf8")) as Rec
 const harnesses = () => (readJson(userSettings()).harnesses ?? {}) as Record<string, Record<string, unknown>>;
 
 function writeAgents(agents: Record<string, unknown>): void {
-  writeFileSync(userSettings(), JSON.stringify({ harnesses: agents }));
+  writeFileSync(userSettings(), JSON.stringify({ ...readJson(userSettings()), harnesses: agents }));
 }
 
 function trustProject(): void {
@@ -271,8 +271,8 @@ test("resource assignment and settings write the explicitly selected Agent", asy
     await caching.click();
     await expect(caching).toHaveAttribute("aria-checked", "false", { timeout: 20_000 });
     expect(harnesses().default).toEqual({ tools: { exclude: ["Glob"] }, features: { promptCaching: false } });
-    // Only the settings no Agent key covers yet keep their TODO mark: the MCP timeout and the web search backend.
-    await expect(page.getByText("TODO", { exact: true })).toHaveCount(3);
+    // Search and reasoning now use the canonical Harness contract; only the MCP timeout is environment-only.
+    await expect(page.getByText("TODO", { exact: true })).toHaveCount(1);
   } finally {
     await app.close();
   }
@@ -299,7 +299,10 @@ await server.connect(new StdioServerTransport());
 }
 
 test("turning an MCP server off marks the processes that started it, and restarting them drops its tools", async () => {
-  writeFileSync(userSettings(), JSON.stringify({ mcpServers: { echo: { command: process.execPath, args: [writeEchoServer()] } } }));
+  writeFileSync(
+    userSettings(),
+    JSON.stringify({ ...readJson(userSettings()), mcpServers: { echo: { command: process.execPath, args: [writeEchoServer()] } } }),
+  );
   world.fixture.script([
     { kind: "text", text: "有 echo。" },
     { kind: "text", text: "没有 echo。" },

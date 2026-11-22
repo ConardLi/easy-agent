@@ -35,7 +35,6 @@ await Promise.all([
 process.env.HOME = home;
 process.env.USERPROFILE = home;
 process.env.EASY_AGENT_DISABLE_HOOKS = "1";
-process.env.EASY_AGENT_ENABLE_TOOL_SEARCH = "false";
 process.chdir(cwd);
 
 const GOLDEN_PATH = path.join(import.meta.dirname, "__golden__", "interactive-session-characterization.golden.txt");
@@ -46,7 +45,7 @@ const { createAnthropicFixture, FIXTURE_MODEL: MODEL } = await import("./fixture
 type ScriptStep = import("./fixtures/anthropicFixture.js").ScriptStep;
 const fixture = createAnthropicFixture();
 const requests = fixture.requests;
-await fixture.start();
+await fixture.start(home);
 
 const { render, Text } = await import("ink");
 const { createAgentRuntime } = await import("../sdk/index.js");

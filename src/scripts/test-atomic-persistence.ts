@@ -28,7 +28,7 @@ if (childMode === "crash-writer") {
 
 if (childMode === "settings-writer") {
   const { updateUserSettings } = await import("../utils/settings.js");
-  await updateUserSettings({ [process.argv[3]!]: process.argv[4]! });
+  await updateUserSettings({ [process.argv[3]!]: JSON.parse(process.argv[4]!) });
   process.exit(0);
 }
 
@@ -158,20 +158,30 @@ async function main(): Promise<void> {
     }
     assert.deepEqual(await fs.readFile(streamingTarget), streamingData);
 
-    const settingChildren = Array.from({ length: 8 }, (_, index) =>
-      spawnChild(["settings-writer", `key${index}`, `value${index}`], childEnv),
+    const settingUpdates = {
+      language: "en",
+      outputStyle: "Explanatory",
+      toolSearch: "on",
+      maxTurns: 17,
+      cleanupPeriodDays: 30,
+      checkpointingEnabled: false,
+      respectGitignore: true,
+      prefersReducedMotion: true,
+    };
+    const settingChildren = Object.entries(settingUpdates).map(([key, value]) =>
+      spawnChild(["settings-writer", key, JSON.stringify(value)], childEnv),
     );
     await Promise.all(settingChildren.map(waitForExit));
     const settingsPath = path.join(home, ".easy-agent", "settings.json");
     const settings = JSON.parse(await fs.readFile(settingsPath, "utf8")) as Record<string, unknown>;
-    for (let index = 0; index < 8; index += 1) {
-      assert.equal(settings[`key${index}`], `value${index}`);
+    for (const [key, value] of Object.entries(settingUpdates)) {
+      assert.equal(settings[key], value);
     }
 
     const { updateUserSettings } = await import("../utils/settings.js");
     const invalidSettings = "{ invalid settings\n";
     await fs.writeFile(settingsPath, invalidSettings);
-    await expectPersistentDataError(() => updateUserSettings({ safe: true }));
+    await expectPersistentDataError(() => updateUserSettings({ language: "en" }));
     assert.equal(await fs.readFile(settingsPath, "utf8"), invalidSettings);
 
     const { getGlobalState, getGlobalStateDiagnostics, resetGlobalStateCache, saveGlobalState } = await import(

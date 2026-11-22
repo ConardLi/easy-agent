@@ -706,10 +706,41 @@ try {
     const provider = await startFixtureProvider();
     try {
       const providerEnv = isolatedCliEnv(cliHome, {
-        ANTHROPIC_AUTH_TOKEN: "release-fixture-token",
-        ANTHROPIC_BASE_URL: provider.baseURL,
-        ANTHROPIC_MODEL: FIXTURE_MODEL,
+        EASY_AGENT_API_KEY: "release-fixture-token",
+        EASY_AGENT_BASE_URL: provider.baseURL,
+        EASY_AGENT_PROTOCOL: "anthropic",
+        EASY_AGENT_MODEL: FIXTURE_MODEL,
       });
+
+      const invalidHome = path.join(tempRoot, "invalid-config-home");
+      const invalidDir = path.join(invalidHome, ".easy-agent");
+      await fs.mkdir(invalidDir, { recursive: true });
+      const invalidFile = path.join(invalidDir, "settings.json");
+      const original = JSON.stringify(
+        {
+          unknownOption: "private-invalid-value",
+          model: "saved",
+          models: {
+            saved: { protocol: "anthropic", model: FIXTURE_MODEL, baseURL: provider.baseURL, apiKey: "fixture-secret" },
+          },
+        },
+        null,
+        3,
+      );
+      await fs.writeFile(invalidFile, original);
+      const blocked = await runAsync(eagentBin, ["-p", "Say hello."], {
+        cwd: cliProject,
+        env: isolatedCliEnv(invalidHome),
+      });
+      assert(
+        blocked.status !== 0 &&
+          /unknown setting/.test(blocked.stderr + blocked.stdout) &&
+          !/fixture-secret|private-invalid-value/.test(blocked.stderr + blocked.stdout) &&
+          (await fs.readFile(invalidFile, "utf8")) === original &&
+          provider.requests() === 0,
+        "installed startup rejects unknown configuration before HTTP without rewriting or exposing values",
+        blocked.stderr || blocked.stdout,
+      );
 
       const text = await runAsync(eagentBin, ["-p", "Say hello."], { cwd: cliProject, env: providerEnv });
       assert(

@@ -24,7 +24,7 @@ import { findToolByName, toolOffByAgent } from "../tools/index.js";
 import { hasValidToolInputSchema, validateToolInput } from "../tools/inputValidation.js";
 import { truncateToolResult, type Tool, type ToolContext, type ToolResult } from "../tools/Tool.js";
 import { appendTextToContent, prependTextToContent } from "../tools/contentBlocks.js";
-import { resolveProfile } from "../services/api/providers/profile.js";
+import { resolveProfile, getProfileBaseURL } from "../services/api/providers/profile.js";
 import { hasPendingMcpServers } from "../services/mcp/registry.js";
 import { buildSchemaNotSentHint, prepareToolSearchRequest } from "../utils/toolSearch.js";
 import { activateConditionalSkillsForPaths, extractToolFilePaths } from "../services/skills/conditional.js";
@@ -786,7 +786,7 @@ export async function* query(params: QueryParams): AsyncGenerator<AgenticLoopEve
     const contextTokens = tokenCountWithEstimation(state.messages, { systemPrompt: params.systemPrompt });
     const roleModel =
       !params.subagentInfo && !params.explicitModel && typeof getFlagSettings()?.model !== "string"
-        ? ((contextTokens > getContextWindowForModel(baseProfile.model) * 0.8
+        ? ((contextTokens > getContextWindowForModel(baseProfile.id) * 0.8
             ? featureSettings.modelRoles.longContext
             : undefined) ?? (thinking.type !== "disabled" ? featureSettings.modelRoles.think : undefined))
         : undefined;
@@ -798,7 +798,7 @@ export async function* query(params: QueryParams): AsyncGenerator<AgenticLoopEve
       model: profile.model,
       env: {
         protocol: profile.protocol,
-        baseURL: profile.baseURL ?? process.env.ANTHROPIC_BASE_URL,
+        baseURL: getProfileBaseURL(profile),
         settings: featureSettings,
       },
       hasPendingMcpServers: hasPendingMcpServers(),
@@ -808,6 +808,7 @@ export async function* query(params: QueryParams): AsyncGenerator<AgenticLoopEve
     const stream = streamMessage({
       messages: prepared.messages,
       model: requestModel,
+      profile,
       system: params.systemPrompt,
       tools: prepared.tools.length > 0 ? prepared.tools : undefined,
       toolSearchEnabled: prepared.enabled,

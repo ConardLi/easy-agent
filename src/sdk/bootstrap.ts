@@ -37,7 +37,6 @@ import { toolConfigProblems, unmatchedSelectionEntries } from "../harness/select
 import { refreshHookDisableFromSettings } from "../hooks/settings.js";
 import { refreshActivePlugins } from "../plugins/runtime.js";
 import { getSandboxCapability, getSandboxUnavailableReason, loadSandboxSettings } from "../sandbox/index.js";
-import { resolveApiKeyFromHelper } from "../services/api/apiKeyHelper.js";
 import { bootstrapSkills } from "../services/skills/bootstrap.js";
 import { getRegisteredSkills } from "../services/skills/registry.js";
 import { cleanupOldFileHistoryBackups } from "../session/fileHistory.js";
@@ -52,6 +51,7 @@ import { readTrustedStringArraySetting } from "../utils/settings.js";
 import { AgentSdkError } from "./errors.js";
 import type { AgentRuntimeOptions, RuntimeLogger } from "./types.js";
 import { withRuntimeScope } from "../state/runtimeScope.js";
+import { ConfigurationError } from "../config/values.js";
 
 export interface WorkspaceReport {
   projectTrusted: boolean;
@@ -120,13 +120,10 @@ export const loadWorkspace = withRuntimeScope(async (options: AgentRuntimeOption
 
   // Trust is settled before anything project-controlled is read.
   const projectTrusted = await isProjectTrusted(cwd);
-  const environmentReport = await loadEnv(cwd);
-
   // The Agent's settings, resolved once the environment is loaded; the
   // runtime and everything after it read them from the installed snapshot.
   // Environment variables are taken now; settings files are read again on
   // each refresh.
-  const env = harnessEnvironment();
   let selection: { spec: unknown } | { name: string; selectedBy?: ResolvedHarness["selectedBy"] } | object =
     target.spec !== undefined ? { spec: target.spec } : target.name !== undefined ? { name: target.name } : {};
   // A saved session reopens with the Agent it last ran with.
@@ -161,6 +158,8 @@ export const loadWorkspace = withRuntimeScope(async (options: AgentRuntimeOption
       selection = { name: project.selection.name, selectedBy: { source: "local", path: project.selection.path } };
     }
   }
+  const environmentReport = await loadEnv(cwd);
+  const env = harnessEnvironment();
   const selected = "spec" in selection || "name" in selection;
   // A selected Agent that stops resolving (its definition was edited or
   // removed) keeps its last good settings; the problem is reported once.
@@ -199,6 +198,7 @@ export const loadWorkspace = withRuntimeScope(async (options: AgentRuntimeOption
     try {
       installHarness(await resolver.resolve(cwd), resolver);
     } catch (error) {
+      if (error instanceof ConfigurationError) throw error;
       installHarness(null, resolver);
       logger.warn(
         `[easy-agent] ⚠ Could not resolve Agent settings: ${errorMessage(error)}. Using environment variables and built-in defaults.`,
@@ -299,13 +299,6 @@ export const loadWorkspace = withRuntimeScope(async (options: AgentRuntimeOption
 
 export const activateWorkspace = withRuntimeScope(async (options: AgentRuntimeOptions): Promise<void> => {
   const { cwd } = options;
-
-  // apiKeyHelper mints an auth token by running a configured command, only
-  // when the environment does not already provide one.
-  if (!process.env.ANTHROPIC_AUTH_TOKEN) {
-    const token = await resolveApiKeyFromHelper(cwd);
-    if (token) process.env.ANTHROPIC_AUTH_TOKEN = token;
-  }
 
   // additionalDirectories widens the file-tool boundary; trusted sources only.
   const extraRoots = await readTrustedStringArraySetting(cwd, "additionalDirectories").catch(() => []);

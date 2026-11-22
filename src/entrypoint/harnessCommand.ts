@@ -17,6 +17,9 @@ import { listHarnesses } from "../harness/manage.js";
 import { type ResolvedHarness, resolveHarness } from "../harness/resolve.js";
 import { type HarnessTarget, harnessTarget } from "../harness/target.js";
 import { loadEnv } from "../utils/loadEnv.js";
+import { setFlagSettings } from "../config/sources.js";
+import { readJsonSettingsFile } from "../utils/settings.js";
+import * as path from "node:path";
 
 const USAGE = `Usage:
   eagent harness list [--json]               List the Agents and this workspace's default Agent
@@ -42,6 +45,7 @@ interface ParsedArgs {
   json: boolean;
   trust: boolean;
   prompt?: string;
+  settings?: string;
 }
 
 /** Flags and positional arguments; `--prompt` takes the next argument (or `--prompt=<text>`). */
@@ -51,7 +55,11 @@ function parseArgs(args: readonly string[]): ParsedArgs | null {
     const arg = args[index]!;
     if (arg === "--json") parsed.json = true;
     else if (arg === "--trust-project-config") parsed.trust = true;
-    else if (arg === "--prompt") {
+    else if (arg === "--settings") {
+      const value = args[++index];
+      if (!value || value.startsWith("--")) return null;
+      parsed.settings = value;
+    } else if (arg === "--prompt") {
       const value = args[++index];
       if (value === undefined) return null;
       parsed.prompt = value;
@@ -103,6 +111,12 @@ export async function runHarnessCommand(args: readonly string[], cwd = process.c
   }
 
   try {
+    if (parsed.settings) {
+      const file = path.resolve(cwd, parsed.settings);
+      const { raw, parseError } = await readJsonSettingsFile<Record<string, unknown>>(file);
+      if (!raw || parseError) throw new Error("--settings could not be read; check the file path and JSON syntax.");
+      setFlagSettings(raw);
+    }
     if (subcommand === "list" && rest.length === 0) {
       const listing = await listHarnesses(cwd);
       process.stdout.write(json ? `${JSON.stringify(listing, null, 2)}\n` : `${formatHarnessList(listing)}\n`);

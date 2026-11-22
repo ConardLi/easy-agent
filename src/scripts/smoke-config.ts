@@ -15,12 +15,12 @@
  *   [6] Single-source writers — updateProjectSettings / updateLocalSettings
  *       round-trip; local settings auto-added to .gitignore
  *   [7] Zod field-level validation — bad fields dropped (field-level + per-rule),
- *       unknown fields preserved, diagnostics report each repair
+ *       unknown fields rejected, diagnostics report each repair
  *   [8] Read cache — invalidates on file change / write / flag change
  *   [9] Tier 1 config — env injection, language→prompt, apiKeyHelper (executed),
  *       cleanupPeriodDays retention/disable, additionalDirectories boundary
  *   [10] Tier 2 config — disableAllHooks (hooks+statusLine), .mcp.json approval
- *        gate, claudeMdExcludes, respectGitignore, syntaxHighlightingDisabled,
+ *        gate, agentMdExcludes, respectGitignore, syntaxHighlightingDisabled,
  *        prefersReducedMotion
  *
  * HOME is stubbed to a temp dir so nothing escapes into the real
@@ -204,7 +204,7 @@ async function main(): Promise<void> {
   assert(wprojRaw2.model === undefined, "undefined patch value deletes the key");
 
   // ─── [7] schema validation (P1) ──────────────────────────────────────────
-  section("[7] Zod field-level validation — bad fields dropped, unknown kept");
+  section("[7] Zod field-level validation — bad and unknown fields rejected");
   const vproj = await fs.mkdtemp(path.join(os.tmpdir(), "ea-cfg-vproj-"));
   await state.trustProjectForSession(vproj);
   await writeJson(userFile, { model: "fallback-model" });
@@ -213,7 +213,7 @@ async function main(): Promise<void> {
     mode: "bogus", // invalid enum → field dropped
     allow: ["GoodRule", 5, "   ", "Another"], // per-rule: keep 2, drop 2
     outputStyle: "vstyle", // valid
-    customKey: "keep-me", // unknown → preserved (passthrough)
+    customKey: "invalid-value",
   });
 
   assert(
@@ -234,9 +234,13 @@ async function main(): Promise<void> {
 
   const vsrcs = await sources.loadSettingSources(vproj);
   const vProjSrc = vsrcs.find((s) => s.source === "project");
-  assert(vProjSrc?.raw?.["customKey"] === "keep-me", "unknown field is preserved (passthrough)");
+  assert(vProjSrc?.raw?.["customKey"] === undefined, "unknown field is excluded");
 
   const vdiags = await settings.loadSettingsDiagnostics(vproj);
+  assert(
+    vdiags.some((d) => d.includes('unknown setting "customKey"')),
+    "unknown field has a diagnostic",
+  );
   assert(
     vdiags.some((d) => d.includes('ignored invalid field "model"')),
     "diagnostics report ignored model field",
@@ -307,19 +311,27 @@ async function main(): Promise<void> {
 
   // [9c] apiKeyHelper — executed, trusted-source gated
   section("[9c] Tier 1: apiKeyHelper (executed, trusted-source gated)");
-  const { resolveApiKeyFromHelper } = await import("../services/api/apiKeyHelper.js");
+  const { resolveProfile, loadProfiles } = await import("../services/api/providers/profile.js");
   const t2 = await fs.mkdtemp(path.join(os.tmpdir(), "ea-cfg-t2-"));
-  await writeJson(paths.getProjectSettingsPath(t2), { apiKeyHelper: "echo proj-token" });
+  await writeJson(paths.getProjectSettingsPath(t2), {
+    models: {
+      helper: { protocol: "anthropic", model: "fixture", apiKey: { helper: "echo proj-token" } },
+    },
+  });
   state.resetGlobalStateCache();
-  assert((await resolveApiKeyFromHelper(t2)) === null, "untrusted project apiKeyHelper does NOT run");
+  assert((await loadProfiles(t2)).profiles.helper === undefined, "untrusted project helper profile is ignored");
   await state.trustProject(t2);
   assert(
-    (await resolveApiKeyFromHelper(t2)) === "proj-token",
+    (await resolveProfile("helper", t2)).apiKey === "proj-token",
     "trusted project apiKeyHelper runs; stdout is the token",
   );
-  await writeJson(userFile, { apiKeyHelper: "echo user-token" });
+  await writeJson(userFile, {
+    models: {
+      helper: { protocol: "anthropic", model: "fixture", apiKey: { helper: "echo user-token" } },
+    },
+  });
   const t3 = await fs.mkdtemp(path.join(os.tmpdir(), "ea-cfg-t3-"));
-  assert((await resolveApiKeyFromHelper(t3)) === "user-token", "user apiKeyHelper runs even in an untrusted dir");
+  assert((await resolveProfile("helper", t3)).apiKey === "user-token", "user helper runs even in an untrusted dir");
 
   // [9d] cleanupPeriodDays — retention + disable persistence
   section("[9d] Tier 1: cleanupPeriodDays retention");
@@ -433,19 +445,19 @@ async function main(): Promise<void> {
     "disabledMcpjsonServers wins over enableAll (rejected, not pending)",
   );
 
-  // [10c] claudeMdExcludes
-  section("[10c] Tier 2: claudeMdExcludes");
-  const claudeMd = await import("../context/claudeMd.js");
+  // [10c] agentMdExcludes
+  section("[10c] Tier 2: agentMdExcludes");
+  const agentMd = await import("../context/agentMd.js");
   const t8 = await fs.mkdtemp(path.join(os.tmpdir(), "ea-cfg-t8-"));
   await fs.writeFile(path.join(t8, "AGENT.md"), "PROJECT-MEMORY-MARKER\n", "utf-8");
   await writeJson(userFile, {});
-  let ctx = await claudeMd.loadAgentMdContext(t8);
+  let ctx = await agentMd.loadAgentMdContext(t8);
   assert(/PROJECT-MEMORY-MARKER/.test(ctx), "AGENT.md is loaded by default");
-  await writeJson(userFile, { claudeMdExcludes: ["**/AGENT.md"] });
-  ctx = await claudeMd.loadAgentMdContext(t8);
+  await writeJson(userFile, { agentMdExcludes: ["**/AGENT.md"] });
+  ctx = await agentMd.loadAgentMdContext(t8);
   assert(!/PROJECT-MEMORY-MARKER/.test(ctx), "glob exclude (**/AGENT.md) drops the file");
-  await writeJson(userFile, { claudeMdExcludes: [path.join(t8, "AGENT.md")] });
-  ctx = await claudeMd.loadAgentMdContext(t8);
+  await writeJson(userFile, { agentMdExcludes: [path.join(t8, "AGENT.md")] });
+  ctx = await agentMd.loadAgentMdContext(t8);
   assert(!/PROJECT-MEMORY-MARKER/.test(ctx), "absolute-path exclude drops the file");
 
   // [10d] respectGitignore — accessor + (rg-gated) functional check

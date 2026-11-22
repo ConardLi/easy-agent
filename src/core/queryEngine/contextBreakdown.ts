@@ -25,11 +25,11 @@
 import type { MessageParam } from "@anthropic-ai/sdk/resources/messages.js";
 import { getAllAgents } from "../../agents/registry.js";
 import { loadFeatureSettings } from "../../config/features.js";
-import { formatAgentMdSection, listAgentMdFiles } from "../../context/claudeMd.js";
+import { formatAgentMdSection, listAgentMdFiles } from "../../context/agentMd.js";
 import { readMemoryEntrypoint } from "../../context/memory/memdir.js";
 import { renderSystemPrompt, type PromptSection, type PromptSectionName } from "../../context/systemPrompt.js";
 import { getActivePlugins } from "../../plugins/runtime.js";
-import { resolveProfile } from "../../services/api/providers/profile.js";
+import { resolveProfileConfiguration, getProfileBaseURL } from "../../services/api/providers/profile.js";
 import { getMcpRegistry, hasPendingMcpServers } from "../../services/mcp/registry.js";
 import { findSkill } from "../../services/skills/registry.js";
 import { getToolsForMode } from "../../tools/index.js";
@@ -667,14 +667,14 @@ export async function computeContextBreakdown(input: ContextBreakdownInput): Pro
   const systemPrompt = renderSystemPrompt(input.systemPrompt.systemParts);
   // Mirror the real request: with tool search on, deferred tools that
   // haven't been loaded cost nothing — only the shaped `tools[]` counts.
-  const profile = await resolveProfile(model, cwd);
+  const profile = await resolveProfileConfiguration(model, cwd);
   const shaped = prepareToolSearchRequest({
     tools: getToolsForMode(input.permissionMode),
     messages,
     model: profile.model,
     env: {
       protocol: profile.protocol,
-      baseURL: profile.baseURL ?? process.env.ANTHROPIC_BASE_URL,
+      baseURL: getProfileBaseURL(profile),
       settings: await loadFeatureSettings(cwd),
     },
     hasPendingMcpServers: hasPendingMcpServers(),

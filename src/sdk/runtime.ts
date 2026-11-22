@@ -19,7 +19,7 @@ import { getAllUserCommands } from "../commands/userCommands/registry.js";
 import { INTERACTIVE_MAX_TOOL_TURNS } from "../core/agenticLoop.js";
 import { loadPermissionSettings, type PermissionSettings } from "../permissions/permissions.js";
 import { refreshActivePlugins } from "../plugins/runtime.js";
-import { resolveProfile } from "../services/api/providers/profile.js";
+import { loadProfiles, resolveProfileConfiguration } from "../services/api/providers/profile.js";
 import { bootstrapMcp, connectAdditionalMcpServers } from "../services/mcp/bootstrap.js";
 import { getAllUserInvocableSkills } from "../services/skills/registry.js";
 import { findCheckpoints } from "../session/checkpoints.js";
@@ -53,6 +53,7 @@ import { logWarn } from "../utils/log.js";
 import type { McpServerConfig } from "../types/mcp.js";
 import { activateWorkspace, agentErrors, consoleLogger, loadWorkspace, type WorkspaceReport } from "./bootstrap.js";
 import { checkModel, listModels, readConfig, setWorkspaceTrust, writeConfig } from "./config.js";
+import { ConfigurationError } from "../config/values.js";
 import { AgentSdkError } from "./errors.js";
 import { approveMcpServer, reconnectMcpServer, reloadExtensions } from "./extensions.js";
 import { buildRuntimeInventory } from "./inventory.js";
@@ -185,19 +186,19 @@ export class AgentRuntime {
 
   /**
    * The model handle sessions use when none is given: the Agent's main model
-   * as of the current settings files (`model`, then `defaultModel`, then
-   * `ANTHROPIC_MODEL`, then the built-in default).
+   * as of the current settings and runtime environment snapshot.
    */
   async resolveModel(): Promise<string> {
     this.#assertActive();
-    return harnessValue<string>(await refreshHarness(), "model.main");
+    const configured = harnessValue<string>(await refreshHarness(), "model.main");
+    return configured || (await loadProfiles(this.cwd)).defaultModel || "";
   }
 
   async createSession(options: AgentSessionOptions = {}): Promise<AgentSession> {
     this.#assertActive();
     const permissionSettings = await this.#loadPermissionSettings();
     const harness = await refreshHarness();
-    const model = options.model ?? harnessValue<string>(harness, "model.main");
+    const model = options.model ?? (await this.resolveModel());
     const sessionId = createSessionId();
     if (options.persist !== false) {
       const startedAt = new Date().toISOString();
@@ -238,7 +239,21 @@ export class AgentRuntime {
       throw new AgentSdkError("already_open", `Session ${restored.summary.sessionId} is already open.`);
     }
     const harness = await refreshHarness();
-    const model = options.model ?? harnessValue<string>(harness, "model.main");
+    const loaded = await loadProfiles(this.cwd);
+    const savedModel = restored.summary.model;
+    const explicitHarness = harness.values["model.main"]?.source;
+    const override =
+      options.model ??
+      (explicitHarness === "policy" || explicitHarness === "flag" || explicitHarness === "harness"
+        ? harnessValue<string>(harness, "model.main")
+        : undefined);
+    const model = override ?? (savedModel || (await this.resolveModel()));
+    if (!model || !loaded.profiles[model]) {
+      throw new ConfigurationError(
+        "session.model",
+        "the saved profile ID is missing; pass a configured profile ID when resuming. Raw historical model names are not resolved automatically.",
+      );
+    }
     const harnessCheck = await this.#bindHarness(restored, harness, options.persist !== false);
     return this.#open({
       sessionId: restored.summary.sessionId,
@@ -390,28 +405,16 @@ export class AgentRuntime {
   }
 
   /**
-   * Whether requests for the model have credentials: an API key or auth
-   * header from the model profile or the environment, or a custom endpoint
-   * (profile `baseURL` or `ANTHROPIC_BASE_URL`) that may accept none. False
-   * means the provider's default endpoint without a key.
+   * Whether the selected profile declares an API Key source or explicitly
+   * disables authentication. This checks presence without executing helpers.
    */
   async hasModelCredentials(model?: string): Promise<boolean> {
-    const profile = await resolveProfile(model ?? (await this.resolveModel()), this.cwd);
-    if (profile.apiKey || profile.baseURL) return true;
-    const authHeaders =
-      profile.protocol === "gemini" ? ["x-goog-api-key", "authorization"] : ["x-api-key", "authorization"];
-    if (
-      Object.entries(profile.headers ?? {}).some(
-        ([name, value]) => authHeaders.includes(name.toLowerCase()) && value.trim(),
-      )
-    ) {
-      return true;
-    }
-    const env = process.env;
-    return (
-      profile.protocol === "anthropic" &&
-      Boolean(env.ANTHROPIC_AUTH_TOKEN || env.ANTHROPIC_API_KEY || env.ANTHROPIC_BASE_URL)
-    );
+    const problems = (await loadProfiles(this.cwd)).configurationErrors;
+    if (problems?.length) throw new ConfigurationError("configuration", problems.join(" "));
+    const id = model ?? (await this.resolveModel());
+    if (!id.trim()) return false;
+    const profile = await resolveProfileConfiguration(id, this.cwd);
+    return Boolean(profile.authentication?.type === "none" || profile.apiKey || profile.apiKeyHelper);
   }
 
   // ─── Settings ───────────────────────────────────────────────────────────

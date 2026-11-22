@@ -19,12 +19,12 @@ import { loadFeatureSettings } from "../config/features.js";
 import { isProjectTrusted } from "../config/globalState.js";
 import { redactUrlForDisplay } from "../config/redaction.js";
 import { isTrustedScopeForSensitiveKeys } from "../config/sources.js";
-import { listAgentMdFiles } from "../context/claudeMd.js";
+import { listAgentMdFiles } from "../context/agentMd.js";
 import { getProjectMemoryDir, MEMORY_ENTRYPOINT, readMemoryEntrypoint } from "../context/memory/memdir.js";
 import { buildPluginView } from "../core/queryEngine/commands/pluginView.js";
 import { hooksGloballyDisabled, listConfiguredHooks, refreshHookDisableFromSettings } from "../hooks/settings.js";
 import { getActivePlugins } from "../plugins/runtime.js";
-import { resolveProfile } from "../services/api/providers/profile.js";
+import { loadProfiles, getProfileBaseURL } from "../services/api/providers/profile.js";
 import { mcpServerOffByAgent } from "../services/mcp/bootstrap.js";
 import { getProjectMcpJsonPath, loadMcpConfigs } from "../services/mcp/config.js";
 import { getMcpRegistry } from "../services/mcp/registry.js";
@@ -119,14 +119,16 @@ export async function buildRuntimeInventory(
 
 /** Tools ToolSearch defers for the runtime's model in the default mode. */
 async function deferredToolNames(cwd: string, model: string): Promise<Set<string>> {
-  const profile = await resolveProfile(model, cwd);
+  const loaded = await loadProfiles(cwd);
+  const profile = loaded.profiles[model || loaded.defaultModel || ""];
+  if (!profile) return new Set();
   const shaped = prepareToolSearchRequest({
     tools: getToolsForMode("default"),
     messages: [],
     model: profile.model,
     env: {
       protocol: profile.protocol,
-      baseURL: profile.baseURL ?? process.env.ANTHROPIC_BASE_URL,
+      baseURL: getProfileBaseURL(profile),
       settings: await loadFeatureSettings(cwd),
     },
     source: "inventory",
@@ -484,7 +486,7 @@ async function listRules(cwd: string): Promise<RuleInventoryItem[]> {
     : (contextSourceOffReason(harness, "agent_md") ?? promptSectionOffReason(harness, "agent_md") ?? REPLACED);
   const items: RuleInventoryItem[] = (await listAgentMdFiles(cwd)).map((file) => {
     const reason = file.excluded
-      ? "Matched by claudeMdExcludes."
+      ? "Matched by agentMdExcludes."
       : (agentMdOff ?? ruleOffByAgent(file.filePath, harness));
     return {
       kind: "rule",

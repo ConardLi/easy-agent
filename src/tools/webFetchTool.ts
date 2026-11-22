@@ -1,5 +1,7 @@
 import type { Tool, ToolContext, ToolResult } from "./Tool.js";
 import { createMessage } from "../services/api/streaming.js";
+import { harnessSetting } from "../harness/active.js";
+import { ConfigurationError } from "../config/values.js";
 import { debugLog } from "../utils/log.js";
 import { markMessageSource } from "../core/messageSources.js";
 import { fetchUrlContent, MAX_MARKDOWN_LENGTH, type FetchedContent } from "./webFetch/fetcher.js";
@@ -46,7 +48,7 @@ async function applyPromptToContent(prompt: string, content: string, model: stri
 
   try {
     const response = await createMessage({
-      model,
+      model: harnessSetting<string | undefined>("model.roles.webFetch") ?? model,
       maxTokens: EXTRACT_MAX_TOKENS,
       messages: [markMessageSource({ role: "user", content: userPrompt }, "web_page")],
       querySource: "background",
@@ -59,6 +61,7 @@ async function applyPromptToContent(prompt: string, content: string, model: stri
       .trim();
     if (text) return text;
   } catch (error) {
+    if (error instanceof ConfigurationError) throw error;
     debugLog("webFetch", "secondary-model-failed", {
       message: error instanceof Error ? error.message : String(error),
     });

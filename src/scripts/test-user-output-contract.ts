@@ -7,6 +7,7 @@ import { QueryEngine, type QueryEngineEvent } from "../core/queryEngine.js";
 import { setFlagSettings } from "../config/sources.js";
 import { resetGlobalStateCache, trustProjectForSession } from "../config/globalState.js";
 import { MIN_NODE_MAJOR } from "../version.js";
+import { installConfigurationEnvironment } from "../config/environment.js";
 
 async function commandOutput(engine: QueryEngine, command: string): Promise<string> {
   const output: string[] = [];
@@ -27,6 +28,7 @@ const originalHome = process.env.HOME;
 const originalUserProfile = process.env.USERPROFILE;
 const originalToken = process.env.ANTHROPIC_AUTH_TOKEN;
 const originalApiKey = process.env.ANTHROPIC_API_KEY;
+const originalEnvironment = { ...process.env };
 const originalFetch = globalThis.fetch;
 
 try {
@@ -62,11 +64,11 @@ try {
 
   const doctor = await commandOutput(engine, "/doctor");
   assert.match(doctor, new RegExp(`Node\\.js .*\\(requires ${MIN_NODE_MAJOR}\\+\\)`));
-  assert.match(doctor, /Active model: active → gpt-contract/);
-  assert.match(doctor, /Provider: openai-chat/);
-  assert.match(doctor, /Profile: active \(configuration: flag; selection: runtime default\)/);
+  assert.match(doctor, /Active profile: active → gpt-contract/);
+  assert.match(doctor, /Protocol: openai-chat/);
+  assert.match(doctor, /Configuration: flag; selection: default/);
   assert.match(doctor, /Endpoint: https:\/\/api\.openai\.com\/…/);
-  assert.match(doctor, /No API auth configured for the active openai-chat provider/);
+  assert.match(doctor, /Configure apiKey on the selected profile/);
   assert.doesNotMatch(doctor, /API auth configured \(ANTHROPIC_AUTH_TOKEN\)/);
   assert.doesNotMatch(doctor, /unrelated-profile-key|unrelated-anthropic-token/);
 
@@ -76,7 +78,7 @@ try {
       configured: {
         protocol: "gemini",
         model: "gemini-configured",
-        baseURL: "https://example.invalid/v1beta?secret=hidden",
+        baseURL: "https://example.invalid/v1beta",
         apiKey: "configured-profile-key",
       },
     },
@@ -88,42 +90,51 @@ try {
     permissionSettings: { allow: [], deny: [], mode: "default" },
   });
   const configuredDoctor = await commandOutput(configured, "/doctor");
-  assert.match(configuredDoctor, /Active model: configured → gemini-configured/);
-  assert.match(configuredDoctor, /Provider: gemini/);
-  assert.match(configuredDoctor, /Profile: configured \(configuration: flag; selection: flag\)/);
-  assert.match(configuredDoctor, /API auth configured \(active profile, source: flag\)/);
-  assert.match(configuredDoctor, /Endpoint: https:\/\/example\.invalid\/… \[query redacted\]/);
+  assert.match(configuredDoctor, /Active profile: configured → gemini-configured/);
+  assert.match(configuredDoctor, /Protocol: gemini/);
+  assert.match(configuredDoctor, /Configuration: flag; selection: flag/);
+  assert.match(configuredDoctor, /API Key source configured/);
+  assert.match(configuredDoctor, /Endpoint: https:\/\/example\.invalid\/…/);
   assert.doesNotMatch(configuredDoctor, /configured-profile-key|secret=hidden/);
-  assert.equal(probedUrls.at(-1), "https://example.invalid/v1beta", "probe removes secret query");
+  assert.equal(probedUrls.at(-1), "https://example.invalid/v1beta");
   assert.match(configuredDoctor, /Endpoint reachable \(HTTP 401\)/, "401 proves reachability, not authentication");
   assert.match(configuredDoctor, /authentication has not been verified/);
-  await commandOutput(configured, "/model raw-model");
+  assert.match(await commandOutput(configured, "/model raw-model"), /profile "raw-model" does not exist/);
   const switched = await commandOutput(configured, "/doctor");
-  assert.match(switched, /Provider: anthropic/);
-  assert.match(switched, /Profile: raw model name \(source: session\)/);
+  assert.match(switched, /Protocol: gemini/, "invalid selection does not switch the connection");
   setFlagSettings({
     models: {
       header: {
         protocol: "openai-responses",
         model: "header-model",
-        headers: { Authorization: "Bearer header-secret" },
+        apiKey: "header-secret",
+        authentication: { type: "header", name: "Authorization", prefix: "Bearer " },
       },
     },
   });
   const headerEngine = new QueryEngine({ model: "header", toolContext: { cwd } });
   const headerDoctor = await commandOutput(headerEngine, "/doctor");
-  assert.match(headerDoctor, /active profile headers, source: flag/);
+  assert.match(headerDoctor, /API Key source configured/);
   assert.doesNotMatch(headerDoctor, /header-secret/);
 
   const manifest = JSON.parse(await readFile(new URL("../../package.json", import.meta.url), "utf8"));
   assert.equal(manifest.engines.node, `>=${MIN_NODE_MAJOR}`);
   delete process.env.ANTHROPIC_AUTH_TOKEN;
   process.env.ANTHROPIC_API_KEY = "sdk-env-key";
+  installConfigurationEnvironment(process.env);
   setFlagSettings(null);
-  const raw = new QueryEngine({ model: "raw-model", toolContext: { cwd } });
+  const raw = new QueryEngine({ model: "@environment", toolContext: { cwd } });
   const apiKeyDoctor = await commandOutput(raw, "/doctor");
-  assert.match(apiKeyDoctor, /API auth configured \(ANTHROPIC_API_KEY\)/);
-  assert.doesNotMatch(apiKeyDoctor, /sdk-env-key/);
+  assert.match(apiKeyDoctor, /No valid model profile selected/);
+  assert.doesNotMatch(apiKeyDoctor, /API Key source configured|sdk-env-key/);
+  delete process.env.ANTHROPIC_API_KEY;
+  process.env.EASY_AGENT_PROTOCOL = "anthropic";
+  process.env.EASY_AGENT_MODEL = "diagnostic-model";
+  process.env.EASY_AGENT_API_KEY = "sdk-env-key";
+  installConfigurationEnvironment(process.env);
+  const canonicalDoctor = await commandOutput(raw, "/doctor");
+  assert.match(canonicalDoctor, /API Key source configured/);
+  assert.doesNotMatch(canonicalDoctor, /sdk-env-key/);
   const nodeDescriptor = Object.getOwnPropertyDescriptor(process.versions, "node")!;
   Object.defineProperty(process.versions, "node", { ...nodeDescriptor, value: "20.0.0" });
   try {
@@ -144,6 +155,10 @@ try {
   else process.env.ANTHROPIC_AUTH_TOKEN = originalToken;
   if (originalApiKey === undefined) delete process.env.ANTHROPIC_API_KEY;
   else process.env.ANTHROPIC_API_KEY = originalApiKey;
+  for (const name of ["EASY_AGENT_PROTOCOL", "EASY_AGENT_MODEL", "EASY_AGENT_API_KEY"]) {
+    if (originalEnvironment[name] === undefined) delete process.env[name];
+    else process.env[name] = originalEnvironment[name];
+  }
   resetGlobalStateCache();
   await rm(root, { recursive: true, force: true });
 }

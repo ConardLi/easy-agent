@@ -5,8 +5,8 @@
  * (or as one JSON message when the request does not ask for a stream):
  * a text reply, a single tool call, or an API error. Requests are recorded so tests
  * can assert what reached the provider. `GET /v1/models` lists the fixture
- * model and consumes no step. `start()` points ANTHROPIC_BASE_URL
- * at the server; call it before importing modules that create API clients.
+ * model and consumes no step. `start(home)` installs an explicit profile in
+ * the test's temporary home. It never relies on ambient provider credentials.
  *
  * `POST /v1/messages/count_tokens` consumes no step and is recorded apart, in
  * `countRequests`. It answers 404 like most compatible gateways until
@@ -16,9 +16,12 @@
 
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import * as path from "node:path";
+import type { ModelProfileConfig } from "../../config/modelSchema.js";
 
 export type ScriptStep = (
-  | { kind: "text"; text: string }
+  | { kind: "text"; text: string; stopReason?: "end_turn" | "max_tokens" }
   | {
       kind: "tool";
       name: string;
@@ -53,6 +56,7 @@ export interface RecordedRequest {
 export type CountTokensMode = "off" | "on" | "error";
 
 export interface AnthropicFixture {
+  readonly baseURL: string;
   readonly requests: RecordedRequest[];
   /** Requests to the token-counting endpoint, whatever the mode. */
   readonly countRequests: RecordedRequest[];
@@ -62,11 +66,42 @@ export interface AnthropicFixture {
   script(steps: ScriptStep[]): void;
   /** Replies not consumed yet. */
   remaining(): number;
-  start(): Promise<void>;
+  start(home?: string): Promise<void>;
   close(): Promise<void>;
 }
 
 export const FIXTURE_MODEL = "fixture-model";
+
+export function fixtureProfile(baseURL: string, model = FIXTURE_MODEL): ModelProfileConfig {
+  return {
+    protocol: "anthropic",
+    model,
+    baseURL,
+    apiKey: "fixture-token",
+    capabilities: { contextWindow: 200_000, tools: true },
+  };
+}
+
+/** Preserve a suite's unrelated settings while explicitly configuring its fake service. */
+export async function installFixtureProfile(home: string, baseURL: string): Promise<void> {
+  const file = path.join(home, ".easy-agent", "settings.json");
+  let settings: Record<string, unknown> = {};
+  try {
+    settings = JSON.parse(await readFile(file, "utf8"));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+  await mkdir(path.dirname(file), { recursive: true });
+  await writeFile(
+    file,
+    JSON.stringify({
+      toolSearch: "off",
+      ...settings,
+      model: settings.model ?? FIXTURE_MODEL,
+      models: { [FIXTURE_MODEL]: fixtureProfile(baseURL), ...(settings.models as object | undefined) },
+    }),
+  );
+}
 
 /** Tokens the fixture adds to every request, and to a request with tools, like a provider's framing. */
 export const FIXTURE_REQUEST_TOKENS = 3;
@@ -172,7 +207,10 @@ export function createAnthropicFixture(): AnthropicFixture {
       sse("content_block_stop", { type: "content_block_stop", index: 0 }),
       sse("message_delta", {
         type: "message_delta",
-        delta: { stop_reason: step.kind === "text" ? "end_turn" : "tool_use", stop_sequence: null },
+        delta: {
+          stop_reason: step.kind === "text" ? (step.stopReason ?? "end_turn") : "tool_use",
+          stop_sequence: null,
+        },
         usage: { output_tokens: 5 },
       }),
       sse("message_stop", { type: "message_stop" }),
@@ -189,7 +227,7 @@ export function createAnthropicFixture(): AnthropicFixture {
       step.kind === "text"
         ? [{ type: "text", text: step.text }]
         : [{ type: "tool_use", id: `toolu_${++toolSeq}`, name: step.name, input: step.input }],
-    stop_reason: step.kind === "text" ? "end_turn" : "tool_use",
+    stop_reason: step.kind === "text" ? (step.stopReason ?? "end_turn") : "tool_use",
     stop_sequence: null,
     usage: { ...usage, output_tokens: 5 },
   });
@@ -267,6 +305,9 @@ export function createAnthropicFixture(): AnthropicFixture {
   });
 
   return {
+    get baseURL() {
+      return `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    },
     requests,
     countRequests,
     countTokens(mode, options) {
@@ -277,10 +318,9 @@ export function createAnthropicFixture(): AnthropicFixture {
       queue = [...steps];
     },
     remaining: () => queue.length,
-    async start() {
+    async start(home) {
       await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-      process.env.ANTHROPIC_BASE_URL = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-      process.env.ANTHROPIC_AUTH_TOKEN = "fixture-token";
+      if (home) await installFixtureProfile(home, this.baseURL);
     },
     close: () => new Promise<void>((resolve) => server.close(() => resolve())),
   };

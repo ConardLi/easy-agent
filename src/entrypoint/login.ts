@@ -10,6 +10,9 @@
 import * as readline from "node:readline";
 import { getUserSettingsPath } from "../utils/paths.js";
 import { readJsonSettingsFile, updateUserSettings } from "../utils/settings.js";
+import { validateSettings } from "../config/schema.js";
+import { MODEL_PROTOCOLS, ModelProfileSchema, type ModelProfileConfig } from "../config/modelSchema.js";
+import { configEnum, ConfigurationError } from "../config/values.js";
 
 export async function runLogin(): Promise<number> {
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
@@ -22,30 +25,87 @@ export async function runLogin(): Promise<number> {
     process.stderr.write(`Cannot update ${settingsPath}: ${parseError}\n`);
     return 1;
   }
-  const savedEnv = { ...((raw?.env ?? {}) as Record<string, string>) };
+  const saved = raw ?? {};
+  const { errors } = validateSettings(saved, settingsPath);
+  if (errors.length) {
+    process.stderr.write(`${errors.join("\n")}\n`);
+    return 1;
+  }
+  const savedEnv = { ...((saved.env ?? {}) as Record<string, string>) };
+  const models = { ...((saved.models ?? {}) as Record<string, ModelProfileConfig>) };
 
   process.stdout.write(
     "Easy Agent setup\n\n" +
-      "Enter an Anthropic API key, or the key of an Anthropic-compatible endpoint.\n" +
+      "Create a model profile with an explicit protocol and one API Key.\n" +
       `It is saved to ${settingsPath}, readable only by you. Press Enter to keep a current value.\n\n`,
   );
-  const hasKey = Boolean(savedEnv.ANTHROPIC_AUTH_TOKEN);
-  const key = (await askHidden(`API key${hasKey ? " (configured)" : ""}: `)).trim();
-  if (!key && !hasKey) {
-    process.stderr.write("No API key entered; nothing was saved.\n");
+  try {
+    const id = (await ask("Profile ID [main]: ")).trim() || "main";
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(id))
+      throw new ConfigurationError("profile ID", "use 1–64 letters, digits, dots, underscores, or hyphens.");
+    const existing = models[id];
+    const protocol = configEnum(
+      (await ask(`Protocol (${MODEL_PROTOCOLS.join(" | ")})${existing ? ` [${existing.protocol}]` : ""}: `)).trim() ||
+        existing?.protocol,
+      "protocol",
+      MODEL_PROTOCOLS,
+    );
+    if (!protocol) throw new ConfigurationError("protocol", "select a protocol explicitly.");
+    const model = (await ask(`Upstream model${existing ? ` [${existing.model}]` : ""}: `)).trim() || existing?.model;
+    if (!model) throw new ConfigurationError("model", "provide the upstream model name.");
+    const baseURL =
+      (
+        await ask(
+          existing?.baseURL && existing.protocol === protocol
+            ? "Base URL (Enter to keep the existing endpoint; 'official' to reset): "
+            : "Base URL (Enter for this protocol's official endpoint): ",
+        )
+      ).trim() ||
+      (existing?.protocol === protocol ? existing.baseURL : "") ||
+      "";
+    const endpoint = baseURL === "official" ? undefined : baseURL || undefined;
+    const authentication = (await ask("Authentication [key] (key | none): ")).trim() || "key";
+    if (!["key", "none"].includes(authentication))
+      throw new ConfigurationError("authentication", "choose key or none.");
+    let apiKey: ModelProfileConfig["apiKey"];
+    if (authentication === "key") {
+      const key = (
+        await askHidden(`API Key${existing?.apiKey ? " (Enter to retain this profile's existing source)" : ""}: `)
+      ).trim();
+      if (key) {
+        // A distinct reference prevents adding one provider from replacing
+        // the credentials of any previously saved profile.
+        const variable = `PROFILE_${id.replace(/[^A-Za-z0-9]/g, "_").toUpperCase()}_API_KEY`;
+        savedEnv[variable] = key;
+        apiKey = `\${${variable}}`;
+      } else if (existing?.apiKey && existing.protocol === protocol && existing.baseURL === endpoint) {
+        apiKey = existing.apiKey;
+      } else throw new ConfigurationError("apiKey", "provide an API Key for this connection.");
+    }
+    const profile = ModelProfileSchema.parse({
+      ...(existing?.protocol === protocol && existing.baseURL === endpoint ? existing : {}),
+      protocol,
+      model,
+      baseURL: endpoint,
+      apiKey,
+      authentication:
+        authentication === "none"
+          ? { type: "none" }
+          : existing?.protocol === protocol &&
+              existing.baseURL === endpoint &&
+              existing.authentication?.type === "header"
+            ? existing.authentication
+            : { type: "default" },
+    });
+    await updateUserSettings({ model: id, models: { ...models, [id]: profile }, env: savedEnv });
+    process.stdout.write(`\nSaved profile "${id}" as the default. Reopen the runtime to load its environment.\n`);
+    return 0;
+  } catch (error) {
+    process.stderr.write(
+      `${error instanceof ConfigurationError ? error.message : "Invalid model configuration; check the profile fields."}\n`,
+    );
     return 1;
   }
-  const baseUrl = (await ask(`Base URL [${savedEnv.ANTHROPIC_BASE_URL ?? "https://api.anthropic.com"}]: `)).trim();
-  const model = (await ask(`Model [${savedEnv.ANTHROPIC_MODEL ?? "default"}]: `)).trim();
-
-  if (key) savedEnv.ANTHROPIC_AUTH_TOKEN = key;
-  if (baseUrl) savedEnv.ANTHROPIC_BASE_URL = baseUrl;
-  if (model) savedEnv.ANTHROPIC_MODEL = model;
-  await updateUserSettings({ env: savedEnv });
-  process.stdout.write(
-    `\nSaved. OpenAI, Gemini, and other providers are set up as model profiles in ${settingsPath}; see https://github.com/ConardLi/easy-agent/blob/main/docs/configuration.md\n`,
-  );
-  return 0;
 }
 
 function ask(question: string): Promise<string> {

@@ -25,12 +25,11 @@ await Promise.all([
   mkdir(path.join(cwd, ".easy-agent"), { recursive: true }),
 ]);
 for (const key of Object.keys(process.env)) {
-  if (/^(?:ANTHROPIC_|EASY_AGENT_|CLAUDE_CODE_)/.test(key) || /TOOL_SEARCH|THINKING/.test(key)) delete process.env[key];
+  if (/^(?:ANTHROPIC_|EASY_AGENT_)/.test(key)) delete process.env[key];
 }
 process.env.HOME = home;
 process.env.USERPROFILE = home;
 process.env.EASY_AGENT_DISABLE_HOOKS = "1";
-process.env.ANTHROPIC_MODEL = "claude-test-model";
 process.chdir(cwd);
 
 const sdk = await import("../sdk/index.js");
@@ -47,7 +46,14 @@ const localSettings = path.join(cwd, ".easy-agent", "settings.local.json");
 const writeJson = (file: string, value: unknown) => writeFile(file, `${JSON.stringify(value, null, 2)}\n`);
 
 async function setAgents(harnesses: Record<string, unknown>): Promise<void> {
-  await writeJson(userSettings, { harnesses });
+  await writeJson(userSettings, {
+    harnesses,
+    model: "test",
+    models: {
+      test: { protocol: "anthropic", model: "claude-test-model", authentication: { type: "none" } },
+      historical: { protocol: "anthropic", model: "old-model", authentication: { type: "none" } },
+    },
+  });
   resetSettingsCache();
 }
 
@@ -86,10 +92,10 @@ const metaRecords = async (sessionId: string) =>
   (await transcriptOf(sessionId)).filter((entry) => entry.type === "session_meta");
 
 /** Open a saved session in a runtime started with `harness` and return its check and the runtime's Agent. */
-const reopen = (sessionId: string, harness: HarnessTarget = { session: sessionId }) =>
+const reopen = (sessionId: string, harness: HarnessTarget = { session: sessionId }, model?: string) =>
   withRuntime(harness, async (runtime) => {
     const agent = await runtime.getHarness();
-    const session = await runtime.resumeSession(sessionId);
+    const session = await runtime.resumeSession(sessionId, model ? { model } : {});
     await session.close();
     return { agent, check: session.harnessCheck! };
   });
@@ -168,7 +174,8 @@ try {
       await writeJson(localSettings, { harness: "reviewer" });
       await trustProject(cwd);
       try {
-        const { agent, check: result } = await reopen(sessionId);
+        await assert.rejects(reopen(sessionId), /Raw historical model names are not resolved automatically/);
+        const { agent, check: result } = await reopen(sessionId, { session: sessionId }, "historical");
         assert.equal(agent.name, "default", "not the workspace default");
         assert.deepEqual(agent.selectedBy, { source: "session", sessionId });
         assert.deepEqual(

@@ -2,7 +2,7 @@
 eagent <VERSION>
 
 ### help
-Easy Agent v<VERSION> — Terminal-native agentic coding system
+Easy Agent v<VERSION> — Configurable Agent Harness
 Usage:
   eagent [options]            (long alias: easy-agent)
   -p, --print [prompt]        Headless mode: run one non-interactive turn from

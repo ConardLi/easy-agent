@@ -262,9 +262,6 @@ body: {
   ],
   "max_output_tokens": 1024,
   "model": "model-test",
-  "reasoning": {
-    "summary": "auto"
-  },
   "stream": true,
   "tools": [
     {
@@ -326,9 +323,6 @@ body: {
   ],
   "max_output_tokens": 1024,
   "model": "model-test",
-  "reasoning": {
-    "summary": "auto"
-  },
   "stream": true
 }
 -- EVENTS --
@@ -384,7 +378,7 @@ body: {
   }
 }
 
-### openai-responses / think off → reasoning.effort=minimal, no summary
+### openai-responses / think off → verified reasoning.effort=none, no summary
 >>> openai-responses think off
 -- REQUEST --
 url: https://api.openai.test/v1/responses
@@ -402,7 +396,7 @@ body: {
   "max_output_tokens": 1024,
   "model": "model-test",
   "reasoning": {
-    "effort": "minimal"
+    "effort": "none"
   },
   "stream": true
 }
@@ -438,9 +432,6 @@ body: {
   ],
   "max_output_tokens": 1024,
   "model": "model-test",
-  "reasoning": {
-    "summary": "auto"
-  },
   "stream": true
 }
 -- EVENTS --
@@ -570,10 +561,7 @@ body: {
     }
   ],
   "generationConfig": {
-    "maxOutputTokens": 1024,
-    "thinkingConfig": {
-      "includeThoughts": true
-    }
+    "maxOutputTokens": 1024
   },
   "systemInstruction": {
     "parts": [
@@ -652,10 +640,7 @@ body: {
     }
   ],
   "generationConfig": {
-    "maxOutputTokens": 1024,
-    "thinkingConfig": {
-      "includeThoughts": true
-    }
+    "maxOutputTokens": 1024
   }
 }
 -- EVENTS --
@@ -700,10 +685,7 @@ body: {
     }
   ],
   "generationConfig": {
-    "maxOutputTokens": 1024,
-    "thinkingConfig": {
-      "includeThoughts": true
-    }
+    "maxOutputTokens": 1024
   },
   "systemInstruction": {
     "parts": [
@@ -772,10 +754,7 @@ body: {
     }
   ],
   "generationConfig": {
-    "maxOutputTokens": 1024,
-    "thinkingConfig": {
-      "includeThoughts": true
-    }
+    "maxOutputTokens": 1024
   }
 }
 -- EVENTS --

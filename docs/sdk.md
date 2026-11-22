@@ -4,6 +4,8 @@
 
 The SDK is **experimental** in the 0.x releases. The event and request shapes carry a protocol version (`SESSION_PROTOCOL_VERSION`); additive changes keep it, removals and changed meanings bump it.
 
+Model selections are saved [profile IDs](./model-profiles.md), with one API Key source per connection. Environment and trust are captured at runtime startup; environment edits require rebuilding it, while supported settings edits apply to the next request. `previewConfigMigration(scope)` and `applyConfigMigration(scope, revision)` expose redacted review and exact-byte private backups. Invalid profiles use the exported `ConfigurationError` (`code`, `field`, optional `source`).
+
 ## Quick start
 
 ```ts
@@ -102,7 +104,7 @@ const runtime = await createAgentRuntime({
 | `source` | `built-in`, `user`, `project`, `local`, `flag`, `policy`, or `plugin`; `pluginId` names the plugin |
 | `path` | The file that defines it, when there is one |
 | `enabled` | Whether sessions use it: listed to the model, connected, loaded, or run |
-| `reason` | Why it is off or limited, such as an untrusted workspace, `claudeMdExcludes`, or hooks turned off |
+| `reason` | Why it is off or limited, such as an untrusted workspace, `agentMdExcludes`, or hooks turned off |
 
 Items that occupy context carry token counts as `{ value, estimated }`: a skill's line in the skill list and its body, a sub-agent's line, an output style's prompt, a rule file, a tool's schema. Counts come from character lengths, so `estimated` is `true`. MCP servers report `status` (`connected`, `pending`, `failed`, `disabled`, `awaiting_approval`, `rejected`, or `ignored` in an untrusted workspace), their tools, and the error when connecting failed; a server the Agent's `mcpServers` lists leave out is `disabled` with the reason. Tools report whether ToolSearch defers them for the runtime's model, and a tool the Agent's `tools` lists leave out has `enabled: false` with the reason (see [Tools and MCP servers](./configuration.md#tools-and-mcp-servers)), and so do skills and sub-agents its `skills` and `agents` lists leave out (see [Skills and sub-agents](./configuration.md#skills-and-sub-agents)). Project configuration an untrusted workspace ignores still appears, disabled, with the reason.
 

@@ -20,16 +20,19 @@ import { setSessionThinkingConfig } from "../utils/thinking.js";
 import { fetchToolsForConnection } from "../services/mcp/fetchTools.js";
 import { setMcpRegistryEntry, deleteMcpRegistryEntry, hasPendingMcpServers } from "../services/mcp/registry.js";
 import type { ConnectedMcpServer, PendingMcpServer } from "../types/mcp.js";
+import { installConfigurationEnvironment } from "../config/environment.js";
 
 const cwd = await mkdtemp(join(tmpdir(), "ea-toolsearch-"));
 const originalFetch = globalThis.fetch;
 const originalFlags = getFlagSettings();
 const envKeys = [
-  "EASY_AGENT_ENABLE_TOOL_SEARCH",
-  "ENABLE_TOOL_SEARCH",
-  "EASY_AGENT_DISABLE_HOOKS",
-  "EASY_AGENT_DISABLE_EXPERIMENTAL_BETAS",
-  "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS",
+  ...new Set([
+    "HOME",
+    "USERPROFILE",
+    "EASY_AGENT_DISABLE_HOOKS",
+    "EASY_AGENT_DISABLE_EXPERIMENTAL_BETAS",
+    ...Object.keys(process.env).filter((key) => key.startsWith("EASY_AGENT_")),
+  ]),
 ];
 const savedEnv = envKeys.map((key) => [key, process.env[key]] as const);
 let calls = 0;
@@ -118,10 +121,13 @@ async function drive(
 
 try {
   for (const key of envKeys) delete process.env[key];
-  process.env.EASY_AGENT_ENABLE_TOOL_SEARCH = "true";
+  process.env.HOME = cwd;
+  process.env.USERPROFILE = cwd;
   process.env.EASY_AGENT_DISABLE_HOOKS = "1";
+  installConfigurationEnvironment(process.env);
   setSessionThinkingConfig({ type: "disabled" });
   setFlagSettings({
+    toolSearch: "on",
     models: {
       "toolsearch-test": {
         protocol: "anthropic",
@@ -294,6 +300,7 @@ try {
         model: "fixture-model",
         baseURL: "https://toolsearch.invalid",
         apiKey: "fixture",
+        capabilities: { reasoning: false },
       },
       { tools: ready.tools, messages: ready.messages, toolSearchEnabled: true },
     );
@@ -305,9 +312,10 @@ try {
   }
   console.log("✓ final OpenAI Chat / Responses / Gemini request bodies retain schemas without beta shapes");
 
-  for (const mode of ["false", "true"]) {
-    process.env.EASY_AGENT_ENABLE_TOOL_SEARCH = mode;
-    if (mode === "true") process.env.EASY_AGENT_DISABLE_EXPERIMENTAL_BETAS = "1";
+  for (const mode of ["off", "on"]) {
+    setFlagSettings({ ...getFlagSettings(), toolSearch: mode });
+    if (mode === "on") process.env.EASY_AGENT_DISABLE_EXPERIMENTAL_BETAS = "1";
+    installConfigurationEnvironment(process.env);
     requests.length = 0;
     await drive("toolsearch-test", pool, restored);
     const wire = JSON.stringify(requests[0]!.body);

@@ -9,13 +9,18 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import dotenv from "dotenv";
 import { isProjectTrusted } from "../config/globalState.js";
-import { loadSettingSources } from "../config/sources.js";
+import { loadSettingSources, resetSettingsCache } from "../config/sources.js";
 import {
   captureInheritedEnvironment,
   isInheritedCredentialProtected,
   setEnvironmentLoadReport,
+  installConfigurationEnvironment,
+  registerCredentialReferences,
+  writeRuntimeEnvironment,
   type EnvironmentConfigSource,
   type EnvironmentLoadReport,
+  CONNECTION_ENVIRONMENT_NAMES,
+  environmentDeclaresConnection,
 } from "../config/environment.js";
 
 export interface LoadEnvironmentOptions {
@@ -59,17 +64,35 @@ export async function loadEnv(
   cwd: string = process.cwd(),
   options: LoadEnvironmentOptions = {},
 ): Promise<EnvironmentLoadReport> {
-  captureInheritedEnvironment();
+  const inherited = captureInheritedEnvironment();
   const projectTrusted = options.allowProject === true || (await isProjectTrusted(cwd));
   const sources = await loadSettingSources(cwd);
+  for (const source of sources) {
+    if ((source.source !== "project" && source.source !== "local") || projectTrusted) {
+      registerCredentialReferences(source.raw?.models);
+    }
+  }
   const report: EnvironmentLoadReport = {
     projectTrusted,
     effectiveSources: {},
     ignoredBySource: {},
     protectedCredentialOverrides: {},
   };
+  const targetNames = ["EASY_AGENT_PROFILE", "EASY_AGENT_PROTOCOL", "EASY_AGENT_MODEL", "EASY_AGENT_BASE_URL"];
+  const selectConnection = (values: Readonly<NodeJS.ProcessEnv>): void => {
+    if (!environmentDeclaresConnection(values)) return;
+    // A higher layer chooses a complete connection. Arbitrary environment
+    // references remain available, but lower shortcut targets cannot leak in.
+    for (const key of CONNECTION_ENVIRONMENT_NAMES) {
+      if (values[key] !== undefined) continue;
+      if (values.EASY_AGENT_PROFILE?.trim() && !targetNames.includes(key)) continue;
+      writeRuntimeEnvironment(key, undefined);
+      delete report.effectiveSources[key];
+    }
+  };
 
   const apply = (source: EnvironmentConfigSource, values: Record<string, string>, projectScoped: boolean): void => {
+    if (!projectScoped || projectTrusted) selectConnection(values);
     for (const [key, value] of Object.entries(values)) {
       if (projectScoped && !projectTrusted) {
         increment(report.ignoredBySource, source);
@@ -79,7 +102,7 @@ export async function loadEnv(
         increment(report.protectedCredentialOverrides, source);
         continue;
       }
-      process.env[key] = value;
+      writeRuntimeEnvironment(key, value);
       report.effectiveSources[key] = source;
     }
   };
@@ -91,11 +114,36 @@ export async function loadEnv(
       } else if (await hasDotenv(cwd)) {
         increment(report.ignoredBySource, "dotenv");
       }
+      // The process layer follows project files, before explicit flags and policy.
+      selectConnection(inherited);
+      for (const [key, value] of Object.entries(inherited)) {
+        if (value !== undefined) {
+          // Windows may retain the parent's "Path" spelling after a "PATH"
+          // write. Its environment keys still refer to the same variable.
+          const sourceKey =
+            process.platform === "win32"
+              ? (Object.keys(report.effectiveSources).find((name) => name.toUpperCase() === key.toUpperCase()) ?? key)
+              : key;
+          // Preserve external-tool environment inheritance (PATH, build
+          // variables, etc.). Product settings and credentials use the
+          // standardized precedence.
+          if (
+            report.effectiveSources[sourceKey] &&
+            !key.startsWith("EASY_AGENT_") &&
+            !isInheritedCredentialProtected(key)
+          )
+            continue;
+          writeRuntimeEnvironment(key, value);
+          delete report.effectiveSources[sourceKey];
+        }
+      }
     }
     const projectScoped = source.source === "project" || source.source === "local";
     apply(source.source, readSourceEnv(source.raw), projectScoped);
   }
 
   setEnvironmentLoadReport(report);
+  installConfigurationEnvironment(process.env);
+  resetSettingsCache();
   return report;
 }

@@ -44,7 +44,7 @@ const REASONS: [RegExp, (m: RegExpMatchArray) => string][] = [
   [/^Listed to the model once a matching file/, () => "改到匹配的文件后才列给模型"],
   [/^Not approved yet\.$/, () => "还没有批准"],
   [/^Rejected in disabledMcpjsonServers\.$/, () => "已在 disabledMcpjsonServers 里拒绝"],
-  [/^Matched by claudeMdExcludes\.$/, () => "被 claudeMdExcludes 排除"],
+  [/^Matched by agentMdExcludes\.$/, () => "被 agentMdExcludes 排除"],
   [/^Left out by (\S+) \(Agent "([^"]+)"\)\.$/, (m) => `Agent「${m[2]}」的 ${m[1]} 去掉了它`],
   [/^Not in (\S+) \(Agent "([^"]+)"\)\.$/, (m) => `不在 Agent「${m[2]}」的 ${m[1]} 里`],
   [/^Turned off by (\S+) \(Agent "([^"]+)"\)\.$/, (m) => `Agent「${m[2]}」的 ${m[1]} 关掉了它`],

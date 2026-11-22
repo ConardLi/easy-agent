@@ -26,6 +26,7 @@ import { QueryEngine, type QueryEngineEvent, type QueryEngineOptions } from "../
 import { initSessionStorage, appendTranscriptEntry, getSessionPaths } from "../session/storage.js";
 import { getTaskMode, setTaskMode } from "../state/taskModeStore.js";
 import { resetGlobalStateCache, trustProjectForSession } from "../config/globalState.js";
+import { setFlagSettings } from "../config/sources.js";
 
 const GOLDEN_PATH = path.join(import.meta.dirname, "__golden__", "queryengine-characterization.golden.txt");
 
@@ -231,6 +232,12 @@ async function buildRecording(): Promise<string> {
   const isolatedCwd = path.join(tmpRoot, "project");
   await mkdir(isolatedCwd, { recursive: true });
   await trustProjectForSession(isolatedCwd);
+  setFlagSettings({
+    models: {
+      [FIXED_MODEL]: { protocol: "anthropic", model: FIXED_MODEL, authentication: { type: "none" } },
+      "my-custom-model": { protocol: "openai-chat", model: "my-custom-model", authentication: { type: "none" } },
+    },
+  });
   registerPathReplacement(isolatedCwd, "<CWD>");
 
   async function section(label: string, fn: () => Promise<string[]>): Promise<void> {
@@ -322,9 +329,9 @@ async function buildRecording(): Promise<string> {
         /Node\.js .*\(requires 22\+\)/,
         "doctor reports the same Node requirement as runtime preflight",
       );
-      assert.match(output, /Active model: claude-sonnet-4-20250514/);
-      assert.match(output, /Provider: anthropic/);
-      assert.match(output, /Profile: raw model name \(source: default\)/);
+      assert.match(output, /Active profile: claude-sonnet-4-20250514/);
+      assert.match(output, /Protocol: anthropic/);
+      assert.match(output, /Configuration: flag; selection: default/);
       return [output];
     } finally {
       globalThis.fetch = originalFetch;

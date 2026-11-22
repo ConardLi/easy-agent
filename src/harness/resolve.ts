@@ -27,6 +27,8 @@ import { loadSettingSources, type LoadedSource, type SettingSource } from "../co
 import { getUserSettingsPath } from "../utils/paths.js";
 import { HARNESS_KEYS, type HarnessKey, type HarnessLayerSource, type HarnessSettingsInput } from "./keys.js";
 import { BUILT_IN_HARNESSES, HARNESS_NAME, HarnessSpecSchema, type HarnessSpec, type TextSource } from "./spec.js";
+import { configurationEnvironment } from "../config/environment.js";
+import { ConfigurationError } from "../config/values.js";
 
 export interface HarnessContribution {
   source: HarnessLayerSource;
@@ -351,9 +353,10 @@ function resolveKey(
 ): ResolvedHarnessValue {
   const layer = (source: SettingSource) => inputs.layers.find((candidate) => candidate.source === source);
   const envRead = key.env?.read(inputs.env);
+  if (envRead && "invalid" in envRead) throw new ConfigurationError(envRead.name, envRead.invalid, "environment");
   const envCandidate: Candidate | undefined = envRead
     ? "invalid" in envRead
-      ? { source: "environment", detail: envRead.name, value: envRead.raw, ignoredReason: envRead.invalid }
+      ? undefined
       : { source: "environment", detail: envRead.name, value: envRead.value }
     : undefined;
 
@@ -372,24 +375,17 @@ function resolveKey(
       withHarness ? harnessCandidate : undefined,
       settingsAt(input, "project"),
       settingsAt(input, "local"),
-      key.env?.position === "override" ? envCandidate : undefined,
+      envCandidate,
       settingsAt(input, "flag"),
       key.argvAgentTeams && inputs.agentTeamsFlag
         ? ({ source: "flag", detail: "--agent-teams", value: true } satisfies Candidate)
         : undefined,
       settingsAt(input, "policy"),
-      key.env?.position === "top" ? envCandidate : undefined,
     ].filter((candidate): candidate is Candidate => candidate !== undefined);
 
-  let candidates = ordered(key.settings, true);
-  if (key.fallbackSettings && !candidates.some((candidate) => !candidate.ignoredReason)) {
-    candidates = [...candidates, ...ordered(key.fallbackSettings, false)];
-  }
+  const candidates = ordered(key.settings, true);
 
-  const base: HarnessContribution =
-    key.env?.position === "default" && envCandidate && !envCandidate.ignoredReason
-      ? envCandidate
-      : { source: "built-in", value: key.defaultValue };
+  const base: HarnessContribution = { source: "built-in", value: key.defaultValue };
   const accepted = candidates.filter((candidate) => !candidate.ignoredReason);
   const ignored = candidates
     .filter((candidate) => candidate.ignoredReason)
@@ -502,9 +498,9 @@ export async function resolveHarness(options: ResolveHarnessOptions): Promise<Re
     isProjectTrusted(options.cwd),
   ]);
   return resolveHarnessFromInputs({
-    layers: sources.map(({ source, path: file, raw }: LoadedSource) => ({ source, path: file, raw })),
+    layers: sources,
     workspaceTrusted,
-    env: options.env ?? process.env,
+    env: options.env ?? configurationEnvironment(),
     agentTeamsFlag: hasAgentTeamsFlag(),
     ...(options.name !== undefined ? { name: options.name } : {}),
     ...(options.spec !== undefined ? { spec: options.spec } : {}),
@@ -540,8 +536,8 @@ export async function harnessDefined(cwd: string, name: string): Promise<boolean
 const ENVIRONMENT_NAMES = [...new Set(HARNESS_KEYS.flatMap((key) => key.env?.names ?? []))];
 let processHarness: { fingerprint: string; resolved: ResolvedHarness } | undefined;
 
-/** A copy of the variables Harness keys read, so later changes to the process environment do not apply. */
-export function harnessEnvironment(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+/** Capture Harness environment inputs so later process mutations do not apply. */
+export function harnessEnvironment(env: NodeJS.ProcessEnv = configurationEnvironment()): NodeJS.ProcessEnv {
   return Object.fromEntries(
     ENVIRONMENT_NAMES.filter((name) => env[name] !== undefined).map((name) => [name, env[name]]),
   );
@@ -553,12 +549,13 @@ export function harnessEnvironment(env: NodeJS.ProcessEnv = process.env): NodeJS
  * reused until one of the variables it reads changes.
  */
 export function resolveProcessHarness(): ResolvedHarness {
+  const env = configurationEnvironment();
   const agentTeamsFlag = hasAgentTeamsFlag();
-  const fingerprint = JSON.stringify([agentTeamsFlag, ...ENVIRONMENT_NAMES.map((name) => process.env[name] ?? null)]);
+  const fingerprint = JSON.stringify([agentTeamsFlag, ...ENVIRONMENT_NAMES.map((name) => env[name] ?? null)]);
   if (processHarness?.fingerprint !== fingerprint) {
     processHarness = {
       fingerprint,
-      resolved: resolveHarnessFromInputs({ layers: [], workspaceTrusted: false, env: process.env, agentTeamsFlag }),
+      resolved: resolveHarnessFromInputs({ layers: [], workspaceTrusted: false, env, agentTeamsFlag }),
     };
   }
   return processHarness.resolved;

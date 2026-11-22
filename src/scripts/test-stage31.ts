@@ -295,16 +295,23 @@ async function main(): Promise<void> {
   assert(redirect === "https://example.org/x", "resolveBingUrl decodes a Bing base64 redirect");
 
   // Adapter selection (no network — just which class is chosen).
-  const savedOverride = process.env.WEB_SEARCH_ADAPTER;
-  process.env.WEB_SEARCH_ADAPTER = "bing";
-  assert((await createAdapter("anything")).name === "bing", "WEB_SEARCH_ADAPTER=bing forces Bing");
-  process.env.WEB_SEARCH_ADAPTER = "api";
+  const { installConfigurationEnvironment } = await import("../config/environment.js");
+  const { setFlagSettings } = await import("../config/sources.js");
+  const savedOverride = process.env.EASY_AGENT_WEB_SEARCH_BACKEND;
+  process.env.EASY_AGENT_WEB_SEARCH_BACKEND = "bing";
+  installConfigurationEnvironment(process.env);
+  assert((await createAdapter("anything")).name === "bing", "EASY_AGENT_WEB_SEARCH_BACKEND=bing forces Bing");
+  process.env.EASY_AGENT_WEB_SEARCH_BACKEND = "api";
+  installConfigurationEnvironment(process.env);
+  setFlagSettings({ models: { search: { protocol: "anthropic", model: "claude-x", apiKey: "fixture-key" } } });
   assert(
-    (await createAdapter("claude-x")).name === "anthropic",
-    "WEB_SEARCH_ADAPTER=api forces Anthropic server-side search",
+    (await createAdapter("search")).name === "anthropic",
+    "EASY_AGENT_WEB_SEARCH_BACKEND=api selects the configured Anthropic service",
   );
-  delete process.env.WEB_SEARCH_ADAPTER;
-  if (savedOverride) process.env.WEB_SEARCH_ADAPTER = savedOverride;
+  delete process.env.EASY_AGENT_WEB_SEARCH_BACKEND;
+  if (savedOverride) process.env.EASY_AGENT_WEB_SEARCH_BACKEND = savedOverride;
+  installConfigurationEnvironment(process.env);
+  setFlagSettings(null);
 
   console.log("\n[9] MCP resource tools with no connected servers");
   const list = await listMcpResourcesTool.call({}, ctx);
@@ -334,9 +341,10 @@ async function main(): Promise<void> {
 
   console.log("\n[11] Optional live fetch (set LIVE=1)");
   if (process.env.LIVE === "1") {
+    const { resolveProfileId } = await import("../services/api/providers/profile.js");
     const live = await webFetchTool.call(
       { url: "https://example.com/", prompt: "What is the title of this page?" },
-      { cwd: ctx.cwd, defaultModel: process.env.ANTHROPIC_MODEL },
+      { cwd: ctx.cwd, defaultModel: await resolveProfileId(undefined, ctx.cwd) },
     );
     assert(!live.isError && live.content.length > 0, "live WebFetch returns content");
     console.log("    live result preview:", toolResultText(live.content).slice(0, 160).replace(/\n/g, " "));

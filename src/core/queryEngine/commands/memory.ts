@@ -15,7 +15,7 @@ import {
   relative as relativePath,
   resolve as resolvePath,
 } from "node:path";
-import { AGENT_MD_NAME, getAgentMdFiles } from "../../../context/claudeMd.js";
+import { AGENT_MD_NAME, getAgentMdFiles } from "../../../context/agentMd.js";
 import { loadMemoryHeaders, getProjectMemoryDir, MEMORY_ENTRYPOINT } from "../../../context/memory/memdir.js";
 import { getGlobalAgentMdPath } from "../../../utils/paths.js";
 import { createPrivateFileIfMissing } from "../../../utils/privateData.js";

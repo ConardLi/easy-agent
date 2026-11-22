@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { agentFromConfig, writesFor } from "../../src/renderer/features/settings/agentSettings";
-import { modelsMapFor, providersFromConfig, reconcileProviders } from "../../src/renderer/features/settings/providers";
+import { changeProviderConnection, modelsMapFor, providersFromConfig, reconcileProviders } from "../../src/renderer/features/settings/providers";
 import type { ConfigSnapshot } from "../../src/shared/agent";
 
 function config(user: Record<string, unknown>, project: Record<string, unknown> = {}, trusted = true): ConfigSnapshot {
@@ -71,11 +71,92 @@ test("profiles group into providers and write back unchanged", () => {
   expect(modelsMapFor(providers, "user")).toEqual(models);
 
   // Fields the page does not edit survive a save.
-  const counted = { gateway: { protocol: "anthropic", model: "claude-sonnet-4-6", baseURL: "https://gw.example.com", countTokens: true } };
+  const counted = {
+    gateway: { protocol: "anthropic", model: "claude-sonnet-4-6", baseURL: "https://gw.example.com", protocolOptions: { anthropic: { countTokens: true } } },
+  };
   expect(modelsMapFor(providersFromConfig(config({ models: counted }), {}), "user")).toEqual(counted);
 
   // A provider whose endpoint changed keeps its identity.
   const moved = providersFromConfig(config({ models: { ...models, "deepseek-v3.2": { ...models["deepseek-v3.2"], baseURL: "http://localhost:9/v1" } } }), {});
   const kept = reconcileProviders(providers, moved);
   expect(kept.find((p) => p.models.some((m) => m.handle === "deepseek-v3.2"))?.id).toBe("deepseek");
+});
+
+test("profile authentication, helper, capabilities and protocol options survive a desktop save", () => {
+  const models = {
+    gateway: {
+      protocol: "openai-responses",
+      model: "gateway-model",
+      baseURL: "https://gw.example.com/v1",
+      apiKey: { helper: "vault read key" },
+      authentication: { type: "header", name: "X-Gateway", prefix: "Key " },
+      capabilities: { reasoning: true, effort: true, contextWindow: 120000, pricing: { input: 2, output: 8 } },
+      protocolOptions: { "openai-responses": { promptCacheKey: false, reasoningOff: "none" } },
+      headers: { "X-Project": "test" },
+    },
+    local: { protocol: "openai-chat", model: "local-model", baseURL: "http://localhost:8000/v1", authentication: { type: "none" } },
+  };
+  const providers = providersFromConfig(config({ models }), {});
+  expect(providers[0]?.key.kind).toBe("helper");
+  expect(modelsMapFor(providers, "user")).toEqual(models);
+  expect(providers.find((p) => p.models[0]?.handle === "local")?.authentication?.type).toBe("none");
+});
+
+test("default and reasoning edits write only canonical fields and preserve the saved budget", () => {
+  const cfg = config({ reasoning: { mode: "auto", budgetTokens: 4096 } });
+  const { agent } = agentFromConfig(cfg);
+  const next = { ...agent, defaultModel: "gateway", reasoningMode: "off" as const, effortLevel: "high" as const };
+  expect(writesFor(cfg, "user", agent, next, ["defaultModel", "reasoningMode", "effortLevel"])).toEqual([
+    { key: "model", value: "gateway" },
+    { key: "reasoning", value: { mode: "off", budgetTokens: 4096, effort: "high" } },
+  ]);
+});
+
+test("the editor does not invent a protocol or a known window for incomplete profiles", () => {
+  const providers = providersFromConfig(
+    config({
+      models: {
+        invalid: { model: "no-protocol" },
+        custom: { protocol: "gemini", model: "unlisted" },
+      },
+    }),
+    {},
+  );
+  expect(providers.flatMap((p) => p.models.map((m) => m.handle))).toEqual(["custom"]);
+  expect(providers[0]?.models[0]?.contextWindow).toBe(32000);
+  expect(providers[0]?.models[0]?.contextWindowSource).toBe("estimate");
+  expect(providers[0]?.models[0]?.price).toBeUndefined();
+});
+
+test("changing a connection clears its credential and incompatible protocol declarations", () => {
+  const [provider] = providersFromConfig(
+    config({
+      models: {
+        gateway: {
+          protocol: "anthropic",
+          model: "custom",
+          baseURL: "https://old.example",
+          apiKey: "${SAVED_KEY}",
+          authentication: { type: "header", name: "X-Gateway" },
+          capabilities: { reasoning: true, adaptiveReasoning: true, contextWindow: 200000 },
+          protocolOptions: { anthropic: { countTokens: true } },
+          headers: { "X-Endpoint": "old" },
+        },
+      },
+    }),
+    {},
+  );
+  expect(changeProviderConnection(provider!, provider!.protocol, provider!.baseURL)).toBe(provider);
+  const changed = changeProviderConnection(provider!, "openai-chat", "https://new.example/v1");
+  expect(changed.key.kind).toBe("none");
+  expect(changed.protocolOptions).toBeUndefined();
+  expect(changed.headers).toEqual([]);
+  expect(changed.models[0]?.capabilityOverrides).toBeUndefined();
+  const profile = modelsMapFor([changed], "user").gateway;
+  expect(profile).toEqual({
+    protocol: "openai-chat",
+    model: "custom",
+    baseURL: "https://new.example/v1",
+    authentication: { type: "default" },
+  });
 });

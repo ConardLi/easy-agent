@@ -72,8 +72,7 @@ const CHARS_PER_TOKEN = 2.5;
 
 /**
  * The feature settings a caller passed, or those of the active harness
- * (`features.toolSearch`, `features.toolSearchAutoThreshold`, the legacy
- * `EASY_AGENT_ENABLE_TOOL_SEARCH` variables included).
+ * (`features.toolSearch` and `features.toolSearchAutoThreshold`).
  */
 function effectiveSettings(settings?: FeatureSettings): FeatureSettings {
   return settings ?? featureSettingsOf(activeHarness());
@@ -170,7 +169,7 @@ export function isToolSearchToolAvailable(tools: readonly { name: string }[]): b
 export interface ToolSearchRequestEnv {
   /** Wire protocol of the target profile. Only `anthropic` needs server-side beta support. */
   protocol: "anthropic" | "openai-chat" | "openai-responses" | "gemini";
-  /** Effective base URL for the Anthropic protocol (profile override or ANTHROPIC_BASE_URL). */
+  /** Effective base URL of the selected profile. */
   baseURL?: string;
   settings?: FeatureSettings;
 }

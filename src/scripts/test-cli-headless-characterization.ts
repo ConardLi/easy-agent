@@ -6,6 +6,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { Ajv } from "ajv";
+import { fixtureProfile } from "./fixtures/anthropicFixture.js";
 
 const validateOutput = new Ajv({ strictRequired: false, allowUnionTypes: true }).compile(
   JSON.parse(await readFile(new URL("../../docs/headless-output.schema.json", import.meta.url), "utf8")),
@@ -79,7 +80,14 @@ function anthropicStream(): string {
   ].join("");
 }
 
-async function runCli(cwd: string, home: string, baseURL: string, args: string[], stdin = ""): Promise<CliResult> {
+async function runCli(
+  cwd: string,
+  home: string,
+  baseURL: string,
+  args: string[],
+  stdin = "",
+  envExtra: Record<string, string> = {},
+): Promise<CliResult> {
   return new Promise<CliResult>((resolve, reject) => {
     const child = spawn(process.execPath, ["--import", TSX_IMPORT, CLI_PATH, ...args], {
       cwd,
@@ -87,14 +95,11 @@ async function runCli(cwd: string, home: string, baseURL: string, args: string[]
         ...process.env,
         HOME: home,
         USERPROFILE: home,
-        ANTHROPIC_AUTH_TOKEN: "fixture-token",
-        ANTHROPIC_BASE_URL: baseURL,
-        ANTHROPIC_MODEL: FIXTURE_MODEL,
         EASY_AGENT_DISABLE_HOOKS: "1",
         EASY_AGENT_ENABLE_STREAM_DEBUG: "0",
-        EASY_AGENT_ENABLE_TOOL_SEARCH: "false",
         NO_COLOR: "1",
         FORCE_COLOR: "0",
+        ...envExtra,
       },
       stdio: ["pipe", "pipe", "pipe"],
     });
@@ -208,6 +213,18 @@ async function buildRecording(): Promise<string> {
   });
   const address = server.address() as AddressInfo;
   const baseURL = `http://127.0.0.1:${address.port}`;
+  await mkdir(path.join(home, ".easy-agent"), { recursive: true });
+  await writeFile(
+    path.join(home, ".easy-agent", "settings.json"),
+    JSON.stringify({
+      model: FIXTURE_MODEL,
+      toolSearch: "off",
+      models: {
+        [FIXTURE_MODEL]: fixtureProfile(baseURL),
+        "fixture-failure": fixtureProfile(baseURL, "fixture-failure"),
+      },
+    }),
+  );
   const sections: string[] = [];
 
   try {
@@ -319,6 +336,23 @@ async function buildRecording(): Promise<string> {
       assert.equal(result.total_cost_usd, null);
       assert.ok(typeof result.result === "string" && result.result.length > 0, "failure carries actionable text");
     }
+    for (const format of ["json", "stream-json"]) {
+      const before = requests.length;
+      const invalid = await runCli(cwd, home, baseURL, ["-p", "hello", "--output-format", format], "", {
+        EASY_AGENT_REASONING: "must-not-print-this-value",
+      });
+      assert.equal(invalid.code, 1);
+      assert.ok(invalid.stdout.trim(), invalid.stderr);
+      const payload = JSON.parse(invalid.stdout);
+      assertOutput(payload);
+      assert.equal(payload.error.code, "configuration");
+      assert.equal(payload.error.field, "EASY_AGENT_REASONING");
+      assert.equal(requests.length, before, "invalid startup configuration sends nothing");
+      assert.ok(
+        !JSON.stringify(payload).includes("must-not-print-this-value"),
+        "configuration errors redact rejected values",
+      );
+    }
   } finally {
     await new Promise<void>((resolve, reject) => {
       server.close((error) => (error ? reject(error) : resolve()));
@@ -326,7 +360,7 @@ async function buildRecording(): Promise<string> {
     await rm(root, { recursive: true, force: true });
   }
 
-  return sections.join("\n\n");
+  return `${sections.join("\n\n")}\n`;
 }
 
 async function main(): Promise<void> {

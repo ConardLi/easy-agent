@@ -83,15 +83,16 @@ command[info]:
   | - Source: default
   | - Default model: claude-sonnet-4-20250514
   | - Session override: none
-  | - Declared profiles: none (set them in settings.json `models`)
-  | - Usage: /model <name|profile> to override for this session
+  | - Declared profiles: claude-sonnet-4-20250514, my-custom-model
+  | - Usage: /model <profile-id> to override for this session
   | - Usage: /model list to see profiles, /model default to clear the override
 <<< handled=true
 
 >>> /model list
 command[info]:
   | Model profiles
-  |   (none declared — add a `models` block to settings.json)
+  |   claude-sonnet-4-20250514 (active) · anthropic · claude-sonnet-4-20250514 · source flag
+  |   my-custom-model · openai-chat · my-custom-model · source flag
   |
   | Switch with /model <id>; clear with /model default.
 <<< handled=true
@@ -101,7 +102,7 @@ model_changed model=my-custom-model source=session
 command[info]:
   | Model updated
   | - Active model: my-custom-model
-  | - Protocol: anthropic (raw model name)
+  | - Protocol: openai-chat · upstream model: my-custom-model
   | - Source: session
   | - Default model remains: claude-sonnet-4-20250514
 <<< handled=true
@@ -113,8 +114,8 @@ command[info]:
   | - Source: session
   | - Default model: claude-sonnet-4-20250514
   | - Session override: my-custom-model
-  | - Declared profiles: none (set them in settings.json `models`)
-  | - Usage: /model <name|profile> to override for this session
+  | - Declared profiles: claude-sonnet-4-20250514, my-custom-model
+  | - Usage: /model <profile-id> to override for this session
   | - Usage: /model list to see profiles, /model default to clear the override
 <<< handled=true
 
@@ -177,12 +178,12 @@ command[info]:
   | Doctor — environment check
   |
   | ✓ Node.js <NODE> (requires 22+)
-  | ✓ Active model: claude-sonnet-4-20250514
-  |   Provider: anthropic
-  |   Profile: raw model name (source: default)
-  | ✗ No API auth configured for the active anthropic provider — set ANTHROPIC_AUTH_TOKEN or configure apiKey on the active profile.
+  | ✓ Active profile: claude-sonnet-4-20250514 → claude-sonnet-4-20250514
+  |   Protocol: anthropic
+  |   Configuration: flag; selection: default
+  | ✓ Authentication explicitly disabled for this profile.
   |   Credential presence only; authentication has not been verified.
-  |   Endpoint: https://api.anthropic.com (source: provider default)
+  |   Endpoint: https://api.anthropic.com (source: selected protocol)
   | <ENDPOINT_PROBE>
   | ✓ MCP: none configured
   | <SANDBOX_STATUS>
@@ -193,7 +194,8 @@ command[info]:
   | ✓ Plugins: 0 active, no load errors
   |
   | Configuration (effective values + source; reload policy)
-  |   models = {} [{}; next request]
+  |   models = {"claude-sonnet-4-20250514":{"id":"claude-sonnet-4-20250514","protocol":"anthropic","model":"claude-sonnet-4-20250514","authentication":{"type":"none"}},"my-custom-model":{"id":"my-custom-model","protocol":"openai-chat","model":"my-custom-model","authentication":{"type":"none"}}} [{"claude-sonnet-4-20250514":{"protocol":"flag","model":"flag","authentication":"flag"},"my-custom-model":{"protocol":"flag","model":"flag","authentication":"flag"}}; next request]
+  |   reasoning = {"mode":"auto"} [default; next request]
   |   mode = "default" [default; config command]
   |   autoMode = false [default; config command]
   |   allow = [] [default; config command]
@@ -350,8 +352,7 @@ command[error]:
 >>> /config list
 command[info]:
   | Configuration (effective values + source)
-  |
-  | No settings configured. Use /config set <key> <value> to add one.
+  |   models = {"claude-sonnet-4-20250514":{"protocol":"anthropic","model":"claude-sonnet-4-20250514","authentication":{"type":"none"}},"my-custom-model":{"protocol":"openai-chat","model":"my-custom-model","authentication":{"type":"none"}}}   [flag]
   |
   | Usage: /config get <key>
   | Usage: /config set <key> <value> [--user|--project|--local]

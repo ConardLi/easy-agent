@@ -30,16 +30,22 @@ await Promise.all([
 process.env.HOME = home;
 process.env.USERPROFILE = home;
 process.env.EASY_AGENT_DISABLE_HOOKS = "1";
-process.env.EASY_AGENT_ENABLE_TOOL_SEARCH = "false";
 process.chdir(cwd);
 // A user-level deny rule the SDK must never let a handler override.
 await writeFile(path.join(home, ".easy-agent", "settings.json"), JSON.stringify({ deny: ["WebFetch"] }));
 // Project config that only applies once the workspace is trusted.
 await writeFile(path.join(cwd, ".easy-agent", "settings.json"), JSON.stringify({ allow: ["Write"] }));
 
-const { createAnthropicFixture, FIXTURE_MODEL } = await import("./fixtures/anthropicFixture.js");
+const { createAnthropicFixture, fixtureProfile, FIXTURE_MODEL } = await import("./fixtures/anthropicFixture.js");
 const fixture = createAnthropicFixture();
-await fixture.start();
+await fixture.start(home);
+const initialSettingsFile = path.join(home, ".easy-agent", "settings.json");
+const initialSettings = JSON.parse(await readFile(initialSettingsFile, "utf8"));
+initialSettings.models["other-model"] = {
+  ...fixtureProfile(fixture.baseURL, "other-model"),
+  capabilities: { contextWindow: 200_000, reasoning: true, effort: true },
+};
+await writeFile(initialSettingsFile, JSON.stringify(initialSettings));
 
 const sdk = await import("../sdk/index.js");
 const { runInScopeOf } = await import("../sdk/session.js");
@@ -919,6 +925,7 @@ try {
   await writeFile(
     userSettingsFile,
     JSON.stringify({
+      ...JSON.parse(userSettings),
       deny: ["WebFetch"],
       hooks: { PreToolUse: [{ matcher: "Write", hooks: [{ type: "command", command: "true" }] }] },
     }),

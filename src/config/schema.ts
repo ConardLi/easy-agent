@@ -1,64 +1,40 @@
 /**
  * Field-level schema validation for a single settings source.
  *
- * Philosophy (matches how source treats settings.json):
- *   - Validation is *best-effort and additive*, never a gate. A settings file
- *     with one bad field must NOT take the whole file down — we keep every
- *     field we can parse and drop only the ones we can't.
- *   - Unknown keys are PRESERVED (`z.looseObject`). New settings keys that this
- *     build doesn't know about yet (or feature-specific keys owned by a loader,
- *     e.g. `sandbox`) flow through untouched.
+ * Field repair keeps valid values available for inspection. Source loading
+ * retains the preceding valid snapshot on rejected live edits; model use
+ * separately rejects invalid initial configuration.
+ *   - Keep every field we can parse and drop only the ones we can't.
+ *   - Unknown keys are rejected with a generic schema diagnostic.
  *   - Permission rule arrays (`allow`/`deny`/`ask`) get *per-rule* tolerance:
  *     a single malformed entry is dropped while the valid rules survive.
  *
  * Diagnostics: every repair (dropped rule, ignored field) is recorded as a
- * human-readable string so the CLI can surface a non-fatal notice telling the
- * user exactly which file/field was ignored.
+ * human-readable string identifying the affected file and field.
  *
- * The key fields (model / permissions / hooks / env / mcpServers) are
- * validated with Zod and `.passthrough()`-style leniency; the schema does not
- * try to describe every possible key.
+ * Feature-specific objects are validated by their owning loaders.
  */
 
 import { z } from "zod";
+import { ModelProfileSchema, ReasoningSchema, profileValidationErrors } from "./modelSchema.js";
 
 const PermissionRule = z.string().trim().min(1);
 
 /**
- * Schema for the *known* top-level settings fields. `looseObject` keeps any
- * other keys verbatim (passthrough), so this validates the fields we care
- * about without rejecting unknown ones.
+ * Canonical top-level settings fields.
  */
-export const SettingsSchema = z.looseObject({
+export const SettingsSchema = z.strictObject({
   model: z.string().trim().min(1).optional(),
-  // Multi-protocol model profiles. Each entry declares a provider
-  // target (protocol + model + endpoint + credentials). The map key is the
-  // user-facing handle used by `--model` / `/model`. Validated leniently
-  // (looseObject) so a single bad profile doesn't drop the whole `models` block;
-  // deeper per-profile validation + ${ENV} interpolation lives in profile.ts.
-  models: z
-    .record(
-      z.string(),
-      z.looseObject({
-        protocol: z.string().optional(),
-        model: z.string().optional(),
-        baseURL: z.string().optional(),
-        apiKey: z.string().optional(),
-        maxTokens: z.number().optional(),
-        headers: z.record(z.string(), z.string()).optional(),
-        promptCacheKey: z.boolean().optional(),
-        countTokens: z.boolean().optional(),
-      }),
-    )
-    .optional(),
-  // Default profile id (or raw model name) when no --model is given.
-  defaultModel: z.string().trim().min(1).optional(),
+  models: z.record(z.string(), ModelProfileSchema).optional(),
+  reasoning: ReasoningSchema.optional(),
   // Role names match runtime invocation classes. Unknown roles are rejected.
   modelRoles: z
     .object({
       background: z.string().trim().min(1).optional(),
       think: z.string().trim().min(1).optional(),
       longContext: z.string().trim().min(1).optional(),
+      compaction: z.string().trim().min(1).optional(),
+      webFetch: z.string().trim().min(1).optional(),
     })
     .strict()
     .optional(),
@@ -76,10 +52,10 @@ export const SettingsSchema = z.looseObject({
   env: z.record(z.string(), z.coerce.string()).optional(),
   hooks: z.record(z.string(), z.unknown()).optional(),
   mcpServers: z.record(z.string(), z.unknown()).optional(),
+  sandbox: z.record(z.string(), z.unknown()).optional(),
   statusLine: z.union([z.string(), z.looseObject({})]).optional(),
   outputStyle: z.string().trim().min(1).optional(),
   language: z.string().trim().min(1).optional(),
-  apiKeyHelper: z.string().trim().min(1).optional(),
   cleanupPeriodDays: z.number().int().nonnegative().optional(),
   // Tool-turn limit for one request of the main session. Sub-agents keep
   // their own `maxTurns` frontmatter.
@@ -88,18 +64,10 @@ export const SettingsSchema = z.looseObject({
   disableAllHooks: z.boolean().optional(),
   // Master switch for file-history checkpointing (default on).
   checkpointingEnabled: z.boolean().optional(),
-  // Extended-thinking default switch. When false, thinking is
-  // off by default (the `/think on` command can still enable it per-session).
-  // When unset/true, thinking defaults to adaptive. Env var
-  // MAX_THINKING_TOKENS overrides this (0 → disabled, N>0 → budget N).
-  alwaysThinkingEnabled: z.boolean().optional(),
-  // Default reasoning-effort level for output_config.effort
-  // (Anthropic only). The `/effort` command overrides this per-session.
-  effortLevel: z.enum(["low", "medium", "high", "max"]).optional(),
   respectGitignore: z.boolean().optional(),
   syntaxHighlightingDisabled: z.boolean().optional(),
   prefersReducedMotion: z.boolean().optional(),
-  claudeMdExcludes: z.array(PermissionRule).optional(),
+  agentMdExcludes: z.array(PermissionRule).optional(),
   enableAllProjectMcpServers: z.boolean().optional(),
   enabledMcpjsonServers: z.array(PermissionRule).optional(),
   disabledMcpjsonServers: z.array(PermissionRule).optional(),
@@ -119,7 +87,7 @@ export const SettingsSchema = z.looseObject({
 const RULE_ARRAY_KEYS = ["allow", "deny", "ask"] as const;
 
 export interface ValidationResult {
-  /** Cleaned settings object — valid known fields + all unknown fields. */
+  /** Cleaned settings object containing only valid known fields. */
   value: Record<string, unknown>;
   /** One human-readable message per repair performed (dropped rule / field). */
   errors: string[];
@@ -131,19 +99,51 @@ export interface ValidationResult {
  * @param raw   The parsed JSON object for one source (already JSON-valid).
  * @param label A short source label for diagnostics (file path or "flag").
  */
-export function validateSettings(raw: unknown, label: string): ValidationResult {
+export function validateSettings(
+  raw: unknown,
+  label: string,
+  options: { partialProfiles?: boolean } = {},
+): ValidationResult {
   if (raw == null) return { value: {}, errors: [] };
   if (typeof raw !== "object" || Array.isArray(raw)) {
     return { value: {}, errors: [`${label}: settings root must be a JSON object — ignored`] };
   }
 
   const errors: string[] = [];
-  for (const key of Object.keys(raw as Record<string, unknown>)) {
-    if (!Object.hasOwn(SettingsSchema.shape, key) && key !== "sandbox") {
-      errors.push(`${label}: unsupported setting "${key}"; retained for compatibility but not applied by this build`);
+  const settings = raw as Record<string, unknown>;
+  if (
+    typeof settings.model === "string" &&
+    settings.env &&
+    typeof settings.env === "object" &&
+    ["EASY_AGENT_PROTOCOL", "EASY_AGENT_MODEL", "EASY_AGENT_BASE_URL"].some(
+      (name) =>
+        typeof (settings.env as Record<string, unknown>)[name] === "string" &&
+        (settings.env as Record<string, string>)[name]?.trim(),
+    )
+  )
+    errors.push(
+      `${label}: environment.connection: this layer selects model and a shortcut connection; keep one complete connection source.`,
+    );
+  const candidate: Record<string, unknown> = { ...(raw as Record<string, unknown>) };
+  for (const key of Object.keys(candidate)) {
+    if (!Object.hasOwn(SettingsSchema.shape, key)) {
+      errors.push(`${label}: unknown setting "${key}"`);
+      delete candidate[key];
     }
   }
-  const candidate: Record<string, unknown> = { ...(raw as Record<string, unknown>) };
+  // A malformed profile must remain diagnosable and must never disappear into
+  // default selection. Validate it here, then preserve the map for the resolver.
+  const models = candidate.models;
+  if (models && typeof models === "object" && !Array.isArray(models)) {
+    for (const [id, profile] of Object.entries(models)) {
+      // Layer fragments are checked after merging. New writes still validate
+      // complete profiles, and malformed selected profiles remain visible.
+      if (!options.partialProfiles) errors.push(...profileValidationErrors(profile, `${label}.models.${id}`));
+    }
+    delete candidate.models;
+  }
+  const resultValue = (value: Record<string, unknown>): Record<string, unknown> =>
+    models && typeof models === "object" && !Array.isArray(models) ? { ...value, models } : value;
 
   // 1) Per-rule tolerance for permission arrays: keep valid string rules,
   //    drop malformed entries (non-string / empty) without discarding the rest.
@@ -163,7 +163,7 @@ export function validateSettings(raw: unknown, label: string): ValidationResult 
   let current = candidate;
   for (let attempt = 0; attempt < 12; attempt++) {
     const result = SettingsSchema.safeParse(current);
-    if (result.success) return { value: result.data as Record<string, unknown>, errors };
+    if (result.success) return { value: resultValue(result.data as Record<string, unknown>), errors };
 
     const badKeys = new Set<string>();
     for (const issue of result.error.issues) {
@@ -181,5 +181,5 @@ export function validateSettings(raw: unknown, label: string): ValidationResult 
   }
 
   // Fallback: hand back the best-effort object we have.
-  return { value: current, errors };
+  return { value: resultValue(current), errors };
 }

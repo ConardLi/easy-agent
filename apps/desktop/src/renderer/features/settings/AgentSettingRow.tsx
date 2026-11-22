@@ -6,7 +6,7 @@ import { primaryAgentOf, useRuntime, useWorkspaces } from "../../state/workspace
 import { lockedBy, setKey, sourceText } from "../agents/model";
 
 /**
- * A settings row for a value that belongs to the Agent (`features.*`): it
+ * A settings row for a value that belongs to the Agent: it
  * shows and writes the setting of the Agent the workspace runs
  * (`harnesses.<name>.<path>`), not a settings file.
  */
@@ -15,11 +15,13 @@ export function AgentSettingRow<T>({
   hint,
   path,
   render,
+  stack = false,
 }: {
   title: string;
   hint?: ReactNode;
   path: string;
   render: (value: T | undefined, set: (value: T) => void) => ReactNode;
+  stack?: boolean;
 }) {
   const workspaceId = useWorkspaces((s) => s.activeId);
   const runtime = useRuntime(workspaceId ?? undefined);
@@ -34,7 +36,10 @@ export function AgentSettingRow<T>({
   const locked = lockedBy(value);
   const set = (next: T) => void changeWorkspaceAgent((spec) => setKey(spec, path, next), { message: (name) => `已写入 harnesses.${name}.${path}` });
   return (
-    <div data-row={path} className="group/row flex items-center justify-between gap-6 border-b border-line py-3.5 last:border-b-0">
+    <div
+      data-row={path}
+      className={cn("group/row flex justify-between border-b border-line py-3.5 last:border-b-0", stack ? "flex-col items-start gap-3" : "items-center gap-6")}
+    >
       <div className="min-w-0">
         <div className="flex items-center gap-2">
           <span className="text-[13.5px] font-medium text-fg">{title}</span>

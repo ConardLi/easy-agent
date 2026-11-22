@@ -18,6 +18,8 @@ import { chmodSync, existsSync, renameSync, statSync, unlinkSync } from "node:fs
 import { redactSettingValue } from "../config/redaction.js";
 import { appendPrivateFileSync, ensurePrivateDirectorySync, PRIVATE_FILE_MODE } from "./privateData.js";
 import { getEasyAgentHome, getStreamDebugLogPath } from "./paths.js";
+import { configurationEnvironment } from "../config/environment.js";
+import { configBoolean } from "../config/values.js";
 
 const MAX_LOG_BYTES = 10 * 1024 * 1024;
 const RETAINED_LOGS = 3;
@@ -84,5 +86,5 @@ export function writeStreamDebug(kind: string, payload: unknown): void {
 }
 
 export function isStreamDebugEnabled(): boolean {
-  return process.env.EASY_AGENT_DEBUG_STREAM === "1";
+  return configBoolean(configurationEnvironment().EASY_AGENT_DEBUG_STREAM, "EASY_AGENT_DEBUG_STREAM") ?? false;
 }

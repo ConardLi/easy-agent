@@ -2,7 +2,7 @@
  * Project memory file names: `AGENTS.md` and `AGENT.md`.
  *
  * Covers the three layouts (only AGENT.md, only AGENTS.md, both), load order
- * across the directory chain, `claudeMdExcludes` for each name, the `/memory`
+ * across the directory chain, `agentMdExcludes` for each name, the `/memory`
  * target list, and the sandbox write deny for the project files.
  *
  * Run: node --import tsx src/scripts/test-project-memory-files.ts
@@ -20,7 +20,7 @@ process.env.HOME = home;
 process.env.USERPROFILE = home;
 process.env.EASY_AGENT_DISABLE_HOOKS = "1";
 
-const { loadAgentMdContext } = await import("../context/claudeMd.js");
+const { loadAgentMdContext } = await import("../context/agentMd.js");
 const { collectMemoryTargets } = await import("../core/queryEngine/commands/memory.js");
 const { buildSandboxProfile, DEFAULT_RESOLVED_SANDBOX_SETTINGS } = await import("../sandbox/index.js");
 
@@ -105,18 +105,18 @@ try {
     assert.equal(ctx, section(GLOBAL_AGENT_MD, "GLOBAL"));
   });
 
-  await check("claudeMdExcludes: each name is matched by its own pattern", async () => {
+  await check("agentMdExcludes: each name is matched by its own pattern", async () => {
     const dir = await project({ "AGENTS.md": "SHARED\n", "AGENT.md": "OWN\n" });
-    await writeFile(USER_SETTINGS, JSON.stringify({ claudeMdExcludes: ["**/AGENTS.md"] }), "utf-8");
+    await writeFile(USER_SETTINGS, JSON.stringify({ agentMdExcludes: ["**/AGENTS.md"] }), "utf-8");
     let ctx = await loadAgentMdContext(dir);
     assert.ok(!ctx.includes("SHARED") && ctx.includes("OWN"), "**/AGENTS.md drops only AGENTS.md");
-    await writeFile(USER_SETTINGS, JSON.stringify({ claudeMdExcludes: ["**/AGENT.md"] }), "utf-8");
+    await writeFile(USER_SETTINGS, JSON.stringify({ agentMdExcludes: ["**/AGENT.md"] }), "utf-8");
     ctx = await loadAgentMdContext(dir);
     assert.ok(
       ctx.includes("SHARED") && !ctx.includes("OWN") && !ctx.includes("GLOBAL"),
       "**/AGENT.md drops AGENT.md files only",
     );
-    await writeFile(USER_SETTINGS, JSON.stringify({ claudeMdExcludes: [path.join(dir, "AGENTS.md")] }), "utf-8");
+    await writeFile(USER_SETTINGS, JSON.stringify({ agentMdExcludes: [path.join(dir, "AGENTS.md")] }), "utf-8");
     ctx = await loadAgentMdContext(dir);
     assert.ok(!ctx.includes("SHARED") && ctx.includes("OWN"), "absolute path drops that AGENTS.md");
     await writeFile(USER_SETTINGS, "{}\n", "utf-8");

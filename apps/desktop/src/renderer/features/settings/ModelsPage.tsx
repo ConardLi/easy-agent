@@ -23,7 +23,7 @@ import { checkProvider, fetchProviderModels, updateAgent, updateProviders, useSe
 import { useUi } from "../../state/ui";
 import { CodeBlock } from "../session/Markdown";
 import { type AgentSettings, type SettingKey, TODO_SETTINGS } from "./agentSettings";
-import { keyName } from "./providers";
+import { changeProviderConnection, keyName } from "./providers";
 import { AgentSettingRow } from "./AgentSettingRow";
 import { NumberInput, ScopeTag, Select } from "./controls";
 
@@ -79,6 +79,7 @@ function keyText(p: ProviderConfig): string {
   if (p.key.kind === "env") return `\${${p.key.name}}`;
   if (p.key.kind === "keychain") return p.key.masked;
   if (p.key.kind === "inline") return "已写在配置文件里";
+  if (p.key.kind === "helper") return "已绑定辅助命令";
   return "";
 }
 
@@ -95,9 +96,13 @@ function fromTemplate(t: ProviderTemplate): ProviderConfig {
     protocol: t.protocol,
     baseURL: t.baseURL,
     key: { kind: "none" },
+    ...(t.local ? { authentication: { type: "none" as const } } : {}),
     enabled: false,
     headers: [],
-    models: t.catalog.slice(0, 2).map((m) => ({ ...m })),
+    models: t.catalog.slice(0, 2).map((m) => ({
+      ...m,
+      capabilityOverrides: { ...m.capabilities, contextWindow: m.contextWindow, ...(m.price ? { pricing: m.price } : {}) },
+    })),
     scope: "user",
   };
 }
@@ -119,7 +124,7 @@ function ModelSelect({ value, onChange, inherit }: { value?: string; onChange: (
       <Popover.Trigger asChild>
         <button
           type="button"
-          className="flex h-9 w-[300px] items-center gap-2.5 rounded-[10px] border border-line bg-surface px-2.5 text-left text-[13px] text-fg transition-colors hover:border-line-strong data-[state=open]:border-accent-line"
+          className="flex h-9 w-[300px] max-w-full items-center gap-2.5 rounded-[10px] border border-line bg-surface px-2.5 text-left text-[13px] text-fg transition-colors hover:border-line-strong data-[state=open]:border-accent-line"
         >
           {current ? (
             <>
@@ -128,7 +133,7 @@ function ModelSelect({ value, onChange, inherit }: { value?: string; onChange: (
               <span className="truncate text-[11.5px] text-fg-3">{current.provider}</span>
             </>
           ) : (
-            <span className="flex-1 text-fg-3">{inherit}</span>
+            <span className="flex-1 text-fg-3">{inherit ?? "选择已配置的模型"}</span>
           )}
           <ChevronDown className="size-3.5 shrink-0 text-fg-3" />
         </button>
@@ -210,6 +215,7 @@ function ModelSelect({ value, onChange, inherit }: { value?: string; onChange: (
 
 function DefaultsPane() {
   const agent = useAgent();
+  const hasModels = useSettings((state) => listModels(state.providers).length > 0);
   const sources = useSettings((s) => s.sources);
   const updateAgent = update;
 
@@ -223,6 +229,8 @@ function DefaultsPane() {
       role: "background",
     },
     { key: "modelRoles.think", title: "深度思考", hint: "开启扩展思考的请求改用这个模型", value: agent.modelRoles.think, role: "think" },
+    { key: "modelRoles.compaction", title: "上下文压缩", hint: "为长会话生成摘要的模型", value: agent.modelRoles.compaction, role: "compaction" },
+    { key: "modelRoles.webFetch", title: "网页摘要", hint: "提取网页内容的模型", value: agent.modelRoles.webFetch, role: "webFetch" },
     {
       key: "modelRoles.longContext",
       title: "长上下文",
@@ -240,13 +248,21 @@ function DefaultsPane() {
     ) : null;
 
   return (
-    <div className="max-w-[760px] px-10 py-8">
+    <div className="@container/models max-w-[760px] px-10 py-8">
       <h2 className="text-[18px] font-semibold tracking-[-0.02em] text-fg">默认模型</h2>
       <p className="mt-1 text-[13px] text-fg-3">不同的任务可以交给不同的模型。没有单独指定的，都用默认模型。</p>
+      {!hasModels && (
+        <p role="status" className="mt-4 rounded-xl border border-warning/25 bg-warning/5 p-4 text-[13px] text-fg-2">
+          还没有配置模型。请先选择服务商，明确协议和上游模型，并设置 API Key 来源；本地端点可以明确选择无认证。
+        </p>
+      )}
 
       <div className="mt-6 divide-y divide-line rounded-xl border border-line bg-canvas">
         {rows.map((r) => (
-          <div key={r.key} className="flex items-center justify-between gap-6 px-4 py-4">
+          <div
+            key={r.key}
+            className="flex flex-col items-start justify-between gap-3 px-4 py-4 @min-[560px]/models:flex-row @min-[560px]/models:items-center @min-[560px]/models:gap-6"
+          >
             <div className="min-w-0">
               <div className="flex items-center gap-2 text-[13.5px] font-medium text-fg">
                 {r.title}
@@ -271,28 +287,37 @@ function DefaultsPane() {
 
       <h3 className="mt-8 text-[14px] font-semibold text-fg">思考</h3>
       <div className="mt-3 divide-y divide-line rounded-xl border border-line bg-canvas">
-        <div className="flex items-center justify-between gap-6 px-4 py-4">
+        <div className="flex flex-col items-start justify-between gap-3 px-4 py-4 @min-[560px]/models:flex-row @min-[560px]/models:items-center @min-[560px]/models:gap-6">
           <div>
             <div className="flex items-center gap-2 text-[13.5px] font-medium text-fg">
-              默认开启扩展思考
-              <ScopeTag scope={sources.alwaysThinkingEnabled} />
+              推理模式
+              <ScopeTag scope={sources.reasoningMode} />
             </div>
-            <div className="mt-0.5 text-[12.5px] text-fg-3">会话里可以用 /think 临时开关</div>
+            <div className="mt-0.5 text-[12.5px] text-fg-3">自动按已知能力选择；开启或关闭会检查模型是否支持</div>
           </div>
-          <Switch checked={agent.alwaysThinkingEnabled} onChange={(v) => updateAgent((a) => ({ ...a, alwaysThinkingEnabled: v }), ["alwaysThinkingEnabled"])} />
+          <Segmented
+            value={agent.reasoningMode}
+            onChange={(reasoningMode) => updateAgent((a) => ({ ...a, reasoningMode }), ["reasoningMode"])}
+            options={[
+              { value: "auto", label: "自动" },
+              { value: "on", label: "开启" },
+              { value: "off", label: "关闭" },
+            ]}
+          />
         </div>
-        <div className="flex items-center justify-between gap-6 px-4 py-4">
+        <div className="flex flex-col items-start justify-between gap-3 px-4 py-4 @min-[560px]/models:flex-row @min-[560px]/models:items-center @min-[560px]/models:gap-6">
           <div>
             <div className="flex items-center gap-2 text-[13.5px] font-medium text-fg">
               思考强度
               <ScopeTag scope={sources.effortLevel} />
             </div>
-            <div className="mt-0.5 text-[12.5px] text-fg-3">目前只对 Anthropic 接口生效</div>
+            <div className="mt-0.5 text-[12.5px] text-fg-3">按所选协议转换；不支持的强度会提示修正</div>
           </div>
           <Segmented
             value={agent.effortLevel}
             onChange={(effortLevel) => updateAgent((a) => ({ ...a, effortLevel }), ["effortLevel"])}
             options={[
+              { value: "", label: "自动" },
               { value: "low", label: "低" },
               { value: "medium", label: "中" },
               { value: "high", label: "高" },
@@ -301,11 +326,12 @@ function DefaultsPane() {
           />
         </div>
         <div className="px-4">
-          <AgentSettingRow<number>
-            title="思考预算"
-            hint="不支持自适应思考的模型，每次最多用这么多 token 思考；没设时由模型决定"
-            path="features.thinkingBudget"
-            render={(value, set) => <BudgetInput key={value} value={value ?? 10_000} onCommit={set} />}
+          <AgentSettingRow<number | undefined>
+            stack
+            title="推理预算"
+            hint="清空可取消这项覆盖；正整数预算与输出上限和上下文窗口共同校验"
+            path="reasoning.budgetTokens"
+            render={(value, set) => <BudgetInput key={value} value={value} onCommit={set} />}
           />
         </div>
       </div>
@@ -314,9 +340,42 @@ function DefaultsPane() {
 }
 
 /** A token budget written when the field loses focus. */
-function BudgetInput({ value, onCommit }: { value: number; onCommit: (v: number) => void }) {
-  const [draft, setDraft] = useState(value);
-  return <NumberInput value={draft} min={1024} step={1024} suffix="tokens" width={160} onChange={setDraft} onBlur={() => draft !== value && onCommit(draft)} />;
+function BudgetInput({ value, onCommit }: { value?: number; onCommit: (v: number | undefined) => void }) {
+  const [draft, setDraft] = useState(value === undefined ? "" : String(value));
+  const [error, setError] = useState("");
+  const commit = () => {
+    if (draft === (value === undefined ? "" : String(value))) return;
+    if (draft === "") {
+      setError("");
+      onCommit(undefined);
+    } else if (/^\d+$/.test(draft) && Number.isSafeInteger(Number(draft)) && Number(draft) > 0) {
+      setError("");
+      onCommit(Number(draft));
+    } else setError("请输入正整数，或清空取消覆盖");
+  };
+  return (
+    <div className="w-[160px]">
+      <div className="flex h-8 items-center gap-2 rounded-[9px] border border-line bg-surface px-2">
+        <input
+          aria-label="推理预算"
+          type="number"
+          min={1}
+          step={1}
+          placeholder="自动"
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          onBlur={commit}
+          className="min-w-0 flex-1 bg-transparent text-right text-[13px] tabular-nums text-fg outline-none"
+        />
+        <span className="text-[11px] text-fg-3">tokens</span>
+      </div>
+      {error && (
+        <p role="alert" className="mt-1 text-[11px] text-danger">
+          {error}
+        </p>
+      )}
+    </div>
+  );
 }
 
 /* ------------------------------------------------------------------ */
@@ -339,7 +398,8 @@ function ModelDialog({
       handle: "",
       model: "",
       name: "",
-      contextWindow: 128_000,
+      contextWindow: 32_000,
+      contextWindowSource: "estimate",
       maxOutput: 8_192,
       capabilities: { tools: true, vision: false, reasoning: false, cache: false },
       enabled: true,
@@ -348,7 +408,12 @@ function ModelDialog({
   const [advanced, setAdvanced] = useState(false);
   const handle = m.handle || m.model.split("/").pop()?.replace(/:/g, "-") || "";
   const taken = existing.includes(handle) && handle !== entry?.handle;
-  const toggle = (k: "vision" | "reasoning" | "tools") => setM((x) => ({ ...x, capabilities: { ...x.capabilities, [k]: !x.capabilities[k] } }));
+  const toggle = (k: "vision" | "reasoning" | "tools") =>
+    setM((x) => ({
+      ...x,
+      capabilities: { ...x.capabilities, [k]: !x.capabilities[k] },
+      capabilityOverrides: { ...x.capabilityOverrides, [k]: !x.capabilities[k] },
+    }));
 
   return (
     <Modal
@@ -368,7 +433,7 @@ function ModelDialog({
       }
     >
       <label className="mb-4 block">
-        <span className="mb-1.5 block text-[12.5px] font-medium text-fg-2">模型 ID</span>
+        <span className="mb-1.5 block text-[12.5px] font-medium text-fg-2">上游模型名</span>
         <input
           // biome-ignore lint/a11y/noAutofocus: the dialog opens to type the id
           autoFocus
@@ -420,7 +485,7 @@ function ModelDialog({
       {advanced && (
         <div className="mt-3 grid grid-cols-2 gap-3 rounded-xl bg-surface p-3">
           <label className="col-span-2 block">
-            <span className="mb-1 block text-[11.5px] text-fg-3">句柄（/model 里用的名字）</span>
+            <span className="mb-1 block text-[11.5px] text-fg-3">Profile ID（/model 和角色选择使用）</span>
             <input
               value={m.handle}
               onChange={(e) => setM((x) => ({ ...x, handle: e.target.value.replace(/\s/g, "-") }))}
@@ -430,8 +495,21 @@ function ModelDialog({
             {taken && <span className="mt-1 block text-[11.5px] text-danger">这个句柄已被别的模型使用</span>}
           </label>
           <div className="block">
-            <span className="mb-1 block text-[11.5px] text-fg-3">上下文窗口（TODO：settings.json 还不能保存）</span>
-            <NumberInput value={m.contextWindow} onChange={(contextWindow) => setM((x) => ({ ...x, contextWindow }))} step={1000} width={200} />
+            <span className="mb-1 block text-[11.5px] text-fg-3">上下文窗口{m.contextWindowSource === "estimate" ? "（估算，可覆盖）" : ""}</span>
+            <NumberInput
+              value={m.contextWindow}
+              onChange={(contextWindow) =>
+                setM((x) => ({
+                  ...x,
+                  contextWindow,
+                  contextWindowSource: "profile",
+                  capabilityOverrides: { ...x.capabilityOverrides, contextWindow },
+                }))
+              }
+              min={1}
+              step={1000}
+              width={200}
+            />
           </div>
           <div className="block">
             <span className="mb-1 block text-[11.5px] text-fg-3">最大输出（maxTokens，0 表示默认）</span>
@@ -475,7 +553,8 @@ function ManageDialog({
             handle: id.split("/").pop()!.replace(/:/g, "-"),
             model: id,
             name: id,
-            contextWindow: 128_000,
+            contextWindow: 32_000,
+            contextWindowSource: "estimate",
             maxOutput: 0,
             capabilities: { tools: true, vision: false, reasoning: false, cache: false },
             enabled: true,
@@ -685,6 +764,7 @@ function ProviderPane({ p, save }: { p: ProviderConfig; save: (fn: (x: ProviderC
     await save((x) => ({
       ...x,
       enabled: x.enabled || v.length > 0,
+      authentication: v && x.authentication?.type === "none" ? { type: "default" } : x.authentication,
       key: !v ? { kind: "none" } : isEnvRef(v) ? { kind: "env", name: v.slice(2, -1) } : { kind: "keychain", name: keyName(x.id), masked: "", value: v },
     }));
     if (v && !isEnvRef(v)) setKey(`${v.slice(0, 3)}••••••••${v.slice(-4)}`);
@@ -765,7 +845,7 @@ function ProviderPane({ p, save }: { p: ProviderConfig; save: (fn: (x: ProviderC
 
       <section className="mt-7">
         <div className="mb-2 flex items-center justify-between">
-          <span className="text-[13px] font-medium text-fg">API 密钥</span>
+          <span className="text-[13px] font-medium text-fg">API Key</span>
           {t.keyUrl && (
             <button type="button" onClick={() => openLink(t.keyUrl!)} className="text-[12px] text-accent hover:underline">
               获取密钥
@@ -777,9 +857,10 @@ function ProviderPane({ p, save }: { p: ProviderConfig; save: (fn: (x: ProviderC
             <input
               type={showKey || isEnvRef(key) ? "text" : "password"}
               value={key}
+              disabled={p.authentication?.type === "none"}
               onChange={(e) => setKey(e.target.value)}
               onBlur={() => void commitKey()}
-              placeholder={t.local ? "本地服务一般不需要" : "sk-..."}
+              placeholder={p.authentication?.type === "none" ? "已明确选择无认证" : "${环境变量名} 或 API Key"}
               className="h-10 w-full rounded-[10px] border border-line bg-surface pl-3 pr-10 font-mono text-[13px] text-fg outline-none transition-colors focus:border-accent-line focus:bg-canvas"
             />
             {!isEnvRef(key) && (
@@ -795,11 +876,73 @@ function ProviderPane({ p, save }: { p: ProviderConfig; save: (fn: (x: ProviderC
         <div className="mt-1.5 flex min-h-[18px] items-center text-[12px]">
           {status ?? (
             <span className="text-fg-3">
-              {isEnvRef(key) ? "从环境变量读取，配置文件里只写这个引用" : "密钥存在系统钥匙串里。也可以填 ${环境变量名}，从环境变量读取"}
+              {p.authentication?.type === "none"
+                ? "这个端点不发送认证头"
+                : p.key.kind === "helper"
+                  ? "每次连接时执行所属 profile 的辅助命令，不修改全局凭据"
+                  : isEnvRef(key)
+                    ? "从环境变量读取，配置文件里只写这个引用"
+                    : "API Key 存在系统钥匙串里；也可以填写环境变量引用"}
             </span>
           )}
         </div>
       </section>
+
+      <section className="mt-4 flex items-center justify-between gap-4">
+        <span className="text-[13px] font-medium text-fg">认证策略</span>
+        <Select
+          value={p.authentication?.type ?? "default"}
+          width={230}
+          onChange={(type: "default" | "none" | "header") => {
+            if (type === "none") setKey("");
+            void save((x) => ({
+              ...x,
+              ...(type === "none" ? { key: { kind: "none" as const } } : {}),
+              authentication: type === "header" ? { type, name: "Authorization", prefix: "Bearer " } : { type },
+            }));
+          }}
+          options={[
+            { value: "default", label: "协议默认" },
+            { value: "none", label: "无认证（本地 / 私有端点）" },
+            { value: "header", label: "自定义认证头" },
+          ]}
+        />
+      </section>
+      {p.authentication?.type === "header" && (
+        <div className="mt-3 grid grid-cols-2 gap-3">
+          <label className="text-[12px] text-fg-3">
+            认证头名称
+            <input
+              key={p.authentication.name}
+              defaultValue={p.authentication.name}
+              className="mt-1 h-9 w-full rounded-lg border border-line bg-surface px-3 font-mono text-fg"
+              onBlur={(e) => {
+                const name = e.target.value.trim();
+                if (name)
+                  void save((x) => ({
+                    ...x,
+                    authentication: { type: "header", name, prefix: x.authentication?.type === "header" ? x.authentication.prefix : undefined },
+                  }));
+              }}
+            />
+          </label>
+          <label className="text-[12px] text-fg-3">
+            格式前缀（如 Bearer 加空格）
+            <input
+              key={p.authentication.prefix ?? ""}
+              defaultValue={p.authentication.prefix ?? ""}
+              className="mt-1 h-9 w-full rounded-lg border border-line bg-surface px-3 font-mono text-fg"
+              onBlur={(e) => {
+                const prefix = e.target.value;
+                void save((x) => ({
+                  ...x,
+                  authentication: { type: "header", name: x.authentication?.type === "header" ? x.authentication.name : "Authorization", prefix },
+                }));
+              }}
+            />
+          </label>
+        </div>
+      )}
 
       <section className="mt-5">
         <div className="mb-2 text-[13px] font-medium text-fg">API 地址</div>
@@ -807,13 +950,21 @@ function ProviderPane({ p, save }: { p: ProviderConfig; save: (fn: (x: ProviderC
           <input
             value={baseURL}
             onChange={(e) => setBaseURL(e.target.value)}
-            onBlur={() => baseURL !== p.baseURL && void save((x) => ({ ...x, baseURL: baseURL.trim() }))}
+            onBlur={() => {
+              if (baseURL.trim() === p.baseURL) return;
+              setKey("");
+              void save((x) => changeProviderConnection(x, x.protocol, baseURL.trim()));
+            }}
             placeholder="https://api.example.com/v1"
             className="h-10 min-w-0 flex-1 rounded-[10px] border border-line bg-surface px-3 font-mono text-[13px] text-fg outline-none transition-colors focus:border-accent-line focus:bg-canvas"
           />
           <select
             value={p.protocol}
-            onChange={(e) => void save((x) => ({ ...x, protocol: e.target.value as Protocol }))}
+            onChange={(e) => {
+              setKey("");
+              const protocol = e.target.value as Protocol;
+              void save((x) => changeProviderConnection(x, protocol, x.baseURL));
+            }}
             className="h-10 w-[160px] rounded-[10px] border border-line bg-surface px-2.5 text-[12.5px] text-fg outline-none focus:border-accent-line"
             title="接口类型"
           >
@@ -836,7 +987,8 @@ function ProviderPane({ p, save }: { p: ProviderConfig; save: (fn: (x: ProviderC
                 type="button"
                 onClick={() => {
                   setBaseURL(e.baseURL);
-                  void save((x) => ({ ...x, protocol: e.protocol, baseURL: e.baseURL }));
+                  setKey("");
+                  void save((x) => changeProviderConnection(x, e.protocol, e.baseURL));
                 }}
                 className="shrink-0 text-accent hover:underline"
               >
@@ -845,6 +997,7 @@ function ProviderPane({ p, save }: { p: ProviderConfig; save: (fn: (x: ProviderC
             ),
           )}
         </div>
+        <p className="mt-2 text-[12px] leading-relaxed text-fg-3">更换地址或协议后，请为这个连接重新填写 API Key；无认证端点可在认证策略中明确选择。</p>
       </section>
 
       <section className="mt-7">
@@ -871,7 +1024,10 @@ function ProviderPane({ p, save }: { p: ProviderConfig; save: (fn: (x: ProviderC
                         <Tags m={m} />
                         {isDefault && <span className="rounded-[5px] bg-accent-soft px-1.5 text-[10.5px] leading-[18px] text-accent">默认</span>}
                       </div>
-                      <span className="tabular text-[11.5px] text-fg-4 group-hover:hidden">{tokens(m.contextWindow)}</span>
+                      <span className="tabular text-[11.5px] text-fg-4 group-hover:hidden">
+                        {m.contextWindowSource === "estimate" ? "约 " : ""}
+                        {tokens(m.contextWindow)}
+                      </span>
                       <div className="hidden items-center gap-0.5 group-hover:flex">
                         {!isDefault && (
                           <Tooltip content="设为默认模型">
@@ -930,8 +1086,26 @@ function ProviderPane({ p, save }: { p: ProviderConfig; save: (fn: (x: ProviderC
             </div>
             <div>
               <div className="mb-1.5 text-[13px] text-fg">自定义请求头</div>
+              <p className="mb-2 text-[12px] text-fg-3">只用于非认证字段。认证头统一引用上方的一个 API Key。</p>
               <HeadersEditor headers={p.headers} onCommit={(headers) => void save((x) => ({ ...x, headers }))} />
             </div>
+            {p.authentication?.type !== "none" && (
+              <label className="block text-[13px] text-fg">
+                API Key 辅助命令
+                <input
+                  defaultValue={p.key.kind === "helper" && p.key.command !== "[redacted]" ? p.key.command : ""}
+                  placeholder={p.key.kind === "helper" ? "已配置，留空保留；输入新命令替换" : "可选，如 vault read …（替代环境引用或安全存储来源）"}
+                  className="mt-2 h-9 w-full rounded-lg border border-line bg-surface px-3 font-mono text-[12px]"
+                  onBlur={(e) => {
+                    const command = e.target.value.trim();
+                    if (command) {
+                      setKey("已绑定辅助命令");
+                      void save((x) => ({ ...x, key: { kind: "helper", command } }));
+                    }
+                  }}
+                />
+              </label>
+            )}
             {p.protocol.startsWith("openai") && (
               <div className="flex items-center justify-between gap-6">
                 <div>

@@ -49,13 +49,10 @@ import { runSessionStartHooks, runUserPromptSubmitHooks } from "../hooks/index.j
 import {
   type ThinkingConfig,
   type EffortLevel,
-  hasUltrathinkKeyword,
-  modelSupportsAdaptiveThinking,
   setSessionThinkingConfig,
   getSessionThinkingConfig,
   setSessionEffortLevel,
   getSessionEffortLevel,
-  ULTRATHINK_META_MESSAGE,
 } from "../utils/thinking.js";
 
 // Public types live in ./queryEngine/types.ts — imported for internal use and
@@ -790,20 +787,6 @@ export class QueryEngine {
       this.pendingContextNotes = [];
     }
 
-    // ─── Ultrathink keyword ────────────────────────────────────────
-    // When the user prompt contains the whole-word keyword "ultrathink",
-    // inject a hidden meta user message asking the model for high reasoning
-    // effort. It does NOT change
-    // the thinking budget — it only nudges effort via a meta message. The
-    // marker prefix keeps it out of the human-visible transcript.
-    if (promptToSubmit.length > 0 && hasUltrathinkKeyword(promptToSubmit)) {
-      const ultrathinkMessage: MessageParam = markMessageSource(
-        { role: "user", content: `[ultrathink]\n${ULTRATHINK_META_MESSAGE}` },
-        "meta",
-      );
-      this.messages = [...this.messages, ultrathinkMessage];
-    }
-
     // When this turn was triggered by a background-agent
     // notification (no real user input), skip appending an empty user
     // message — the notification(s) we just drained ARE the user-side
@@ -1130,7 +1113,7 @@ export class QueryEngine {
               ids.length
                 ? `- Declared profiles: ${ids.join(", ")}`
                 : "- Declared profiles: none (set them in settings.json `models`)",
-              "- Usage: /model <name|profile> to override for this session",
+              "- Usage: /model <profile-id> to override for this session",
               "- Usage: /model list to see profiles, /model default to clear the override",
             ].join("\n"),
           };
@@ -1185,8 +1168,18 @@ export class QueryEngine {
 
         // Annotate the switch with the resolved protocol when it matches a
         // declared profile (helps the user confirm they hit the right one).
-        const { profiles } = await loadProfiles(this.toolContext.cwd).catch(() => ({ profiles: emptyProfiles }));
-        const matched = profiles[nextModel];
+        const { resolveProfileConfiguration } = await import("../services/api/providers/profile.js");
+        let matched: Awaited<ReturnType<typeof resolveProfileConfiguration>>;
+        try {
+          matched = await resolveProfileConfiguration(nextModel, this.toolContext.cwd);
+        } catch (error) {
+          yield {
+            type: "command",
+            kind: "error",
+            message: error instanceof Error ? error.message : "Invalid model profile.",
+          };
+          return { handled: true };
+        }
         this.sessionModelOverride = nextModel;
         yield { type: "model_changed", model: nextModel, source: "session" };
         yield {
@@ -1195,9 +1188,7 @@ export class QueryEngine {
           message: [
             "Model updated",
             `- Active model: ${nextModel}`,
-            matched
-              ? `- Protocol: ${matched.protocol} · upstream model: ${matched.model}`
-              : "- Protocol: anthropic (raw model name)",
+            `- Protocol: ${matched.protocol} · upstream model: ${matched.model}`,
             "- Source: session",
             `- Default model remains: ${this.defaultModel}`,
           ].join("\n"),
@@ -1294,12 +1285,10 @@ export class QueryEngine {
         if (arg === "off" || arg === "false" || arg === "0") {
           next = { type: "disabled" };
         } else if (arg === "on" || arg === "true" || arg === "adaptive") {
-          next = modelSupportsAdaptiveThinking(this.getActiveModel())
-            ? { type: "adaptive" }
-            : { type: "enabled", budgetTokens: 10_000 };
+          next = { type: "adaptive" };
         } else {
-          const budget = parseInt(arg, 10);
-          if (!Number.isFinite(budget) || budget <= 0) {
+          const budget = Number(arg);
+          if (!/^\d+$/.test(arg) || !Number.isSafeInteger(budget) || budget <= 0) {
             yield {
               type: "command",
               kind: "error",

@@ -48,14 +48,15 @@ const FALLBACK: Omit<ModelInfo, "id" | "label" | "icon"> = {
   provider: "—",
   providerId: "",
   providerIcon: null,
-  context: 200_000,
+  context: 32_000,
+  note: "profile 未配置；请到模型设置中选择，窗口为估算",
   thinking: false,
   vision: false,
   tools: true,
   healthy: true,
 };
 
-/** Resolve a model handle; an unknown handle is a raw model name, as the Agent treats it. */
+/** Resolve a stable profile ID. Unknown IDs stay visibly unconfigured. */
 export function modelById(id: string): ModelInfo {
   const all = listModels(useSettings.getState().providers, true);
   return all.find((m) => m.id === id) ?? { ...FALLBACK, id, label: id || "未设置", icon: modelBrand(id) };

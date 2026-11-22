@@ -25,7 +25,7 @@ async function openSettings(page: Page, section: string): Promise<void> {
 }
 
 test("behavior and permission edits are written to the chosen settings file", async () => {
-  writeFileSync(join(world.home, ".easy-agent", "settings.json"), JSON.stringify({ maxTurns: 120 }));
+  writeFileSync(join(world.home, ".easy-agent", "settings.json"), JSON.stringify({ ...userSettings(), maxTurns: 120 }));
   const { app, page } = await openProject();
   try {
     await openSettings(page, "行为");
@@ -56,22 +56,33 @@ test("a provider is configured, checked, and offered in the composer", async () 
   try {
     await openSettings(page, "模型");
     await page.getByRole("button", { name: "Anthropic", exact: true }).click();
-    const key = page.getByPlaceholder("sk-...");
-    await key.fill("${ANTHROPIC_AUTH_TOKEN}");
-    await key.blur();
     const url = page.getByPlaceholder("https://api.example.com/v1");
-    await url.fill(world.env.ANTHROPIC_BASE_URL!);
+    await url.fill(world.fixture.baseURL);
     await url.blur();
+    const key = page.getByPlaceholder("${环境变量名} 或 API Key");
+    await key.fill("${EASY_AGENT_API_KEY}");
+    await key.blur();
     await expect
-      .poll(() => Object.values((userSettings().models ?? {}) as Record<string, { baseURL?: string; apiKey?: string }>)[0])
-      .toMatchObject({ protocol: "anthropic", baseURL: world.env.ANTHROPIC_BASE_URL, apiKey: "${ANTHROPIC_AUTH_TOKEN}" });
+      .poll(() =>
+        Object.values((userSettings().models ?? {}) as Record<string, { baseURL?: string; apiKey?: string }>).find(
+          (profile) => profile.apiKey === "${EASY_AGENT_API_KEY}",
+        ),
+      )
+      .toMatchObject({ protocol: "anthropic", baseURL: world.fixture.baseURL, apiKey: "${EASY_AGENT_API_KEY}" });
 
     await page.getByRole("button", { name: "检测" }).click();
     await expect(page.getByText(/连接正常 · \d+ms/)).toBeVisible({ timeout: 20_000 });
 
     await page.getByRole("button", { name: "返回对话" }).click();
-    await page.getByRole("button", { name: "默认模型" }).click();
+    const selector = page.getByRole("button", { name: "选择模型", exact: true });
+    const priorSelection = await selector.textContent();
+    await selector.click();
     await expect(page.getByRole("button", { name: /Claude Opus 4\.1/ })).toBeVisible();
+    const search = page.getByPlaceholder("搜索已配置的模型");
+    await search.fill("profile-that-does-not-exist");
+    await search.press("Enter");
+    await expect(page.getByRole("alert")).toContainText("没有这个 profile");
+    await expect(selector).toHaveText(priorSelection ?? "");
   } finally {
     await app.close();
   }

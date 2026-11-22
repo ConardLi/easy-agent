@@ -630,9 +630,13 @@ export function HarnessView({ summary, data, onDialog }: { summary: HarnessSumma
               {numberRow("features.toolSearchAutoThreshold", "自动启用的阈值", "工具定义超过上下文窗口的这个比例时启用", "%")}
             </Group>
             <Group title="推理">
-              {boolRow("features.thinking", "扩展思考", "回答前先思考")}
-              {numberRow("features.thinkingBudget", "思考预算", "固定的思考 token 数；没设时由模型决定", "tokens")}
-              {choiceRow("features.effort", "推理强度", "模型支持时生效", [
+              {choiceRow("reasoning.mode", "推理模式", "自动依据已知能力；未知模型不发送可选推理参数", [
+                { value: "auto", label: "自动" },
+                { value: "on", label: "开启" },
+                { value: "off", label: "关闭" },
+              ])}
+              {numberRow("reasoning.budgetTokens", "推理预算", "正整数，需小于最大输出；由协议校验支持情况", "tokens")}
+              {choiceRow("reasoning.effort", "推理强度", "模型支持时生效", [
                 { value: "low", label: "低" },
                 { value: "medium", label: "中" },
                 { value: "high", label: "高" },

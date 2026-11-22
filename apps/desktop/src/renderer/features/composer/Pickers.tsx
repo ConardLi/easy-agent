@@ -113,7 +113,7 @@ export function ModelPicker({
       }}
     >
       <Popover.Trigger asChild>
-        <button type="button" className={pill}>
+        <button type="button" className={pill} aria-label="选择模型">
           <Cpu />
           {model ?? "默认模型"}
           <ChevronDown className="!size-3 text-fg-3" />
@@ -131,7 +131,7 @@ export function ModelPicker({
             className="flex h-10 items-center gap-2 border-b border-line px-3"
             onSubmit={(e) => {
               e.preventDefault();
-              if (typed) choose(typed);
+              if (models.some((m) => m.id === typed)) choose(typed);
             }}
           >
             <Search className="size-3.5 text-fg-3" />
@@ -140,7 +140,7 @@ export function ModelPicker({
               autoFocus
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="输入模型名称或配置里的模型句柄"
+              placeholder="搜索已配置的模型"
               className="h-full flex-1 bg-transparent text-[13px] text-fg outline-none placeholder:text-fg-3"
             />
           </form>
@@ -164,27 +164,12 @@ export function ModelPicker({
                 </button>
               ))}
             {model && !models.some((m) => m.id === model) && (
-              <button
-                type="button"
-                onClick={() => setOpen(false)}
-                className="flex h-9 w-full items-center gap-2.5 rounded-lg bg-surface-2 px-2 text-left text-[13px] text-fg"
-              >
-                <Cpu className="size-4 text-fg-3" />
-                <span className="min-w-0 flex-1 truncate">{model}</span>
-                <Check className="size-3.5 text-accent" />
-              </button>
+              <p className="px-2 py-2 text-[12px] leading-relaxed text-warning">当前 profile「{model}」未配置，请选择列表中的模型或打开模型设置。</p>
             )}
             {typed && typed !== model && !models.some((m) => m.id === typed) && (
-              <button
-                type="button"
-                onClick={() => choose(typed)}
-                className="flex h-9 w-full items-center gap-2.5 rounded-lg px-2 text-left text-[13px] text-fg hover:bg-surface-2"
-              >
-                <Cpu className="size-4 text-fg-3" />
-                <span className="min-w-0 flex-1 truncate">
-                  使用 <span className="font-mono">{typed}</span>
-                </span>
-              </button>
+              <p role="alert" className="px-2 py-2 text-[12px] leading-relaxed text-fg-3">
+                没有这个 profile，请先到模型设置添加完整连接。
+              </p>
             )}
           </div>
           <button
